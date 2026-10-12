@@ -41,3 +41,7 @@
 后续安装可参考 Pollen 官方 [install-dev.md](https://github.com/pollen-robotics/microduck/blob/main/docs/robot/install-dev.md)，但**本镜像不能直接照搬 `migrate-network.sh` → 重启的步骤**。当前检查的上游迁移脚本从 netplan 导入无线凭据，不会读取本镜像的 `wpa_supplicant-wlan0.conf`，也不会自动退出独立的 `wpa_supplicant@wlan0` / `25-wlan0.network` 配置。应先保留现有联网方式，待适配凭据导入、旧服务退出和失联恢复后再迁移，避免重启失联。
 
 安装脚本对 `armbianEnv.txt` 的修改也需核对到实际启动使用的 `extlinux.conf`，不能只依据脚本的检查结果判断硬件已配置完成。
+
+## 上机分析脚本
+
+[`onboard-analysis/`](onboard-analysis/)：2026-10-12 夜用来查「模型一接管就猛冲」的脚本，全部只读。包括 50 Hz 录像（开机自启服务）、电压温度记录、IMU 自洽检查、四方向检查、**IMU 零点校准**（站 HOME → 仿真算应有倾斜 → 新安装四元数）、失控转折点、推摇杆迈步统计、IMU 断线分析。
