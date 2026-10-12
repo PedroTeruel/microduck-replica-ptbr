@@ -84,6 +84,8 @@ MJCF 里包含了完整的运动学树：每个零件挂在谁身上、相对位
 
 ## 最近更新
 
+**2026-10-12 · 主控配置勘误**：此前建议买 Radxa Zero 3W「2G / 16G eMMC」，**没必要，让大家多花了钱**。官方资料只写了 1 GB 内存、32 GB 存储；我们第一台就是 2G、无 eMMC、插 microSD 卡，跑 kissqy 整套实测只用了 175 MB 内存、3.3 GB 存储。复刻买 **1G 或 2G 的无 eMMC 版 + 32 GB microSD 卡**即可，只走官方渠道（安联新创淘宝店、瑞莎官方淘宝 / 京东店），别去小店多花几倍的钱。已经买了 2G/16G 的照样能用。[买哪个配置、去哪买](docs/电控采购清单.md#该买哪个配置)。
+
 **2026-10-12 · 装配视频教程**：机械行者Robo 在 B 站更新《MicroDuck 从零安装教程》，已出零件清单、小腿、大腿、躯干、颈部、头部 6 集（共 8 集），小红书、抖音也能找到。[分集目录与关注方式](#-装配视频教程)。
 
 **2026-09-29 · 镜像登录勘误**：旧公开镜像第一次用 **`root / 1234`** 登录；完成 Armbian 向导后才创建 `duck / duck1234` 并更换 root 密码，请随即修改默认密码。旧卡仍需补 `wlan0` DHCP。[使用说明](tools/radxa/镜像使用说明.md)已更正；新的 [DHCP 修复候选镜像](https://github.com/fanhao375/microduck-replica/releases/tag/radxa-zero3w-armbian-20260929)经过离线校验，**尚未对这份新产物烧卡实测**。基础镜像不含机器人运行时或网页调试台。
@@ -317,7 +319,7 @@ CAD 仓库的 09-15 旧 3MF 尚未包含 v2.1 合体轮胎；请核对具体附�
 | | |
 |---|---|
 | **主控** | **Radxa Zero 3W** —— 市售模块，**不是定制载板** |
-| SoC | RK3566，四核 Cortex-A55，Mali-G52，0.8 TOPS NPU。官方公布 1 GB / 32 GB eMMC；复刻建议 2G/16G，见 [电控采购清单](docs/电控采购清单.md) |
+| SoC | RK3566，四核 Cortex-A55，Mali-G52，0.8 TOPS NPU。官方公布 1 GB 内存 / 32 GB 存储；复刻买 1G 或 2G 的**无 eMMC** 版 + 32 GB microSD 卡即可，只走官方渠道，见 [电控采购清单](docs/电控采购清单.md#该买哪个配置) |
 | **舵机总线** | **单线半双工 TTL** —— **不是** RS-232，**也不是** RS-485。Dynamixel Protocol V2 @ 1 Mbps，走 `/dev/ttyS2` |
 | **自制板 1** | **`imu_to_dxl` v2** —— 一颗会说 Dynamixel 的 LSM6DSV16X：总线 ID 200、寄存器 124，12 字节块在**同一次** `sync_read` 里和舵机一起读回 |
 | **自制板 2** | **RPI Robot HAT** —— TLV320AIC3104 @ 0x18、一颗休眠的 BMI088、接 ToF 的 Stemma 座。**官方已开源**（[`elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT)） |

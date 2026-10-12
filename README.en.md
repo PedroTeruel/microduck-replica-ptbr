@@ -100,6 +100,8 @@ The code below is for **Duck Replica Group 10** (WeChat disables QR joins once a
 
 ## Latest
 
+**2026-10-12 — Main board correction:** We previously recommended the Radxa Zero 3W "2 GB / 16 GB eMMC" SKU. **That was unnecessary and cost people money.** The official spec only says 1 GB RAM and 32 GB storage. Our first robot runs a 2 GB board **without eMMC** on a microSD card; with the full kissqy stack it uses 175 MB of RAM and 3.3 GB of storage. **A 1 GB or 2 GB board without eMMC plus a 32 GB microSD card is enough.** Buy from official distributors (ALLNET, Radxa's official stores) rather than resellers. A 2G/16G board you already bought works fine. See the [purchase guide](docs/电控采购清单.md#该买哪个配置) (Chinese).
+
 **2026-10-12 — Assembly videos:** 机械行者Robo is publishing a from-scratch assembly series on Bilibili. Six of eight episodes are out: parts list, lower legs, thighs, torso, neck and head. The same account is on Xiaohongshu and Douyin. See the [episode list](#-assembly-videos).
 
 **2026-09-29 — Image login correction:** The original public image requires **`root / 1234`** for the first login. Complete the Armbian wizard before using `duck / duck1234`; it also changes the root password. Change both default passwords immediately. The old image still needs the `wlan0` DHCP fix. The [guide](tools/radxa/镜像使用说明.md) is corrected, and a separate [DHCP fix candidate image](https://github.com/fanhao375/microduck-replica/releases/tag/radxa-zero3w-armbian-20260929) has passed offline checks; **this new artifact has not been flashed and boot-tested on hardware**. It contains neither the robot runtime nor the web servo console.
@@ -344,7 +346,7 @@ The CAD repository's older 09-15 3MF does not include the v2.1 combined wheel. C
 | | |
 |---|---|
 | **Main board** | **Radxa Zero 3W** — an off-the-shelf module, *not* a custom carrier |
-| SoC | RK3566, quad Cortex-A55, Mali-G52, 0.8 TOPS NPU, 1 GB RAM / 32 GB eMMC |
+| SoC | RK3566, quad Cortex-A55, Mali-G52, 0.8 TOPS NPU. Official: 1 GB RAM / 32 GB storage. For a replica a 1 GB or 2 GB board **without eMMC** plus a 32 GB microSD card is enough |
 | **Servo bus** | **Single-wire half-duplex TTL** — *not* RS-232, *not* RS-485. Dynamixel Protocol V2 @ 1 Mbps on `/dev/ttyS2` |
 | **Custom board 1** | **`imu_to_dxl` v2** — an LSM6DSV16X that speaks Dynamixel: bus ID 200, register 124, a 12-byte block read in the *same* `sync_read` as the servos |
 | **Custom board 2** | **RPI Robot HAT** — TLV320AIC3104 @ 0x18, a dormant BMI088, a Stemma header for the ToF. **Published by Pollen** ([`elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT)) |
