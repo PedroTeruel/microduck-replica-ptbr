@@ -65,7 +65,7 @@ MJCF 里包含了完整的运动学树：每个零件挂在谁身上、相对位
 <tr>
 <td align="center"><a href="https://space.bilibili.com/312747174"><img src="assets/social/bilibili-qr.jpg" alt="B 站：机械行者Robo" height="280"></a><br><sub><b>B 站</b> · 机械行者Robo<br>UID 312747174</sub></td>
 <td align="center"><a href="https://www.xiaohongshu.com/user/profile/5ad950114eacab046016f038"><img src="assets/social/xiaohongshu-qr.jpg" alt="小红书：机械行者" height="280"></a><br><sub><b>小红书</b> · 机械行者<br>小红书号 270594280</sub></td>
-<td align="center"><img src="assets/social/douyin-qr.jpg" alt="抖音：机械行者Robo" height="280"><br><sub><b>抖音</b> · 机械行者Robo<br>抖音号 1852366168</sub></td>
+<td align="center"><a href="https://www.douyin.com/user/MS4wLjABAAAArLa_6yE3GE-AoRURoQnIHdbbI7yM-GHhzlgLZ-XbeYE"><img src="assets/social/douyin-qr.jpg" alt="抖音：机械行者Robo" height="280"></a><br><sub><b>抖音</b> · 机械行者Robo<br>抖音号 1852366168</sub></td>
 </tr>
 </table>
 

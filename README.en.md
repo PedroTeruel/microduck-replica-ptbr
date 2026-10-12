@@ -81,7 +81,7 @@ Get the printed and purchased parts from the assembly BOM in the [CAD repository
 <tr>
 <td align="center"><a href="https://space.bilibili.com/312747174"><img src="assets/social/bilibili-qr.jpg" alt="Bilibili: 机械行者Robo" height="280"></a><br><sub><b>Bilibili</b> · 机械行者Robo<br>UID 312747174</sub></td>
 <td align="center"><a href="https://www.xiaohongshu.com/user/profile/5ad950114eacab046016f038"><img src="assets/social/xiaohongshu-qr.jpg" alt="Xiaohongshu: 机械行者" height="280"></a><br><sub><b>Xiaohongshu</b> · 机械行者<br>ID 270594280</sub></td>
-<td align="center"><img src="assets/social/douyin-qr.jpg" alt="Douyin: 机械行者Robo" height="280"><br><sub><b>Douyin</b> · 机械行者Robo<br>ID 1852366168</sub></td>
+<td align="center"><a href="https://www.douyin.com/user/MS4wLjABAAAArLa_6yE3GE-AoRURoQnIHdbbI7yM-GHhzlgLZ-XbeYE"><img src="assets/social/douyin-qr.jpg" alt="Douyin: 机械行者Robo" height="280"></a><br><sub><b>Douyin</b> · 机械行者Robo<br>ID 1852366168</sub></td>
 </tr>
 </table>
 
