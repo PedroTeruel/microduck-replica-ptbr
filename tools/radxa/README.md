@@ -20,6 +20,9 @@
 | [联网与HAT调试记录-20260928.md](联网与HAT调试记录-20260928.md) | DHCP 修复后的主板登录、HAT 舵机只读通讯结果和待排查项 |
 | `1-做卡.ps1` | Windows 右键「使用 PowerShell 运行」，选下载的 `.img.xz`，出一个 `xxx-鸭子卡.img`，Rufus 烧它 |
 | `build-armbian-card.sh` | 实际干活的脚本，Linux / WSL 里 `sudo bash build-armbian-card.sh xxx.img.xz card.conf` |
+| `kissqy-r1-v112.sh` | 在 kissqy 的「一键系统镜像 R1」上换瑞莎引导、写 extlinux，让 V1.12 板能开机；他的固件、模型、首次配网原样保留。可选 `--no-camera`、`--no-tof`、`--overlay i2c4-m0`。`sudo bash kissqy-r1-v112.sh microduck-zero3w-0.15.1-R1.img.xz [选项]`。为什么要改、离线验证结果见 [kissqy 镜像 R1 分析](../../docs/HD1910-20261012-kissqy镜像R1分析.md)；**还没上机** |
+
+两个脚本都会先找同目录下的瑞莎引导包 `u-boot-rk2410_2017.09-64-39cd993_arm64.deb`，没有才去 radxa-repo.github.io 下载。WSL 里 curl 下这个站偶尔 SSL 中断，这时先在 Windows 上下好，放到脚本同目录（校验值脚本会核对）。用完删掉，别把这个 .deb 提交进仓库。
 
 镜像用 **Armbian 26.2.1 trixie vendor 6.1.115 minimal**（Pollen 官方指定；国内镜像站只剩 26.8.1，
 26.2.1 在 `https://fi.mirror.armbian.de/archive/radxa-zero3/archive/`）。瑞莎引导程序从
