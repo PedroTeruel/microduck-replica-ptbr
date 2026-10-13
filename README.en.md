@@ -100,6 +100,10 @@ The code below is for **Duck Replica Group 10** (WeChat disables QR joins once a
 
 ## Latest
 
+**2026-10-14 — Feetech's official HD-1910 BAM actuator model:** At the end of September Feetech published [ftservo/ftservo-bam](https://gitee.com/ftservo/ftservo-bam) on Gitee (Apache-2.0, a fork of Rhoban/BAM), with m1–m6 parameters for the HD-1910 identified at 7.4 V and a dedicated HD-1910 controller model. Until now everyone has trained with the 1910 M6 parameters published by LuwuDynamics; the manufacturer's own set is now available to compare. The two differ substantially (motor resistance: Feetech 2.97 Ω, LuwuDynamics 4.91 Ω; computed stall torque: Feetech 1.37, LuwuDynamics 0.91 N·m), and **we have not yet verified on hardware which one matches the real servo better**. Feetech's recording script sets P but not D, so the servos were most likely at the factory D=40 — confirm D before deploying a policy trained on it. Loading and gain-conversion details: [comparison and integration notes](docs/HD-1910-M6参数来源.md#飞特官方-hd-1910-bam) (Chinese).
+
+**2026-10-13 night — Brownouts, servo D and foot scraping:** Both cards brown out while walking; the supply cannot hold the current spikes — it is not software. The walking jitter is linked to the servos' hardware D (damping): the actuator model used in training has no D term, and setting D=0 cut the high-frequency share of torso motion from 51% to 4–8%; we now run P3 / D0 / torque limit 700. The feet scrape because both lift only half as high as in simulation, and with D=0 the left toe also points down; next we try D=5–10. kissqy's one-click image (V164) does not write D or the torque limit, so changing them in the console has no effect. [Full record](docs/HD1910-20261013-夜-掉电-舵机D与蹭地.md) (Chinese) · [Where our software comes from and what we changed](docs/软件来源与我们的改动.md) (Chinese) · [Gait analysis scripts](tools/gait-analysis/).
+
 **2026-10-12 night — IMU calibrated, first stable stand and alternating steps:** The reason the walking policy charged backwards and fell as soon as it took over was an **IMU module mounted about 8.5° off**. The policy was trained with a level torso at HOME, but the IMU kept reporting an 8.5° forward lean, so the policy kept "recovering" backwards. We computed the expected torso attitude from the real joint angles in simulation and folded the difference into the IMU mounting quaternion. Afterwards the policy held the robot upright for 70 s (mean tilt 0.2°), and pushing the stick produced alternating steps (forward distance not measured yet). The web gamepad lag was traced to four layers; a Bluetooth gamepad paired directly to the robot bypasses all of them. [Full log and the IMU zero-calibration method](docs/HD1910-20261012-夜-IMU校准与首次迈步.md) (Chinese) · [analysis scripts](tools/radxa/onboard-analysis/).
 
 **2026-10-12 — Main board correction:** We previously recommended the Radxa Zero 3W "2 GB / 16 GB eMMC" SKU. **That was unnecessary and cost people money.** The official spec only says 1 GB RAM and 32 GB storage. Our first robot runs a 2 GB board **without eMMC** on a microSD card; with the full kissqy stack it uses 175 MB of RAM and 3.3 GB of storage. **A 1 GB or 2 GB board without eMMC plus a 32 GB microSD card is enough.** Buy from official distributors (ALLNET, Radxa's official stores) rather than resellers. A 2G/16G board you already bought works fine. See the [purchase guide](docs/电控采购清单.md#该买哪个配置) (Chinese).
@@ -190,6 +194,11 @@ The Feetech simulation baseline adopts the **1910 BAM M6 actuator parameters pub
 for sharing them. These parameters were not independently identified by this replica project.
 The [provenance record](docs/HD-1910-M6参数来源.md) includes the pinned source revision,
 original-file checksum and Apache-2.0 license.
+
+**Feetech has also published an HD-1910 BAM model:** [ftservo/ftservo-bam](https://gitee.com/ftservo/ftservo-bam)
+(Gitee, Apache-2.0) with the manufacturer's own identified parameters and a dedicated controller model,
+so the two sets can be compared. We have not yet verified which matches the real servo better; see the
+[integration notes](docs/HD-1910-M6参数来源.md#飞特官方-hd-1910-bam) (Chinese).
 
 **For the training workflow, we recommend [kissqy / Microduck-kissqy](https://github.com/kissqy/Microduck-kissqy)**. Thanks to [@kissqy](https://github.com/kissqy) for sharing!
 The project provides an HD1910 training console and guides covering environment setup, training job management
