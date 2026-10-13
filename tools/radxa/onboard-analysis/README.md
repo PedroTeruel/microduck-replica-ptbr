@@ -1,6 +1,6 @@
 # 上机分析脚本
 
-2026-10-12 夜第一台上机时用来定位问题的脚本。都是**只读**的：只订阅 robotd 的状态、读日志，不发任何控制指令（`webpad_probe.py` 例外，它只发「不按键、摇杆归零」的空帧）。
+2026-10-12 夜第一台上机时用来定位问题的脚本（10-13 夜更新了录像服务）。走路的步态分析在电脑上跑，见 [`tools/gait-analysis/`](../../gait-analysis/)。都是**只读**的：只订阅 robotd 的状态、读日志，不发任何控制指令（`webpad_probe.py` 例外，它只发「不按键、摇杆归零」的空帧）。
 怎么用它们一步步找到「一接管就猛冲」的根因，见 [2026-10-12 夜上机记录](../../../docs/HD1910-20261012-夜-IMU校准与首次迈步.md)。
 
 脚本假定的环境：主板上跑 kissqy 的 R17（robotd 套接字 `/run/robotd.sock`），录像放在 `/home/duck/r17/rec/`，脚本放在 `/home/duck/tools/`。
@@ -9,11 +9,14 @@
 
 | 文件 | 在哪跑 | 干什么 |
 |---|---|---|
-| `duck_rec.py` | 主板 | 订阅 robotd 的 `robot.subscribe`，50 Hz 记关节角、目标、关节速度、IMU、安全状态、摇杆指令、策略状态，存 JSONL。`python3 duck_rec.py 秒数 输出文件` |
-| `duck_health_log.py` | 主板 | 每 0.5 秒记一次 `robotctl health --json`：舵机电压、最热舵机、CPU 温度和频率，存 CSV |
-| `duck-rec.service` | 主板 | 把上面两个做成开机自启，robotd 重启它也跟着重启（`PartOf=robotd.service`）。放到 `/etc/systemd/system/`，`systemctl enable --now duck-rec` |
+| `duck_rec.py` | 主板 | 订阅 robotd 的 `robot.subscribe`，50 Hz 记关节角、目标、关节速度、IMU、安全状态、摇杆指令、策略状态，存 JSONL。`python3 duck_rec.py 秒数 输出文件`。追加写、**每秒写盘一次**；robotd 重启时记一行 `rec_error` 并自己重连 |
+| `duck_health_log.py` | 主板 | 每 0.5 秒记一次 `robotctl health --json`：舵机电压、最热舵机、CPU 温度和频率、WiFi 和蓝牙状态，存 CSV |
+| `duck-rec.service` | 主板 | 把上面两个做成开机自启，独立运行（不随 robotd 停），文件名带开机编号。放到 `/etc/systemd/system/`，`systemctl enable --now duck-rec` |
+| `duck_journal.py`、`duck-journal.service` | 主板 | 把本次开机的系统日志实时抄到卡上，每秒写盘（Armbian 的日志在内存里，掉电就没了）。跳过 robotd 启动时 IMU 稳定阶段的刷屏 |
 
-录像约 3 MB/分钟。断电时最后几秒可能没写进卡，留下坏行，下面的脚本都会跳过坏行。
+两个 service 文件里写死了用户 `duck` 和 `/home/duck/...` 路径（我们自己做的卡）；kissqy 一键镜像的用户是 `radxa`，用之前改成 `/home/radxa/...`。
+
+录像约 3 MB/分钟。文件名是 `run-日期-时间-b开机编号前6位.jsonl`：主板没有 RTC，每次开机时钟都会回拨，**按开机编号找文件**（`cut -c1-6 /proc/sys/kernel/random/boot_id`）。每秒写盘，突然掉电最多丢最后 1 秒，坏行下面的脚本都会跳过。
 
 ## 出了问题怎么查
 
@@ -26,6 +29,7 @@
 | `vel_consistency.py` | 每个关节：角度差分（真实转速）和 robotd 报的速度比，查速度的正负号和比例 |
 | `imu_fault_ctx.py` | IMU 每次断线时，机器人在干什么（静止 / 回 HOME / 走路）、电压多少，用来区分接触不良、供电跌落、驱动时序 |
 | `webpad_probe.py` | 在主板本机测网页手柄那条路：webpad 冷启动多久、padd 能不能认到虚拟手柄 |
+| `crash_scan.py` | 每段录像的状态切换时间线、摇杆指令、最后几帧的安全状态；带上同一段的 health CSV 就同时看电压、温度。用来判断「整机掉电」前一刻在干什么 |
 
 ## IMU 校准（今晚手动做的流程）
 
