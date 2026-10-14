@@ -163,7 +163,7 @@ MJCF 里包含了完整的运动学树：每个零件挂在谁身上、相对位
 
 👉 **[进入我们的 fork：fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy)**　·　[使用说明](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-trunk-imu-i2c/IMU-MODULE.md)
 
-<sub>状态：BNO085 已在我们第一台鸭子上跑过；当前版本今晚上真机实测，结果更新在上面的「最近更新」。基于 [kissqy/Microduck-kissqy](https://github.com/kissqy/Microduck-kissqy) 的 V167（robotd 等为 Apache-2.0），不是 kissqy 的官方版本，有问题请到本仓库反馈。</sub>
+状态：BNO085 已在我们第一台鸭子上跑过；当前版本今晚上真机实测，结果更新在上面的「最近更新」。基于 [kissqy/Microduck-kissqy](https://github.com/kissqy/Microduck-kissqy) 的 V167（robotd 等为 Apache-2.0），不是 kissqy 的官方版本，有问题请到本仓库反馈。
 
 #### 网页调试台：串口直连 15 颗舵机
 

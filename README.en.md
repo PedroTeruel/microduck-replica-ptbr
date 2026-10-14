@@ -177,7 +177,7 @@ horns were remodelled and reprinted. The editable SolidWorks drawings have an FT
 
 👉 **[Open our fork: fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy)**　·　[Instructions](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-trunk-imu-i2c/IMU-MODULE.md)
 
-<sub>Status: BNO085 has run on our first duck; the current build goes on the robot tonight, results in "Latest" above. Based on [kissqy/Microduck-kissqy](https://github.com/kissqy/Microduck-kissqy) V167 (robotd and friends are Apache-2.0); not an official kissqy release — please report problems here.</sub>
+Status: BNO085 has run on our first duck; the current build goes on the robot tonight, results in "Latest" above. Based on [kissqy/Microduck-kissqy](https://github.com/kissqy/Microduck-kissqy) V167 (robotd and friends are Apache-2.0); not an official kissqy release — please report problems here.
 
 #### Web console: 15 servos over the serial bus
 
