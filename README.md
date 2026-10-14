@@ -152,7 +152,20 @@ MJCF 里包含了完整的运动学树：每个零件挂在谁身上、相对位
 <tr>
 <td width="50%" valign="top">
 
-### 💻 软件 · 网页调试台，串口直连 15 颗舵机
+### 💻 软件 · 我们的 fork：IMU 模块直接上
+
+**不用做总线 IMU 小板，也不用刷固件**：买一块 BNO085（或 LSM6DSV16X）模块，4 根线接到主板 I²C，装上我们的 fork，鸭子就能站、能走。
+
+- **IMU 模块直连主板**：BNO085 / LSM6DSV16X，`robotd.toml` 里一行切换；
+- **一键安装脚本**：先检查、再备份，中途任何一步失败自动撤回；
+- **中文说明**：接线、编译、安装、确认 IMU 方向，一步一步写清楚；
+- **跟着上游最新版走**，在我们自己的鸭子上实测，踩过的坑都记在本仓库。
+
+👉 **[进入我们的 fork：fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy)**　·　[使用说明](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-trunk-imu-i2c/IMU-MODULE.md)
+
+<sub>状态：BNO085 已在我们第一台鸭子上跑过；当前版本今晚上真机实测，结果更新在上面的「最近更新」。基于 [kissqy/Microduck-kissqy](https://github.com/kissqy/Microduck-kissqy) 的 V167（robotd 等为 Apache-2.0），不是 kissqy 的官方版本，有问题请到本仓库反馈。</sub>
+
+#### 网页调试台：串口直连 15 颗舵机
 
 <p align="center"><a href="tools/servo-web/"><img src="assets/servo-web.png" alt="网页调试台：滑块、3D 鸭子、重心投影" width="420"></a></p>
 
@@ -162,11 +175,9 @@ MJCF 里包含了完整的运动学树：每个零件挂在谁身上、相对位
 后端不依赖飞特 SDK，[`feetech.py`](tools/servo-web/feetech.py) 按 2026 版协议手册直接收发包，一百多行。
 配套一个**协议级舵机模拟器**，不接硬件就能把校准、改 ID、写寄存器跑一遍自检。
 
-接官方运行时的 `FeetechIo`（`RobotIo` 接缝，rustypot 协议 v1）已经写完、跟上了官方 0.14.1，等零位校准做完上板 —— 代码在 fork 的 **[`feetech` 分支](https://github.com/fanhao375/microduck/tree/feetech)**。
-
+**[我们的 fork](https://github.com/fanhao375/Microduck-kissqy)**　·
 **[网页调试台](tools/servo-web/)**　·
 **[飞特适配架构](software/飞特适配架构.md)**　·
-**[FeetechIo 代码](https://github.com/fanhao375/microduck/tree/feetech)**　·　
 [飞特官方资料](docs/飞特资料/)（协议、内存表）
 
 </td>

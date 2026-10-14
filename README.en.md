@@ -166,7 +166,20 @@ horns were remodelled and reprinted. The editable SolidWorks drawings have an FT
 <tr>
 <td width="50%" valign="top">
 
-### 💻 Software · web console driving 15 servos over the serial bus
+### 💻 Software · our fork: plug in an off-the-shelf IMU module
+
+**No bus IMU board to build, no firmware to flash:** wire a BNO085 (or LSM6DSV16X) module to the board's I²C with four wires, install our fork, and the duck stands and walks.
+
+- **IMU module straight on the board**: BNO085 / LSM6DSV16X, one line in `robotd.toml`;
+- **One-command installer**: checks first, backs up, and rolls back by itself if any step fails;
+- **Step-by-step instructions**: wiring, build, install, confirming the IMU mount;
+- **Tracks the latest upstream release**, tested on our own duck, every pitfall written up in this repository.
+
+👉 **[Open our fork: fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy)**　·　[Instructions](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-trunk-imu-i2c/IMU-MODULE.md)
+
+<sub>Status: BNO085 has run on our first duck; the current build goes on the robot tonight, results in "Latest" above. Based on [kissqy/Microduck-kissqy](https://github.com/kissqy/Microduck-kissqy) V167 (robotd and friends are Apache-2.0); not an official kissqy release — please report problems here.</sub>
+
+#### Web console: 15 servos over the serial bus
 
 <p align="center"><a href="tools/servo-web/"><img src="assets/servo-web.png" alt="Web console: sliders, 3D duck, CoM projection" width="420"></a></p>
 
@@ -179,9 +192,7 @@ The backend does not use the Feetech SDK: [`feetech.py`](tools/servo-web/feetech
 2026 protocol manual directly in about a hundred lines. It ships with a **packet-level servo
 simulator**, so calibration, ID changes and register writes are self-tested with no hardware attached.
 
-`FeetechIo` for the official runtime (the `RobotIo` seam, rustypot protocol v1) is written and
-waiting on the zero calibration before it goes on the board.
-
+**[Our fork](https://github.com/fanhao375/Microduck-kissqy)**　·　
 **[Web console](tools/servo-web/)**　·　
 **[Feetech port architecture](software/飞特适配架构.md)**　(Chinese)　·　
 [Feetech official docs](docs/飞特资料/)
