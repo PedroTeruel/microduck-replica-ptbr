@@ -5,7 +5,7 @@
 
 **输入**：主板上 [`duck_rec.py`](../radxa/onboard-analysis/duck_rec.py) 录的 50 Hz JSONL（关节角、目标、IMU 重力和陀螺、摇杆指令、策略状态）。拷到电脑上再跑。
 **环境**：Python 3.10+，`numpy`、`scipy`；带 `MJCF` 参数的脚本还要 `mujoco` 和官方 `microduck_rl` 仓库里的 `src/mjlab_microduck/robot/microduck/scene_backlash.xml`（正运动学用）。
-`foot_clear.py`、`toe_decomp.py`、`stance_*.py`、`roll_pitch_coupling.py` **只统计「模型接管且推着摇杆」的帧**（`policy=walk` 且指令速度 > 0.02 m/s），站 HOME 的帧用来自检；`gait_quality.py` 自己分「站 HOME / 原地 / 在走」三段；`walk_transfer.py` 用所有 ≥3 秒的连续 `policy=walk` 段。录像里 robotd 重启过时，这几个脚本都会在那里断段。
+`foot_clear.py`、`toe_decomp.py`、`stance_*.py`、`roll_pitch_coupling.py` **只统计「模型接管且推着摇杆」的帧**（`policy=walk` 且指令速度 > 0.02 m/s），站 HOME 的帧用来自检；`gait_quality.py` 自己分「站 HOME / 原地 / 在走」三段；`walk_transfer.py` 用所有 ≥3 秒的连续 `policy=walk` 段。录像里 robotd 重启过时，这几个脚本都会在那里断段。`home_roll.py` 用「保持 HOME」（`policy=held`、没卸力）的连续段，每段取最后 150 帧。
 
 | 脚本 | 回答什么问题 | 用法 |
 |---|---|---|
@@ -15,6 +15,7 @@
 | `toe_decomp.py` | 迈步最高点脚尖朝下还是朝上，按关节和机身俯仰拆开 | `python toe_decomp.py MJCF 名称=录像.jsonl ...` |
 | `stance_pitch.py` | 撑地时机身前倾多少，撑地腿的髋、膝、踝各自实际在哪、模型要它在哪 | 同上 |
 | `stance_height.py` | 撑地腿把机身撑多高，比模型要的塌了多少 | 同上 |
+| `home_roll.py` | 站 HOME 时两只脚掌左右方向差多少、是哪个关节造成的、躯干摆正时哪条边低（相对仿真 HOME；读数和目标同一个零点，零位偏差看不出来） | `python home_roll.py MJCF 名称=录像.jsonl ...` |
 | `roll_pitch_coupling.py` | 横滚和俯仰是不是绑在一起：各频段都绑 = IMU 绕竖直轴装偏；只在步频附近绑 = 机身真的在点头 | `python roll_pitch_coupling.py 名称=录像.jsonl ...` |
 
 **注意**：
