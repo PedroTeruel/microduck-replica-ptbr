@@ -124,13 +124,17 @@ The code below is for **Duck Replica Group 10** (WeChat disables QR joins once a
 <tr>
 <td width="50%" valign="top">
 
-### 🔌 Electronics · all 15 servos powered up in the assembled duck, and it stands (2026-09-18)
+### 🔌 Electronics · IMU fixed, it walks (2026-10-15)
 
-<p align="center"><a href="assets/首次上电-2026-09-18.mp4"><img src="assets/首次上电-站起来.gif" alt="First power-on: standing up from the tucked pose (click for the 30 s video)" width="220"></a></p>
+<p align="center"><a href="assets/走路-2026-10-15.mp4"><img src="assets/走路-2026-10-15.gif" alt="2026-10-15: walking on a wooden floor after the IMU fix (click for the 5 s video)" width="220"></a></p>
+
+It used to fall after two or three steps of pushing the stick; the cause was the BNO085's own fused orientation jumping while walking. With robotd carrying the attitude on the chip's own gyro, 60 s of pushing the stick gave no fall (kissqy V167 + our fork, default servo gains, silicone feet). Turning is still weak; we are on it. **[How it was found and fixed](docs/HD1910-20261015-IMU乱跳根因与陀螺融合上机.md)** (Chinese).
+
+**Earlier: first power-on, 09-18** ([30 s video](assets/首次上电-2026-09-18.mp4))
 
 First time the assembled duck was on the bus: URT-2 over USB, 7.4 V into V1, **all 15 HD-1910 online, 0 timeouts, 0 checksum errors**, one sync_read of 15 servos in 4.8 ms.
 Driven from the new [web servo console](tools/servo-web/) in this repo: sliders, saved poses, sequences, a 3D model that follows the real robot and a live centre-of-mass marker against the foot support.
-Above, it stands up from the tucked pose **by itself**, then sits back down. **First step of the Feetech software path works**; the hardware plan holds.
+In the video it stands up from the tucked pose **by itself**, then sits back down. **First step of the Feetech software path works**; the hardware plan holds.
 
 The above is the 09-18 test. Earlier on 09-28, the failed ID 21 servo was replaced with the former mouth servo (ID 34), with centre calibration confirmed at 2048. The operator later assigned the mouth ID 29, whose firmware/model fields were detected during a scan. This test covers 14 joints; mouth ID 29 is excluded at the operator's request and remains unverified. The old “all 15 online” result is not the current acceptance result. Feetech-protocol [`imu_to_dxl` firmware 0.2.0](hardware/imu_to_dxl/firmware/) is available; physical bus testing is still pending.
 
