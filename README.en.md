@@ -89,12 +89,12 @@ Get the printed and purchased parts from the assembly BOM in the [CAD repository
 
 A WeChat group for people working on the same thing — build progress, pitfalls, sourcing.
 
-The code below is for **Duck Replica Group 10** (WeChat disables QR joins once a group reaches 200 members).
+The code below is for **Duck Replica Group 11** (WeChat disables QR joins once a group reaches 200 members).
 
 <div align="center">
-  <img src="assets/wechat-group-10.png" alt="Duck Replica Group 10 WeChat QR code" width="280">
+  <img src="assets/wechat-group-11.png" alt="Duck Replica Group 11 WeChat QR code" width="280">
   <br>
-  <sub><b>Duck Replica Group 10 · expires 2026-10-18</b> — WeChat group codes are valid for 7 days<br>
+  <sub><b>Duck Replica Group 11 · expires 2026-10-23</b> — WeChat group codes are valid for 7 days<br>
   If it has expired, open an <a href="https://github.com/fanhao375/microduck-replica/issues">issue</a> and I will post a fresh one</sub>
 </div>
 

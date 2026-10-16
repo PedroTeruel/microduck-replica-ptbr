@@ -73,12 +73,12 @@ MJCF 里包含了完整的运动学树：每个零件挂在谁身上、相对位
 
 有人在做同样的事，凑了个微信群一起讨论复刻进度、踩过的坑、元件采购。
 
-下面是**鸭子复刻群 10**的二维码（微信群满 200 人后无法扫码加入）。
+下面是**鸭子复刻群 11**的二维码（微信群满 200 人后无法扫码加入）。
 
 <div align="center">
-  <img src="assets/wechat-group-10.png" alt="鸭子复刻群 10 微信二维码" width="280">
+  <img src="assets/wechat-group-11.png" alt="鸭子复刻群 11 微信二维码" width="280">
   <br>
-  <sub><b>鸭子复刻群 10 · 二维码有效期到 2026-10-18</b>（微信群码 7 天自动失效）<br>
+  <sub><b>鸭子复刻群 11 · 二维码有效期到 2026-10-23</b>（微信群码 7 天自动失效）<br>
   过期了请开个 <a href="https://github.com/fanhao375/microduck-replica/issues">issue</a> 说一声，我会换上新的</sub>
 </div>
 
