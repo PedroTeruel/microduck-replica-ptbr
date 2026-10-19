@@ -1,0 +1,1204 @@
+#!/usr/bin/python3 -IS
+"""microduck-helper：Microduck Studio 的 root 小助手。舵机总线交接三个动词，手柄配对 / 忘掉两个动词。
+
+为什么要它：Studio 的舵机页要自己打开舵机总线 /dev/ttyS2，主程序 robotd 就得先停下，用完再交还。
+停、起 robotd 要 root，Studio 不是 root。所以 sudoers 只放行这一个文件，它只认白名单里的动词，
+参数逐个校验，状态自己去读，不信网页传来的。
+
+方案：scratchpad console/handover-plan.md（v2 定稿）§2.2、§4.2；规矩照 studio-ops-plan.md §7。
+
+动词（参数是 stdin 里的一个 JSON 对象，先一次读完）：
+  bus-take       {"by": str, "allow_seated": bool}   Studio 接管总线（不卸力）
+  bus-give-back  {"by": str, "soft": true}            软交还：Studio 已经在总线上全卸了，起 robotd
+                 {"by": str, "marker": {...}}         不卸力交还：写交接标记，robotd 接手保持
+  bus-abort      {"by": str}                          中止交接：立旗、KILL robotd，总线还给 Studio
+  pad-pair       {"by": str, "mac": 可选, "timeout": 10–120（默认 60）}
+                                                       跑官方 /usr/local/bin/robotctl pad pair --json
+                                                       （/var/lib/robot/weird-ble 板上会先停 btd、重开蓝牙）
+  pad-forget     {"by": str, "mac": str}             跑官方 /usr/local/bin/robotctl pad forget MAC
+
+输出：一行一个 JSON {"step","level","ms","msg","detail"}，最后一行 step="done"。
+同一份结果写进 /run/microduck-helper/last-result.json（Studio 重启以后读它）。
+
+退出码：0 成功；2 参数错；3 状态不允许；4 忙 / 中止；5 执行失败；6 交接没成、总线已拿回（Studio 接着保持）。
+
+几个路径（都在内存盘 /run 里，断电就没了，这是故意的）：
+  /run/microduck-helper/bus-held          旗。robotd 的 drop-in 写着 ConditionPathExists=! 它，旗在 robotd 就起不来
+  /run/microduck-helper/abort             中止请求（bus-abort 写，正在跑的 bus-give-back 看到就停）
+  /run/microduck-helper/last-result.json  最后一次的结果
+  /run/microduck-helper/helper.lock       bus-take / bus-give-back 一次只跑一个（bus-abort 不拿，不能被挡住）
+  /run/microduck-handover/handover.json   交接标记（目录 0700，只有 root 读写；robotd 读完就删）
+  管理锁 /run/microduck-service-management.lock 由临时单元 microduck-bus-hold 一直拿着，板上的 service.sh 拿不到就不动
+
+环境变量 MICRODUCK_HELPER_DETACHED / _REQUEST / _REQUESTED_MS：只给 bus-give-back 自己用。它第一次被调用时，
+用 systemd-run 把自己放进一个独立的临时单元再跑一遍，这样 Studio 死了也不会把它砍在半路。这几个变量只决定
+「不要再转一次」，以及中止请求和结果怎么对号，**不给任何权限**。sudo 默认 env_reset，调用方也传不进来。
+"""
+import json
+import os
+import re
+import secrets
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+VERSION = "0.2.0"
+VERBS = ("bus-take", "bus-give-back", "bus-abort", "pad-pair", "pad-forget")
+
+EXIT_OK, EXIT_ARGS, EXIT_STATE, EXIT_BUSY, EXIT_FAIL, EXIT_RETAKE = 0, 2, 3, 4, 5, 6
+
+SELF_PATH = "/usr/local/sbin/microduck-helper"
+HELPER_DIR = "/run/microduck-helper"
+FLAG = HELPER_DIR + "/bus-held"
+ABORT = HELPER_DIR + "/abort"
+LAST = HELPER_DIR + "/last-result.json"
+LOCK = HELPER_DIR + "/helper.lock"
+MARKER_DIR = "/run/microduck-handover"
+MARKER = MARKER_DIR + "/handover.json"
+SERVICE_LOCK = "/run/microduck-service-management.lock"
+DROPIN = "/etc/systemd/system/robotd.service.d/zzzz-studio-bus.conf"
+DROPIN_NAME = "zzzz-studio-bus.conf"
+OPLOG_DIR = "/var/lib/microduck-helper"
+OPLOG = OPLOG_DIR + "/oplog.jsonl"
+BOOT_ID = "/proc/sys/kernel/random/boot_id"
+SOCK = "/run/robotd.sock"
+PORT = "/dev/ttyS2"
+HOLD_UNIT = "microduck-bus-hold"
+GAMESIR = "gamesir-xboxd"
+ROBOTCTL = "/usr/local/bin/robotctl"
+PAD_TIMEOUT_DEFAULT, PAD_TIMEOUT_MIN, PAD_TIMEOUT_MAX = 60, 10, 120
+PAD_EXTRA_S = 30          # 子进程总超时 = robotctl 自己的 timeout + 这 30 秒
+FORGET_TIMEOUT_S = 60
+MAC_RE = re.compile(r"^[0-9A-F]{2}(?::[0-9A-F]{2}){5}$")
+
+DETACH_ENV = "MICRODUCK_HELPER_DETACHED"
+REQUEST_ENV = "MICRODUCK_HELPER_REQUEST"
+REQUESTED_ENV = "MICRODUCK_HELPER_REQUESTED_MS"
+
+SCHEMA = "microduck-handover/1"
+JOINT_IDS = frozenset([10, 11, 12, 13, 14, 20, 21, 22, 23, 24, 30, 31, 32, 33, 34])
+TTL_DEFAULT_MS, TTL_MAX_MS, TTL_MIN_MS = 20000, 30000, 1000
+STARTING_PHASES = ("configuring_bus", "waiting_for_bus", "configuration_error", "handover_declined")
+
+# 时间（秒）
+GATE_GAP = 0.2            # gate 两次读 busStatus 的间隔
+HOMING_WAIT = 3.0         # 正在回站姿时最多等多久
+STOP_WAIT = 10.0          # systemctl stop --no-block 以后最多等多久才 KILL
+KILL_WAIT = 3.0           # KILL 以后最多等多久
+POLL = 0.1
+GIVE_POLL = 0.2
+MARKER_READ_TIMEOUT = 15.0  # robotd 这么久还没读走标记 → 拿回总线
+ADOPT_TIMEOUT = 20.0        # 接手了，但这么久还没走完启动第 4 步 → 拿回总线
+SOFT_TIMEOUT = 30.0
+ABORT_KILL_WAIT = 0.5
+ABORT_POLL = 0.05
+HOLD_CONFIRM_GAP = 0.3    # bus-hold 起来以后隔这么久查两次 active
+STILL_RAD = 0.01745       # 坐姿接管：两次读之间每颗都 < 1°
+STDIN_LIMIT = 256 * 1024
+
+BIN = {"systemctl": "/usr/bin/systemctl", "systemd-run": "/usr/bin/systemd-run", "fuser": "/usr/bin/fuser",
+       "logger": "/usr/bin/logger", "flock": "/usr/bin/flock", "sleep": "/usr/bin/sleep"}
+CHILD_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8", "SYSTEMD_PAGER": "", "SYSTEMD_COLORS": "0"}
+
+
+class RpcError(Exception):
+    pass
+
+
+class Stop(Exception):
+    """动词提前结束：带上退出码、结果、原因。"""
+
+    def __init__(self, code, result, reason, detail=None):
+        super().__init__(reason)
+        self.code, self.result, self.reason, self.detail = code, result, reason, detail
+
+
+# ---------------------------------------------------------------------------
+# 对外的东西都走 Ctx：命令、文件系统根、时钟、robotd 的 IPC、stdout。测试换一个假的进来。
+# 没有任何环境变量能改 root（sudo 下那是漏洞）。
+
+class Ctx:
+    def __init__(self, root="/", stdin=None, stdout=None, env=None, self_path=SELF_PATH):
+        self.root = root
+        self.stdin = stdin if stdin is not None else sys.stdin.buffer
+        self.stdout = stdout if stdout is not None else sys.stdout.buffer
+        self.env = dict(os.environ) if env is None else env
+        self.self_path = self_path
+        self.check_owner = root == "/"
+        self.fs_log = []          # (路径, 权限)：测试拿它核对「打算用什么权限」（Windows 上 chmod 不全）
+
+    # 路径
+    def p(self, path):
+        return path if self.root == "/" else os.path.join(self.root, path.lstrip("/"))
+
+    # 时钟
+    def now(self):
+        return time.monotonic()
+
+    def sleep(self, seconds):
+        time.sleep(seconds)
+
+    def pid(self):
+        return os.getpid()
+
+    # 命令：名字换成绝对路径，环境变量只给最小的一份
+    def run(self, argv, input=None, timeout=15.0):
+        exe = BIN.get(argv[0], argv[0])
+        try:
+            r = subprocess.run([exe] + list(argv[1:]), input=input, capture_output=True, timeout=timeout,
+                               env=CHILD_ENV)
+        except (OSError, subprocess.SubprocessError) as e:
+            return 127, "", f"{type(e).__name__}: {e}"
+        return r.returncode, r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
+
+    def run_robotctl(self, argv, timeout):
+        """跑官方 robotctl，并把「超时被杀」单独报出来（run 会把 TimeoutExpired 折成 127）。
+        返回 (rc, stdout, stderr, timed_out)；超时时 rc=None。"""
+        try:
+            r = subprocess.run(list(argv), input=None, capture_output=True, timeout=timeout, env=CHILD_ENV)
+        except subprocess.TimeoutExpired as e:
+            return None, _text(e.stdout), _text(e.stderr), True
+        except (OSError, subprocess.SubprocessError) as e:
+            return 127, "", f"{type(e).__name__}: {e}", False
+        return (r.returncode, r.stdout.decode("utf-8", "replace"),
+                r.stderr.decode("utf-8", "replace"), False)
+
+    def relay(self, argv, data, on_line):
+        """跑 argv，把 data 喂进 stdin，子进程的每一行交给 on_line。返回退出码。"""
+        exe = BIN.get(argv[0], argv[0])
+        try:
+            proc = subprocess.Popen([exe] + list(argv[1:]), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, env=CHILD_ENV)
+        except OSError as e:
+            on_line(json.dumps({"step": "detach", "level": "error", "msg": f"systemd-run 起不来：{e}"}).encode() + b"\n")
+            return 127
+        try:
+            proc.stdin.write(data)
+            proc.stdin.close()
+        except OSError:
+            pass
+        for line in proc.stdout:
+            on_line(line)
+        return proc.wait()
+
+    # robotd 的 IPC：一行一个 JSON-RPC 2.0（格式照 studio/rpc.py）
+    def rpc(self, method, params=None, timeout=1.0):
+        import socket
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        try:
+            s.connect(self.p(SOCK))
+            s.sendall((json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}},
+                                  separators=(",", ":")) + "\n").encode())
+            buf = b""
+            while b"\n" not in buf:
+                chunk = s.recv(65536)
+                if not chunk:
+                    raise RpcError(f"{method}：主程序关了连接")
+                buf += chunk
+                if len(buf) > 4 * 1024 * 1024:
+                    raise RpcError(f"{method}：回包太长")
+        except OSError as e:
+            raise RpcError(f"{method}：{type(e).__name__}: {e}") from e
+        finally:
+            s.close()
+        try:
+            msg = json.loads(buf.split(b"\n", 1)[0])
+        except ValueError as e:
+            raise RpcError(f"{method}：回的不是 JSON") from e
+        if not isinstance(msg, dict):
+            raise RpcError(f"{method}：回的不是对象")
+        if "error" in msg:
+            raise RpcError(f"{method}：{msg.get('error')}")
+        return msg.get("result")
+
+    def startup_report(self, timeout=1.0):
+        """robot.startupSubscribe 的第一行就是完整的启动报告；读完就断开。"""
+        return self.rpc("robot.startupSubscribe", {}, timeout)
+
+    def boot_id(self):
+        try:
+            with open(self.p(BOOT_ID), encoding="ascii") as f:
+                return f.read().strip()
+        except OSError:
+            return ""
+
+    # 锁
+    def lock(self, path):
+        import fcntl
+        fd = os.open(self.p(path), os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+                     0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            return None
+        return fd
+
+    def unlock(self, handle):
+        try:
+            os.close(handle)
+        except OSError:
+            pass
+
+    def fsync_dir(self, path):
+        try:
+            fd = os.open(self.p(path), os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        except OSError:
+            return
+        try:
+            os.fsync(fd)
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
+
+    def is_root(self):
+        return hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+# ---------------------------------------------------------------------------
+# 文件：目录要是真目录（不是软链接），写入一律「同目录临时文件 + fsync + rename」
+
+def ensure_dir(ctx, path, mode):
+    full = ctx.p(path)
+    parent = os.path.dirname(path.rstrip("/"))
+    if parent and parent != "/" and not os.path.isdir(ctx.p(parent)):
+        os.makedirs(ctx.p(parent), exist_ok=True)
+    if not os.path.lexists(full):
+        try:
+            os.mkdir(full, mode)
+        except FileExistsError:
+            pass
+    st = os.lstat(full)
+    if not stat.S_ISDIR(st.st_mode):
+        raise Stop(EXIT_FAIL, "error", f"{path} 不是目录（可能是软链接），不敢往里写")
+    if ctx.check_owner and st.st_uid != 0:
+        raise Stop(EXIT_FAIL, "error", f"{path} 的属主不是 root，不敢往里写")
+    try:
+        os.chmod(full, mode)
+    except OSError:
+        pass
+    ctx.fs_log.append((path, mode))
+
+
+_tmp_seq = [0]
+
+
+def write_atomic(ctx, path, data, mode):
+    d = os.path.dirname(path)
+    _tmp_seq[0] += 1
+    tmp = f"{d}/.{os.path.basename(path)}.{ctx.pid()}.{_tmp_seq[0]}.tmp"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    fd = os.open(ctx.p(tmp), flags, mode)
+    try:
+        view = memoryview(data)
+        while view:
+            n = os.write(fd, view)
+            view = view[n:]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    try:
+        os.chmod(ctx.p(tmp), mode)
+    except OSError:
+        pass
+    os.replace(ctx.p(tmp), ctx.p(path))
+    ctx.fsync_dir(d)
+    ctx.fs_log.append((path, mode))
+
+
+def remove(ctx, path):
+    try:
+        os.unlink(ctx.p(path))
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def exists(ctx, path):
+    return os.path.lexists(ctx.p(path))
+
+
+def read_json(ctx, path):
+    try:
+        with open(ctx.p(path), encoding="utf-8") as f:
+            v = json.load(f)
+        return v if isinstance(v, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _text(v):
+    if v is None:
+        return ""
+    return v.decode("utf-8", "replace") if isinstance(v, bytes) else str(v)
+
+
+def _stderr_lines(err):
+    return [line.rstrip() for line in (err or "").splitlines() if line.strip()]
+
+
+def append_oplog(ctx, row):
+    try:
+        ensure_dir(ctx, OPLOG_DIR, 0o700)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        fd = os.open(ctx.p(OPLOG), flags, 0o600)
+        try:
+            os.write(fd, (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8"))
+        finally:
+            os.close(fd)
+    except (OSError, Stop):
+        pass
+
+
+# ---------------------------------------------------------------------------
+# 一次动词：进度、日志、结果
+
+class Op:
+    def __init__(self, ctx, verb):
+        self.ctx, self.verb = ctx, verb
+        self.t0 = ctx.now()
+        self.by = None
+        self.stdout_dead = False
+        self.lines = []
+        self.lock_handle = None
+        self.request_id = ctx.env.get(REQUEST_ENV) if ctx.env.get(DETACH_ENV) == "1" else None
+
+    def ms(self):
+        return int(round((self.ctx.now() - self.t0) * 1000))
+
+    def write_out(self, raw):
+        if self.stdout_dead:
+            return
+        try:
+            self.ctx.stdout.write(raw)
+            self.ctx.stdout.flush()
+        except (OSError, ValueError):       # 对方关了管道（SIGPIPE 已忽略，这里拿到的是 EPIPE）
+            self.stdout_dead = True
+
+    def emit(self, step, level, msg, detail=None):
+        row = {"step": step, "level": level, "ms": self.ms(), "msg": msg}
+        if detail is not None:
+            row["detail"] = detail
+        self.lines.append(row)
+        del self.lines[:-40]
+        self.write_out((json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8"))
+        try:
+            self.ctx.run(["logger", "-t", "microduck-helper", "--",
+                          f"[{self.verb}] {step} {level}: {msg}"], timeout=3.0)
+        except Exception:  # noqa: BLE001 —— journal 写不进去也接着做
+            pass
+
+    def finish(self, code, result, reason=None, detail=None, record=True):
+        level = "info" if code == EXIT_OK else ("warn" if code in (EXIT_STATE, EXIT_BUSY, EXIT_RETAKE) else "error")
+        self.emit("done", level, reason or result, {"exit": code, "result": result, **(detail or {})})
+        if record:                       # 探测用的坏动词（bus-nope）照样回 done，但不覆盖 last-result / oplog
+            row = {"verb": self.verb, "version": VERSION, "result": result, "exit": code, "reason": reason,
+                   "detail": detail, "by": self.by, "ms": self.ms(), "mono_ms": int(self.ctx.now() * 1000),
+                   "boot_id": self.ctx.boot_id(), "request_id": self.request_id, "wall": time.time(),
+                   "stdout_dead": self.stdout_dead, "steps": self.lines[-30:]}
+            try:
+                ensure_dir(self.ctx, HELPER_DIR, 0o755)
+                write_atomic(self.ctx, LAST, (json.dumps(row, ensure_ascii=False, indent=1) + "\n").encode("utf-8"), 0o644)
+            except (OSError, Stop):
+                pass
+            append_oplog(self.ctx, {k: row[k] for k in ("wall", "mono_ms", "boot_id", "verb", "by", "result", "exit",
+                                                        "reason", "ms", "request_id")})
+        self.release_lock()
+        return code
+
+    def take_lock(self, what="总线操作"):
+        ensure_dir(self.ctx, HELPER_DIR, 0o755)
+        self.lock_handle = self.ctx.lock(LOCK)
+        if self.lock_handle is None:
+            raise Stop(EXIT_BUSY, "busy", f"小助手正在跑另一个{what}，等它跑完")
+
+    def release_lock(self):
+        if self.lock_handle is not None:
+            self.ctx.unlock(self.lock_handle)
+            self.lock_handle = None
+
+
+# ---------------------------------------------------------------------------
+# systemd
+
+def show(op, unit, props):
+    argv = ["systemctl", "show", unit]
+    for prop in props:
+        argv += ["-p", prop]
+    _, out, _ = op.ctx.run(argv)
+    d = {}
+    for line in out.splitlines():
+        k, sep, v = line.partition("=")
+        if sep:
+            d[k.strip()] = v.strip()
+    return d
+
+
+def robotd_state(op):
+    return show(op, "robotd", ["ActiveState", "SubState", "Result", "ConditionResult"])
+
+
+def running(st):
+    return st.get("ActiveState") in ("active", "activating", "reloading", "deactivating")
+
+
+def stopped(st):
+    return st.get("ActiveState") in ("inactive", "failed")
+
+
+def is_active(op, unit):
+    _, out, _ = op.ctx.run(["systemctl", "is-active", unit])
+    return out.strip() == "active"
+
+
+def is_enabled(op, unit):
+    _, out, _ = op.ctx.run(["systemctl", "is-enabled", unit])
+    return out.strip() == "enabled"
+
+
+def guard_installed(op):
+    paths = show(op, "robotd", ["DropInPaths"]).get("DropInPaths", "")
+    if DROPIN_NAME not in paths.split() and not any(p.endswith("/" + DROPIN_NAME) for p in paths.split()):
+        raise Stop(EXIT_STATE, "no_guard", "保护没装好：robotd 的 drop-in zzzz-studio-bus.conf 没生效（装了要 daemon-reload）。"
+                                            "不装的话接管以后主程序可能被拉起来，两边同时写总线",
+                   {"DropInPaths": paths})
+    if not exists(op.ctx, DROPIN):
+        raise Stop(EXIT_STATE, "no_guard", f"保护没装好：{DROPIN} 不在")
+
+
+# 管理锁：临时单元 microduck-bus-hold 一直拿着 /run/microduck-service-management.lock
+
+def hold_active(op):
+    return show(op, HOLD_UNIT, ["ActiveState"]).get("ActiveState") == "active"
+
+
+def hold_start(op):
+    """起 microduck-bus-hold。返回 True = 起来了并且站住了。flock -n 拿不到锁会马上退出，所以隔两次查 active。"""
+    rc, _, err = op.ctx.run(["systemd-run", f"--unit={HOLD_UNIT}", "--collect", "--quiet",
+                             "--description=Microduck Studio holds the service-management lock while it owns the servo bus",
+                             BIN["flock"], "-n", SERVICE_LOCK, BIN["sleep"], "infinity"])
+    if rc != 0:
+        op.emit("lock", "warn", "起管理锁单元失败", {"rc": rc, "stderr": err.strip()[:300]})
+        return False
+    for _ in range(2):
+        op.ctx.sleep(HOLD_CONFIRM_GAP)
+        if not hold_active(op):
+            op.ctx.run(["systemctl", "stop", HOLD_UNIT])
+            return False
+    return True
+
+
+def hold_stop(op):
+    op.ctx.run(["systemctl", "stop", HOLD_UNIT])
+
+
+# 旗
+
+def flag_present(ctx):
+    return exists(ctx, FLAG)
+
+
+def flag_write(op, why):
+    ensure_dir(op.ctx, HELPER_DIR, 0o755)
+    body = {"by": op.by, "boot_id": op.ctx.boot_id(), "mono_ms": int(op.ctx.now() * 1000), "verb": op.verb,
+            "why": why}
+    write_atomic(op.ctx, FLAG, (json.dumps(body, ensure_ascii=False) + "\n").encode("utf-8"), 0o644)
+
+
+def port_free(op):
+    """fuser 的退出码：0 = 有进程开着，1 = 没人开。别的 = 查不了。"""
+    rc, out, err = op.ctx.run(["fuser", PORT])
+    if rc == 1:
+        return True, None
+    if rc == 0:
+        return False, (out + " " + err).strip()
+    return None, f"fuser 退出码 {rc}：{(err or out).strip()[:200]}"
+
+
+def stop_robotd(op, step="stop"):
+    """停 robotd：--no-block，每 100 ms 查一次，10 秒后 KILL。KILL 之前旗必须已经立好（Restart=always 要靠它挡）。
+    SIGTERM 和 KILL 都不写扭矩（fork robotd/src/main.rs:1218-1231、4185-4186）。"""
+    st = robotd_state(op)
+    if stopped(st):
+        op.emit(step, "info", "主程序本来就没在跑", st)
+        return True
+    if not flag_present(op.ctx):
+        flag_write(op, "停主程序之前补立旗")
+    op.ctx.run(["systemctl", "stop", "--no-block", "robotd"])
+    deadline = op.ctx.now() + STOP_WAIT
+    while op.ctx.now() < deadline:
+        op.ctx.sleep(POLL)
+        st = robotd_state(op)
+        if stopped(st):
+            op.emit(step, "info", "主程序停下了（SIGTERM，不写扭矩）", st)
+            return True
+    op.emit(step, "warn", f"主程序 {STOP_WAIT:.0f} 秒没停下，KILL（KILL 也不写扭矩）", st)
+    if not flag_present(op.ctx):
+        flag_write(op, "KILL 之前补立旗")
+    op.ctx.run(["systemctl", "kill", "-s", "KILL", "robotd"])
+    deadline = op.ctx.now() + KILL_WAIT
+    while op.ctx.now() < deadline:
+        op.ctx.sleep(POLL)
+        st = robotd_state(op)
+        if stopped(st):
+            op.emit(step, "info", "主程序 KILL 以后停了", st)
+            return True
+    op.emit(step, "error", "主程序 KILL 以后还没停", st)
+    return False
+
+
+# 手柄：padd、gamesir-xboxd
+
+def pads_stop(op):
+    was = {"padd": is_active(op, "padd"), "gamesir": is_active(op, GAMESIR)}
+    for unit in ("padd", GAMESIR):
+        if was["padd" if unit == "padd" else "gamesir"]:
+            op.ctx.run(["systemctl", "stop", unit])
+    op.emit("pads", "info", "先停手柄服务：判完状态到停主程序之间，手柄不能再把策略打开", was)
+    return was
+
+
+def pads_restore(op, was):
+    if was.get("padd"):
+        op.ctx.run(["systemctl", "start", "--no-block", "padd"])
+    if was.get("gamesir"):
+        op.ctx.run(["systemctl", "start", "--no-block", GAMESIR])
+    op.emit("pads", "info", "手柄服务恢复成原来的样子", was)
+
+
+def pads_start(op):
+    """交还以后：padd 拉起（它自己的 startup_gate 会等 robotd 四步都 success）；gamesir 只在 enabled 时拉。"""
+    op.ctx.run(["systemctl", "reset-failed", "padd"])
+    op.ctx.run(["systemctl", "start", "--no-block", "padd"])
+    gs = is_enabled(op, GAMESIR)
+    if gs:
+        op.ctx.run(["systemctl", "start", "--no-block", GAMESIR])
+    op.emit("pads", "info", "手柄服务拉起来了", {"padd": True, "gamesir": gs})
+
+
+# ---------------------------------------------------------------------------
+# 参数校验
+
+def is_int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def check_by(args):
+    by = args.get("by")
+    if not isinstance(by, str) or not by.strip() or len(by) > 200:
+        raise Stop(EXIT_ARGS, "bad_args", "by 要是 1–200 个字的字符串（谁、从哪台电脑）")
+    return by.strip()
+
+
+def check_keys(obj, allowed, what):
+    extra = sorted(set(obj) - set(allowed))
+    if extra:
+        raise Stop(EXIT_ARGS, "bad_args", f"{what} 里有不认识的键：{extra}")
+
+
+def check_mac(value):
+    if not isinstance(value, str):
+        raise Stop(EXIT_ARGS, "bad_args", "mac 要是像 AA:BB:CC:DD:EE:FF 的字符串")
+    mac = value.strip().upper()
+    if not MAC_RE.match(mac):
+        raise Stop(EXIT_ARGS, "bad_args", f"mac 格式不对：{value!r}（要像 AA:BB:CC:DD:EE:FF）")
+    return mac
+
+
+def check_pad_pair_args(args):
+    check_keys(args, ("by", "mac", "timeout"), "pad-pair 的参数")
+    by = check_by(args)
+    mac = args.get("mac")
+    if mac is not None:
+        mac = check_mac(mac)
+    timeout = args.get("timeout", PAD_TIMEOUT_DEFAULT)
+    if not is_int(timeout) or not PAD_TIMEOUT_MIN <= timeout <= PAD_TIMEOUT_MAX:
+        raise Stop(EXIT_ARGS, "bad_args",
+                   f"timeout 要是 {PAD_TIMEOUT_MIN}–{PAD_TIMEOUT_MAX} 的整数（秒，默认 {PAD_TIMEOUT_DEFAULT}）")
+    return by, mac, timeout
+
+
+def check_pad_forget_args(args):
+    check_keys(args, ("by", "mac"), "pad-forget 的参数")
+    by = check_by(args)
+    if "mac" not in args:
+        raise Stop(EXIT_ARGS, "bad_args", "pad-forget 要 mac（要忘掉哪一个）")
+    return by, check_mac(args["mac"])
+
+
+JOINT_REQUIRED = ("id", "torque", "goal", "present", "offset")
+JOINT_OPTIONAL = {"load": (-32767, 32767), "temp": (0, 255), "status": (0, 255)}
+
+
+def build_marker(op, given, by):
+    """校验 Studio 给的标记内容，填上 boot_id、mono_ms。ttl_ms 超过 30000 直接拒（不悄悄截断）。"""
+    if not isinstance(given, dict):
+        raise Stop(EXIT_ARGS, "bad_marker", "marker 要是一个对象")
+    check_keys(given, ("schema", "requested_by", "ttl_ms", "port", "arm_registers", "joints", "boot_id", "mono_ms"),
+               "marker")
+    if "schema" in given and given["schema"] != SCHEMA:
+        raise Stop(EXIT_ARGS, "bad_marker", f"marker.schema 只认 {SCHEMA}")
+    rb = given.get("requested_by", by)
+    if not isinstance(rb, str) or not rb or len(rb) > 200:
+        raise Stop(EXIT_ARGS, "bad_marker", "marker.requested_by 要是 1–200 个字的字符串")
+    ttl = given.get("ttl_ms", TTL_DEFAULT_MS)
+    if not is_int(ttl) or not TTL_MIN_MS <= ttl <= TTL_MAX_MS:
+        raise Stop(EXIT_ARGS, "bad_marker", f"marker.ttl_ms 要在 {TTL_MIN_MS}–{TTL_MAX_MS} 之间（robotd 最多认 30 秒）")
+    port = given.get("port", PORT)
+    if port != PORT:
+        raise Stop(EXIT_ARGS, "bad_marker", f"marker.port 只能是 {PORT}")
+    arm = given.get("arm_registers")
+    if arm is not None:
+        if not isinstance(arm, dict) or set(arm) != {"limit", "p", "d"} or not all(is_int(v) for v in arm.values()) \
+                or not 0 <= arm["limit"] <= 65535 or not 0 <= arm["p"] <= 255 or not 0 <= arm["d"] <= 255:
+            raise Stop(EXIT_ARGS, "bad_marker", "marker.arm_registers 要是 {limit 0–65535, p 0–255, d 0–255}")
+    joints = given.get("joints")
+    if not isinstance(joints, list) or len(joints) != 15:
+        raise Stop(EXIT_ARGS, "bad_marker", "marker.joints 要正好 15 行")
+    seen, rows = set(), []
+    for j in joints:
+        if not isinstance(j, dict):
+            raise Stop(EXIT_ARGS, "bad_marker", "marker.joints 每一行要是对象")
+        check_keys(j, JOINT_REQUIRED + tuple(JOINT_OPTIONAL), "marker.joints 的一行")
+        for k in JOINT_REQUIRED:
+            if not is_int(j.get(k)):
+                raise Stop(EXIT_ARGS, "bad_marker", f"marker.joints：{k} 要是整数（{j.get('id')}）")
+        jid = j["id"]
+        if jid not in JOINT_IDS or jid in seen:
+            raise Stop(EXIT_ARGS, "bad_marker", f"marker.joints：id {jid} 不在 15 颗里，或者重复了")
+        seen.add(jid)
+        if j["torque"] != 1:
+            raise Stop(EXIT_ARGS, "bad_marker", f"marker.joints：#{jid} 没上力（torque 要是 1）。主程序只接手 15 颗全开的")
+        for k in ("goal", "present", "offset"):
+            if not -32767 <= j[k] <= 32767:
+                raise Stop(EXIT_ARGS, "bad_marker", f"marker.joints：#{jid} 的 {k} 超出 −32767..32767")
+        for k, (lo, hi) in JOINT_OPTIONAL.items():
+            if k in j and (not is_int(j[k]) or not lo <= j[k] <= hi):
+                raise Stop(EXIT_ARGS, "bad_marker", f"marker.joints：#{jid} 的 {k} 要是 {lo}..{hi} 的整数")
+        rows.append({k: j[k] for k in JOINT_REQUIRED + tuple(JOINT_OPTIONAL) if k in j})
+    if seen != JOINT_IDS:
+        raise Stop(EXIT_ARGS, "bad_marker", f"marker.joints 少了 {sorted(JOINT_IDS - seen)}")
+    out = {"schema": SCHEMA, "requested_by": rb, "boot_id": op.ctx.boot_id(), "mono_ms": int(op.ctx.now() * 1000),
+           "ttl_ms": ttl, "port": PORT, "joints": rows}
+    if arm is not None:
+        out["arm_registers"] = arm
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 接管的门槛（handover-plan.md §2.1）
+
+def judge(bus, safe, pol, allow_seated):
+    """一次读数的判决：("ok"|"seated"|"wait"|"refuse", 原因)。"""
+    if not isinstance(bus, dict):
+        return "refuse", "主程序回的 busStatus 不是对象"
+    phase, mode = bus.get("phase"), bus.get("mode")
+    if phase in STARTING_PHASES:
+        return "ok", f"主程序还在启动阶段（{phase}），没发过目标"
+    if mode == "commissioning":
+        return "ok", "标定模式"
+    if mode != "motion" or phase != "control":
+        return "refuse", f"看不懂主程序现在的状态（mode={mode}，phase={phase}）"
+    native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
+    torque = native.get("torque_state_confirmed")
+    sitting = isinstance(pol, dict) and pol.get("sitting") is True
+    if bus.get("policy_enabled") is True:
+        if sitting:
+            if not allow_seated:
+                return "refuse", "坐着（策略在做坐姿），这次没允许坐姿接管"
+            if not (isinstance(safe, dict) and safe.get("safe") is True):
+                return "refuse", "坐下或站起的动作还没做完（safeToRestart 不是 true）"
+            return "seated", "坐着，坐姿动作已经做完"
+        return "refuse", "策略在跑（站着、技能或身体姿态模式）：先按手柄 Start 或点「停下」，等它 2 秒平滑回站姿，再点接管"
+    if bus.get("home_recovery") is True:
+        return "refuse", "LB 起身还没结束"
+    if isinstance(safe, dict) and safe.get("safe") is False:
+        return "refuse", f"主程序说现在不能打断：{safe.get('reason')}"
+    if torque is False:
+        return "ok", "卸力着"
+    if native.get("handover_hold") is True:
+        return "ok", "主程序接手保持中"
+    if torque is True:
+        if bus.get("homed") is True:
+            return "ok", "站姿保持（策略关着）"
+        return "wait", "正在回站姿"
+    return "refuse", "主程序没报扭矩状态（torque_state_confirmed 不知道）"
+
+
+def joint_positions(bus):
+    native = bus.get("native") if isinstance(bus, dict) and isinstance(bus.get("native"), dict) else {}
+    out = {}
+    for j in native.get("joints") or []:
+        if isinstance(j, dict) and isinstance(j.get("position_rad"), (int, float)) and not isinstance(j.get("position_rad"), bool):
+            out[j.get("id")] = float(j["position_rad"])
+    return out
+
+
+def read_robotd(op):
+    """busStatus（必须读到）、safeToRestart、policies（运动模式控制阶段才读）。"""
+    bus = op.ctx.rpc("robot.busStatus", {}, 1.0)
+    try:
+        safe = op.ctx.rpc("robot.safeToRestart", {}, 1.0)
+    except RpcError:
+        safe = None
+    pol = None
+    if isinstance(bus, dict) and bus.get("mode") == "motion" and bus.get("phase") == "control":
+        try:
+            pol = op.ctx.rpc("robot.policies", {}, 1.0)
+        except RpcError:
+            pol = None
+    return bus, safe, pol
+
+
+def gate(op, allow_seated):
+    """隔 200 ms 读两次，两次都满足才放行。正在回站姿最多等 3 秒。返回放行原因；不放行就抛 Stop(3)。"""
+    deadline = op.ctx.now() + HOMING_WAIT
+    while True:
+        if stopped(robotd_state(op)):
+            return "主程序没在跑"
+        try:
+            r1 = read_robotd(op)
+            op.ctx.sleep(GATE_GAP)
+            r2 = read_robotd(op)
+        except RpcError as e:
+            if stopped(robotd_state(op)):
+                return "主程序没在跑"
+            raise Stop(EXIT_STATE, "refused", f"主程序在跑，但不回话：{e}。等几秒再试") from e
+        v1, v2 = judge(*r1, allow_seated), judge(*r2, allow_seated)
+        op.emit("gate", "info", "两次读主程序状态", {"first": v1, "second": v2})
+        if v1[0] == "refuse" or v2[0] == "refuse":
+            raise Stop(EXIT_STATE, "refused", (v2 if v2[0] == "refuse" else v1)[1])
+        if v1[0] == v2[0] == "ok":
+            return v2[1]
+        if v1[0] == v2[0] == "seated":
+            a, b = joint_positions(r1[0]), joint_positions(r2[0])
+            if set(a) != set(b) or len(a) != 15:
+                raise Stop(EXIT_STATE, "refused", "坐着，但读不全 15 颗关节的位置，判不了动没动")
+            moved = {jid: round(abs(a[jid] - b[jid]) * 57.29578, 2) for jid in a if abs(a[jid] - b[jid]) >= STILL_RAD}
+            if moved:
+                raise Stop(EXIT_STATE, "refused", "坐着，但关节还在动（要 0.5 秒内每颗都 <1°）", {"moved_deg": moved})
+            return "坐着、不动：原样冻住坐姿"
+        if op.ctx.now() >= deadline:
+            raise Stop(EXIT_STATE, "refused", f"等了 {HOMING_WAIT:.0f} 秒还没到站姿保持：{v2[1]}")
+        op.ctx.sleep(GATE_GAP)
+
+
+# ---------------------------------------------------------------------------
+# 动词
+
+def verb_take(op, args):
+    check_keys(args, ("by", "allow_seated"), "bus-take 的参数")
+    op.by = check_by(args)
+    allow_seated = args.get("allow_seated", False)
+    if not isinstance(allow_seated, bool):
+        raise Stop(EXIT_ARGS, "bad_args", "allow_seated 要是 true / false")
+    op.take_lock()
+    guard_installed(op)
+    session_open = flag_present(op.ctx)
+    if session_open:
+        op.emit("session", "info", "旗已经在（上次调舵机没退出）：核对主程序确实停着就行")
+    started_hold = False
+    if hold_active(op):
+        op.emit("lock", "info", "管理锁已经在 Studio 手里")
+    else:
+        if not hold_start(op):
+            raise Stop(EXIT_BUSY, "busy", "拿不到管理锁 /run/microduck-service-management.lock：板端脚本正在跑？等它跑完再试")
+        started_hold = True
+        op.emit("lock", "info", "管理锁拿到了（microduck-bus-hold）")
+    pads = pads_stop(op)
+    why = "主程序没在跑"
+    if running(robotd_state(op)):
+        try:
+            why = gate(op, allow_seated)
+        except Stop:
+            pads_restore(op, pads)
+            if started_hold and not session_open:
+                hold_stop(op)
+            raise
+    op.emit("gate", "info", f"可以接管：{why}")
+    flag_write(op, "bus-take")
+    op.emit("flag", "info", "立旗：robotd 从现在起起不来（ConditionPathExists=!）")
+    if not stop_robotd(op):
+        raise Stop(EXIT_FAIL, "stop_failed", "主程序停不下来（KILL 以后也没停）。旗留着，别开串口",
+                   {"flag": True, "lock": True})
+    free, who = port_free(op)
+    if free is not True:
+        raise Stop(EXIT_FAIL, "port_busy",
+                   f"串口 {PORT} 还被占着（{who}）。旗留着；看是谁开着它" if free is False else f"查不了串口有没有人占：{who}",
+                   {"flag": True, "lock": True})
+    return op.finish(EXIT_OK, "taken", f"接管好了：{why}；主程序停着，Studio 可以开串口",
+                     {"pads_were": pads, "session_was_open": session_open})
+
+
+def check_give_args(args):
+    check_keys(args, ("by", "soft", "marker"), "bus-give-back 的参数")
+    by = check_by(args)
+    soft = "soft" in args
+    if soft == ("marker" in args):
+        raise Stop(EXIT_ARGS, "bad_args", "bus-give-back 要么 {soft: true}，要么 {marker: {...}}，二选一")
+    if soft and args["soft"] is not True:
+        raise Stop(EXIT_ARGS, "bad_args", "soft 只能是 true")
+    return by, soft
+
+
+def verb_give_back(op, args, raw):
+    op.by, soft = check_give_args(args)
+    if not soft:
+        build_marker(op, args["marker"], op.by)        # 先在这里校验一遍，参数错就不用转出去了
+    if op.ctx.env.get(DETACH_ENV) != "1":
+        return detach(op, raw)
+    op.take_lock()
+    if not flag_present(op.ctx) or not hold_active(op):
+        raise Stop(EXIT_STATE, "no_session", "没有调舵机的会话（旗或管理锁不在）：总线现在不归 Studio，没东西可交还",
+                   {"flag": flag_present(op.ctx), "lock": hold_active(op)})
+    requested = parse_requested_ms(op)
+    if abort_requested(op, requested, consume=False):
+        remove(op.ctx, ABORT)
+        raise Stop(EXIT_BUSY, "aborted", "交还还没开始就被中止了（页面按了卸力）", {"lock": True})
+    stale = read_json(op.ctx, ABORT)
+    if stale is not None or exists(op.ctx, ABORT):
+        remove(op.ctx, ABORT)
+        op.emit("abort", "info", "清掉以前留下的中止请求（比这次交还早）")
+    return give_soft(op, requested) if soft else give_marker(op, args["marker"], requested)
+
+
+def parse_requested_ms(op):
+    v = op.ctx.env.get(REQUESTED_ENV, "")
+    return int(v) if re.fullmatch(r"\d{1,15}", v or "") else int(op.ctx.now() * 1000)
+
+
+def abort_requested(op, requested_ms, consume=True):
+    a = read_json(op.ctx, ABORT)
+    if a is None:
+        return False
+    m = a.get("mono_ms")
+    if is_int(m) and m >= requested_ms:
+        if consume:
+            remove(op.ctx, ABORT)
+        return True
+    return False
+
+
+def detach(op, raw):
+    """第一次被调用：用 systemd-run 把自己放进独立的临时单元再跑一遍，stdin 原样转过去，输出原样转回来。
+    Studio 死了，这边的 systemd-run 跟着死，临时单元里那个照样跑完（它忽略 SIGPIPE，写不出去就只写 journal）。"""
+    token = secrets.token_hex(8)
+    stamp = f"{int(time.time())}-{op.ctx.pid()}"
+    requested = int(op.ctx.now() * 1000)
+    argv = ["systemd-run", "--wait", "--pipe", "--collect", "--quiet", f"--unit=microduck-handover-{stamp}",
+            f"--setenv={DETACH_ENV}=1", f"--setenv={REQUEST_ENV}={token}", f"--setenv={REQUESTED_ENV}={requested}",
+            op.ctx.self_path, "bus-give-back"]
+    rc = op.ctx.relay(argv, raw, op.write_out)
+    last = read_json(op.ctx, LAST)
+    if last and last.get("request_id") == token and is_int(last.get("exit")):
+        return last["exit"]
+    if rc in (EXIT_OK, EXIT_ARGS, EXIT_STATE, EXIT_BUSY, EXIT_FAIL, EXIT_RETAKE) and rc != EXIT_OK:
+        return rc
+    return op.finish(EXIT_FAIL, "detach_failed",
+                     f"独立单元没跑出结果（systemd-run 退出码 {rc}）：看 journalctl -t microduck-helper",
+                     {"systemd_run_rc": rc, "unit": f"microduck-handover-{stamp}"})
+
+
+def startup_step4(op):
+    try:
+        rep = op.ctx.startup_report(1.0)
+    except RpcError:
+        return None
+    steps = rep.get("steps") if isinstance(rep, dict) else None
+    s4 = steps.get("4") if isinstance(steps, dict) else None
+    return s4.get("status") if isinstance(s4, dict) else None
+
+
+def bus_status(op):
+    try:
+        b = op.ctx.rpc("robot.busStatus", {}, 0.5)
+        return b if isinstance(b, dict) else None
+    except RpcError:
+        return None
+
+
+def start_robotd(op):
+    op.ctx.run(["systemctl", "reset-failed", "robotd"])
+    rc, out, err = op.ctx.run(["systemctl", "start", "--no-block", "robotd"])
+    op.emit("start", "info", "起主程序（reset-failed 过；成没成看 ActiveState/ConditionResult，不看这个退出码）",
+            {"rc": rc, "stderr": err.strip()[:200]})
+
+
+def retake(op, reason, detail=None):
+    """交接没成：重新立旗 → 停 robotd（不写扭矩）→ 删标记 → 锁一直在手里。Studio 重开串口接着保持。"""
+    op.emit("retake", "warn", f"交接没成，把总线拿回来给 Studio：{reason}", detail)
+    flag_write(op, "retake")
+    ok = stop_robotd(op, "retake")
+    if remove(op.ctx, MARKER):
+        op.emit("retake", "info", "删掉没被读走的交接标记")
+    free, who = port_free(op)
+    d = dict(detail or {}, flag=True, lock=True, port_free=free)
+    if not ok:
+        return op.finish(EXIT_FAIL, "retake_failed", f"{reason}；而且主程序停不下来：别开串口", d)
+    if free is not True:
+        return op.finish(EXIT_FAIL, "retake_failed", f"{reason}；串口还被占着（{who}）", d)
+    return op.finish(EXIT_RETAKE, "retake", reason, d)
+
+
+def declined_reason(bus):
+    ho = bus.get("handover") if isinstance(bus.get("handover"), dict) else {}
+    detail = {k: ho.get(k) for k in ("reason", "joint", "item") if ho.get(k) is not None}
+    if not detail and bus.get("error"):
+        detail["reason"] = bus.get("error")
+    parts = [f"#{detail['joint']}" if detail.get("joint") is not None else None, detail.get("item"), detail.get("reason")]
+    text = "主程序核对交接标记没过：" + "，".join(str(p) for p in parts if p)
+    return text, detail
+
+
+def give_marker(op, given, requested):
+    marker = build_marker(op, given, op.by)
+    free, who = port_free(op)
+    if free is not True:
+        raise Stop(EXIT_FAIL, "refused",
+                   f"串口 {PORT} 还被占着（{who}）：Studio 关了串口没有？没交还，会话照旧" if free is False else f"查不了串口：{who}",
+                   {"flag": True, "lock": True})
+    ensure_dir(op.ctx, MARKER_DIR, 0o700)
+    write_atomic(op.ctx, MARKER, (json.dumps(marker, ensure_ascii=False) + "\n").encode("utf-8"), 0o600)
+    op.emit("marker", "info", "交接标记写好了", {"ttl_ms": marker["ttl_ms"], "mono_ms": marker["mono_ms"]})
+    remove(op.ctx, FLAG)
+    op.emit("flag", "info", "撤旗（管理锁不放，等出结果）")
+    start_robotd(op)
+    t_start = op.ctx.now()
+    seen_read = False
+    last_phase = None
+    while True:
+        op.ctx.sleep(GIVE_POLL)
+        elapsed = op.ctx.now() - t_start
+        if abort_requested(op, requested):
+            return op.finish(EXIT_BUSY, "aborted", "交还被中止（页面按了卸力）：bus-abort 在停主程序、把总线还给 Studio",
+                             {"lock": True})
+        st = robotd_state(op)
+        marker_left = exists(op.ctx, MARKER)
+        if not marker_left and not seen_read:
+            seen_read = True
+            op.emit("wait", "info", "主程序读走了交接标记")
+        if stopped(st) and st.get("ConditionResult") == "no":
+            return retake(op, "主程序被 Condition 挡住了，没起来（旗又出现了？）", st)
+        if st.get("Result") == "start-limit-hit":
+            return retake(op, "主程序撞上了启动次数限制（start-limit-hit）", st)
+        bus = bus_status(op)
+        if bus is not None:
+            phase = bus.get("phase")
+            if phase != last_phase:
+                op.emit("wait", "info", f"主程序 phase={phase}")
+                last_phase = phase
+            ho = bus.get("handover") if isinstance(bus.get("handover"), dict) else {}
+            if phase == "handover_declined" or ho.get("result") == "declined":
+                text, detail = declined_reason(bus)
+                return retake(op, text, detail)
+            if phase == "control":
+                s4 = startup_step4(op)
+                if s4 == "success":
+                    if ho.get("result") == "adopted":
+                        remove(op.ctx, ABORT)
+                        pads_start(op)
+                        hold_stop(op)
+                        return op.finish(EXIT_OK, "adopted", "主程序接手保持了：15 颗上着力，没开模型；点「站起来」才回站姿",
+                                         {"handover": ho, "ms_to_adopt": int(elapsed * 1000)})
+                    # 进了控制循环却没接手：robotd 没认标记（版本旧 / 开关没开），或者接手以后崩溃重启过。
+                    # 这两种舵机都已经照老规矩全卸了，没东西可拿回
+                    remove(op.ctx, MARKER)
+                    pads_start(op)
+                    hold_stop(op)
+                    why = ("主程序没认交接标记（版本旧，或者 drop-in 里的开关没开）" if marker_left
+                           else "主程序没接手（可能接手以后重启过）")
+                    return op.finish(EXIT_FAIL, "limp", f"{why}：已经照老规矩全部卸力", {"handover": ho or None})
+        if marker_left and elapsed >= MARKER_READ_TIMEOUT:
+            return retake(op, f"{MARKER_READ_TIMEOUT:.0f} 秒没读交接标记（主程序没起来，或者卡在标定 / 参数文件检查）",
+                          {"robotd": st, "phase": last_phase})
+        if elapsed >= ADOPT_TIMEOUT:
+            return retake(op, f"{ADOPT_TIMEOUT:.0f} 秒还没走完启动第 4 步（多半卡在等 IMU）",
+                          {"robotd": st, "phase": last_phase})
+
+
+def give_soft(op, requested):
+    free, who = port_free(op)
+    if free is not True:
+        raise Stop(EXIT_FAIL, "refused",
+                   f"串口 {PORT} 还被占着（{who}）：Studio 关了串口没有？" if free is False else f"查不了串口：{who}",
+                   {"flag": True, "lock": True})
+    if remove(op.ctx, MARKER):
+        op.emit("marker", "info", "删掉以前留下的交接标记（软交还不要它）")
+    remove(op.ctx, FLAG)
+    op.emit("flag", "info", "撤旗")
+    start_robotd(op)
+    t_start = op.ctx.now()
+    while True:
+        op.ctx.sleep(GIVE_POLL)
+        if abort_requested(op, requested):
+            return op.finish(EXIT_BUSY, "aborted", "交还被中止（页面按了卸力）", {"lock": True})
+        st = robotd_state(op)
+        if stopped(st) and st.get("ConditionResult") == "no":
+            hold_stop(op)
+            return op.finish(EXIT_FAIL, "soft_failed", "主程序被 Condition 挡住了，没起来（旗又出现了？）", st)
+        if (bus_status(op) or {}).get("phase") == "control" and startup_step4(op) == "success":
+            pads_start(op)
+            hold_stop(op)
+            return op.finish(EXIT_OK, "soft", "交还好了：主程序起来了（照老规矩全卸着）")
+        if op.ctx.now() - t_start >= SOFT_TIMEOUT:
+            pads_start(op)
+            hold_stop(op)
+            return op.finish(EXIT_FAIL, "soft_failed",
+                             f"主程序 {SOFT_TIMEOUT:.0f} 秒没走完启动（舵机已经卸着了，不用拿回）：看 robotd 日志", st)
+
+
+def require_robotctl(op):
+    if not os.path.isfile(op.ctx.p(ROBOTCTL)):
+        raise Stop(EXIT_FAIL, "no_robotctl", f"找不到官方 robotctl：{ROBOTCTL}", {"path": ROBOTCTL})
+
+
+def verb_pad_pair(op, args):
+    """官方 robotctl pad pair --json：停 btd / 重开蓝牙都在 robotctl 里。这里只跑命令、读结果。
+    不碰总线旗子、hold 单元、robotd，也不拿服务管理锁；只用 helper.lock 防止两个配对同时跑。"""
+    op.by, mac, timeout = check_pad_pair_args(args)
+    op.take_lock("手柄操作")
+    require_robotctl(op)
+    limit = timeout + PAD_EXTRA_S
+    argv = [ROBOTCTL, "pad", "pair", "--json", "--timeout", str(timeout)]
+    if mac:
+        argv.append(mac)
+    op.emit("pad-pair", "info", f"跑官方 robotctl pad pair（最多 {limit} 秒）",
+            {"argv": argv[1:], "by": op.by})
+    rc, out, err, timed_out = op.ctx.run_robotctl(argv, limit)
+    stderr = _stderr_lines(err)
+    if timed_out:
+        return op.finish(EXIT_FAIL, "timeout", f"robotctl pad pair 超过 {limit} 秒，已经杀掉",
+                         {"stderr": stderr, "stdout": out[-2000:], "rc": None})
+    try:
+        pair = json.loads((out or "").strip())
+    except ValueError:
+        pair = None
+    if not isinstance(pair, dict) or pair.get("outcome") not in ("paired", "failed"):
+        why = (err or out or "").strip()[:600] or f"robotctl 退出码 {rc}"
+        return op.finish(EXIT_FAIL, "bad_output", f"robotctl 的回包看不懂：{why}",
+                         {"stderr": stderr, "stdout": out[-2000:], "rc": rc})
+    detail = {"pair": pair, "stderr": stderr, "stdout": out.strip()[:4000], "rc": rc}
+    if pair.get("outcome") == "paired":
+        pad = pair.get("pad") if isinstance(pair.get("pad"), dict) else {}
+        who = pad.get("name") or pad.get("mac") or "手柄"
+        return op.finish(EXIT_OK, "paired", f"配上了：{who}", detail)
+    reason = pair.get("reason") or "other"
+    detail["reason"] = reason
+    text = f"robotctl 说配对失败：{reason}"
+    if pair.get("detail"):
+        text += f"（{pair['detail']}）"
+    return op.finish(EXIT_FAIL, "pair_failed", text, detail)
+
+
+def verb_pad_forget(op, args):
+    op.by, mac = check_pad_forget_args(args)
+    op.take_lock("手柄操作")
+    require_robotctl(op)
+    argv = [ROBOTCTL, "pad", "forget", mac]
+    op.emit("pad-forget", "info", f"跑官方 robotctl pad forget {mac}", {"argv": argv[1:], "by": op.by})
+    rc, out, err, timed_out = op.ctx.run_robotctl(argv, FORGET_TIMEOUT_S)
+    stderr = _stderr_lines(err)
+    detail = {"stdout": out.strip()[:4000], "stderr": stderr, "rc": rc}
+    if timed_out:
+        return op.finish(EXIT_FAIL, "timeout", f"robotctl pad forget 超过 {FORGET_TIMEOUT_S} 秒，已经杀掉", detail)
+    if re.search(rf"^forgot\s+{re.escape(mac)}\b", out or "", re.M | re.I):
+        removed = True
+    elif re.search(rf"{re.escape(mac)}\s+was not paired", out or "", re.I):
+        removed = False
+    else:
+        removed = None
+    detail["removed"] = removed
+    if rc != 0:
+        why = (err or out or "").strip()[:600] or f"robotctl 退出码 {rc}"
+        return op.finish(EXIT_FAIL, "forget_failed", f"robotctl pad forget 没成功：{why}", detail)
+    return op.finish(EXIT_OK, "forgotten",
+                     f"忘掉了 {mac}" if removed is not False else f"{mac} 本来就没配对", detail)
+
+
+def verb_abort(op, args):
+    """中止交接。不拿 helper.lock：不能被正在跑的 bus-give-back 挡住。几步都可以重复做。"""
+    check_keys(args, ("by",), "bus-abort 的参数")
+    op.by = check_by(args)
+    if not (flag_present(op.ctx) or hold_active(op) or exists(op.ctx, MARKER)):
+        raise Stop(EXIT_STATE, "no_session",
+                   "没有调舵机的会话（旗、管理锁、交接标记都不在）：不中止，不碰主程序")
+    if not flag_present(op.ctx):
+        flag_write(op, "bus-abort")
+        op.emit("flag", "info", "立旗")
+    ensure_dir(op.ctx, HELPER_DIR, 0o755)
+    write_atomic(op.ctx, ABORT, (json.dumps({"by": op.by, "mono_ms": int(op.ctx.now() * 1000)}) + "\n").encode(), 0o644)
+    killed = False
+    if running(robotd_state(op)):
+        op.ctx.run(["systemctl", "kill", "-s", "KILL", "robotd"])
+        killed = True
+    deadline = op.ctx.now() + ABORT_KILL_WAIT
+    st = robotd_state(op)
+    while running(st) and op.ctx.now() < deadline:
+        op.ctx.sleep(ABORT_POLL)
+        st = robotd_state(op)
+    removed = remove(op.ctx, MARKER)
+    free, who = port_free(op)
+    while free is False and op.ctx.now() < deadline:
+        op.ctx.sleep(ABORT_POLL)
+        free, who = port_free(op)
+    hold = hold_active(op)
+    if not hold:
+        hold = hold_start(op)
+    detail = {"killed": killed, "marker_removed": removed, "lock": hold, "robotd": st}
+    if running(st):
+        return op.finish(EXIT_FAIL, "abort_incomplete", "主程序 KILL 以后还没停：别开串口，关电源最保险", detail)
+    if free is not True:
+        return op.finish(EXIT_FAIL, "abort_incomplete", f"串口还被占着（{who}）", detail)
+    reason = "中止了：主程序停着，Studio 可以开串口卸力"
+    if not hold:
+        reason += "（管理锁没拿到：板端脚本可能在跑，主程序照样被旗挡着）"
+    return op.finish(EXIT_OK, "aborted", reason, detail)
+
+
+# ---------------------------------------------------------------------------
+
+def run(argv, ctx):
+    verb = argv[1] if len(argv) > 1 else None
+    op = Op(ctx, verb or "?")
+    try:
+        if verb not in VERBS or len(argv) != 2:
+            raise Stop(EXIT_ARGS, "bad_verb", f"只认这几个动词：{', '.join(VERBS)}（参数走 stdin 的 JSON）")
+        if not ctx.is_root():
+            raise Stop(EXIT_STATE, "not_root", "要用 root 跑（sudo -n /usr/local/sbin/microduck-helper …）")
+        raw = ctx.stdin.read(STDIN_LIMIT + 1)
+        if len(raw) > STDIN_LIMIT:
+            raise Stop(EXIT_ARGS, "bad_args", "stdin 太长")
+        try:
+            args = json.loads(raw.decode("utf-8") or "{}")
+        except ValueError as e:
+            raise Stop(EXIT_ARGS, "bad_args", f"stdin 不是 JSON：{e}") from e
+        if not isinstance(args, dict):
+            raise Stop(EXIT_ARGS, "bad_args", "stdin 要是一个 JSON 对象")
+        if verb == "bus-take":
+            return verb_take(op, args)
+        if verb == "bus-give-back":
+            return verb_give_back(op, args, raw)
+        if verb == "pad-pair":
+            return verb_pad_pair(op, args)
+        if verb == "pad-forget":
+            return verb_pad_forget(op, args)
+        return verb_abort(op, args)
+    except Stop as s:
+        # bad_verb 是 Studio 探测小助手可用性用的：不能把上一次真正的结果覆盖成 bad_verb
+        return op.finish(s.code, s.result, s.reason, s.detail, record=(s.result != "bad_verb"))
+    except Exception as e:  # noqa: BLE001 —— 小助手自己的 bug：也要留下结果
+        return op.finish(EXIT_FAIL, "error", f"小助手出错：{type(e).__name__}: {e}")
+
+
+def main():
+    signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+    os.umask(0o022)
+    sys.exit(run(sys.argv, Ctx()))
+
+
+if __name__ == "__main__":
+    main()
