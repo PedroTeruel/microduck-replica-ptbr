@@ -130,6 +130,8 @@ The code below is for **Duck Replica Group 11** (WeChat disables QR joins once a
 
 It used to fall after two or three steps of pushing the stick; the cause was the BNO085's own fused orientation jumping while walking. With robotd carrying the attitude on the chip's own gyro, 60 s of pushing the stick gave no fall (kissqy V167 + our fork, default servo gains, silicone feet). Turning is still weak; we are on it. **[How it was found and fixed](docs/HD1910-20261015-IMU乱跳根因与陀螺融合上机.md)** (Chinese).
 
+**New custom boards · three of them (2026-10):** bus IMU board v2 (the old circuit with a new layout; the servo connector is now an A2007WR-3P that takes the Feetech plug), a servo bus hub and a battery terminal board. EasyEDA projects and 3D models are in **[`hardware/新版/`](hardware/新版/)** (Chinese); none of the three has been built and tested yet.
+
 **Earlier: first power-on, 09-18** ([30 s video](assets/首次上电-2026-09-18.mp4))
 
 First time the assembled duck was on the bus: URT-2 over USB, 7.4 V into V1, **all 15 HD-1910 online, 0 timeouts, 0 checksum errors**, one sync_read of 15 servos in 4.8 ms.
