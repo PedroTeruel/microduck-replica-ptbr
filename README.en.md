@@ -114,13 +114,11 @@ It used to fall after two or three steps of pushing the stick; the cause was the
 
 **New custom boards · three of them drawn (2026-10, not yet made or tested):** EasyEDA Pro projects and whole-board 3D models (for checking the fit against the frame) are in **[`hardware/新版/`](hardware/新版/)** (Chinese). Gerbers, BOMs and wiring tables are not out yet.
 
-| Board | What it does | Where it stands |
-|---|---|---|
-| **Bus IMU board v2**<br>`imu_to_dxl_1V0A` | The IMU board that sits on the servo bus (LSM6DSV16X + STM32G031), the old circuit laid out again. The servo connector is now an A2007WR-3P that takes the Feetech plug, the external crystal is gone, the bus series resistor is now 0 Ω; firmware 0.2.0 runs unchanged | Routed. When it arrives, measure the bus low level first; the IMU chip is rotated 180°, so the mount has to be found again on the duck |
-| **Servo bus hub**<br>`wire_hub_1V0A` | Battery in and bus split, connectors only: 1.2 mm 3P ×2, 2.0 mm 3P right-angle ×2 and vertical ×2 | Not made yet; the battery terminal CN1 is 8.4 mm tall and hits the frame, to be swapped for a low one |
-| **Battery terminal board**<br>`POGO_PIN_1V0A` | Two banana sockets and two wire pads, 39 × 6.8 mm | Holes, pads and traces follow the reference board; not made yet |
+- **Bus IMU board v2**: the IMU board that sits on the servo bus (LSM6DSV16X + STM32G031), the old circuit laid out again; the servo connector is now an A2007WR-3P that takes the Feetech plug, the external crystal is gone, the bus series resistor is now 0 Ω, and firmware 0.2.0 runs unchanged. Routed; when it arrives, measure the bus low level first, and since the IMU chip is rotated 180° the mount has to be found again on the duck.
+- **Servo bus hub**: battery in and bus split, connectors only (1.2 mm 3P ×2, 2.0 mm 3P right-angle and vertical ×2 each). Not made yet; the battery terminal CN1 is 8.4 mm tall and hits the frame, to be swapped for a low one.
+- **Battery terminal board**: two banana sockets and two wire pads, 39 × 6.8 mm. Holes, pads and traces follow the reference board; not made yet.
 
-The pinouts of the hub and the IMU board line up: every 1.2 mm socket is 1 = GND, 2 = power, 3 = bus, and every 2.0 mm socket is 1 = bus, 2 = power, 3 = GND, so straight-through leads connect them.
+The pinouts of the hub and the IMU board line up, so straight-through leads connect them.
 
 **Earlier: first power-on, 09-18** ([30 s video](assets/首次上电-2026-09-18.mp4))
 
