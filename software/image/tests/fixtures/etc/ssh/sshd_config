@@ -1,0 +1,4 @@
+Include /etc/ssh/sshd_config.d/*.conf
+
+# 测试用配置：故意保留一条重新打开 root 登录的设置。
+PermitRootLogin yes

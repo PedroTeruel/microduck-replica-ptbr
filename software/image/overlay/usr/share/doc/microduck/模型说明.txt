@@ -1,0 +1,100 @@
+Microduck 复刻镜像 —— 模型说明
+
+适用范围：本镜像 /opt/robot/feetech-ft5-r5/models/ 和 roller/ 下列出的全部模型（含各目录里的全部文件）。
+
+一、作者和许可
+--------------
+作者：kissqy（GitHub 用户 kissqy，项目 Microduck-kissqy）。
+
+这些模型适用作者的个人非商业使用许可（全文在本文件最后）。按作者仓库写明的许可范围，
+个人许可适用于作者自己训练的权重；我们对下面全部 10 个模型都按这份许可处理。也就是：
+  - 只供个人学习和非商业使用，可以免费分享；
+  - 不得随 HAT、整机、套件等产品预装或分发，不得用于收费服务；
+  - 公司或其他组织使用，要先取得作者的书面许可。
+许可正文里说的「本项目 / 本仓库 LICENSE 范围」指作者自己的仓库；在本镜像里，
+适用范围就是本文件开头说的这两个目录。
+
+/opt/robot/feetech-ft5-r5/LICENSE（Apache-2.0）只覆盖同目录的 robotd、padd、mediad
+三个程序，不覆盖 models/ 和 roller/。
+
+这些模型不是 Pollen Robotics 官方发布的权重。manifest.json 里的 official
+指沿用了官方的训练任务和训练配方。
+
+二、我们改了什么（许可要求转发时写明）
+--------------------------------------
+  - policy.onnx 和随附的 manifest.json、deployment-*.json / .toml、model-info.json
+    没有改动。
+  - 为了减小体积、避免误导，删掉了训练归档和导出说明：export-data.zip、
+    training-config.json、training-request.json、upstream-params/、使用说明.md。
+  - 运行参数由 /etc/robot/feetech-ft5/robotd.toml 决定，沿用我们二号鸭上调好的值。
+    跟模型自带建议不同的一处：走路的动作幅度 action_scale = 0.7（建议值 1.0）。
+
+三、每个模型是做什么的
+----------------------
+按镜像里的 /etc/robot/feetech-ft5/robotd.toml；手柄键按 Xbox 布局的位置说。
+
+  目录                                  动作            主程序里的名字      手柄
+  models/1cbf8730eadd75a5704332c9f3c10f60  走路            walk                Start 站起来，再按 Start 开始走；左摇杆走，右摇杆转
+  models/1c94934c6421ec72ed48079cea749668  坐下 / 站起     sitstand            十字键下
+  models/b14e3a8b56ddbb8d2d831e727774a168  低头捡东西      ground_pick         A（下面那颗）
+  models/59e15d7b04d0c40e9b11b8a70bdecae6  前滚翻（1 秒）  roulade（技能）     X（左边那颗）
+  models/ee0376c927044cdece056ba1d3e6eac7  左脚踢（0.5 秒）kick_left（技能）   LB
+  models/67ad09d82f4865d222a7ae06f250cf9f  右脚踢（0.5 秒）kick_right（技能）  RB
+  roller/swizzle                         轮滑滑行        轮滑模式的 walk     轮滑模式下推左摇杆
+  roller/crouch、roller/spin             轮滑蹲 / 原地转 轮滑模式的低头捡    轮滑模式下 A；十字键左按住 2 秒在蹲和转之间切
+  roller/standup                         倒地后轮滑起身  roller_stand（技能）按一下左摇杆（L3），手动测试用
+
+  - 轮滑的 4 个都要装被动轮滑组件，普通脚底的鸭子别用。十字键上按住 3 秒在走路和轮滑之间切换。
+    轮滑这几项我们还没在真机上试过。
+  - 其他键：Y 头部模式，B 身体姿态，扳机张嘴，十字键右重启全部舵机。
+  - Select 短按：马上卸力（急停）；按住 2 秒：坐下、卸力、关机。
+
+四、各模型的 policy.onnx 校验值
+-------------------------------
+下面是构建时按镜像里的实际目录现算的目录名和 policy.onnx 的 SHA-256。
+
+@@MODEL_LIST@@
+
+五、个人非商业使用许可全文
+--------------------------
+
+个人非商业使用许可 / Personal Non-Commercial License
+版本 1.0 — 2026-10-07
+
+权利归本项目相应作者所有。本许可仅适用于本仓库 LICENSE 范围文件中
+明确列出的、由相关作者拥有并有权单独授权的原创内容。
+
+允许自然人以个人非商业目的学习、使用、修改及免费分享这些内容。
+分享源码、修改版或相应编译形式时，须附本许可、适用范围、作者署名、
+第三方声明及修改说明；不得移除本许可对这些原创内容的限制。
+公司或其他组织使用、商业使用、收费服务、随收费产品分发等用途，
+须事先取得相关权利人的书面许可。
+
+第三方代码、配置、模型、素材及其他已有明确许可的内容，继续适用
+各自原许可证。本许可不覆盖、缩减或撤销第三方权利，也不撤销此前
+已经有效授予的权利。对不拥有的权利，本项目不作授权承诺。
+
+内容按现状提供，在适用法律允许范围内不提供保证；相关作者不承担
+因使用这些内容造成的责任。本许可不授予商标权或官方背书。
+
+Rights remain with the respective authors. This license applies only to
+original material expressly identified in the repository's LICENSE scope
+and only to rights the authors are entitled to license separately.
+
+Natural persons may study, use, modify and share that material free of
+charge for personal, non-commercial purposes. Redistribution of source,
+modifications or corresponding compiled forms must retain this license,
+its scope, author attribution, third-party notices and notices of changes.
+Do not remove these restrictions from the covered original material.
+Organizational use, commercial use, paid services and distribution with
+paid products require prior written permission from the relevant holders.
+
+Third-party code, configurations, models, assets and material already
+subject to an express license remain governed by their original licenses.
+This license does not override, restrict or revoke third-party rights or
+rights previously validly granted. No rights not owned are purported granted.
+
+The material is provided AS IS, without warranties or liability to the
+extent permitted by applicable law. No trademark rights or endorsement
+are granted.
+

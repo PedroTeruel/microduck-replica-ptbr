@@ -1,0 +1,10 @@
+[Unit]
+Description=Test padd
+After=robotd.service
+
+[Service]
+ExecStart=/opt/robot/feetech-ft5-r5/padd --config /etc/robot/feetech-ft5/robotd.toml
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

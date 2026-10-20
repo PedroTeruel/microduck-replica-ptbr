@@ -1,0 +1,13 @@
+# 测试用：官方 robotd.toml 的片段
+[bus]
+port = "/dev/ttyS2"
+
+[media]
+# Where the video comes from: "camera" or "test".
+# source = "camera"
+
+# Frame size and rate.
+# quality = "720p30"
+
+[audio]
+# source = "mic"

@@ -1,0 +1,10 @@
+[Unit]
+Description=Test audio codec init
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aic3104-init.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

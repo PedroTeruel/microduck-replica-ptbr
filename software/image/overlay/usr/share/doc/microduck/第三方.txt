@@ -1,0 +1,104 @@
+Microduck 复刻镜像 —— 第三方软件许可
+
+本文件列出镜像里随我们的程序一起分发的第三方组件。系统底座（Armbian / Debian 的
+软件包）的许可在 /usr/share/doc/<包名>/copyright，不在这里重复。
+
+1. ONNX Runtime 1.28.0（Microsoft）
+-----------------------------------
+位置：/opt/robot/feetech-ft5-r5/onnxruntime/。MIT License，原样转发，未修改。
+它自带的第三方声明在同目录的 ThirdPartyNotices.txt。
+
+2. Microduck Studio 用的 Python 包
+----------------------------------
+位置：/home/radxa/studio-dev/deps/。都是 pypi.org 上的原版 wheel 解压，未修改；
+版本和 sha256 见 deps/VERSIONS.txt，许可全文在各包的 *.dist-info 目录里
+（pyserial 的 dist-info 里没有许可全文，附在本文件最后）。
+
+  anyio 4.8.0              MIT
+  click 8.1.8              BSD-3-Clause
+  h11 0.14.0               MIT
+  idna 3.10                BSD-3-Clause
+  pyserial 3.5             BSD-3-Clause
+  sniffio 1.3.1            MIT 或 Apache-2.0（二选一）
+  starlette 0.46.1         BSD-3-Clause
+  typing_extensions 4.12.2 PSF-2.0
+  uvicorn 0.32.0           BSD-3-Clause
+  wsproto 1.2.0            MIT
+
+3. Microduck Studio 用的前端库
+------------------------------
+位置：/home/radxa/studio-dev/web/vendor/，许可全文在 web/vendor/licenses/。
+
+  Preact                   MIT
+  htm 3.1.1                Apache-2.0
+  three.js 0.160.0         MIT
+
+4. Microduck Studio 里的 3D 鸭子模型
+------------------------------------
+位置：/home/radxa/studio-dev/web/model/（来源说明见同目录 NOTICE.md）。网格出自
+Pollen Robotics 官方 Microduck 的 CAD，经 apirrone/microduck_rl 仓库的仿真模型转换、
+只留了外形。跟 microduck-replica 仓库对上游 3D 模型的处理一致，按 CC BY-NC-SA 4.0
+（署名、非商业、相同方式共享）处理。
+
+5. 主程序里静态链接的 Rust 库
+-----------------------------
+/opt/robot/ 下的 Rust 程序（官方运行时和我们的 robotd、padd、mediad）静态链接了
+crates.io 上的开源库，主要是 MIT / Apache-2.0 双许可；完整清单以对应源码里的
+Cargo.lock 为准。
+
+附：ONNX Runtime 的 MIT 许可全文
+
+MIT License
+
+Copyright (c) Microsoft Corporation.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+附：pyserial 许可全文（BSD-3-Clause）
+-------------------------------------
+Copyright (c) 2001-2020 Chris Liechti <cliechti@gmx.net>
+All Rights Reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+  * Redistributions in binary form must reproduce the above
+    copyright notice, this list of conditions and the following
+    disclaimer in the documentation and/or other materials provided
+    with the distribution.
+
+  * Neither the name of the copyright holder nor the names of its
+    contributors may be used to endorse or promote products derived
+    from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

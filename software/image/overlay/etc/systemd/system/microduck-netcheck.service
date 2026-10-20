@@ -1,0 +1,12 @@
+[Unit]
+Description=Microduck 配网守护（连不上 WiFi 就开热点）
+After=NetworkManager.service microduck-firstboot.service
+Wants=NetworkManager.service
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/sbin/microduck-netcheck
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
