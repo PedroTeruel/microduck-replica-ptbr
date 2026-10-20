@@ -41,8 +41,8 @@
 
 `microduck-zero3w-0.15.1-R1-V112.img`：在社区公开的 R1 镜像上，用 `tools/radxa/` 里的 R1 转换脚本
 （参数 `--no-tof --overlay i2c4-m0`）改出来的：换 Radxa 的 U-Boot 和 B1 设备树、打开 I²C4（27/28 脚）
-给 IMU 模块用。底图里已经有官方运行时 0.15.1。20261020 那一版用的底图
-sha256 是 `652dd54e70f49fd3633058d5ed9bbb2f63b435648da2346dfbfa60fcaa4c5bcc`。
+给 IMU 模块用。底图里已经有官方运行时 0.15.1。20261020、20261021 两版用的底图
+sha256 都是 `652dd54e70f49fd3633058d5ed9bbb2f63b435648da2346dfbfa60fcaa4c5bcc`。
 
 以后打算换成干净的 Armbian + 官方安装器做底图，就不用依赖别人的镜像了。
 
@@ -65,9 +65,13 @@ sudo sh /tmp/capture-payload.sh /tmp/microduck-payload.tgz
 scp radxa@<鸭子 IP>:/tmp/microduck-payload.tgz .
 ```
 
-20261020 那一版是从二号鸭拉的：robotd 的 sha256 `9b734239…`，是 fork 的
-`hd1910-v167-imu-autodetect` 分支提交 `a844db6` 编出来的（fork 的地址见首页「软件」一节）；
-payload 的 sha256 `9e1e64b8…`。
+20261020 那一版是从二号鸭拉的，payload 的 sha256 `9e1e64b8…`。里面的 robotd（sha256 `9b734239…`）
+是 10-15 在 fork 的工作区里编的，**不完全等于**哪一个提交（之前这里写成 `a844db6`，不对）。
+
+20261021 那一版用的还是这份 payload，只把 robotd 换成 fork `hd1910-v167-imu-autodetect` 分支
+提交 `f4bbe53` 编的 arm64 版（sha256 `0a6a86b2…`，fork 的地址见首页「软件」一节），
+`payload.json` 里 robotd 那一条的 sha256 跟着改；换完的 payload sha256 `26252fbc…`。
+以后的 robotd 都从提交编，对得上源码。
 
 ### 3. 构建机
 
