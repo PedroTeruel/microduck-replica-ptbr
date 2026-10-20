@@ -101,6 +101,13 @@ button:disabled { cursor: default; }
 .servo-bar .sb-more { flex-basis: 100%; font-size: 13px; }
 .sv-handback { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: 8px; }
 .sv-handback .btn-danger { height: auto; min-height: 32px; padding: 4px 14px; white-space: normal; text-align: left; }
+/* 确认框（confirm.js 的 ConfirmBox）：多行说明 + 先不 / 确定两个按钮；WiFi 切换用它。不另造颜色，沿用警告底色 */
+.confirm-box { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #FFF7EC; box-shadow: inset 0 0 0 1px #F5DDBF; font-size: 14px; line-height: 1.6; }
+.confirm-box p { margin: 0; }
+.confirm-box .confirm-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.confirm-box .btn-danger, .confirm-box .btn-light { height: auto; min-height: 38px; padding: 6px 16px; white-space: normal; text-align: left; }
+@media (max-width: 700px) { .confirm-box .btn-danger, .confirm-box .btn-light { min-height: 44px; } }
+
 /* 两步确认（confirm.js，审查 D4）：确认按钮在原按钮旁边新出现，不在原地变 */
 .two-step { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .two-step .two-step-ask { height: auto; min-height: 32px; padding: 4px 14px; white-space: normal; text-align: left; }
@@ -207,6 +214,34 @@ button:disabled { cursor: default; }
 .onb-acts .btn-dark { height: 32px; padding: 0 16px; font-size: 14px; }
 .onb-frozen .onb-rows { opacity: .5; }
 .onb-done { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 24px; font-size: 15px; }
+
+/* ---- 第 3 步「写进主程序」（任务 11）：准备情况、预览、进度 ---- */
+.onb-commit { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding: 10px 12px; border-radius: 10px; background: #F7F7FA; }
+.onb-commit-desc { font-size: 13px; line-height: 1.55; color: var(--text-2); }
+.onb-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.onb-checks li { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.45; }
+.onb-check-mark { flex: none; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+.onb-checks .ok .onb-check-mark { background: var(--ok); color: #FFFFFF; }
+.onb-checks .bad .onb-check-mark { background: #FFF1DC; color: var(--warn); }
+.onb-check-body { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 0 6px; }
+.onb-check-body b { font-weight: 600; }
+.onb-check-body span { color: var(--text-2); }
+.onb-check-go { flex: none; height: 26px; padding: 0 10px; font-size: 12px; }
+.onb-commit-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.onb-commit-acts .btn-dark { height: 32px; padding: 0 16px; font-size: 14px; }
+.onb-commit-msg { font-size: 13px; line-height: 1.5; }
+.onb-commit-msg.ok { color: var(--text-2); }
+.onb-commit-msg.bad { color: var(--danger); }
+.onb-commit-job { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--text-2); }
+.onb-spin { display: inline-block; width: 14px; text-align: center; animation: onb-pulse 1s ease-in-out infinite; }
+@keyframes onb-pulse { 50% { opacity: .25; } }
+.onb-preview { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.onb-preview-imu { font-size: 13px; }
+.onb-preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.onb-preview-table th, .onb-preview-table td { padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--line); }
+.onb-preview-table th { color: var(--text-2); font-weight: 500; }
+.onb-preview-toml summary { font-size: 12px; color: var(--link); cursor: pointer; }
+.onb-preview-toml pre { max-height: 240px; overflow: auto; margin: 6px 0 0; padding: 8px; border-radius: 8px; background: #FFFFFF; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-all; }
 
 /* ---- 登录 ---- */
 .login { max-width: 400px; margin: 12vh auto 0; padding: 32px; display: flex; flex-direction: column; gap: 16px; }

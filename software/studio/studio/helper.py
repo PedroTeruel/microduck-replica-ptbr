@@ -2,7 +2,8 @@
 
 Studio 不是 root。sudoers 只放行 microduck-helper 这一个全路径，所以这里用 `sudo -n`
 调它、stdin 传一个 JSON，别的权限一点没有。小助手认 bus-take / bus-give-back /
-bus-abort / pad-pair / pad-forget 五个动词，参数逐个校验，robotd 的状态它自己去读，不信网页传来的（deploy/INSTALL.md）。
+bus-abort / pad-pair / pad-forget / wifi-hotspot-down / wifi-hotspot-up / calib-read / calib-commit 九个动词，参数逐个校验，
+robotd 的状态它自己去读，不信网页传来的（deploy/INSTALL.md）。
 
 - bus-take：停 robotd、立旗（robotd 起不来）、确认串口空出来 → Studio 打开总线。不卸力。
 - bus-give-back {"soft": true}：Studio 已经在总线上全卸了 → 撤旗、起 robotd、等启动四步成功。
@@ -11,17 +12,29 @@ bus-abort / pad-pair / pad-forget 五个动词，参数逐个校验，robotd 的
 - pad-pair：以 root 跑官方 `robotctl pad pair --json`。weird-ble 板上 robotctl 会先停 btd、把适配器断电再开，
   所以这条主路能配上新 Switch Pro 类手柄。旧版小助手回 bad_verb，调用方据此退回 configd / bluetoothctl。
 - pad-forget：以 root 跑官方 `robotctl pad forget MAC`。
+- wifi-hotspot-down / wifi-hotspot-up：配网时关 / 开鸭子自己的热点（nmcli connection down / up
+  Microduck-Hotspot）。热点本来就没开 / 本来就开着算成功；这两个不拿 bus 的 helper.lock，用 wifi.lock。
+- calib-read：只读当前标定文件，回解析后的内容和现在的模式（标定 / 运动）；不拿锁、不写东西。
+- calib-commit：把舵机零位 / 方向 / IMU 方向写进 robotd 的标定文件（hd1910-calibration.toml），
+  出厂镜像跑标定模式时顺便删掉 commissioning drop-in，再重启主程序切运动模式。成功要
+  mode=motion、phase=control，而且 calibration-status 读回来逐项一致。它跑在独立 systemd 单元里，
+  Studio 被重启也只是暂时看不到输出；最终结果在 /run/microduck-helper/last-result.json。
+  dry_run 只回要写的 TOML。旧版小助手回 bad_verb，调用方据此提示重装。
 
 没装小助手（电脑上开发、台架、演示）就优雅回退：bus_take 当没做（交给 servo.open 自己的
 robotd_active 检查去报错），bus_give_back 当没做（交还以后主程序由人手动起）。
 """
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
+import time
 
 HELPER = "/usr/local/sbin/microduck-helper"
 FLAG = "/run/microduck-helper/bus-held"       # 接管期间立着：robotd 的 drop-in 看到它就不肯起来
+LAST_RESULT = "/run/microduck-helper/last-result.json"
 
 _avail = None
 
@@ -33,11 +46,13 @@ def flag_present():
     return os.path.exists(FLAG)
 
 
-def available():
+def available(refresh=False):
     """小助手在不在、sudoers 放行没（结果缓存：装不装在运行中不会变）。
     用 `sudo -n microduck-helper bus-nope` 探：能调就返回 2（动词不认识，说明文件在、sudoers 放行）；
-    返回别的 = 没装 / 没放行 / 不在 Linux。"""
+    返回别的 = 没装 / 没放行 / 不在 Linux。refresh=True 时重新探一次（配网每次连接都要看）。"""
     global _avail
+    if refresh:
+        _avail = None
     if _avail is not None:
         return _avail
     if not sys.platform.startswith("linux") or not os.path.exists(HELPER):
@@ -51,29 +66,99 @@ def available():
     return _avail
 
 
-def _call(verb, payload, timeout):
+def _call(verb, payload, timeout, on_line=None):
     """跑 `sudo -n microduck-helper <verb>`，stdin 传 JSON。回 (ok, result, detail)。
-    ok = 最后一行 done 的 exit 是 0；result / detail 是 done 那一行的 detail 字段。"""
+    ok = 最后一行 done 的 exit 是 0；result / detail 是 done 那一行的 detail 字段。
+    on_line 给了就边跑边把每一行进度交出去（写标定的进度）；不给还是等它跑完再解析。"""
+    data = json.dumps(payload, ensure_ascii=False)
+    if on_line is None:
+        try:
+            proc = subprocess.run(["sudo", "-n", HELPER, verb], input=data,
+                                  capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return False, f"{type(e).__name__}", None
+        result, detail = None, None
+        for line in (proc.stdout or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if obj.get("step") == "done":
+                d = obj.get("detail") or {}
+                result, detail = d.get("result"), d
+        if result is None:
+            err = (proc.stderr or "").strip() or (proc.stdout or "").strip()
+            return False, err or f"exit {proc.returncode}", None
+        return detail.get("exit") == 0, result, detail
+    return _call_stream(verb, data, timeout, on_line)
+
+
+def _call_stream(verb, data, timeout, on_line):
+    """同一条命令，但把标准输出一行一行交出去（小助手每一步一行）。stderr 并进 stdout：
+    这样 sudo 自己报的错也不会把管道堵住。"""
     try:
-        proc = subprocess.run(["sudo", "-n", HELPER, verb], input=json.dumps(payload, ensure_ascii=False),
-                              capture_output=True, text=True, timeout=timeout)
-    except (OSError, subprocess.TimeoutExpired) as e:
+        proc = subprocess.Popen(["sudo", "-n", HELPER, verb], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)
+    except OSError as e:
         return False, f"{type(e).__name__}", None
-    result, detail = None, None
-    for line in (proc.stdout or "").splitlines():
+    try:
+        proc.stdin.write(data)
+        proc.stdin.close()
+    except OSError:
+        pass
+    lines = queue.Queue()
+
+    def reader():
+        try:
+            for line in proc.stdout:
+                lines.put(line)
+        finally:
+            lines.put(None)
+
+    threading.Thread(target=reader, daemon=True).start()
+    result, detail, noise = None, None, []
+    deadline = time.monotonic() + timeout
+    while True:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+            return False, "TimeoutExpired", None
+        try:
+            line = lines.get(timeout=min(0.2, left))
+        except queue.Empty:
+            if proc.poll() is not None:
+                break
+            continue
+        if line is None:
+            break
         line = line.strip()
         if not line:
             continue
         try:
             obj = json.loads(line)
         except ValueError:
+            noise.append(line)
             continue
         if obj.get("step") == "done":
             d = obj.get("detail") or {}
             result, detail = d.get("result"), d
+        elif on_line is not None:
+            on_line(obj)
+    try:
+        proc.wait(timeout=2.0)
+    except subprocess.TimeoutExpired:
+        try:
+            proc.kill()
+        except OSError:
+            pass
     if result is None:
-        err = (proc.stderr or "").strip() or (proc.stdout or "").strip()
-        return False, err or f"exit {proc.returncode}", None
+        return False, "\n".join(noise[-5:]) or f"exit {proc.returncode}", None
     return detail.get("exit") == 0, result, detail
 
 
@@ -108,6 +193,67 @@ def pad_forget(by, mac, timeout=60):
     return _call("pad-forget", {"by": by, "mac": mac}, timeout)
 
 
+def wifi_hotspot_down(by, ssid=None, timeout=30):
+    """关鸭子自己的热点（小助手最多等 10 秒）。热点本来就没开算成功。ssid 写进连接窗口文件，给 netcheck 看。"""
+    payload = {"by": by}
+    if ssid:
+        payload["ssid"] = ssid
+    return _call("wifi-hotspot-down", payload, timeout)
+
+
+def wifi_hotspot_up(by, timeout=40):
+    """开鸭子自己的热点（小助手最多等 30 秒）。本来就开着算成功。回 (ok, result, detail)。"""
+    return _call("wifi-hotspot-up", {"by": by}, timeout)
+
+
+def calib_read(by=None, timeout=10):
+    """只读主程序的标定文件和现在的模式（calib-read）。回 (ok, result, detail)。"""
+    payload = {"by": by} if by else {}
+    return _call("calib-read", payload, timeout)
+
+
+def last_result():
+    """读小助手最后一次写下的完整结果（Studio 重启 / 调用超时以后用）。读不到回 None。"""
+    try:
+        with open(LAST_RESULT, encoding="utf-8") as f:
+            v = json.load(f)
+        return v if isinstance(v, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def calib_commit(by, joints, imu, dry_run=False, timeout=180, on_line=None):
+    """把舵机零位 / 方向 / IMU 方向写进主程序（小助手 calib-commit）。回 (ok, result, detail)。
+    dry_run=True 只回要写的 TOML（detail["toml"]），不写文件、不重启。on_line 收每一步进度。"""
+    payload = {"by": by, "joints": joints, "imu": imu, "dry_run": bool(dry_run)}
+    return _call("calib-commit", payload, timeout, on_line=on_line)
+
+
+_COMMIT_WHY = {
+    "committed": "写进主程序了，主程序进了运动模式",
+    "preview": "预览好了（没写文件）",
+    "bus_held": "舵机页还占着总线：先在舵机页点「交还主程序」",
+    "no_calibration": "鸭子上找不到主程序的标定文件",
+    "bad_calibration": "主程序现在的标定文件读不出来",
+    "joint_mismatch": "这次的 15 颗跟主程序的标定文件对不上",
+    "invalid": "要写的内容没过校验",
+    "bad_toml": "写出来的标定文件读回来对不上",
+    "restart_failed": "写进去了，但主程序没起来：已经换回原来的文件",
+    "not_motion": "写进去了，但主程序没在 30 秒内进运动模式",
+    "calib_rejected": "标定没通过主程序的检查",
+    "bus_unavailable": "主程序打不开舵机总线",
+    "readback_mismatch": "主程序进了运动模式，但标定读回来不一致",
+    "write_failed": "写到一半出错，已经换回原来的文件",
+    "foreign_commissioning": "主程序的标定模式不是镜像设的，不敢自动切",
+    "refused": "主程序现在不让写（鸭子可能在走 / 站着）",
+    "backup_failed": "备份原来的标定失败",
+    "read_failed": "读不到现在的标定文件",
+    "bad_verb": "小助手太旧，重装 deploy/install.sh",
+    "busy": "小助手正忙（另一个操作没做完）",
+    "detach_failed": "小助手没能在独立单元里跑起来",
+    "TimeoutExpired": "等了 180 秒小助手还没回最终结果",
+}
+
 _TAKE_WHY = {
     "taken": "主程序停了，总线交给你了",
     "refused": "主程序没停（策略在跑、正在回站姿，或者坐姿没放行）",
@@ -141,6 +287,19 @@ _PAD_WHY = {
     "busy": "小助手正忙（另一个配对或忘掉没做完）",
 }
 
+_WIFI_WHY = {
+    "hotspot_down": "热点关了",
+    "already_down": "热点本来就没开",
+    "down_failed": "热点没关掉",
+    "hotspot_up": "热点开回来了",
+    "already_up": "热点本来就开着",
+    "up_failed": "热点没开起来",
+    "timeout": "等超时了",
+    "nmcli_failed": "查不了现在的网络连接（nmcli 出错）",
+    "busy": "小助手正忙（另一个 WiFi 操作没做完）",
+    "bad_verb": "小助手太旧，重装 deploy/install.sh",
+}
+
 _COMMON = {
     "bad_args": "参数不对",
     "bad_marker": "交接标记不对",
@@ -154,12 +313,20 @@ def friendly(result, detail, verb):
     """把 result 换成人话（result 的值见 deploy/INSTALL.md §1）。detail 里的小助手原话一并带上。"""
     if verb in ("pad-pair", "pad-forget"):
         table = _PAD_WHY
+    elif verb in ("wifi-hotspot-down", "wifi-hotspot-up"):
+        table = _WIFI_WHY
+    elif verb == "calib-commit":
+        table = _COMMIT_WHY
     else:
         table = _TAKE_WHY if verb == "bus-take" else _GIVE_WHY
+    msg = detail.get("msg") if isinstance(detail, dict) else None
+    # calib-commit 的小助手原话已经是完整的一句话（带「已经换回原来的文件」这类收尾），直接用；
+    # 其它动词保持「结果词：原话」的写法（test_helper 的 friendly 约定）。
+    if msg and verb == "calib-commit" and result not in ("committed", "preview"):
+        return msg
     text = table.get(result) or _COMMON.get(result) or (result or "没成")
     if result == "pair_failed" and isinstance(detail, dict) and detail.get("reason"):
         text = f"{text}（{detail['reason']}）"
-    msg = detail.get("msg") if isinstance(detail, dict) else None
     if msg and msg not in text:
         text = f"{text}：{msg}"
     return text

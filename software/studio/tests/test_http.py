@@ -196,6 +196,63 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
         await self.call("POST", "/api/logout", {}, dict(ck, **{"X-CSRF": csrf}))
         self.assertIsNone(self.auth.session(token))
 
+    async def test_password_change_needs_login(self):
+        st, _, _ = await self.call("POST", "/api/password",
+                                   {"action": "set", "password": "new-secret", "confirm": "new-secret"},
+                                   {"Origin": self.origin})
+        self.assertEqual(st, 401)
+        self.assertTrue(self.auth.check_password(PW))
+
+    async def test_password_change_keeps_this_browser_logged_in(self):
+        token, _ = await self.login()
+        ck = {"Cookie": f"{COOKIE}={token}", "Origin": self.origin}
+        _, _, body = await self.call("GET", "/api/session", headers=ck)
+        csrf = json.loads(body)["csrf"]
+        st, _, _ = await self.call("POST", "/api/password",
+                                   {"action": "set", "password": "new-secret", "confirm": "new-secret"},
+                                   dict(ck, **{"X-CSRF": csrf}))
+        self.assertEqual(st, 200)
+        st, _, _ = await self.call("GET", "/api/session", headers=ck)
+        self.assertEqual(st, 200)
+        self.assertTrue(self.auth.check_password("new-secret"))
+
+    async def test_password_must_be_six_chars_and_typed_twice(self):
+        token, _ = await self.login()
+        ck = {"Cookie": f"{COOKIE}={token}", "Origin": self.origin}
+        _, _, body = await self.call("GET", "/api/session", headers=ck)
+        csrf = json.loads(body)["csrf"]
+        for payload in ({"action": "set", "password": "12345", "confirm": "12345"},
+                        {"action": "set", "password": "new-secret", "confirm": "new-secret2"}):
+            st, _, _ = await self.call("POST", "/api/password", payload,
+                                       dict(ck, **{"X-CSRF": csrf}))
+            self.assertEqual(st, 400)
+        self.assertTrue(self.auth.check_password(PW))
+
+    async def test_first_password_from_the_web_logs_this_browser_in(self):
+        os.remove(self.auth.pw_path)
+        st, _, body = await self.call("GET", "/api/session")
+        self.assertEqual(st, 200)
+        csrf = json.loads(body)["csrf"]
+        st, h, body = await self.call("POST", "/api/password",
+                                      {"action": "set", "password": "new-secret", "confirm": "new-secret"},
+                                      {"Origin": self.origin, "X-CSRF": csrf})
+        self.assertEqual(st, 200, body)
+        token = h["set-cookie"].split(";")[0].split("=", 1)[1]
+        st, _, _ = await self.call("GET", "/api/session", headers={"Cookie": f"{COOKIE}={token}"})
+        self.assertEqual(st, 200)
+        self.assertTrue(self.auth.check_password("new-secret"))
+
+    async def test_password_can_be_cleared_from_the_web(self):
+        token, _ = await self.login()
+        ck = {"Cookie": f"{COOKIE}={token}", "Origin": self.origin}
+        _, _, body = await self.call("GET", "/api/session", headers=ck)
+        csrf = json.loads(body)["csrf"]
+        st, _, _ = await self.call("POST", "/api/password", {"action": "clear"},
+                                   dict(ck, **{"X-CSRF": csrf}))
+        self.assertEqual(st, 200)
+        self.assertFalse(self.auth.has_password())
+        self.assertFalse(self.auth.pw_path.exists())
+
     async def test_ws_without_login_tells_page_to_login(self):
         c = WsClient(self.port, origin=self.origin)
         await c.open()
@@ -283,7 +340,7 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(res["s1"]["ok"])                       # 指令本身成了；读数不够，结果里 ok=False
         self.assertFalse(res["s1"]["data"]["ok"])
         self.assertFalse(res["w1"]["ok"])
-        self.assertIn("鸭子上", res["w1"]["reason"])
+        self.assertIn("写进主程序", res["w1"]["reason"])
         c.close()
 
     async def test_servo_refused_while_walking(self):
@@ -355,7 +412,7 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
         await c.open()
         await c.pump(until=lambda: any(m.get("t") == "state" and m.get("onboarding") for m in c.msgs), timeout=4.0)
         st = [m for m in c.msgs if m.get("t") == "state" and m.get("onboarding")][-1]
-        self.assertEqual([r["key"] for r in st["onboarding"]["rows"]], ["servo", "imu", "pad", "estop", "walk"])
+        self.assertEqual([r["key"] for r in st["onboarding"]["rows"]], ["servo", "imu", "commit", "pad", "estop", "walk"])
         self.assertEqual(st["cpu"]["c"], 76.9)
         await c.pump(until=lambda: self.rd.calib_fresh() is not None, timeout=3.0)
         await c.send({"t": "cmd", "id": "k1", "name": "onboard.op", "args": {"op": "confirm_servo"}})

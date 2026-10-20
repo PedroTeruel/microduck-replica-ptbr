@@ -79,15 +79,32 @@ class Auth:
     def has_password(self):
         return self.pw_path.is_file()
 
-    def set_password(self, password):
+    def set_password(self, password, keep_token=None):
         if len(password) < 6:
             raise ValueError("密码至少 6 位")
         salt = secrets.token_bytes(16)
         digest = _hash(password, salt, **SCRYPT)
         _write_private(self.pw_path, {"scrypt": {**SCRYPT, "salt": salt.hex(), "hash": digest.hex()},
                                       "set_at": int(time.time())})
+        kept = False
+        with self._lock:
+            if keep_token and keep_token in self._sessions:
+                self._sessions = {keep_token: self._sessions[keep_token]}
+                kept = True
+                self._flush_locked()
+            else:
+                self._sessions.clear()
+                self._flush_locked()
+        self._log("info", "管理员密码已更新，其他登录全部作废" if kept else "管理员密码已更新，旧的登录全部作废")
+
+    def clear_password(self):
+        """清掉管理员密码，回到「同一网络里打开就能用」。跟 set_password 一样只动 Studio 自己的文件。"""
+        try:
+            self.pw_path.unlink()
+        except FileNotFoundError:
+            pass
         self.revoke_all()
-        self._log("info", "管理员密码已更新，旧的登录全部作废")
+        self._log("info", "管理员密码已清掉，Studio 回到不用登录的模式")
 
     def check_password(self, password):
         try:

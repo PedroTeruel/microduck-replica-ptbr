@@ -3,7 +3,7 @@
 // 按着摇杆时切页 / 滚走、在舞台上滚滚轮、手机上从摇杆外圈 / 动作按钮 / 图上的 A 起手往下刷——看假 robotd 收到了什么。
 // 每一步的结果用 JSON 打到 stdout，由 tests/test_overview_e2e.py 判断对不对。
 //
-// --phase main：上面这些；--phase done：Studio 带着「5 步都做过」的记录重启以后，看清单收成一行。
+// --phase main：上面这些；--phase done：Studio 带着「6 步都做过」的记录重启以后，看清单收成一行。
 // 单独跑（先起好假 robotd、Studio、无头 Edge；端口别跟别人的撞）：
 //   node tests/overview_e2e.mjs --url http://127.0.0.1:18090/ --cdp 9343 --record <rd.jsonl> --fake 17022 --phase main [--shots <截图目录>]
 // Node ≥ 22（自带 WebSocket），不需要装任何包。
@@ -162,7 +162,7 @@ if (PHASE === 'done') {
   await shot('desktop-1440-all-done-viewport.png');
   // 收成一行的那一行能点开：展开回 5 行（✓ 的有「重新做」），再点收起；开没开记在 localStorage
   await js(`document.querySelector('.onb-done .onb-fold').click()`);
-  await waitFor(`document.querySelectorAll('.onb-row').length === 5`, '展开回 5 行');
+  await waitFor(`document.querySelectorAll('.onb-row').length === 6`, '展开回 6 行');
   out.expanded = await js(`({ rows: document.querySelectorAll('.onb-row').length,
     redo: document.querySelectorAll('.onb-row.onb-ok .onb-redo').length, skip: document.querySelectorAll('.onb-row.onb-skip').length,
     head: document.querySelector('.onb-fold-h')?.innerText.replace(/\\s+/g, ' ') })`);
@@ -333,12 +333,12 @@ if (PHASE === 'done') {
     await sleep(700);
   };
   const inView = (sel) => `(() => { const e = document.querySelector('${sel}'); if (!e) return false; const r = e.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 56; })()`;
-  await clickBtn('4 测急停', '去测急停');
+  await clickBtn('5 测急停', '去测急停');
   try { await waitFor(inView('#pd-estop'), '滚到测急停卡', 3000); } catch { /* 没到：下面照实记 */ }
   out.goto = { estop: await js(`({ inView: ${inView('#pd-estop')}, focus: document.activeElement?.id })`) };
   await js('window.scrollTo(0, 0)');
   await sleep(300);
-  await clickBtn('3 配手柄', '配对手柄');
+  await clickBtn('4 配手柄', '配对手柄');
   try { await waitFor(inView('#pd-wizard'), '滚到配对向导', 3000); } catch { /* 没到：下面照实记 */ }
   out.goto.wizard = await js(`({ open: !!document.querySelector('#pd-wizard'), inView: ${inView('#pd-wizard')} })`);
   await js(`[...document.querySelectorAll('#pd-wizard button')].find((x) => x.textContent.includes('关掉'))?.click()`);
@@ -518,15 +518,18 @@ if (PHASE === 'done') {
     await touch('touchEnd', []);
   }, 1000);
 
-  // ================= 读不到：configd 关着、robotd 重启后标定读不到 → ? =================
+  // ================= 读不到：configd 关着、主程序照常在跑但读标定的请求失败 → ? =================
+  // （fork 的主程序在运动模式下只要进了控制阶段就一定读得到标定；真读不到标定时它会卡在等总线并报错，
+  //   那是「主程序不让上力」，不是「不知道」。所以这里让 calibration-status 那一下请求出错。）
   await open('#/', 1440, 900, false);
-  await fakeSet({ errors: { 'pad.status': { code: -32603, message: 'configd 关着（测试）' } }, calib: 'unavailable', restart: 0.3 });
-  await waitFor(`(() => { const m = [...document.querySelectorAll('.onb-row .onb-mark')].map((e) => e.textContent.trim()); return m[0] === '?' && m[1] === '?' && m[2] === '?'; })()`,
+  await fakeSet({ errors: { 'pad.status': { code: -32603, message: 'configd 关着（测试）' },
+                            'robot.busCommand': { code: -32603, message: '读标定失败（测试）' } }, restart: 0.3 });
+  await waitFor(`(() => { const m = [...document.querySelectorAll('.onb-row .onb-mark')].map((e) => e.textContent.trim()); return m[0] === '?' && m[1] === '?' && m[2] === '?' && m[3] === '?'; })()`,
     '清单出现 ?', 30000);
   out.unknown = await onbMarks();
   out.unknownText = await js(`document.querySelector('.onb').innerText.replace(/\\s+/g, ' ')`);
   await shot('onb-unknown.png', '.onb');
-  await fakeSet({ errors: { 'pad.status': null }, calib: 'ok', restart: 0.3 });
+  await fakeSet({ errors: { 'pad.status': null, 'robot.busCommand': null }, restart: 0.3 });
 
   // ================= 舵机页：有舵机保持着时离开不交还（用户 10-18：「出去的时候应该保持住使能，不应该泄力」） =================
   await open('#/', 1440, 900, false);

@@ -1,7 +1,7 @@
 // Microduck Studio 前端。不构建：Preact + htm（vendor/preact-htm.module.js）直接在浏览器里跑。
 //
 // 跟 Studio 后端只有两条路：
-// - HTTP：/api/session、/api/login、/api/logout、/api/logs、/api/diag；
+// - HTTP：/api/session、/api/login、/api/logout、/api/password、/api/logs、/api/diag；
 // - WebSocket /ws：后端推 hello / state / log / result，前端发 hb（心跳，带页面是否可见）和 cmd（命令）。
 // 消息格式见 software/studio/README.md「前后端协议」。
 import { html, render, Component, useState, useEffect, useRef, useCallback } from './vendor/preact-htm.module.js';
@@ -12,6 +12,7 @@ import { PadPage, padActivity, padGo } from './pad.js';
 import { BatteryCell } from './battery.js';
 import { BatterySettings } from './settings-battery.js';
 import { TuneSection, ModelSettings } from './tune.js';
+import { WifiCard, WifiSettings } from './wifi.js';
 import { TwoStep } from './confirm.js';
 
 const STALE_GRAY_MS = 1000;   // 超过 1 秒没新数据：数值变灰
@@ -212,9 +213,13 @@ function EStop({ st, live, open }) {
 }
 
 function TopBar({ duck, st, live, age, open, hideEStop }) {
-  // 顶栏写姿势，不写 robotd 的 mode（「运动中」跟舞台上的「软着」放一起会让人以为它在动）
-  const modeText = st ? ({ commissioning: '调试中', starting: '启动中', absent: '主程序没在跑', homing: '在站起来', servo_session: '调舵机中' }[st.posture]
-    || WAS[st.posture] || '状态不明') : '连接中';
+  // 顶栏先说现在是什么模式（出厂标定模式 / 写完切运动模式），再带姿势；标定模式没有策略，别写成「调试中」。
+  const postureText = st ? ({ starting: '启动中', absent: '主程序没在跑', homing: '在站起来', servo_session: '调舵机中' }[st.posture]
+    || WAS[st.posture] || '状态不明') : null;
+  const modeText = !st ? '连接中'
+    : st.mode === 'commissioning' ? (st.posture === 'commissioning' ? '标定模式' : `标定模式 · ${postureText}`)
+    : st.mode === 'motion' && st.posture !== 'absent' && st.posture !== 'servo_session' ? `运动模式 · ${postureText}`
+    : postureText;
   const pct = st?.battery?.pct;
   return html`<header class="topbar">
     <div class="duckid">
@@ -281,7 +286,7 @@ function stageCopy(st, live, name, age) {
   switch (st.posture) {
     case 'absent': return { h: '鸭子主程序没在跑', sub: '可能正在重启（约 2 秒）。注意：主程序停了不会卸力，舵机可能还顶着。', stale: true };
     case 'starting': return { h: '主程序正在启动', sub: st.start_error ? `卡在：${st.start_error}` : '通常 10 秒内完成。' };
-    case 'commissioning': return { h: '调试中', sub: '舵机由调试工具管着，主程序这时只读。要站、要走，先回到运动模式。' };
+    case 'commissioning': return { h: '标定模式', sub: '出厂第一次：先粗校 IMU、再一键中位，第 3 步写进主程序会自动切到运动模式。' };
     case 'limp': return { h: `${name}软着`, sub: '双手托起它，往下滑到「遥控」点「站起来」（或者按手柄 +）。' };
     case 'homing': return { h: '正在站起来…', sub: '扶着它，别松手。' };
     case 'holding': return { h: `${name}站好了`, sub: '往下滑到「遥控」点「开始走」（或者按手柄 +），再推摇杆。' };
@@ -421,7 +426,7 @@ function Band({ st, pd, gray, onSame }) {
   </section>`;
 }
 
-// ---------------- 上手清单（总览重排 §1.3、§5 O14：5 行 + 卡片头的「连上鸭子」） ----------------
+// ---------------- 上手清单（总览重排 §1.3、§5 O14：6 行 + 卡片头的「连上鸭子」；任务 11 加了「写进主程序」） ----------------
 // 判法都在后端（studio/onboard.py，0.5 秒判一次），这里只画。五种状态：✓ 完成 · ↷ 跳过了 · ● 该做 / 要重做 · ○ 没做 · ? 读不到。
 // 「现在该做」= 第一个 ● / ○ 的步（ob.next），它的第一个按钮是深色的「去做」；后面的不锁，照样能点。
 // 跳过 / 重新做（用户 10-18：「应该允许跳过、允许重新做」）：● / ○ 的行有「跳过」（主程序明说不行的灰着、旁边写为什么）；
@@ -455,13 +460,36 @@ function Onboard({ st, live }) {
   const ob = st?.onboarding;
   const [msg, setMsg] = useState(null);
   const [open, setOpen] = useState(loadOnbOpen);
+  const [cprev, setCprev] = useState(null);       // 「先看看要写什么」的结果（每颗的方向、限位、IMU 方向、TOML）
+  const [cmsg, setCmsg] = useState(null);         // 预览 / 写入按钮这一下的话
+  const [cbusy, setCbusy] = useState(false);
+  const [copen, setCopen] = useState(false);      // 「写进主程序」那张卡片：做过 / 判不出时收着，点「去看看」「重新做」才展开
+  const job = st?.commit?.job;                   // 写入进度 / 结果（Studio 推过来；st.commit 只在第 3 步用）
+  // 进度卡一出现，本地「开始写了」的临时回执就让位：失败原因只由 job 显示，成功 2 分钟后卡片能自己收起。
+  useEffect(() => {
+    if (job) setCmsg(null);
+  }, [job?.phase, job?.ok, job?.finished]);
+  // 写入要重启主程序，这段时间页面算「没连着」。第 3 步的进度 / 失败原因不能被「断线时不检查」盖掉：
+  // 有 job 就单独显示一张卡（成功的那份 2 分钟后后端不再推，卡片自然收起）。
+  if (!live && job) {
+    const title = job.phase === 'running' ? '写进主程序' : (job.ok ? '写进主程序：好了' : '写进主程序：没成');
+    return html`<section class="onb board" data-step="commit" aria-label="写进主程序进度">
+      <div class="onb-h"><b>${title}</b><span class="quiet">主程序在重启，页面暂时没连着</span></div>
+      <div class="onb-commit">
+        ${job.phase === 'running'
+          ? html`<div class="onb-commit-job" role="status"><span class="onb-spin">⋯</span>${job.msg || '在写…'}</div>`
+          : html`<div class=${'onb-commit-msg ' + (job.ok ? 'ok' : 'bad')}>${job.reason || job.msg || ''}</div>`}
+        ${job.phase !== 'running' && !job.ok ? html`<p class="onb-tip">小助手会把原来的标定文件和模式换回去；等主程序回来再看第 3 步。</p>` : null}
+      </div>
+    </section>`;
+  }
   if (!live) return html`<section class="onb board"><div class="onb-h"><b>上手清单</b><span class="quiet">断线时不检查</span></div></section>`;
   if (!ob) return html`<section class="onb board"><div class="onb-h"><b>上手清单</b><span class="quiet">还在判…</span></div></section>`;
   const head = ob.header || {};
   if (head.kind === 'bench') return html`<section class="onb board"><div class="onb-h"><b>上手清单</b><span class="quiet">${head.text}</span></div></section>`;
   const done = ob.all_done && head.ok;
   const n = ob.skipped_n || 0;
-  const doneText = `上手 5 步都完成了${n ? `（跳过 ${n} 步）` : ''}`;
+  const doneText = `上手 6 步都完成了${n ? `（跳过 ${n} 步）` : ''}`;
   const toggle = () => { const v = !open; setOpen(v); saveOnbOpen(v); };
   if (done && !open) {
     return html`<section class="onb board onb-done" aria-label="上手清单">
@@ -476,6 +504,10 @@ function Onboard({ st, live }) {
     setMsg(null);
     if (a.do === 'servos') location.hash = '#/servos';
     else if (a.do === 'imu') location.hash = '#/imu';
+    else if (a.do === 'commit') {
+      setCopen(true);
+      setTimeout(() => document.querySelector('[data-step="commit"] .onb-commit')?.scrollIntoView({ block: 'center' }), 50);
+    }
     else if (a.do === 'pad_wizard') padGo('wizard');
     else if (a.do === 'pad_known') padGo('known');
     else if (a.do === 'estop') padGo('estop');
@@ -485,6 +517,25 @@ function Onboard({ st, live }) {
       op({ op: 'confirm_servo' }, '记下了：舵机零位核对过');
     } else if (a.do === 'skip') op({ op: 'skip', step: row.key });
     else if (a.do === 'unskip') op({ op: 'unskip', step: row.key });
+  };
+  // 第 3 步：预览（小助手 dry_run / 电脑上 Studio 直接算）与真正写入。写入回到 ack 就开始，进度看 st.commit.job。
+  const commitPreview = async () => {
+    if (cprev) { setCprev(null); return; }
+    setCmsg(null);
+    const r = await link.cmd('calib.op', { op: 'preview' }, 20000);
+    if (r.ok) setCprev(r.data || {});
+    else setCmsg({ ok: false, text: r.reason || r.error || '算不出来' });
+  };
+  const commitRun = async () => {
+    setCmsg(null);
+    setCbusy(true);
+    try {
+      const r = await link.cmd('calib.op', { op: 'commit' }, 20000);
+      if (!r.ok) setCmsg({ ok: false, text: r.reason || r.error || '没开始写' });
+      else setCmsg({ ok: true, text: '开始写了：主程序会重启，等它回来' });
+    } finally {
+      setCbusy(false);
+    }
   };
   const btn = (a, row, dark) => html`<button class=${dark ? 'btn-dark' : 'btn-light'} onClick=${() => go(a, row)}>${a.label}</button>`;
   return html`<section class=${'onb board' + (ob.frozen ? ' onb-frozen' : '')} aria-label="上手清单">
@@ -505,6 +556,9 @@ function Onboard({ st, live }) {
         const when = fmtWhen(r.when);
         const goA = { do: r.go, label: '去做' };
         const frozen = !!ob.frozen;               // 调舵机时清单冻着：跳过、取消跳过都灰（后端也拒：审查 D11）
+        // 第 3 步那张卡片只在「写进主程序」这一行里展开：还没做（● / ○）、正在写 / 刚写完、或者点了「去看看」「重新做」；
+        // 做完了（✓）、跳过了、判不出（?）时收着
+        const isCommit = r.key === 'commit' && (r.state === 'todo' || r.state === 'no' || copen || !!job || !!cmsg || !!cprev);
         let acts;
         if (r.state === 'ok') acts = html`<button class="btn-light onb-redo" onClick=${() => go(goA, r)}>重新做</button>`;
         else if (r.state === 'skip') {
@@ -531,6 +585,32 @@ function Onboard({ st, live }) {
             ${r.note ? html`<span class="onb-tip">${r.state === 'skip' ? `现在：${r.note}` : r.note}</span>` : null}
             ${r.tip && r.state !== 'ok' && r.state !== 'skip' ? html`<span class="onb-tip">坑：${r.tip}</span>` : null}
             ${r.skip && !r.skip.ok && r.skip.why ? html`<span class="onb-tip onb-noskip">不能跳过：${r.skip.why}</span>` : null}
+            ${isCommit ? html`<div class="onb-commit">
+              <div class="onb-commit-desc">${r.desc || ''}</div>
+              ${(r.commit?.items || []).length ? html`<ul class="onb-checks">
+                ${r.commit.items.map((it) => html`<li class=${it.ok ? 'ok' : 'bad'}>
+                  <span class="onb-check-mark" aria-label=${it.ok ? '好' : '还不行'}>${it.ok ? '✓' : '×'}</span>
+                  <span class="onb-check-body"><b>${it.label}</b><span>${it.text}</span></span>
+                  ${!it.ok && it.action ? html`<button class="btn-light onb-check-go" onClick=${() => go(it.action, r)}>${it.action.label || '去做'}</button>` : null}
+                </li>`)}
+              </ul>` : null}
+              <div class="onb-commit-acts">
+                <button class="btn-light" disabled=${cbusy} onClick=${commitPreview}>${cprev ? '收起要写的内容' : '先看看要写什么'}</button>
+                <${TwoStep} label="写进主程序" ask="会重启主程序，鸭子会先卸力，扶好鸭子"
+                  cls="btn-dark" disabled=${!r.commit?.ready || cbusy}
+                  title=${!r.commit?.ready ? '准备情况还没全绿：照上面的清单补齐' : ''} onConfirm=${commitRun} />
+              </div>
+              ${cmsg ? html`<div class=${'onb-commit-msg ' + (cmsg.ok ? 'ok' : 'bad')}>${cmsg.text}</div>` : null}
+              ${job && job.phase === 'running' ? html`<div class="onb-commit-job" role="status"><span class="onb-spin">⋯</span>${job.msg || '在写…'}</div>` : null}
+              ${job && job.phase !== 'running' && job.reason ? html`<div class=${'onb-commit-msg ' + (job.ok ? 'ok' : 'bad')}>${job.reason}</div>` : null}
+              ${cprev ? html`<div class="onb-preview">
+                <div class="onb-preview-imu"><b>IMU</b> ${cprev.imu?.label || ''} · ${cprev.imu?.text || ''}</div>
+                <table class="onb-preview-table"><thead><tr><th>关节</th><th>方向</th><th>限位</th></tr></thead><tbody>
+                  ${(cprev.joints || []).map((j) => html`<tr><td>${j.cn || j.name}</td><td>${j.direction > 0 ? '+1' : '−1'}</td><td class="num">${j.min_deg}° ~ ${j.max_deg}°</td></tr>`)}
+                </tbody></table>
+                <details class="onb-preview-toml"><summary>要写的文件</summary><pre>${cprev.toml || ''}</pre></details>
+              </div>` : null}
+            </div>` : null}
           </span>
           <span class="onb-acts">${acts}</span>
         </li>`;
@@ -567,10 +647,14 @@ function Todo({ st, live }) {
   </section>`;
 }
 
-// 总览：舞台 → 仪表带（5 格）→ 上手清单 → 待办 → 往下一刷就是手柄（总览重排 §1）
+// 总览：（开着热点时最上面是「连 WiFi」）→ 舞台 → 仪表带（5 格）→ 上手清单 → 待办 → 往下一刷就是手柄（总览重排 §1）
 function Overview({ st, live, age, duck, pd, onSame, tune }) {
-  const name = duck?.short || '鸭子';
+  // 主机名这类英文名后面空一格再接中文：「duck-c51b 站好了」
+  const short = duck?.short || '鸭子';
+  const name = /[A-Za-z0-9]$/.test(short) ? short + ' ' : short;
   return html`<div class="overview">
+    ${st?.net?.known && st.net.mode === 'hotspot'
+      ? html`<${WifiCard} net=${st.net} link=${link} secure=${st?.auth?.has_password} />` : null}
     <${Stage} st=${st} live=${live} age=${age} name=${name} />
     <${Band} st=${st} pd=${pd} gray=${age > STALE_GRAY_MS} onSame=${onSame} />
     <${Onboard} st=${st} live=${live} />
@@ -602,7 +686,7 @@ function Logs() {
       </select>
       <label style="font-size:14px"><input type="checkbox" checked=${onlyBad} onChange=${(e) => setOnlyBad(e.target.checked)} /> 只看警告和错误</label>
       <button onClick=${copy} style="height:34px;padding:0 14px;border:0;border-radius:999px;background:#E5E5EA">复制</button>
-      <a href="/api/diag" style="font-size:14px" title="含鸭子的序列号和局域网 IP">导出诊断包（发群里求助用）</a>
+      <a class="logs-export" href="/api/diag" style="font-size:14px" title="含鸭子的序列号和局域网 IP">导出诊断包（发群里求助用）</a>
     </div>
     <div class="board" style="padding:8px 16px;font-size:14px;line-height:1.7">
       ${shown.length ? shown.slice().reverse().map((e) => html`<div key=${e.n} style="padding:4px 0;border-top:1px solid var(--line)">
@@ -630,11 +714,78 @@ function applyStage(v) {
 }
 function loadStage() { try { return localStorage.getItem('studio.stage') || 'mid'; } catch { return 'mid'; } }
 
+function PasswordSettings({ hasPassword }) {
+  const [pw, setPw] = useState('');
+  const [again, setAgain] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [err, setErr] = useState(null);
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr(null); setMsg(null);
+    if (pw.length < 6) { setErr('密码至少 6 位'); return; }
+    if (pw !== again) { setErr('两次输入不一样'); return; }
+    setBusy(true);
+    let r;
+    try { r = await api('/api/password', { action: 'set', password: pw, confirm: again }); }
+    catch { r = { error: '连不上鸭子，检查网络后再试' }; }
+    setBusy(false);
+    if (!r.ok) { setErr(r.status === 401 ? '登录过期了，刷新页面重新登录' : (r.error || '没改成')); return; }
+    setPw(''); setAgain(''); setMsg('登录密码已保存，这台浏览器还登录着。');
+  };
+  const clear = async () => {
+    setErr(null); setMsg(null);
+    let r;
+    try { r = await api('/api/password', { action: 'clear' }); }
+    catch { r = { error: '连不上鸭子，检查网络后再试' }; }
+    if (!r.ok) { setErr(r.status === 401 ? '登录过期了，刷新页面重新登录' : (r.error || '没清掉')); return; }
+    location.reload();
+  };
+  if (hasPassword == null) {
+    return html`<div class="board password-settings" style="padding:16px 20px">
+      <div style="font-size:15px;font-weight:600">登录密码</div>
+      <div style="font-size:13px;color:var(--text-2)">正在读取登录状态…</div></div>`;
+  }
+  return html`<form class="board password-settings" style="padding:16px 20px;display:flex;flex-direction:column;gap:10px"
+    onSubmit=${submit}>
+    <div style="font-size:15px;font-weight:600">${hasPassword ? '登录密码' : '设一个登录密码'}</div>
+    <div style="font-size:13px;line-height:1.6;color:var(--text-2)">
+      热点密码大家都知道；设了登录密码以后，连上热点的人也要先登录才能控制鸭子。至少 6 位。
+      ${hasPassword ? '修改后，其他浏览器上的登录会作废，这台还保持登录。' : ''}
+    </div>
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text-2)">
+      ${hasPassword ? '新密码' : '密码'}
+      <input type="password" name="password" autocomplete="new-password" value=${pw} required minLength="6"
+        onInput=${(e) => setPw(e.target.value)} style="height:40px;padding:0 10px;border:1px solid var(--line);border-radius:8px" />
+    </label>
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text-2)">
+      再输一遍
+      <input type="password" name="confirm" autocomplete="new-password" value=${again} required minLength="6"
+        onInput=${(e) => setAgain(e.target.value)} style="height:40px;padding:0 10px;border:1px solid var(--line);border-radius:8px" />
+    </label>
+    ${err ? html`<div role="alert" style="font-size:13px;color:var(--danger)">${err}</div>` : null}
+    ${msg ? html`<div style="font-size:13px;color:var(--text-2)">${msg}</div>` : null}
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+      <button type="submit" disabled=${busy || !pw || !again}
+        style="height:40px;padding:0 18px;border:0;border-radius:999px;background:var(--blue);color:#FFF;font-weight:600">
+        ${busy ? '保存中…' : (hasPassword ? '修改登录密码' : '设好登录密码')}</button>
+      ${hasPassword ? html`<${TwoStep} label="清掉登录密码" ask="真的清掉？" onConfirm=${clear} />` : null}
+    </div>
+  </form>`;
+}
+
 function Settings({ st, tune }) {
   const [v, setV] = useState(loadStage());
   const pick = (x) => { setV(x); applyStage(x); try { localStorage.setItem('studio.stage', x); } catch { /* 隐私模式 */ } };
   return html`<div style="display:flex;flex-direction:column;gap:16px;max-width:640px">
     <h1 style="margin:0;font-size:28px;font-weight:600">设置</h1>
+    <div class="board" style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+      <span style="font-size:15px;font-weight:600;flex:1">日志和诊断</span>
+      <a class="settings-logs" href="#/logs" style="font-size:15px">日志</a>
+      <a class="settings-diag" href="/api/diag" style="font-size:15px" title="含鸭子的序列号和局域网 IP">导出诊断包</a>
+    </div>
+    <${WifiSettings} net=${st?.net} link=${link} />
+    <${PasswordSettings} hasPassword=${st?.auth?.has_password} />
     <${BatterySettings} link=${link} st=${st} />
     <${ModelSettings} tune=${tune} link=${link} />
     <div class="board" style="padding:16px 20px">

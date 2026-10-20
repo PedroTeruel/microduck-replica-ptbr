@@ -9,6 +9,16 @@ import { html, useState, useEffect, useRef } from './vendor/preact-htm.module.js
 export const ARM_GUARD_MS = 700;
 export const ARM_TIMEOUT_MS = 3000;
 
+export function ConfirmBox({ lines = [], confirmLabel = '确定', cancelLabel = '先不', onConfirm, onCancel, busy = false, cls = '' }) {
+  return html`<div class=${('confirm-box ' + cls).trim()} role="alertdialog" aria-live="polite">
+    <div class="confirm-lines">${lines.map((line) => html`<p>${line}</p>`)}</div>
+    <div class="confirm-acts">
+      <button class="btn-light" type="button" disabled=${busy} onClick=${() => onCancel && onCancel()}>${cancelLabel}</button>
+      <button class="btn-danger" type="button" disabled=${busy} onClick=${() => onConfirm && onConfirm()}>${confirmLabel}</button>
+    </div>
+  </div>`;
+}
+
 export function TwoStep({ label, ask, onConfirm, cls = 'btn-light', askCls = 'btn-danger', disabled = false, title, busyLabel }) {
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);

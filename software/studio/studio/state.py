@@ -157,7 +157,7 @@ def servo_orphan_view(servo):
     return {"why": o.get("why")}
 
 
-def summarize(rd, duck, servo=None, now=None, ob=None, bat=None):
+def summarize(rd, duck, servo=None, now=None, ob=None, bat=None, net=None, commit=None, auth=None):
     """bat：电量估算（studio/battery_svc.BatteryService，1 Hz 循环里喂）；这里只读它的结果。没给就按 robotd 的直线（老样子）。"""
     now = time.monotonic() if now is None else now
     bus = rd.bus.value
@@ -254,6 +254,8 @@ def summarize(rd, duck, servo=None, now=None, ob=None, bat=None):
                      battery_shutdown=getattr(ob, "battery_shutdown", None) if ob is not None else None), pol, bus),
         # 上手清单：后端 0.5 秒判一次（onboard.Onboarding.tick），这里只拿缓存（审查 O6：这里每秒跑 10 次 × 每个页面）
         "onboarding": ob.view() if ob is not None else None,
+        # 写进主程序：准备情况 + 后台任务的进度（CommitService；没有这个后端时是 None）
+        "commit": (commit.view(rd, servo) if commit is not None else None),
         # 舵机会话（每一页顶上的提示条用）：开着就带；离开舵机页、有舵机保持着时不交还，会话会一直开着（用户 10-18）
         "servo_session": servo_session_view(servo),
         # 交还了多久：主程序如果是手动停的，要在鸭子上起来，页面一直提示到主程序连上为止（app 的 servo_watch 连上后清掉：审查 D12）
@@ -270,6 +272,9 @@ def summarize(rd, duck, servo=None, now=None, ob=None, bat=None):
         "servo_orphan": servo_orphan_view(servo),
         "servo_conflict_s": (int(now - servo.conflict_at) if servo is not None and getattr(servo, "conflict_at", None) is not None
                              and servo.state == "closed" and now - servo.conflict_at < 600 else None),
+        # 配网（studio/net.py）：net.json 不在 = known False，页面整块 WiFi 隐藏
+        "net": net.view(now) if net is not None else {"known": False},
+        "auth": {"has_password": auth.has_password() if auth is not None else None},
         "duck": duck,
         "name_on_duck": (rd.sysinfo.value or {}).get("name"),
     }

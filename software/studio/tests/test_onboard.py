@@ -1,7 +1,7 @@
 """总览重排（overview-merge-plan.md §5、审查 overview-merge-review.md）的后端：上手清单（studio/onboard.py）、
 主板温度格（state.cpu_view）、标定状态只认这次 hello 之后的（robotd.fresh_calib）、IMU 页的「核对过」记录。
 
-清单的判法照审查末尾「清单每一步的最终判法」表（§5 O14 改成 5 行）；每一步测四种状态：✓ ok · ● todo · ○ no · ? unk。
+清单的判法照审查末尾「清单每一步的最终判法」表（§5 O14 改成 6 行，任务 11 加了「写进主程序」）；每一步测四种状态：✓ ok · ● todo · ○ no · ? unk。
 跑法（studio 目录下）：
     py -3.13 -I -c "import sys;sys.path[:0]=['deps','.','dev'];import unittest;unittest.main(module=None,argv=['x','-v','tests.test_onboard'])"
 """
@@ -58,12 +58,12 @@ def pad_view(known=True, pads=(), attached=False, device=None, estop="ok", check
 XPAD = {"mac": XBOX, "name": "Xbox Wireless Controller", "paired": True, "trusted": True, "connected": True}
 
 
-def inp(bus=None, calib="rec", pad=None, studio=None, present=True, servo_session=False):
+def inp(bus=None, calib="rec", pad=None, studio=None, present=True, servo_session=False, commit=None):
     bus = copy.deepcopy(BUS) if bus is None else bus
     calib = copy.deepcopy(CALIB) if calib == "rec" else calib
     return {"bench": False, "present": present, "bus": bus, "calib": calib, "servo_session": servo_session,
             "pad": pad if pad is not None else pad_view(), "studio_servo": studio or {"ids": set(), "time": None},
-            "fp": O.full_fp(bus, calib)}
+            "fp": O.full_fp(bus, calib), "commit": commit}
 
 
 def row(view, key):
@@ -288,7 +288,7 @@ class OnboardingTest(unittest.TestCase):
         self.assertTrue((self.dir / "onboarding.json.bad").exists())
         self.assertTrue(any("读不出来" in e["msg"] for e in self.log.recent(20)))
         ob.tick(FakeRd())                                                     # 照样能判
-        self.assertEqual(len(ob.view()["rows"]), 5)
+        self.assertEqual(len(ob.view()["rows"]), 6)
         (self.dir / "onboarding.json").write_text("[1, 2]", encoding="utf-8")  # 顶层不是对象也一样
         self.assertEqual(O.Onboarding(str(self.dir), self.log).rec, {})
 
@@ -448,7 +448,7 @@ class CpuViewTest(unittest.TestCase):
             rd = FakeRd()
             ob.tick(rd)
             s = summarize(rd, {}, ob=ob)
-            self.assertEqual(len(s["onboarding"]["rows"]), 5)
+            self.assertEqual(len(s["onboarding"]["rows"]), 6)
             self.assertEqual(s["cpu"]["c"], 76.9)
             self.assertTrue(all("key" in t for t in s["todo"]))
             rd.health = Sample()                                               # health 读不到
@@ -607,7 +607,7 @@ class ReviewFixTest(unittest.TestCase):
             O.evaluate = real
         v = ob.view()
         self.assertEqual(v["header"]["kind"], "error")
-        self.assertEqual([r["state"] for r in v["rows"]], ["unk"] * 5)
+        self.assertEqual([r["state"] for r in v["rows"]], ["unk"] * 6)
         self.assertIn("ZeroDivisionError", v["rows"][0]["text"])
         self.assertTrue(ob.cpu_hot)                                        # 回差不受清单出错影响
         self.assertEqual(sum(1 for e in self.log.recent(30) if "上手清单判的时候出错" in e["msg"]), 1)   # 同一种错只记一次
@@ -935,7 +935,7 @@ class SkipTest(unittest.TestCase):
         Path(self.tmp.name, "onboarding.json").write_text(json.dumps({"v": 1, "skipped": "全跳"}), encoding="utf-8")
         self.assertNotIn("skipped", O.Onboarding(self.tmp.name, self.log).rec)
         ob.tick(self.rd, self.pad)                                             # 照样能判
-        self.assertEqual(len(ob.view()["rows"]), 5)
+        self.assertEqual(len(ob.view()["rows"]), 6)
 
     def test_hard_block_servo_not_skippable(self):
         c = copy.deepcopy(CALIB)
@@ -1054,6 +1054,74 @@ class BatteryWordingTest(unittest.TestCase):
         self.assertEqual(hint(True), "该充电了；到 6.6 V 它会自己坐下关机")
         self.assertEqual(hint(False), "该充电了；没电时它不会自己坐下，先停下、坐下再充")
         self.assertEqual(hint(None), "该充电了；没电时它不会自己坐下，先停下、坐下再充")
+
+
+# ---------------- 第 3 步「写进主程序」（任务 11） ----------------
+
+def factory_calib():
+    c = copy.deepcopy(CALIB)
+    cal = c["calibration"]
+    cal["motion_enabled"] = False
+    cal["imu_mount_verified"] = False
+    for j in cal["joints"]:
+        j["calibrated"] = False
+        j.pop("min_rad", None)
+        j.pop("max_rad", None)
+    return c
+
+
+def commit_view(ready=False):
+    return {"ready": ready, "items": [
+        {"key": "servo", "label": "舵机零位", "ok": False, "text": "还有 15 颗没在 Studio 校过零位",
+         "action": {"do": "servos", "label": "去舵机页"}},
+        {"key": "directions", "label": "方向", "ok": True, "text": "15 颗都用默认方向（−1）"},
+        {"key": "imu", "label": "IMU 方向", "ok": True, "text": "IMU 页站着校过了"},
+        {"key": "bus", "label": "舵机总线", "ok": True, "text": "舵机页没开着总线"},
+        {"key": "robotd", "label": "主程序", "ok": True, "text": "主程序在线"},
+    ], "job": None}
+
+
+class CommitStepTest(unittest.TestCase):
+    def test_order_title_and_number(self):
+        v = O.evaluate(inp(), {})
+        self.assertEqual([r["key"] for r in v["rows"]], ["servo", "imu", "commit", "pad", "estop", "walk"])
+        r = row(v, "commit")
+        self.assertEqual(r["n"], 3)
+        self.assertEqual(r["title"], "写进主程序")
+        self.assertEqual(r["desc"], O.COMMIT_TEXT)
+
+    def test_committed_calibration_is_done(self):
+        r = row(O.evaluate(inp(), {}), "commit")
+        self.assertEqual(r["state"], "ok")
+        self.assertIn("写进主程序了", r["text"])
+
+    def test_factory_shows_readiness_and_action(self):
+        cv = commit_view()
+        r = row(O.evaluate(inp(calib=factory_calib(), commit=cv), {}), "commit")
+        self.assertEqual(r["state"], "todo")
+        self.assertIn("还差舵机零位", r["text"])
+        self.assertEqual(r["commit"], cv)
+        self.assertEqual(r["actions"][0]["do"], "commit")
+
+    def test_unreadable_is_unknown(self):
+        r = row(O.evaluate(inp(calib=None), {}), "commit")
+        self.assertEqual(r["state"], "unk")
+
+    def test_calib_read_fallback_is_not_unknown(self):
+        """运动模式卡 waiting_for_bus：calibration-status 没有，但 calib-read 读到了文件。"""
+        cv = commit_view()
+        cv.update({"preview_ok": True, "from_file": True,
+                   "note": "主程序现在没在用这份标定，下面是文件里的内容"})
+        bus = {"build": BUILD, "mode": "motion", "phase": "waiting_for_bus",
+               "error": "torque readback at register 40: Feetech Sync Read timeout; missing IDs [21]"}
+        r = row(O.evaluate(inp(bus=bus, calib=None, commit=cv), {}), "commit")
+        self.assertEqual(r["state"], "todo")
+        self.assertIn("主程序现在没在用这份标定", r["desc"])
+
+    def test_skip_is_bound_to_calibration_fingerprint(self):
+        bound, fp = O.step_fp("commit", inp())
+        self.assertTrue(bound)
+        self.assertEqual(fp, O.full_fp(BUS, CALIB))
 
 
 if __name__ == "__main__":

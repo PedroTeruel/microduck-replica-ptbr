@@ -4,12 +4,13 @@
     电脑上：  py -3.13 -I run.py --listen 127.0.0.1:8000 --robotd tcp:127.0.0.1:17001 --configd tcp:127.0.0.1:17002
               （先起假 robotd：py -3.13 -I dev/fake_robotd.py）
     只读自检：python3 -I run.py --selfcheck
-    设密码：  python3 -I run.py set-password
+    设密码：  网页「更多 → 登录密码」，或者用 radxa 用户运行 python3 -I run.py set-password
 """
 import argparse
 import asyncio
 import getpass
 import os
+import socket
 import sys
 from pathlib import Path
 
@@ -34,7 +35,9 @@ def parse(argv=None):
     ap.add_argument("--log-dir", default=None, help="日志目录（默认 ./logs）")
     ap.add_argument("--web-dir", default=str(ROOT / "web"))
     ap.add_argument("--name", action="append", default=[], help="额外认可的主机名（可以写多个）")
-    ap.add_argument("--duck-label", default=None, help="界面上显示的名字，例如「② 二号鸭」")
+    ap.add_argument("--duck-label", default=None, help="界面上显示的名字；不写就用主机名（鸭子上是 duck-xxxx）")
+    ap.add_argument("--net-state", default="/run/microduck/net.json",
+                    help="netcheck 写的配网状态文件（默认 /run/microduck/net.json；不在就整块 WiFi 隐藏）")
     ap.add_argument("--duck-color", default="#0F7C80", help="标识色")
     ap.add_argument("--servo-port", default="/dev/ttyS2" if sys.platform.startswith("linux") else None,
                     help="舵机总线串口（鸭子上是 /dev/ttyS2；电脑上接 USB 转 TTL 写 COM5 之类）")
@@ -63,6 +66,8 @@ def main(argv=None):
     from .log import setup
 
     if a.cmd == "set-password":
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            raise SystemExit("别用 sudo：用 radxa 用户运行，不然 Studio 读不了密码文件")
         pw = getpass.getpass("新的管理员密码（至少 6 位）：")
         if pw != getpass.getpass("再输一次："):
             raise SystemExit("两次不一样，没改")
@@ -93,17 +98,17 @@ def main(argv=None):
 
     auth = Auth(state_dir, log)
     if not auth.has_password():
-        log.info("没设密码：同一个网络里打开网页就能用（想加密码：run.py set-password）", cat="系统",
-                 hint=f"在鸭子上运行：python3 -I {ROOT / 'run.py'} set-password")
+        log.info("没设密码：同一个网络里打开网页就能用（想加密码：更多 → 登录密码）", cat="系统",
+                 hint=f"网页里设，或者用 radxa 用户运行：python3 -I {ROOT / 'run.py'} set-password（别用 sudo）")
     host, _, port = a.listen.rpartition(":")
     if a.dev_autologin and host != "127.0.0.1":
         raise SystemExit("--dev-autologin 只能配 --listen 127.0.0.1:端口 用")
     if a.dev_autologin and (os.path.exists("/run/robotd.sock") or a.robotd.startswith("unix:")):
         # 鸭子上本机转发（反向代理、SSH 隧道）来的请求也是 127.0.0.1，开了等于人人是管理员
         raise SystemExit("--dev-autologin 只能在电脑上配假 robotd 用，鸭子上不能开")
-    duck = {"label": a.duck_label, "short": None, "color": a.duck_color}
-    if a.duck_label:
-        duck["short"] = a.duck_label.split(" ")[-1]
+    # 镜像里不写死名字：没给 --duck-label 就用主机名（新卡第一次开机是 duck-xxxx）
+    label = a.duck_label or socket.gethostname()
+    duck = {"label": label, "short": label.split(" ")[-1], "color": a.duck_color}
     names = list(a.name)
     precompress(a.web_dir)
     from .servo import ServoSession, load_directions
@@ -118,9 +123,15 @@ def main(argv=None):
     from .onboard import Onboarding
     # 总览上的上手清单（记录在 state 目录的 onboarding.json）；台架模式不连主程序，清单只写一句「不检查」
     onboard = Onboarding(state_dir, log)
+    from .commit import CommitService
+    # 上手清单第 3 步「写进主程序」：准备情况、预览、调 root 小助手写（电脑上没有小助手就只给预览、写入拒绝）
+    commit = CommitService(rd, log, state_dir)
     from .battery_svc import BatteryService
     # 电量估算（舵机电压查表，只警告）：设置在 state 目录的 battery-settings.json
     battery = BatteryService(rd, log, state_dir, servo=servo, onboard=onboard)
+    from .net import Net
+    # 配网状态：电脑上开发 / 没装小助手时，连 WiFi 不关热点（日志里写一句）
+    net = Net(a.configd, a.net_state, state_dir, log, dev_mode=bool(a.dev_autologin), port=int(port))
     # 总览下面「运行和调参」、设置页的模型（调参方案 T1–T3，只读）。台架模式不连主程序，就不开
     tune = None
     if not a.bench:
@@ -130,7 +141,7 @@ def main(argv=None):
         tune = Tune(rd, log, state_dir, root=a.dev_duck_root or "/", duck=duck)
     app = build_app(auth=auth, robotd=rd, log=log, web_dir=a.web_dir, duck=duck, names=names, state_dir=state_dir,
                     dev_autologin=a.dev_autologin, servo=servo, imu=imu, pad=pad, onboard=onboard, battery=battery,
-                    tune=tune)
+                    tune=tune, net=net, commit=commit)
     log.info(f"网页地址：http://{host if host not in ('0.0.0.0', '') else '<鸭子 IP>'}:{port}/", cat="系统", dedup=False)
     if a.bench:
         import threading

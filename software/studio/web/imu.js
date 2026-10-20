@@ -14,7 +14,9 @@
 //   前端只是更严（倾 ≥12°、≤30°、停满 1 秒、方向离前后左右之一 ≤35°），前端放行的后端一定收。
 //   方向由后端算：link.cmd('imu.op', {op:'solve', samples})，samples 是平铺列表 [{step, t, g}]。
 //   端到端测试：tests/imu_wizard_e2e.mjs 喂读数给这里的向导，tests/test_imu_wizard_e2e.py 把采到的交给 Python 算。
-// - 后端（studio/imu.py）现在只接 solve；save / coarse / detect / set_chip 回一句「要在鸭子上做」，页面照实显示。
+// - 后端（studio/imu.py）接 solve / coarse-capture / verify：出厂标定模式下用 busStatus.last_sample.imu
+//   采「静止 + 前倾」，算完交给主程序的 verify-imu（摆正 ≤5°，20 秒内往前低头 15–30°）写进标定文件。
+//   识别芯片、换芯片不在网页里做：开机前接好，之后才接的用 SSH 跑 microduck-firstboot。
 import { html, useState, useEffect, useRef } from './vendor/preact-htm.module.js';
 import { Duck3D } from './duck3d.js';
 
@@ -529,29 +531,12 @@ function StatusCard({ st, imu, live, age }) {
   </section>`;
 }
 
-function ChipCard({ imu, run, busy }) {
-  const cur = imu?.chip_setting || null;
-  const [pick, setPick] = useState(null);
-  const sel = pick ?? cur;              // 读不到鸭子上的设置（chip_setting 还没接）：一个都不框，免得看着像「设的是自动」
-  const det = Array.isArray(imu?.detected) ? imu.detected : null;
+function ChipCard({ imu }) {
   return html`<section class="board imu-card">
     <h3>芯片 <span class="sv-small">正在用：${imu?.source ? CHIP_CN[imu.source] || imu.source : '不知道'}</span></h3>
-    <div class="imu-chips" role="radiogroup" aria-label="IMU 芯片">
-      ${CHIPS.map(([k, name, tip]) => html`<label class=${'imu-chip' + (sel === k ? ' on' : '')} title=${tip}>
-        <input type="radio" name="imu-chip" checked=${sel === k} onChange=${() => setPick(k)} />
-        <b>${name}</b><small>${tip}</small>${cur === k ? html`<span class="imu-tag">现在的设置</span>` : null}</label>`)}
-    </div>
-    ${det ? html`<p class="sv-small">上次识别：${det.length ? det.map((d) => `${CHIP_CN[d.chip] || d.chip}${d.where ? ` · ${d.where}` : ''}`).join('；') : '一个都没找到'}</p>` : null}
-    <div class="sv-line">
-      <button class="btn-light" disabled=${busy} onClick=${() => run({ op: 'detect' }, '识别芯片', 30000)}>重新识别</button>
-      <button class="btn-dark" disabled=${busy || pick == null || pick === cur} onClick=${() => {
-        const ok = window.confirm(`换成「${CHIPS.find((c) => c[0] === sel)[1]}」：\n\n`
-          + '· 鸭子主程序要重启一次：15 颗舵机先松开，鸭子会软下来，先扶住或放平；\n'
-          + '· 每种芯片的安装方向分开存：换回以前确认过的芯片不用重做；没确认过的，要先粗校一次才能站；\n'
-          + '· 只改「用哪颗芯片、接在哪」，不换主程序。\n\n继续？');
-        if (ok) run({ op: 'set_chip', chip: sel }, '换芯片', 120000).then((r) => r.ok && setPick(null));
-      }}>用这个</button>
-    </div>
+    <p class="sv-small">IMU 要在第一次开机前接好。之后才接的，网页里不识别、也不换芯片：用 SSH 在鸭子上运行</p>
+    <p><code class="num">sudo microduck-firstboot --detect-imu-only --force</code></p>
+    <p class="sv-small">它会重新检测 IMU 并补上启动配置；跑完重启一次主程序。</p>
   </section>`;
 }
 
@@ -562,7 +547,7 @@ function blockReason(st, imu, live) {
   if (st.posture === 'absent') return '鸭子主程序没在跑';
   if (imu?.mount?.verified === false) return '方向还没确认过：先做上面的「粗校」';
   if (st.posture === 'starting') return `主程序还在启动${st.start_error ? `：${st.start_error}` : ''}`;
-  if (st.mode === 'commissioning') return '现在是调试模式（舵机软着、没有实时姿态）：站着校要在运动模式';
+  if (st.mode === 'commissioning') return '现在是标定模式（舵机软着、没有实时姿态）：站不起来，先用上面的「粗校」';
   if (st.posture === 'limp' || st.posture === 'homing') return '先让它站起来：双手托着，按手柄 +';
   if (st.posture === 'walking') return '正在走：先停下';
   if (st.posture === 'policy') return '策略在跑，一提起来它会迈腿：按一下手柄 +，回到「站好」再做';
@@ -645,13 +630,11 @@ function ResultCard({ res, imu, link, onRedo }) {
   const allChecked = confirms.every((_, i) => checks[i]);
   const [gw, gk] = GRADE[Q.grade] || ['—', ''];
   const redo = (res.redo || []).filter((k) => STEP[k]);
-  const save = async () => {
-    if (!window.confirm(SAVE_TEXT.join('\n') + '\n\n现在写？')) return;
-    setBusy(true); setOut(null);
-    // 后端只认它自己存的这次 solve 结果；这里带上新方向、人勾过的那几条，只是给它核对（对不上就拒）
-    const r = await link.cmd('imu.op', { op: 'save', source: imu?.source || null, mount: res.mount, ack: confirms }, 180000);
-    setBusy(false);
-    setOut(r.ok ? { ok: true, text: r.data?.note || '写好了' } : { ok: false, text: r.reason || r.error || '没写成' });
+  const save = () => {
+    // 站着精校的结果后端已经记进 imu-pending.json；真正写进主程序统一走第 3 步
+    setOut({ ok: true, text: '这次的方向已经记在 Studio 里：去上手清单第 3 步点「写进主程序」。' });
+    location.hash = '#/';
+    setTimeout(() => document.querySelector('[data-step="commit"]')?.scrollIntoView({ block: 'center' }), 300);
   };
   const detail = html`<table class="imu-table num">
       <thead><tr><th>步骤</th><th class="r">倾了</th><th class="r">斜了</th><th class="r">晃</th><th></th></tr></thead>
@@ -684,35 +667,112 @@ function ResultCard({ res, imu, link, onRedo }) {
     ${res.ok ? html`<details class="imu-details"><summary>详细数据</summary>${detail}</details>` : detail}
     ${confirms.map((c, i) => html`<label class="imu-confirm"><input type="checkbox" checked=${!!checks[i]} onChange=${(e) => setChecks({ ...checks, [i]: e.target.checked })} /> ${c}</label>`)}
     ${res.ok ? html`<div class="imu-save">
-      <button class="btn-dark" disabled=${busy || !allChecked || !res.mount} onClick=${save}>${busy ? '写入中…' : '写入'}</button>
-      <span class="sv-small">写的时候鸭子会软下来一次，先扶住（点了会把步骤再说一遍）</span>
+      <button class="btn-dark" disabled=${!res.mount} onClick=${save}>去上手清单第 3 步</button>
+      <span class="sv-small">这里只记下方向；第 3 步「写进主程序」才会重启主程序、切到运动模式</span>
     </div>` : null}
     ${!res.mount && res.ok ? html`<p class="sv-warn">算不出新方向（不知道现在的方向），不能写</p>` : null}
     ${out ? html`<div class=${'banner ' + (out.ok ? 'warn' : 'bad')} role="status"><b>${out.ok ? '写好了' : '没写成'}</b><span class="more">${out.text}</span></div>` : null}
   </section>`;
 }
 
-// 写入会发生什么（按方案的推荐做法 B：不改 robotd，借它自己的 verify-imu 写；robotd 加了 set-imu-mount 以后改成「不倒」）
-const SAVE_TEXT = [
-  '主程序先切到调试模式：15 颗舵机松开，鸭子会软下来。先扶住，或者让它坐下 / 放平。',
-  '主程序用新方向自己再验一遍：双手托起鸭子摆正（屏幕显示倾角，5° 以内），20 秒内往前低头 15–30° 停住。',
-  '验过了才写进标定文件，旧的自动留一份；验不过什么都不改。',
-  '最后切回运动模式（主程序重启一次，约 10 秒），再按手柄 + 站起来。站好时倾角应该接近 0°。',
-];
+// 站着精校的结果先记在 Studio（imu-pending.json）；写进主程序统一在上手清单第 3 步做。
 
 // ---------------- 方向没确认、站不起来：先粗校 ----------------
 
-function CoarseCard({ imu, run, busy }) {
+function CoarseCard({ st, imu, link }) {
+  const [step, setStep] = useState('idle');       // idle / still / fwd / confirm / verifying / done / failed
+  const [still, setStill] = useState(null);
+  const [res, setRes] = useState(null);
+  const [checks, setChecks] = useState({});
+  const [out, setOut] = useState(null);
+  const [busy, setBusy] = useState(false);
   if (imu?.mount?.verified !== false) return null;
+  const mode = st?.mode || imu?.mode;
+  if (mode === 'motion') {
+    return html`<section class="board imu-card imu-coarse">
+      <h3>粗校要在标定模式做</h3>
+      <p class="sv-warn">主程序已经在运动模式：站起来以后用站着校准。</p>
+      <p class="sv-small">方向还没确认过时，主程序其实进不了运动模式。先确认它现在是标定模式，再回来粗校。</p>
+    </section>`;
+  }
+  const grab = async (phase, seconds) => {
+    setBusy(true); setOut(null);
+    const r = await link.cmd('imu.op', { op: 'coarse-capture', phase, seconds }, 15000);
+    setBusy(false);
+    if (!r.ok) { setOut({ ok: false, text: r.reason || r.error || '没采到读数' }); return null; }
+    return r.data || {};
+  };
+  const takeStill = async () => {
+    const d = await grab('still', 3);
+    if (!d) return;
+    setStill(d); setStep('fwd');
+    setOut({ ok: true, text: `静止采到 ${d.n} 个读数。现在往前低头 15–30°，停住再点下一步。` });
+  };
+  const takeFwd = async () => {
+    const d = await grab('fwd', 3);
+    if (!d) return;
+    const samples = [...((still && still.samples) || []), ...(d.samples || [])];
+    setBusy(true);
+    const r = await link.cmd('imu.op', { op: 'solve', mode: 'coarse', frame: 'body', samples }, 20000);
+    setBusy(false);
+    if (!r.ok || !r.data || r.data.ok !== true) {
+      setStep('failed');
+      setOut({ ok: false, text: r.reason || (r.data && r.data.reason) || r.error || '算不出方向' });
+      return;
+    }
+    setRes(r.data); setStep('confirm');
+    setOut({ ok: true, text: '方向算出来了：对照模块实际装法勾一下，再交给主程序验证。' });
+  };
+  const reset = () => { setStep('idle'); setStill(null); setRes(null); setChecks({}); setOut(null); };
+  const verify = async () => {
+    setBusy(true); setStep('verifying'); setOut(null);
+    const r = await link.cmd('imu.op', { op: 'verify', confirmed: true, mount_wxyz: res.mount }, 45000);
+    setBusy(false);
+    if (r.ok) { setStep('done'); setOut({ ok: true, text: (r.data && r.data.note) || '主程序验证通过，安装方向已经写进标定文件' }); }
+    else { setStep('failed'); setOut({ ok: false, text: r.reason || r.error || '主程序没通过验证' }); }
+  };
+  const confirms = (res && res.confirm) || [];
+  const allChecked = confirms.every((_, i) => checks[i]);
+  const nowStep = step === 'idle' ? 'still' : step;
   return html`<section class="board imu-card imu-coarse">
-    <h3>先粗校一次，才能站</h3>
-    <p class="sv-small">${imu?.source ? CHIP_CN[imu.source] || imu.source : '这颗芯片'}的安装方向一次都没确认过：主程序不进运动模式（站不起来），站着校也就做不了。
-      先粗校：主程序切到调试模式（鸭子软着），双手托起来摆正 1 秒，再往前低头 15–30° 停住，电脑算出方向；
-      屏幕上的鸭子会照算出来的方向跟着动，你看它是不是也低头了，再对照模块实际怎么装的勾一下；
-      然后主程序自己再验一遍（再摆正、再低头，20 秒内），验过了才存。粗校完能站，再用下面的「站着校准」把站姿补上。</p>
-    <div class="sv-line"><button class="btn-light" disabled=${busy} onClick=${() => {
-      if (window.confirm('粗校：主程序切到调试模式，15 颗舵机松开，鸭子会软下来。先扶住。继续？')) run({ op: 'coarse' }, '粗校', 120000);
-    }}>开始粗校（约 30 秒）</button></div>
+    <h3>出厂第一次：粗校 IMU 方向</h3>
+    <p class="sv-small">方向一次都没确认过，主程序不肯进运动模式（站不起来），站着校也就做不了。粗校在标定模式做：
+      双手托起鸭子摆正、别动，采 3 秒；再往前低头 15–30° 停住，采 3 秒；电脑算出方向，再交给主程序自己验一遍。</p>
+    ${nowStep === 'still' ? html`<div class="imu-coarse-step">
+      <p class="imu-say"><b>① 双手托起鸭子，摆正，别动</b></p>
+      <p class="sv-small">让鸭子站直、脚朝下；手不要碰到身体。屏幕上的倾角应该在 0° 附近。</p>
+      <button class="btn-dark" disabled=${busy} onClick=${takeStill}>${busy ? '采集中…' : '采静止（3 秒）'}</button>
+    </div>` : null}
+    ${nowStep === 'fwd' ? html`<div class="imu-coarse-step">
+      <p class="imu-say"><b>② 往前低头 15–30°，停住</b></p>
+      <p class="sv-small">头那边往下，慢慢低到 15–30°，保持不动 3 秒。不要往左右歪。</p>
+      <div class="imu-actions">
+        <button class="btn-dark" disabled=${busy} onClick=${takeFwd}>${busy ? '采集 / 计算中…' : '采前倾（3 秒）'}</button>
+        <button class="btn-light" disabled=${busy} onClick=${takeStill}>重采静止</button>
+      </div>
+    </div>` : null}
+    ${nowStep === 'confirm' && res ? html`<div class="imu-coarse-step">
+      <p class="sv-small">粗校算出来：${res.standard ? `${res.standard.text}${res.standard.off_deg > 0.5 ? `（再偏 ${fmt(res.standard.off_deg)}°）` : ''}` : '方向已算出'}。
+        托着做的，左右没验，站姿补偿也不准；能站以后再站着精校一次。</p>
+      ${(res.notes || []).map((n) => html`<p class="sv-small">· ${n}</p>`)}
+      ${confirms.map((c, i) => html`<label class="imu-confirm"><input type="checkbox" checked=${!!checks[i]}
+        onChange=${(e) => setChecks({ ...checks, [i]: e.target.checked })} /> ${c}</label>`)}
+      <div class="imu-actions">
+        <button class="btn-dark" disabled=${busy || !res.mount || !allChecked} onClick=${verify}>交给主程序验证</button>
+        <button class="btn-light" disabled=${busy} onClick=${reset}>重做</button>
+      </div>
+      <p class="sv-small">点了以后主程序会等你：先摆正，再在 20 秒内往前低头 15–30°。方向不对它会回「Nothing saved」（什么都没存）。</p>
+    </div>` : null}
+    ${nowStep === 'verifying' ? html`<div class="imu-coarse-step">
+      <p class="imu-say"><b>摆正，然后 20 秒内往前低头 15–30°</b></p>
+      <p class="sv-small">主程序正在看 IMU 读数：先让鸭子站直（倾角 ≤5°），再往前低头 15–30° 并停住。最多等 35 秒（主程序的命令超时是 30 秒）。</p>
+    </div>` : null}
+    ${nowStep === 'done' ? html`<p class="sv-small">主程序验证通过，方向已经写进标定文件。下面「站着校准」还可以再精校一次。</p>` : null}
+    ${nowStep === 'failed' ? html`<div class="imu-actions">
+      <button class="btn-dark" onClick=${reset}>重做</button>
+      <span class="sv-small">主程序什么都没存（Nothing saved）</span>
+    </div>` : null}
+    ${out ? html`<div class=${'banner ' + (out.ok ? 'warn' : 'bad')} role="status"><span>${out.text}</span></div>` : null}
   </section>`;
 }
 
@@ -806,10 +866,10 @@ export function ImuPage({ st, imu, link, live, age }) {
         collecting=${w.phase === 'collect'} arrow=${arrow} cue=${cue} />
       <div class="imu-side">
         <${StatusCard} st=${st} imu=${imu} live=${live} age=${age} />
-        <${CoarseCard} imu=${imu} run=${run} busy=${busy} />
+        <${CoarseCard} st=${st} imu=${imu} link=${link} />
         <${CollectCard} st=${st} imu=${imu} live=${live} W=${w} act=${act} muted=${muted} setMuted=${setMuted} />
         <${ResultCard} res=${w.phase === 'done' ? res || w.result : null} imu=${imu} link=${link} onRedo=${onRedo} />
-        <${ChipCard} imu=${imu} run=${run} busy=${busy} />
+        <${ChipCard} imu=${imu} />
       </div>
     </div>
   </div>`;

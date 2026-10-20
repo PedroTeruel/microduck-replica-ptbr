@@ -1,8 +1,8 @@
 """总览上的「上手清单」，顺带主板温度格的回差、Studio 自己读的主板温度（总览重排 §5、审查 O4–O8、O14、O15）。
 
-清单照 overview-merge-review.md 末尾「清单每一步的最终判法」表，按 §5 O14 改成 5 行：
+清单照 overview-merge-review.md 末尾「清单每一步的最终判法」表，按 §5 O14 改成 6 行（任务 11 加了第 3 步）：
     卡片头（不编号）连上鸭子
-    1 舵机零位   2 IMU 方向   3 配手柄   4 测急停   5 站起来、走几步（记录还是两条：stood、walked）
+    1 舵机零位   2 IMU 方向   3 写进主程序   4 配手柄   5 测急停   6 站起来、走几步（记录还是两条：stood、walked）
 每一步五种状态：ok ✓ 完成 · skip ↷ 跳过了 · todo ● 该做 / 要重做 · no ○ 没做 · unk ? 读不到。
 「现在该做」= 第一个 ● / ○ 的步（跳过的算完成）。后面的不锁，照样能做。
 
@@ -70,17 +70,19 @@ CALIB_ERR = re.compile(r"calibrat|motion_enabled|calibration file|IMU mounting",
 TIPS = {
     "servo": "两套零位会打架：用 Studio 的舵机页标（标完，主程序文件里 15 颗的 zero_raw 都要是 2048）",
     "imu": "装歪 8.5° 一走就往前冲（一号鸭 10-12）",
+    "commit": "写的时候主程序会先卸力：扶好鸭子，别让它摔了",
     "pad": "G50 Pro 先拨到 S 档",
     "estop": "每次换手柄都测一次",
     "walk": None,
 }
-TITLES = {"servo": "舵机零位", "imu": "IMU 方向", "pad": "配手柄", "estop": "测急停", "walk": "站起来、走几步"}
-ORDER = ("servo", "imu", "pad", "estop", "walk")
-GO = {"servo": "servos", "imu": "imu", "pad": "pad_wizard", "estop": "estop", "walk": "remote"}   # 每一步的「去做」/「重新做」
-SKIP_CHANGED = {"servo": "舵机零位", "imu": "IMU 方向（或芯片）", "estop": "手柄（或主程序版本）", "walk": "标定"}
+TITLES = {"servo": "舵机零位", "imu": "IMU 方向", "commit": "写进主程序", "pad": "配手柄", "estop": "测急停", "walk": "站起来、走几步"}
+ORDER = ("servo", "imu", "commit", "pad", "estop", "walk")
+GO = {"servo": "servos", "imu": "imu", "commit": "commit", "pad": "pad_wizard", "estop": "estop", "walk": "remote"}   # 每一步的「去做」/「重新做」
+SKIP_CHANGED = {"servo": "舵机零位", "imu": "IMU 方向（或芯片）", "commit": "标定", "estop": "手柄（或主程序版本）", "walk": "标定"}
 HARD_SERVO = "主程序说标定没做完，跳过了鸭子也站不起来：先去舵机页"
 HARD_IMU = "主程序没确认方向，跳过了鸭子也站不起来，先去 IMU 页"
 HARD_STUCK = "主程序不让上力（标定或 IMU 方向没过），跳过了鸭子也站不起来：先去舵机页 / IMU 页"
+COMMIT_TEXT = "把舵机零位、方向、IMU 方向写进主程序。出厂镜像是标定模式；写完会切到运动模式并重启（约 20 秒），以后开机直接就能站、能走，不开网页也行。"
 FROZEN_WHY = "在调舵机：清单先停在调之前的样子，跳过 / 取消跳过等交还主程序以后再点"
 
 
@@ -271,7 +273,7 @@ def header_of(inp):
         return {"ok": False, "kind": "starting", "text": "在等舵机总线（多半是舵机没上电）" if phase == "waiting_for_bus"
                 else "主程序还在启动", "raw": str(err) if err else None}
     if mode == "commissioning":
-        return {"ok": False, "kind": "commissioning", "text": "调试模式：要站要走先回运动模式"}
+        return {"ok": False, "kind": "commissioning", "text": "标定模式：做完 IMU 粗校，第 3 步写完会自动切运动模式"}
     if mode == "motion" and phase == "control":
         return {"ok": True, "kind": "ok", "text": "连上了"}
     return {"ok": False, "kind": "other", "text": f"主程序在 {mode or '?'} 模式、{phase or '?'} 阶段"}
@@ -306,7 +308,7 @@ def servo_row(inp, rec, head):
         return _row("servo", "no", f"主程序文件里 {len(bad)} 颗没标：{'、'.join(bad[:4])}", actions=[("servos", "去舵机页")],
                     hard=HARD_SERVO)
     if head["kind"] == "commissioning" and bus.get("calibrated") is False:
-        return _row("servo", "no", "调试模式下主程序说标定没做完", actions=[("servos", "去舵机页")], hard=HARD_SERVO)
+        return _row("servo", "no", "标定模式下主程序说标定没做完", actions=[("servos", "去舵机页")], hard=HARD_SERVO)
     if not js:
         return _row("servo", "unk", "这次连上以后还没读到主程序的标定文件（calibration-status）", actions=[("servos", "去舵机页")])
     off = [j for j in js if j.get("zero_raw") != 2048]
@@ -348,7 +350,7 @@ def imu_row(inp, rec, head):
     source, mount = mount_of(bus, calib)
     # stuck_calib 不在这里拦：主程序明说 IMU 没确认由下面两个 HARD_IMU 分支拦，否则照正常逻辑判（能跳过）
     if head["kind"] == "commissioning" and bus.get("imu_mount_verified") is False:
-        return _row("imu", "no", "调试模式下主程序说 IMU 方向没确认", actions=[("imu", "去 IMU 页")], hard=HARD_IMU)
+        return _row("imu", "no", "标定模式下主程序说 IMU 方向没确认", actions=[("imu", "去 IMU 页")], hard=HARD_IMU)
     native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
     if native.get("imu_mount_verified") is False:
         # busStatus 明说没确认：标定状态读不到也是「没做」，不是「?」（代码审查 C4；待办那条也就不该被藏）
@@ -372,6 +374,55 @@ def imu_row(inp, rec, head):
         return _row("imu", "todo", "核对以后 IMU 方向（或芯片）改过了：去 IMU 页站着再核一次", actions=[("imu", "去 IMU 页")])
     return _row("imu", "todo", "文件里写着已确认；装歪 8.5° 也会显示已确认：去 IMU 页站着核一次", actions=[("imu", "去 IMU 页")])
 
+
+def _commit_complete(bus, calib):
+    """主程序那边的完成判据（任务 11）：motion_enabled = true、15 颗都 calibrated、正在用的 IMU 那份 verified。
+    从 calibration-status / busStatus 读，跟 imu_row 用的是同一条 mount_of。"""
+    cal = (calib or {}).get("calibration") if isinstance(calib, dict) else None
+    cal = cal if isinstance(cal, dict) else (calib if isinstance(calib, dict) else {})
+    js = _joints(calib)
+    _source, mount = mount_of(bus, calib)
+    return (cal.get("motion_enabled") is True and isinstance(js, list) and len(js) == len(SERVO_IDS)
+            and all(j.get("calibrated") is True for j in js)
+            and isinstance(mount, dict) and mount.get("verified") is True)
+
+
+def commit_row(inp, rec, head):
+    """第 3 步「写进主程序」：完成看主程序文件；没完成时把 CommitService 的准备情况逐项带出去。"""
+    bus = inp.get("bus") or {}
+    calib = inp.get("calib")
+    cv = inp.get("commit") if isinstance(inp.get("commit"), dict) else None
+
+    def out(state, text, actions=()):
+        row = _row("commit", state, text, actions=actions)
+        row["desc"] = COMMIT_TEXT
+        if cv is not None and cv.get("note"):
+            row["desc"] += "\n" + cv["note"]
+        if cv is not None:
+            row["commit"] = cv
+        return row
+
+    if head["kind"] in ("absent", "connecting", "bench"):
+        return out("unk", "连上主程序才判得出", [("commit", "去看看")])
+    if cv is not None and cv.get("dirty") is True:
+        why = "、".join(cv.get("dirty_why") or []) or "有新改动"
+        return out("todo", f"有新改动还没写进主程序：{why}", [("commit", "去写进主程序")])
+    if _commit_complete(bus, calib):
+        return out("ok", "写进主程序了：15 颗都标好、IMU 方向也确认了，开机直接就能站、能走",
+                   [("commit", "重新写")])
+    js = _joints(calib)
+    if (not isinstance(js, list) or not js) and not (cv is not None and cv.get("preview_ok") is True):
+        return out("unk", "这次连上以后还没读到主程序的标定文件：等几秒再试", [("commit", "去看看")])
+    if cv is None:
+        return out("todo", "还没写进主程序：等 Studio 把准备情况读出来", [("commit", "去看看")])
+    items = cv.get("items") if isinstance(cv.get("items"), list) else []
+    bad = [i for i in items if isinstance(i, dict) and not i.get("ok")]
+    if bad:
+        labels = "、".join(str(i.get("label") or "?") for i in bad[:3]) + ("…" if len(bad) > 3 else "")
+        return out("todo", f"还差{labels}：{bad[0].get('text') or '照下面的清单补齐'}", [("commit", "去写进主程序")])
+    if cv.get("ready") is True:
+        return out("todo", "准备齐了：点「写进主程序」一次写好，写完主程序重启", [("commit", "去写进主程序")])
+    return out("todo", "还没写进主程序：照下面的清单补齐再来", [("commit", "去写进主程序")])
 
 def _pad_names(pads):
     return "、".join(p.get("name") or p.get("mac") or "手柄" for p in pads[:2])
@@ -499,6 +550,8 @@ def step_fp(key, inp):
     if key == "imu":
         source, mount = mount_of(bus, calib)
         return True, mount_fp(source, (mount or {}).get("quat"))
+    if key == "commit":
+        return True, inp.get("fp")             # 标定（关节 + IMU 方向）改过：跳过作废、要重写
     if key == "estop":
         mac, _ = _current_pad(inp.get("pad"))
         if mac is None and _no_physical_pad(inp.get("pad")):
@@ -510,9 +563,9 @@ def step_fp(key, inp):
     return False, None                          # 配手柄：不绑
 
 
-FP_WHAT = {"servo": "读不到主程序的标定文件", "imu": "读不到主程序存的 IMU 方向", "estop": "读不到现在连的是哪只手柄（或主程序版本）",
-           "walk": "读不到标定"}
-BOUND = ("servo", "imu", "estop", "walk")      # 跳过要绑指纹的步（配手柄不绑）
+FP_WHAT = {"servo": "读不到主程序的标定文件", "imu": "读不到主程序存的 IMU 方向", "commit": "读不到标定",
+           "estop": "读不到现在连的是哪只手柄（或主程序版本）", "walk": "读不到标定"}
+BOUND = ("servo", "imu", "commit", "estop", "walk")      # 跳过要绑指纹的步（配手柄不绑）
 
 
 def with_skip(row, inp, rec):
@@ -556,8 +609,8 @@ def with_skip(row, inp, rec):
 def evaluate(inp, rec):
     """纯函数：inp 是 Onboarding._inputs() 收好的现场，rec 是记录。回给页面的整张卡。"""
     head = header_of(inp)
-    rows = [servo_row(inp, rec, head), imu_row(inp, rec, head), pad_row(inp, rec, head),
-            estop_row(inp, rec, head), walk_row(inp, rec, head)]
+    rows = [servo_row(inp, rec, head), imu_row(inp, rec, head), commit_row(inp, rec, head),
+            pad_row(inp, rec, head), estop_row(inp, rec, head), walk_row(inp, rec, head)]
     rows = [with_skip(r, inp, rec) for r in rows]
     nxt = next((r["key"] for r in rows if r["state"] in ("todo", "no")), None)
     return {"header": head, "rows": rows, "next": nxt, "all_done": all(r["state"] in ("ok", "skip") for r in rows),
@@ -628,7 +681,7 @@ def clean_records(data):
 
 
 def error_view(why):
-    """判清单整体出错：五行都写「?」和原因（不要永远「还在判…」，代码审查 C1）。"""
+    """判清单整体出错：六行都写「?」和原因（不要永远「还在判…」，代码审查 C1）。"""
     rows = [_row(k, "unk", f"Studio 判这一步时出错：{why}") for k in ORDER]
     return {"header": {"ok": False, "kind": "error", "text": "清单判的时候出错（看日志里「系统」那几行）", "raw": why},
             "rows": rows, "next": None, "all_done": False, "skipped_n": 0, "frozen": False}
@@ -653,6 +706,7 @@ class Onboarding:
         self._studio_mtime = None             # servo-calib 目录的 mtime：没变就不重新读文件
         self._eval_err = None                 # 上一次判清单出错的原因（同一种错只记一次）
         self._servo = None                    # 最近见到的舵机会话（取消跳过没传时用它判「清单冻着」）
+        self.commit_service = None            # studio/commit.py 的 CommitService（app 接上；第 3 步的准备情况从这里来）
         self.battery_shutdown = None          # robotd 配置的 [safety] battery_empty_shutdown：True / False / None（读不到）
         self._cfg_at = -1e9
         self.robotd_configs = ROBOTD_CONFIGS
@@ -867,7 +921,18 @@ class Onboarding:
                 pv = {"known": False, "error": f"{type(e).__name__}: {e}", "pads": []}
         return {"bench": getattr(rd, "addr", None) == "none", "present": rd.present, "bus": bus, "calib": calib,
                 "servo_session": servo is not None and getattr(servo, "state", None) in ("open", "opening"),
-                "pad": pv, "studio_servo": self._studio, "fp": full_fp(bus, calib)}
+                "pad": pv, "studio_servo": self._studio, "fp": full_fp(bus, calib),
+                "commit": self._commit_view(rd, servo)}
+
+    def _commit_view(self, rd, servo):
+        """第 3 步的准备情况（CommitService.view）。读不出来只让这一步显示「?」，别把整张卡弄没。"""
+        svc = self.commit_service
+        if svc is None:
+            return None
+        try:
+            return svc.view(rd, servo)
+        except Exception as e:  # noqa: BLE001
+            return {"ready": False, "items": [], "job": None, "error": f"{type(e).__name__}: {e}"}
 
     def tick(self, rd, pad=None, servo=None, now=None):
         """判一遍、记该记的（只改内存，不读文件）。回 True = 记录变了，调用方在线程里 save()。

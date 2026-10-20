@@ -3,7 +3,7 @@
 tests/overview_e2e.mjs 在总览上看主板温度格、上手清单、手柄区块，再做几件会出事的操作（按着摇杆时切页 / 滚走、
 在舞台上滚滚轮、手机上从手柄图空白处 / 动作按钮 / 图上的 A 起手往下刷），把假 robotd 每一步收到的东西打出来；
 这里核对（审查 O1、O2、O5、O8、O13、O14、O17、O18）。分两段跑：main（没有记录的 Studio）；done（Studio 带着
-「5 步都做过」的 onboarding.json 重启，清单收成一行）。
+「6 步都做过」的 onboarding.json 重启，清单收成一行）。
 
 要电脑上有 Node（≥ 22）和 Edge；没有（比如鸭子上）就跳过。设 STUDIO_E2E=0 也跳过。
 端口默认 Studio 18090、假 robotd 17021 / configd 17022、Edge 调试口 9343，被占了就换空闲的（不碰别人在跑的）。
@@ -132,11 +132,11 @@ class OverviewE2E(unittest.TestCase):
         d = self.out["desk"]
         self.assertEqual(d["cells"], 5)                                  # 仪表带第五格：主板
         self.assertIn("°C", d["cpu"])
-        self.assertEqual(d["rows"], 5)                                   # 清单 5 行（O14）
+        self.assertEqual(d["rows"], 6)                                   # 清单 6 行（任务 11 加了「写进主程序」）
         self.assertFalse(d["padActive"])                                 # 首页顶上：手柄那一块不在屏幕上
         self.assertEqual(d["nav"], "总览")
         self.assertEqual(d["now"], "1 舵机零位")                         # 现在该做：第一个没完成的
-        self.assertEqual(d["marks"][:3], ["●", "●", "○"])
+        self.assertEqual(d["marks"][:3], ["●", "●", "✓"])
         tops = self.out["d1100"]["tops"]                                 # 1100 宽：3 + 2
         self.assertEqual(len(set(tops[:3])), 1)
         self.assertGreater(tops[3], tops[0])
@@ -196,7 +196,7 @@ class OverviewE2E(unittest.TestCase):
         self.assertNotIn("正常", c["stale"])
 
     def test_unknown_shows_question_marks(self):
-        self.assertEqual(self.out["unknown"][:3], ["?", "?", "?"])
+        self.assertEqual(self.out["unknown"][:4], ["?", "?", "?", "?"])   # 舵机、IMU、写进主程序、配手柄
         self.assertIn("读不到 configd", self.out["unknownText"])
 
     def test_c3_keyboard_repeat_after_leaving_does_not_drive(self):
@@ -259,15 +259,15 @@ class OverviewE2E(unittest.TestCase):
         self.assertEqual(p["sticky"], "static")
 
     def test_all_done_collapses_to_one_line(self):
-        self.assertIn("上手 5 步都完成了（跳过 1 步）", self.done["done"])
+        self.assertIn("上手 6 步都完成了（跳过 1 步）", self.done["done"])
 
     def test_all_done_line_expands_and_remembers(self):
         e = self.done["expanded"]
-        self.assertEqual(e["rows"], 5)
-        self.assertEqual(e["redo"], 4)                                # 4 行 ✓ 都有「重新做」
+        self.assertEqual(e["rows"], 6)
+        self.assertEqual(e["redo"], 5)                                # 5 行 ✓ 都有「重新做」
         self.assertEqual(e["skip"], 1)
         self.assertIn("收起", e["head"])
-        self.assertEqual(self.done["expandedAfterReload"], 5)        # 展开状态存在 localStorage
+        self.assertEqual(self.done["expandedAfterReload"], 6)        # 展开状态存在 localStorage
         self.assertTrue(self.done["collapsedAfterReload"])
 
     def test_skip_unskip_and_redo(self):

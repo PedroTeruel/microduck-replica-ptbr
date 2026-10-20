@@ -56,6 +56,20 @@ class FriendlyTest(unittest.TestCase):
     def test_pad_forget(self):
         self.assertIn("忘掉了", helper.friendly("forgotten", None, "pad-forget"))
 
+    def test_not_motion_keeps_helper_reason(self):
+        msg = "写进去了，但主程序停在调试模式：commissioning；已经换回原来的文件，再起了一次"
+        self.assertEqual(msg, helper.friendly("not_motion", {"msg": msg}, "calib-commit"))
+
+    def test_wifi_old_helper_says_reinstall(self):
+        text = helper.friendly("bad_verb", None, "wifi-hotspot-down")
+        self.assertIn("小助手太旧", text)
+        self.assertIn("deploy/install.sh", text)
+
+    def test_wifi_results(self):
+        self.assertIn("热点关了", helper.friendly("hotspot_down", None, "wifi-hotspot-down"))
+        self.assertIn("本来就没开", helper.friendly("already_down", None, "wifi-hotspot-down"))
+        self.assertIn("热点开回来了", helper.friendly("hotspot_up", None, "wifi-hotspot-up"))
+
 
 class PadCallTest(unittest.TestCase):
     def test_pair_payload_and_wrapper_timeout(self):
@@ -79,6 +93,28 @@ class PadCallTest(unittest.TestCase):
         self.assertEqual(run.call_args.args[0], ["sudo", "-n", helper.HELPER, "pad-forget"])
         self.assertEqual(json.loads(run.call_args.kwargs["input"]),
                          {"by": "电脑", "mac": "AA:BB:CC:DD:EE:FF"})
+
+
+class WifiCallTest(unittest.TestCase):
+    def test_down_payload_and_wrapper_timeout(self):
+        out = '{"step":"done","detail":{"exit":0,"result":"hotspot_down"}}\n'
+        with mock.patch.object(helper.subprocess, "run", return_value=_proc(out)) as run:
+            ok, result, detail = helper.wifi_hotspot_down("电脑", "Home")
+        self.assertTrue(ok)
+        self.assertEqual(result, "hotspot_down")
+        self.assertEqual(run.call_args.args[0], ["sudo", "-n", helper.HELPER, "wifi-hotspot-down"])
+        self.assertEqual(json.loads(run.call_args.kwargs["input"]), {"by": "电脑", "ssid": "Home"})
+        self.assertEqual(run.call_args.kwargs["timeout"], 30)
+
+    def test_up_payload_and_wrapper_timeout(self):
+        out = '{"step":"done","detail":{"exit":0,"result":"hotspot_up"}}\n'
+        with mock.patch.object(helper.subprocess, "run", return_value=_proc(out)) as run:
+            ok, result, detail = helper.wifi_hotspot_up("电脑")
+        self.assertTrue(ok)
+        self.assertEqual(result, "hotspot_up")
+        self.assertEqual(run.call_args.args[0], ["sudo", "-n", helper.HELPER, "wifi-hotspot-up"])
+        self.assertEqual(json.loads(run.call_args.kwargs["input"]), {"by": "电脑"})
+        self.assertEqual(run.call_args.kwargs["timeout"], 40)
 
 
 class CallParseTest(unittest.TestCase):

@@ -1,4 +1,5 @@
-"""root 小助手 deploy/microduck-helper 的五个动词：总线三个（bus-take / bus-give-back / bus-abort）加手柄两个（pad-pair / pad-forget）。
+"""root 小助手 deploy/microduck-helper 的七个动词：总线三个（bus-take / bus-give-back / bus-abort）、手柄两个（pad-pair / pad-forget）、
+热点两个（wifi-hotspot-down / wifi-hotspot-up）。
 
 在电脑上跑，不碰真系统：假 systemctl（robotd 的状态机：stop 卡住、KILL、Restart=always、Condition 旗、
 start-limit 计数、reset-failed）、假 robotd（busStatus / safeToRestart / policies / startupSubscribe 按剧本变，
@@ -16,6 +17,7 @@ import os
 import shutil
 import stat
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -66,6 +68,7 @@ class Robot:
         self.w = world
         self.reachable = True
         self.mode, self.phase = "motion", "control"
+        self.error = None
         self.policy_enabled, self.homed, self.torque = False, True, True
         self.homed_at = None
         self.handover_hold, self.home_recovery = False, False
@@ -115,27 +118,36 @@ class Robot:
             if self.torque is None:
                 self.torque = False
 
-    def rpc(self, method):
+    def rpc(self, method, params=None):
         if self.w.robotd != "active" or not self.reachable:
             raise H.RpcError(f"{method}：连不上")
         self.w.rpc_calls.append(method)
         if method == "robot.busStatus":
             if self.phase != "control":
                 d = {"build": "fake", "mode": self.mode, "phase": self.phase}
+                if self.error is not None:
+                    d["error"] = self.error
                 if self.handover is not None:
                     d["handover"] = self.handover
                 return d
             if self.moving:
                 self.joints = {i: v + 0.05 for i, v in self.joints.items()}
-            return {"build": "fake", "mode": self.mode, "phase": "control", "homed": self.homed,
-                    "policy_enabled": self.policy_enabled, "home_recovery": self.home_recovery,
-                    "handover": self.handover,
-                    "native": {"torque_state_confirmed": self.torque, "handover_hold": self.handover_hold,
-                               "joints": [{"id": i, "position_rad": v} for i, v in self.joints.items()]}}
+            d = {"build": "fake", "mode": self.mode, "phase": "control", "homed": self.homed,
+                 "policy_enabled": self.policy_enabled, "home_recovery": self.home_recovery,
+                 "handover": self.handover,
+                 "native": {"torque_state_confirmed": self.torque, "handover_hold": self.handover_hold,
+                            "joints": [{"id": i, "position_rad": v} for i, v in self.joints.items()]}}
+            if self.error is not None:
+                d["error"] = self.error
+            return d
         if method == "robot.safeToRestart":
             return {"safe": self.safe, "reason": None if self.safe else "the robot is walking"}
         if method == "robot.policies":
             return {"sitting": self.sitting, "enabled": self.policy_enabled}
+        if method == "robot.busCommand":
+            if (params or {}).get("action") == "calibration-status":
+                return self.w.calibration_status(method)
+            raise H.RpcError(f"{method}：不认识的动作 {(params or {}).get('action')}")
         if method == "robot.startupSubscribe":
             return {"steps": {"1": {"status": "success"}, "4": {"status": self.step4}}}
         raise H.RpcError(f"{method}：不认识")
@@ -155,6 +167,10 @@ class World:
         self.units = {"padd": "active", H.GAMESIR: "inactive", H.HOLD_UNIT: "inactive"}
         self.enabled = {H.GAMESIR: False}
         self.dropin, self.hold_fails = True, False
+        self.exec_commissioning = False
+        self.commissioning_dropin = False
+        self.calib_available = True
+        self.ctx_factory = FakeCtx
         self.port_users = []
         self.calls, self.rpc_calls, self.events = [], [], []
         self.locks = set()
@@ -164,6 +180,11 @@ class World:
         self.robotctl_replies = []      # [(rc, stdout, stderr)]；按调用顺序弹
         self.robotctl_timeouts = []
         self.robotctl_timeout = False
+        self.nmcli_active = None        # "wlan0" = 热点开着
+        self.nmcli_down_rc, self.nmcli_up_rc = 0, 0
+        self.nmcli_down_hang = self.nmcli_up_hang = False
+        self.nmcli_calls = []
+        self.run_timeouts = []
         Path(root, "etc/systemd/system/robotd.service.d").mkdir(parents=True)
         Path(root, H.DROPIN.lstrip("/")).write_text("[Unit]\n", encoding="utf-8")
 
@@ -180,6 +201,18 @@ class World:
         self.path(H.FLAG).write_text("{}", encoding="utf-8")
         self.units[H.HOLD_UNIT] = "active"
         self.robotd = "inactive"
+
+    def calibration_status(self, method="robot.busCommand"):
+        if not self.calib_available:
+            raise H.RpcError(f"{method}：calibration not available yet")
+        import tomllib
+        try:
+            with open(self.path(H.CALIB), "rb") as f:
+                cal = tomllib.load(f)
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            raise H.RpcError(f"{method}：{e}") from e
+        return {"calibration": cal, "imu_source": "bus", "uncalibrated_joints": [],
+                "imu_mount": {"quat": cal.get("imu_mount_quat"), "verified": cal.get("imu_mount_verified")}}
 
     # 时间
     def tick(self):
@@ -218,7 +251,10 @@ class World:
             vals = {"ActiveState": self.robotd, "SubState": sub, "Result": self.result,
                     "ConditionResult": self.condition,
                     "DropInPaths": "/etc/systemd/system/robotd.service.d/zzzz-r17-0151.conf"
-                    + (" /etc/systemd/system/robotd.service.d/zzzz-studio-bus.conf" if self.dropin else "")}
+                    + (" /etc/systemd/system/robotd.service.d/zzzz-studio-bus.conf" if self.dropin else "")
+                    + (" " + H.COMMISSIONING_DROPIN if self.commissioning_dropin else ""),
+                    "ExecStart": "{ path=/opt/robot/robotd ; argv[]=/opt/robot/robotd --socket /run/robotd.sock"
+                                 + (" --commissioning" if self.exec_commissioning else "") + " ; }"}
         else:
             vals = {"ActiveState": self.units.get(unit, "inactive")}
         return "".join(f"{p}={vals.get(p, '')}\n" for p in props)
@@ -231,6 +267,8 @@ class World:
             return 0, "", ""
         if name == "fuser":
             return (0, " ".join(map(str, self.port_users)), "") if self.port_users else (1, "", "")
+        if name == "nmcli":
+            return self.run_nmcli(args)
         if name == "systemd-run":
             if any(a == f"--unit={H.HOLD_UNIT}" for a in args):
                 if self.units[H.HOLD_UNIT] == "active":
@@ -247,6 +285,18 @@ class World:
             return 0, (self.robotd if args[1] == "robotd" else self.units.get(args[1], "inactive")) + "\n", ""
         if args[0] == "is-enabled":
             return 0, ("enabled" if self.enabled.get(args[1]) else "disabled") + "\n", ""
+        if args[0] == "daemon-reload":
+            return 0, "", ""
+        if args[0] == "restart":
+            if args[1] == "robotd":
+                self.events.append(("restart_robotd", t))
+                if getattr(self, "restart_ok", True):
+                    self.robotd, self.result, self.condition = "active", "success", "yes"
+                    self.robot.boot(t)
+                    return 0, "", ""
+                self.robotd, self.result = "failed", "exit-code"
+                return 1, "", "Job for robotd.service failed"
+            return 0, "", ""
         if args[0] == "reset-failed":
             if args[1] == "robotd":
                 self.starts, self.result = [], "success"
@@ -279,6 +329,24 @@ class World:
             return 1, "", "robotd.service is not loaded/running"
         raise AssertionError(argv)
 
+    def run_nmcli(self, args):
+        self.nmcli_calls.append(list(args))
+        if args[:4] == ["-t", "-f", "NAME,DEVICE", "connection"] and args[4:] == ["show", "--active"]:
+            return 0, (f"{H.HOTSPOT}:{self.nmcli_active}\n" if self.nmcli_active else ""), ""
+        if args == ["connection", "down", H.HOTSPOT]:
+            if self.nmcli_down_rc:
+                return self.nmcli_down_rc, "", "Error: failed to bring down the connection"
+            if not self.nmcli_down_hang:
+                self.nmcli_active = None
+            return 0, "", ""
+        if args == ["connection", "up", H.HOTSPOT]:
+            if self.nmcli_up_rc:
+                return self.nmcli_up_rc, "", "Error: failed to activate connection"
+            if not self.nmcli_up_hang:
+                self.nmcli_active = "wlan0"
+            return 0, "", ""
+        return 1, "", f"unexpected nmcli: {args}"
+
     def run_robotctl(self, argv, timeout):
         self.calls.append(list(argv))
         self.robotctl_timeouts.append(timeout)
@@ -295,7 +363,7 @@ class World:
         env = {a.split("=", 1)[1].split("=", 1)[0]: a.split("=", 1)[1].split("=", 1)[1]
                for a in argv if a.startswith("--setenv=")}
         verb = argv[-1]
-        child = FakeCtx(self, data, env=env)
+        child = self.ctx_factory(self, data, env=env)
         code = H.run(["microduck-helper", verb], child)
         for line in child.stdout.buf.getvalue().splitlines(keepends=True):
             on_line(line)
@@ -320,6 +388,7 @@ class FakeCtx(H.Ctx):
         return 4242
 
     def run(self, argv, input=None, timeout=15.0):
+        self.w.run_timeouts.append((list(argv), timeout))
         return self.w.run(argv)
 
     def relay(self, argv, data, on_line):
@@ -329,7 +398,7 @@ class FakeCtx(H.Ctx):
         return self.w.run_robotctl(argv, timeout)
 
     def rpc(self, method, params=None, timeout=1.0):
-        return self.w.robot.rpc(method)
+        return self.w.robot.rpc(method, params)
 
     def startup_report(self, timeout=1.0):
         return self.w.robot.rpc("robot.startupSubscribe")
@@ -658,6 +727,117 @@ class PadTest(Base):
         self.assertEqual(self.w.robotd, "active")
         self.assertEqual([c for c in self.w.calls if c and c[0] == "systemctl"], [])
         self.assertEqual([c for c in self.w.calls if c and c[0] == "systemd-run"], [])
+
+
+class WifiTest(Base):
+    """wifi-hotspot-down / wifi-hotspot-up：只碰 nmcli，不碰总线旗子、hold 单元、robotd 或 helper.lock。"""
+
+    def nmcli(self, verb="show"):
+        return [c for c in self.w.nmcli_calls if c[:1] == [verb] or (verb == "show" and c[:1] == ["-t"])]
+
+    def test_args_are_validated_without_running_nmcli(self):
+        for verb in ("wifi-hotspot-down", "wifi-hotspot-up"):
+            for args in ({"by": ""}, {"by": "x", "extra": 1}, {"by": 3}, {}):
+                with self.subTest(verb=verb, args=args):
+                    code, ctx = self.call(verb, args)
+                    self.assertEqual(code, H.EXIT_ARGS, ctx.stdout.lines())
+                    self.assertEqual(self.last()["result"], "bad_args")
+        code, ctx = self.call("wifi-hotspot-down", {"by": "x", "ssid": 3})
+        self.assertEqual(code, H.EXIT_ARGS, ctx.stdout.lines())
+        self.assertEqual(self.w.nmcli_calls, [])
+
+    def test_down_when_already_off_is_ok(self):
+        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
+        self.assertEqual(self.last()["result"], "already_down")
+        self.assertEqual(self.w.nmcli_calls[0][:1], ["-t"])
+        self.assertNotIn(["connection", "down", H.HOTSPOT], self.w.nmcli_calls)
+        self.assertFalse(self.w.path(H.STUDIO_CONNECTING).exists())
+
+    def test_down_turns_the_hotspot_off_and_waits(self):
+        self.w.nmcli_active = "wlan0"
+        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑", "ssid": "Home"})
+        self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
+        self.assertEqual(self.last()["result"], "hotspot_down")
+        self.assertIn(["connection", "down", H.HOTSPOT], self.w.nmcli_calls)
+        self.assertIsNone(self.w.nmcli_active)
+        self.assertEqual(self.last()["by"], "电脑")
+        window = json.loads(self.w.path(H.STUDIO_CONNECTING).read_text(encoding="utf-8"))
+        self.assertEqual(window["ssid"], "Home")
+        self.assertTrue(time.time() + 80 < window["until"] <= time.time() + 95)
+        self.assertIn((H.STUDIO_CONNECTING, 0o644), ctx.fs_log)
+        self.assertIn((H.STUDIO_CONNECTING_DIR, 0o755), ctx.fs_log)
+        self.assertIn((["nmcli", "connection", "down", H.HOTSPOT], H.NMCLI_DOWN_TIMEOUT),
+                      self.w.run_timeouts)
+
+    def test_down_failure_is_exit_5(self):
+        self.w.nmcli_active = "wlan0"
+        self.w.nmcli_down_rc = 4
+        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        self.assertEqual(code, H.EXIT_FAIL, ctx.stdout.lines())
+        self.assertEqual(self.last()["result"], "down_failed")
+        self.assertEqual(self.last()["exit"], H.EXIT_FAIL)
+
+    def test_down_times_out_after_10s(self):
+        self.w.nmcli_active = "wlan0"
+        self.w.nmcli_down_hang = True
+        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        self.assertEqual(code, H.EXIT_FAIL, ctx.stdout.lines())
+        self.assertEqual(self.last()["result"], "timeout")
+        self.assertGreaterEqual(self.w.clock.t, 1000.0 + H.WIFI_DOWN_WAIT)
+
+    def test_up_when_already_on_is_ok(self):
+        self.w.nmcli_active = "wlan0"
+        self.w.path(H.STUDIO_CONNECTING_DIR).mkdir(parents=True, exist_ok=True)
+        self.w.path(H.STUDIO_CONNECTING).write_text("{}", encoding="utf-8")
+        code, ctx = self.call("wifi-hotspot-up", {"by": "电脑"})
+        self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
+        self.assertEqual(self.last()["result"], "already_up")
+        self.assertNotIn(["connection", "up", H.HOTSPOT], self.w.nmcli_calls)
+        self.assertFalse(self.w.path(H.STUDIO_CONNECTING).exists())
+
+    def test_up_turns_the_hotspot_on_and_waits(self):
+        self.w.path(H.STUDIO_CONNECTING_DIR).mkdir(parents=True, exist_ok=True)
+        self.w.path(H.STUDIO_CONNECTING).write_text("{}", encoding="utf-8")
+        code, ctx = self.call("wifi-hotspot-up", {"by": "电脑"})
+        self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
+        self.assertEqual(self.last()["result"], "hotspot_up")
+        self.assertEqual(self.w.nmcli_active, "wlan0")
+        self.assertIn(["connection", "up", H.HOTSPOT], self.w.nmcli_calls)
+        self.assertFalse(self.w.path(H.STUDIO_CONNECTING).exists())
+
+    def test_up_failure_is_exit_5(self):
+        self.w.nmcli_up_rc = 3
+        code, ctx = self.call("wifi-hotspot-up", {"by": "电脑"})
+        self.assertEqual(code, H.EXIT_FAIL, ctx.stdout.lines())
+        self.assertEqual(self.last()["result"], "up_failed")
+
+    def test_up_times_out_after_30s(self):
+        self.w.nmcli_up_hang = True
+        code, ctx = self.call("wifi-hotspot-up", {"by": "电脑"})
+        self.assertEqual(code, H.EXIT_FAIL, ctx.stdout.lines())
+        self.assertEqual(self.last()["result"], "timeout")
+        self.assertGreaterEqual(self.w.clock.t, 1000.0 + H.WIFI_UP_WAIT)
+
+    def test_wifi_lock_is_separate_from_the_bus_lock(self):
+        self.w.locks.add(H.WIFI_LOCK)
+        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        self.assertEqual(code, H.EXIT_BUSY, ctx.stdout.lines())
+        self.assertEqual(self.last()["result"], "busy")
+        self.assertEqual(self.w.nmcli_calls, [])
+        self.w.locks.discard(H.WIFI_LOCK)
+        self.w.locks.add(H.LOCK)                     # 总线锁不算：热点操作照常
+        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
+
+    def test_does_not_touch_the_bus_or_robotd(self):
+        self.w.nmcli_active = "wlan0"
+        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
+        self.assertFalse(self.w.flag())
+        self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive")
+        self.assertEqual(self.w.robotd, "active")
+        self.assertEqual([c for c in self.w.calls if c and c[0] == "systemctl"], [])
 
 
 class MarkerTest(Base):

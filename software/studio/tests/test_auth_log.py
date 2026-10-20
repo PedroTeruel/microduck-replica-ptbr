@@ -79,6 +79,23 @@ class AuthTest(unittest.TestCase):
         self.auth.set_password("duck-654321")
         self.assertIsNone(self.auth.session(token))
 
+    def test_changing_password_can_keep_the_current_browser(self):
+        self.auth.set_password("duck-123456")
+        token, _, _ = self.auth.login("duck-123456", "1.1.1.1")
+        other, _, _ = self.auth.login("duck-123456", "2.2.2.2")
+        self.auth.set_password("duck-654321", keep_token=token)
+        self.assertIsNotNone(self.auth.session(token))
+        self.assertIsNone(self.auth.session(other))
+        self.assertTrue(self.auth.check_password("duck-654321"))
+
+    def test_clear_password_removes_file_and_sessions(self):
+        self.auth.set_password("duck-123456")
+        token, _, _ = self.auth.login("duck-123456", "1.1.1.1")
+        self.auth.clear_password()
+        self.assertFalse(self.auth.has_password())
+        self.assertFalse(self.auth.pw_path.exists())
+        self.assertIsNone(self.auth.session(token))
+
     def test_reauth(self):
         self.auth.set_password("duck-123456")
         token, _, _ = self.auth.login("duck-123456", "1.1.1.1")
@@ -110,6 +127,18 @@ class OriginGuardTest(unittest.TestCase):
         self.assertFalse(self.g.origin_ok("http://evil.example.com", "microduck-2.local"))
         self.assertFalse(self.g.origin_ok(None, "microduck-2.local"))
         self.assertFalse(self.g.origin_ok("file://", "microduck-2.local"))
+
+
+class SetPasswordCommandTest(unittest.TestCase):
+    def test_refuses_root_before_prompting(self):
+        from studio import __main__ as main_mod
+        with mock.patch.object(main_mod.os, "geteuid", return_value=0, create=True), \
+             mock.patch.object(main_mod.getpass, "getpass") as ask:
+            with self.assertRaises(SystemExit) as e:
+                main_mod.main(["set-password"])
+        self.assertIn("别用 sudo", str(e.exception))
+        self.assertIn("radxa", str(e.exception))
+        ask.assert_not_called()
 
 
 class LogTest(unittest.TestCase):
@@ -188,6 +217,17 @@ class LogTest(unittest.TestCase):
         self.log.warn("登录失败", raw="password=duck-123456")
         text = self.log.files()[-1].read_text(encoding="utf-8")
         self.assertNotIn("duck-123456", text)
+        self.assertIn("[已隐藏]", text)
+
+    def test_secret_keys_are_redacted_even_without_hide(self):
+        """按键名打码：psk、password 这些键的值不进日志（家里的 WiFi 密码走这条）。"""
+        with log_cmd(self.log, "连 WiFi", "configd net.connect",
+                     args={"ssid": "Home", "psk": "Unique-PSK-2026-xyz"}) as t:
+            t.ok({"outcome": "connected", "ssid": "Home"})
+        self.log.warn("现场", ctx={"ssid": "Home", "psk": "Unique-PSK-2026-xyz", "nested": [{"password": "p2-unique"}]})
+        text = self.log.files()[-1].read_text(encoding="utf-8")
+        self.assertNotIn("Unique-PSK-2026-xyz", text)
+        self.assertNotIn("p2-unique", text)
         self.assertIn("[已隐藏]", text)
 
     def test_repeats_within_a_minute_are_merged(self):

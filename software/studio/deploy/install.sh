@@ -1,5 +1,5 @@
 #!/bin/sh
-# 装 Studio 的 root 小助手（只有舵机总线交接三个动词）+ robotd 的保护 drop-in + sudoers 一行。
+# 装 Studio 的 root 小助手（0.5.1：总线交接、手柄、热点、calib-read / calib-commit 九个动词）+ robotd 的保护 drop-in + sudoers 一行。
 # 用法（在鸭子上，deploy 目录里）：sudo sh install.sh [跑 Studio 的用户，默认 radxa]
 # 不重启 robotd，不碰 /dev/ttyS2。说明见 INSTALL.md。
 set -eu

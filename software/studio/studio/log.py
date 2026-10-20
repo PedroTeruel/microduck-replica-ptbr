@@ -32,7 +32,7 @@ import traceback
 from collections import deque
 from pathlib import Path
 
-CATS = ["系统", "连接", "robotd", "命令", "安全", "总线", "校准", "IMU", "手柄", "页面", "电池", "调参"]
+CATS = ["系统", "连接", "网络", "robotd", "命令", "安全", "总线", "校准", "IMU", "手柄", "页面", "电池", "调参"]
 LEVELS = ["debug", "info", "warn", "error"]
 _TAG = {"debug": "[调试]", "info": "", "warn": "[警告]", "error": "[错误]"}
 
@@ -43,6 +43,18 @@ MAX_SECRETS = 64
 RING = 500
 DEDUP_WINDOW_S = 60
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+# 按键名打码：这些键的值永远不会进日志（家里 WiFi 的 psk 就是走这条）
+SECRET_KEYS = frozenset({"psk", "password", "passwd", "secret", "token", "authorization"})
+
+
+def redact(value):
+    """把字典里敏感键的值换成「[已隐藏]」；嵌套的字典、列表也照做（原文是 JSON 的也走这里）。"""
+    if isinstance(value, dict):
+        return {k: ("[已隐藏]" if isinstance(k, str) and k.lower() in SECRET_KEYS else redact(v))
+                for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [redact(v) for v in value]
+    return value
 
 
 def _stamp(ts):
@@ -102,7 +114,7 @@ class Log:
         now = time.time()
         msg, raw, hint, step = (self._clean(x) for x in (msg, raw, hint, step))
         tb = self._clean(traceback.format_exc()) if exc else ""
-        ctx_text = self._clean(json.dumps(ctx, ensure_ascii=False, default=str)) if ctx else None
+        ctx_text = self._clean(json.dumps(redact(ctx), ensure_ascii=False, default=str)) if ctx else None
         with self._lock:
             if dedup:
                 key = (cat, level, msg)
@@ -310,7 +322,7 @@ class Timer:
         self.done = False
         detail = f"（{who}）" if who else ""
         self.log.write(f"→ {what}{detail}", cat="命令", step=step,
-                       raw=json.dumps(args, ensure_ascii=False) if args else None, dedup=False)
+                       raw=json.dumps(redact(args), ensure_ascii=False) if args else None, dedup=False)
 
     def ms(self):
         return int((time.monotonic() - self.t0) * 1000)
@@ -339,7 +351,7 @@ class Timer:
 def _brief(x, limit=600):
     if x is None:
         return None
-    s = x if isinstance(x, str) else json.dumps(x, ensure_ascii=False, default=str)
+    s = x if isinstance(x, str) else json.dumps(redact(x), ensure_ascii=False, default=str)
     return s if len(s) <= limit else s[:limit] + f"…（共 {len(s)} 字）"
 
 

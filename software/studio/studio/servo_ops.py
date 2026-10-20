@@ -947,6 +947,12 @@ class ServoOps:
             r = self.calibrate_one(i, b, 2048)
             if r["ok"]:
                 ok.append(i)
+                if not sim:
+                    try:
+                        from .commit import record_centered
+                        record_centered(self.state_dir, [i], self.s.by)
+                    except OSError as e:
+                        self.log(f"#{i} 零位校好了，但没记进 Studio 的清单：{e}", "校准", "warn")
                 deltas[str(i)] = r["target"] - r["pre"]
                 if abs(deltas[str(i)]) * 360 / 4096 > CALIB_BIG_DEG:
                     big[i] = deltas[str(i)] * 360 / 4096
@@ -1053,6 +1059,14 @@ class ServoOps:
             moved = self.shift_saved_poses(rec.get("deltas", {}), sign=-1, only=set(rec["shifted"]) | set(later))
             if moved:
                 self.log(f"存的姿态换算回原来的零点：{moved}", "姿态")
+        if ok and not rec.get("sim"):
+            try:
+                from .commit import forget_centered
+                gone = forget_centered(self.state_dir, ok)
+                if gone:
+                    self.log(f"撤销成功的 {len(gone)} 颗也从「都已校过中位」的记录里删掉了：{gone}", "校准")
+            except OSError as e:
+                self.log(f"撤销成功的颗没能从 Studio 的中位记录里删掉：{type(e).__name__}: {e}", "校准", "warn")
         os.rename(os.path.join(d, fn), os.path.join(d, "undone-" + fn))
         self.log(f"撤销完（{fn} 已改名 undone-{fn}）：{len(ok)} 颗偏移写回" + (f"；失败 {sorted(bad)}" if bad else ""),
                  "校准", "warn" if bad else "info")
