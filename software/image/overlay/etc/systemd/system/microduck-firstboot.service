@@ -1,0 +1,11 @@
+[Unit]
+Description=Microduck 第一次开机初始化（起名、热点配置、识别 IMU）
+After=local-fs.target
+Before=NetworkManager.service robotd.service padd.service microduck-studio.service microduck-netcheck.service
+ConditionPathExists=!/var/lib/microduck/firstboot.done
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/microduck-firstboot
+[Install]
+WantedBy=multi-user.target

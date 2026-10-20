@@ -9,3 +9,5 @@ analysis-output/
 /cad/*.stl
 /cad/零件对照表.json
 /print/**/*.stl
+# EasyEDA Pro writes local auto-backups next to each project.
+/hardware/**/*_backup/

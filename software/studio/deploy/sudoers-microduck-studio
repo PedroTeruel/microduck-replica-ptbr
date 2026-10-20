@@ -1,0 +1,5 @@
+# /etc/sudoers.d/microduck-studio（root:root 0440）。装之前：visudo -cf 这个文件。
+# 只放行小助手这一个全路径；它自己只认白名单里的九个动词（含 calib-read / calib-commit），参数走 stdin。sudo 默认 env_reset，调用方的环境变量带不进去。
+# 试用期 Studio 以 radxa 跑（studio-trial）；以后换成专用用户 microduck-studio，把下面两行的注释对调。
+radxa ALL=(root) NOPASSWD: /usr/local/sbin/microduck-helper
+#microduck-studio ALL=(root) NOPASSWD: /usr/local/sbin/microduck-helper

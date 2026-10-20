@@ -1,0 +1,9 @@
+[Unit]
+Description=Test gamepad bridge
+
+[Service]
+ExecStart=/usr/local/sbin/gamesir-xboxd
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

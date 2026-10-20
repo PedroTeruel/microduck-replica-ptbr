@@ -1,0 +1,115 @@
+# 出厂通用标定（选项 A）：所有关节方向取 -1，零位 2048，都还没有逐台标定。
+# 这组值只保证主程序能读到编码器；要在 Studio 的上手清单里标定、核对 IMU 方向后，
+# 用「写进主程序」写入真实的零位、方向和限位。在那之前主程序只读数，不上力。
+motion_enabled = false
+imu_mount_verified = false
+# [w, x, y, z]，传感器到躯干的旋转，官方 +90 度绕 Y；装机后必须核对方向。
+imu_mount_quat = [0.7071067811865476, 0.0, 0.7071067811865476, 0.0]
+
+units_verified = false
+current_ma_per_count = 0.0
+
+[[joints]]
+name = "left_hip_yaw"
+id = 20
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "left_hip_roll"
+id = 21
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "left_hip_pitch"
+id = 22
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "left_knee"
+id = 23
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "left_ankle"
+id = 24
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "neck_pitch"
+id = 30
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "head_pitch"
+id = 31
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "head_yaw"
+id = 32
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "head_roll"
+id = 33
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "mouth"
+id = 34
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "right_hip_yaw"
+id = 10
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "right_hip_roll"
+id = 11
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "right_hip_pitch"
+id = 12
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "right_knee"
+id = 13
+zero_raw = 2048
+direction = -1
+calibrated = false
+
+[[joints]]
+name = "right_ankle"
+id = 14
+zero_raw = 2048
+direction = -1
+calibrated = false

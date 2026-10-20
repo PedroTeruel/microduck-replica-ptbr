@@ -1,0 +1,39 @@
+# 测试用 robotd 配置：字段和取值都是虚构的，只保留测试需要的最小结构。
+"feetech_calibration" = "/etc/robot/feetech-ft5/hd1910-calibration.toml"
+
+["bus"]
+"port" = "/dev/ttyS2"
+"baudrate" = 1000000
+
+["control"]
+"mode" = "position"
+"joint_order" = [
+  "left_hip_yaw",
+  "left_hip_roll",
+  "left_hip_pitch",
+]
+
+["policy"]
+"skill" = [
+  { "name" = "stand" },
+  { "name" = "walk" }
+]
+"rate_hz" = 50
+
+["safety"]
+"max_torque" = 8.0
+"watchdog_ms" = 250
+
+["pad"]
+"scheme" = "udp"
+"deadzone" = 0.1
+
+["audio"]
+"enabled" = true
+"device" = "plughw:aic3104"
+"bank" = "/opt/robot/feetech-ft5-r5/voice-bank"
+
+["trunk_imu"]
+"model" = "LSM6DSV16X"
+"i2c_device" = "/dev/i2c-3"
+"i2c_address" = "0x6B"

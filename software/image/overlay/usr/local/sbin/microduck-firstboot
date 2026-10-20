@@ -1,0 +1,905 @@
+#!/usr/bin/python3
+"""Microduck 第一次开机初始化：起名、热点配置、识别躯干 IMU。
+
+设计成可以在临时目录里测试：所有绝对路径都相对于 root（默认 /），
+外部命令和 I2C 探测都可以注入。
+"""
+import argparse
+import ctypes
+import errno
+import hashlib
+import json
+import os
+import re
+import secrets
+import subprocess
+import sys
+import time
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+
+try:
+    import tomllib
+except ImportError:  # pragma: no cover - 镜像里是 Python 3.13
+    tomllib = None  # type: ignore[assignment]
+
+DEFAULT_ROOT = os.environ.get("MICRODUCK_ROOT", "/")
+IS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
+
+TRUNK_HEADER_RE = re.compile(
+    r"^\s*\[\s*(?:\"trunk_imu\"|'trunk_imu'|trunk_imu)\s*\]\s*(?:#.*)?$")
+ANY_HEADER_RE = re.compile(r"^\s*\[\[?.*\]\]?\s*(?:#.*)?$")
+
+
+@dataclass
+class Result:
+    returncode: int = 0
+    stdout: str = ""
+    stderr: str = ""
+
+
+def _default_run(args, timeout=10):
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=timeout)
+        return Result(proc.returncode, proc.stdout, proc.stderr)
+    except FileNotFoundError as exc:
+        return Result(127, "", str(exc))
+    except subprocess.TimeoutExpired as exc:
+        out = exc.stdout if isinstance(exc.stdout, str) else ""
+        err = exc.stderr if isinstance(exc.stderr, str) else ""
+        return Result(124, out, err + "\n超时")
+    except OSError as exc:
+        return Result(126, "", str(exc))
+
+
+def clean_serial(raw):
+    """去掉 NUL 和空白；不是可打印 ASCII 就返回 None。"""
+    if raw is None:
+        return None
+    value = raw.replace(b"\x00", b"").strip()
+    if not value:
+        return None
+    if any(byte < 0x20 or byte > 0x7E for byte in value):
+        return None
+    return value
+
+
+def hostname_from_seed(seed):
+    """官方 configd identity 的算法：sha256 前 2 字节的十六进制。"""
+    return "duck-" + hashlib.sha256(seed).digest()[:2].hex()
+
+
+# 兼容一个更直白的名字，测试和外部脚本都能用。
+duck_name = hostname_from_seed
+
+
+def _atomic_write(path, data, mode=0o644, stat_info=None):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.parent / (".%s.tmp.%d.%s" % (path.name, os.getpid(), secrets.token_hex(3)))
+    try:
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp, mode)
+        if stat_info is not None and IS_ROOT and hasattr(os, "chown"):
+            os.chown(tmp, stat_info.st_uid, stat_info.st_gid)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def _file_stat(path):
+    try:
+        return os.stat(path)
+    except OSError:
+        return None
+
+
+def _mode_of(stat_info, default=0o644):
+    return (stat_info.st_mode & 0o7777) if stat_info is not None else default
+
+
+class _I2CMessage(ctypes.Structure):
+    _fields_ = [("addr", ctypes.c_uint16), ("flags", ctypes.c_uint16),
+                ("len", ctypes.c_uint16), ("buf", ctypes.POINTER(ctypes.c_uint8))]
+
+
+class _I2CRdWr(ctypes.Structure):
+    _fields_ = [("msgs", ctypes.POINTER(_I2CMessage)), ("nmsgs", ctypes.c_uint32)]
+
+
+class _I2CDev:
+    """i2c-dev 节点：打开后 flock，和 robotd 的读法一样。"""
+
+    def __init__(self, path):
+        import fcntl
+        self._fcntl = fcntl
+        self.fd = os.open(path, os.O_RDWR)
+        try:
+            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(self.fd)
+            raise
+
+    def select(self, addr):
+        self._fcntl.ioctl(self.fd, 0x0703, addr)  # I2C_SLAVE
+
+    def register(self, addr, reg):
+        out, back = (ctypes.c_uint8 * 1)(reg), (ctypes.c_uint8 * 1)()
+        msgs = (_I2CMessage * 2)(
+            _I2CMessage(addr, 0, 1, out),
+            _I2CMessage(addr, 0x0001, 1, back),  # I2C_M_RD
+        )
+        self._fcntl.ioctl(self.fd, 0x0707, _I2CRdWr(msgs, 2))  # I2C_RDWR
+        return back[0]
+
+    def read4(self, addr):
+        data = os.read(self.fd, 4)
+        if len(data) != 4:
+            raise OSError(errno.EIO, "read %d of 4 bytes" % len(data))
+        return data
+
+    def close(self):
+        os.close(self.fd)
+
+
+class _FakeDev:
+    """测试用：同样的 select/register/read4，应答来自 JSON。"""
+
+    def __init__(self, path, spec, counts):
+        self.path = path
+        self.spec = spec
+        self.counts = counts
+        bus = spec.get(path)
+        if bus is None:
+            raise FileNotFoundError(errno.ENOENT, "No such file or directory", path)
+        if bus.get("open_error"):
+            raise OSError(getattr(errno, bus["open_error"]), bus["open_error"], path)
+        held = bus.get("held")
+        if held and (not held.get("while_file")
+                     or Path(held["while_file"]).read_text(encoding="utf-8").strip() == "active"):
+            raise BlockingIOError(errno.EWOULDBLOCK, "Resource temporarily unavailable", path)
+        self.bus = bus
+
+    def op(self, text):
+        if self.spec.get("_ops_log"):
+            with open(self.spec["_ops_log"], "a", encoding="utf-8") as fh:
+                fh.write("%s %s\n" % (self.path, text))
+
+    def fail(self, code):
+        raise OSError(getattr(errno, code), code)
+
+    def nth(self, key, value):
+        if not isinstance(value, list):
+            return value
+        n = self.counts[key] = self.counts.get(key, -1) + 1
+        return value[min(n, len(value) - 1)]
+
+    def scripted(self, addr):
+        key = "%#04x" % addr
+        if key in self.bus.get("errors", {}):
+            self.fail(self.bus["errors"][key])
+        seq = self.bus.get("flaky", {}).get(key)
+        if seq:
+            n = self.counts[(self.path, key)] = self.counts.get((self.path, key), -1) + 1
+            if seq[min(n, len(seq) - 1)] != "ok":
+                self.fail(seq[min(n, len(seq) - 1)])
+
+    def select(self, addr):
+        self.op("SLAVE %#04x" % addr)
+        if "%#04x" % addr in self.bus.get("busy", []):
+            self.fail("EBUSY")
+
+    def register(self, addr, reg):
+        self.op("RDWR %#04x" % addr)
+        self.scripted(addr)
+        regs = self.bus.get("regs", {}).get("%#04x" % addr)
+        if regs is None:
+            self.fail("ENXIO")
+        return int(self.nth((self.path, "reg", addr, reg),
+                            regs.get("%#04x" % reg, "0x00")), 16)
+
+    def read4(self, addr):
+        self.op("READ %#04x" % addr)
+        self.scripted(addr)
+        raw = self.bus.get("raw", {}).get("%#04x" % addr)
+        if raw is None:
+            self.fail("ENXIO")
+        return bytes.fromhex(self.nth((self.path, "raw", addr), raw))
+
+    def close(self):
+        pass
+
+
+def _errno_name(exc):
+    return errno.errorcode.get(exc.errno, str(exc.errno)) if getattr(exc, "errno", None) \
+        else type(exc).__name__
+
+
+def _lock_holder(path, fake_spec=None):
+    """持有节点 flock 的进程（comm, pid）；不知道就返回 (None, None)。"""
+    if fake_spec is not None:
+        bus = fake_spec.get(path) or {}
+        return (bus.get("held") or {}).get("by"), None
+    try:
+        st = os.stat(path)
+        node = (os.major(st.st_dev), os.minor(st.st_dev), st.st_ino)
+        with open("/proc/locks", encoding="ascii") as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) < 6 or parts[1] != "FLOCK":
+                    continue
+                major, minor, inode = parts[5].split(":")
+                if (int(major, 16), int(minor, 16), int(inode)) == node:
+                    with open("/proc/%s/comm" % parts[4], encoding="utf-8") as comm:
+                        return comm.read().strip(), parts[4]
+    except (OSError, ValueError, IndexError):
+        pass
+    return None, None
+
+
+def _bno_header(data):
+    length, channel = (data[0] | data[1] << 8) & 0x7FFF, data[2]
+    return length, channel, (length == 0 or 4 <= length <= 4096) and channel <= 5
+
+
+def _show(seen):
+    kind, value, why = seen
+    if kind == "absent":
+        return "没有应答（%s）" % why
+    if kind == "error":
+        return "出错（%s）" % why
+    if isinstance(value, bytes):
+        length, channel, _ = _bno_header(value)
+        return "头 %s（长度 %d，通道 %d）" % (value.hex(" "), length, channel)
+    return "%#04x" % value
+
+
+def _look(dev, addr, reg):
+    """读两遍，间隔 20 ms -> (state, value, text)。"""
+    seen = []
+    for attempt in range(2):
+        if attempt:
+            time.sleep(0.02)
+        try:
+            dev.select(addr)
+        except OSError as exc:
+            if exc.errno == errno.EBUSY:
+                return "busy", None, "EBUSY：内核驱动占着这个地址，没有读"
+            return "error", None, "I2C_SLAVE 出错（%s）" % _errno_name(exc)
+        try:
+            seen.append(("value", dev.register(addr, reg) if reg is not None
+                         else dev.read4(addr), ""))
+        except OSError as exc:
+            seen.append(("absent" if exc.errno in Firstboot.NO_ANSWER else "error",
+                         None, _errno_name(exc)))
+    text = " / ".join(_show(s) for s in seen)
+    if any(s[0] == "error" for s in seen):
+        return "error", None, text
+    same = [((s[0], _bno_header(s[1])[2]) if reg is None and s[0] == "value" else s[:2])
+            for s in seen]
+    if same[0] != same[1]:
+        return "unstable", None, text
+    return seen[0][0], seen[0][1], text
+
+
+class Firstboot:
+    def __init__(self, root=DEFAULT_ROOT, *, run_cmd=None, fake_bus=None,
+                 now=None, log_stream=None, random_bytes=None):
+        self.root = Path(root or "/")
+        self.run_cmd = run_cmd
+        self.fake_bus = fake_bus
+        self.now = now if now is not None else (lambda: time.time())
+        self.out = log_stream if log_stream is not None else sys.stdout
+        self.random_bytes = random_bytes or secrets.token_bytes
+        self.hostname = None
+        self._log_warned = False
+
+    # ---- 路径与日志 ----
+
+    def path(self, absolute):
+        absolute = str(absolute)
+        if absolute == "/":
+            return self.root
+        return self.root / absolute.lstrip("/")
+
+    def log(self, message):
+        message = str(message)
+        print(message, file=self.out, flush=True)
+        try:
+            log_path = self.path("/var/log/microduck-firstboot.log")
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, "a", encoding="utf-8", newline="\n") as fh:
+                fh.write(message + "\n")
+        except OSError as exc:
+            if not self._log_warned:
+                self._log_warned = True
+                print("警告：写 firstboot 日志失败：%s" % exc, file=sys.stderr, flush=True)
+
+    def _call(self, args, timeout=10):
+        runner = self.run_cmd or _default_run
+        try:
+            return runner(args, timeout=timeout)
+        except TypeError:
+            return runner(args)
+
+    def _run_allowed(self):
+        # 在临时 root 里不能真的改本机主机名 / 加载模块；注入了 runner 就是测试。
+        return self.root == Path("/") or self.run_cmd is not None
+
+    # ---- 起名 ----
+
+    def read_serial(self):
+        try:
+            return clean_serial(self.path("/proc/device-tree/serial-number").read_bytes())
+        except OSError:
+            return None
+
+    def read_wlan_mac(self):
+        try:
+            return clean_serial(self.path("/sys/class/net/wlan0/address").read_bytes())
+        except OSError:
+            return None
+
+    def pick_name(self):
+        serial = self.read_serial()
+        if serial:
+            return hostname_from_seed(serial), "序列号 %s" % serial.decode("ascii")
+        mac = self.read_wlan_mac()
+        if mac:
+            return hostname_from_seed(mac), "wlan0 MAC %s" % mac.decode("ascii")
+        return "duck-" + self.random_bytes(2).hex(), "随机 2 字节"
+
+    def _read_hostname(self):
+        try:
+            text = self.path("/etc/hostname").read_bytes().decode("utf-8", "replace")
+        except OSError:
+            return ""
+        for line in text.splitlines():
+            if line.strip():
+                return line.strip()
+        return ""
+
+    @staticmethod
+    def _rewrite_hosts_text(text, old, new):
+        lines = text.splitlines(keepends=True)
+        out = []
+        for raw in lines:
+            body = raw.rstrip("\r\n")
+            ending = raw[len(body):]
+            stripped = body.lstrip()
+            if not stripped or stripped.startswith("#"):
+                out.append(raw)
+                continue
+            indent = body[:len(body) - len(stripped)]
+            tokens = body.split()
+            if not tokens:
+                out.append(raw)
+                continue
+            if tokens[0] == "127.0.1.1":
+                if len(tokens) == 1:
+                    tokens.append(new)
+                else:
+                    tokens[1] = new
+                    if old and old != new:
+                        for i in range(2, len(tokens)):
+                            if tokens[i] == old:
+                                tokens[i] = new
+                out.append(indent + " ".join(tokens) + ending)
+            elif tokens[0] == "::1":
+                changed = False
+                if old and old != new:
+                    for i, token in enumerate(tokens):
+                        if token == old:
+                            tokens[i] = new
+                            changed = True
+                if new not in tokens:
+                    tokens.append(new)
+                    changed = True
+                out.append((indent + " ".join(tokens) + ending) if changed else raw)
+            else:
+                out.append(raw)
+        return "".join(out)
+
+    def rewrite_hosts(self, old, new):
+        hosts = self.path("/etc/hosts")
+        stat_info = _file_stat(hosts)
+        try:
+            text = hosts.read_bytes().decode("utf-8")
+        except OSError:
+            text = "127.0.0.1 localhost\n127.0.1.1 %s\n::1 localhost %s\n" % (old or new, old or new)
+        new_text = self._rewrite_hosts_text(text, old, new)
+        _atomic_write(hosts, new_text.encode("utf-8"), _mode_of(stat_info, 0o644), stat_info)
+        return new_text
+
+    def setup_hostname(self):
+        name, source = self.pick_name()
+        old = self._read_hostname()
+        hostname_path = self.path("/etc/hostname")
+        stat_info = _file_stat(hostname_path)
+        _atomic_write(hostname_path, (name + "\n").encode("utf-8"),
+                      _mode_of(stat_info, 0o644), stat_info)
+        self.rewrite_hosts(old, name)
+        self.hostname = name
+        self.log("起名：%s -> %s" % (source, name))
+        self.log("已写 /etc/hostname：%s" % name)
+        if self._run_allowed():
+            result = self._call(["hostname", name], timeout=5)
+            if result.returncode == 0:
+                self.log("hostname %s 已生效" % name)
+            else:
+                self.log("提示：hostname %s 失败（退出 %s）：%s" %
+                         (name, result.returncode, (result.stderr or result.stdout).strip()))
+        return name
+
+    # ---- 热点配置 ----
+
+    @staticmethod
+    def _hotspot_text(suffix):
+        return (
+            "[connection]\n"
+            "id=Microduck-Hotspot\n"
+            "uuid=%s\n"
+            "type=wifi\n"
+            "interface-name=wlan0\n"
+            "autoconnect=false\n"
+            "[wifi]\n"
+            "mode=ap\n"
+            "ssid=Microduck-%s\n"
+            "band=bg\n"
+            "channel=6\n"
+            "[wifi-security]\n"
+            "key-mgmt=wpa-psk\n"
+            "proto=rsn\n"
+            "pairwise=ccmp\n"
+            "group=ccmp\n"
+            "pmf=1\n"
+            "psk=microduck\n"
+            "[ipv4]\n"
+            "method=shared\n"
+            "address1=10.42.0.1/24\n"
+            "[ipv6]\n"
+            "method=disabled\n"
+        ) % (uuid.uuid4(), suffix)
+
+    def setup_hotspot(self, name, force=False):
+        suffix = name.split("-", 1)[1] if "-" in name else name
+        target = self.path("/etc/NetworkManager/system-connections/Microduck-Hotspot.nmconnection")
+        if (target.exists() or target.is_symlink()) and not force:
+            self.log("热点配置已存在，不覆盖：%s" % target)
+            return target
+        if target.exists() or target.is_symlink():
+            self.log("重新写热点配置：%s" % target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(target.parent, 0o755)
+        except OSError:
+            pass
+        _atomic_write(target, self._hotspot_text(suffix).encode("utf-8"), 0o600)
+        if IS_ROOT and hasattr(os, "chown"):
+            try:
+                os.chown(target, 0, 0)
+            except OSError:
+                pass
+        self.log("已写热点配置：Microduck-Hotspot（SSID Microduck-%s，地址 10.42.0.1/24）" % suffix)
+        return target
+
+    # ---- IMU ----
+
+    I2C_BUSES = ("/dev/i2c-3", "/dev/i2c-4")
+    I2C_SLAVE, I2C_RDWR, I2C_M_RD = 0x0703, 0x0707, 0x0001
+    BNO_ADDRS, LSM_ADDRS = (0x4A, 0x4B), (0x6A, 0x6B)
+    ACC_ADDR, GYRO_ADDR = 0x19, 0x68
+    WHO_AM_I, LSM_ID, ACC_ID, GYRO_ID = 0x0F, 0x70, 0x1E, 0x0F
+    NO_ANSWER = {errno.ENXIO, getattr(errno, "EREMOTEIO", errno.ENXIO)}
+
+    def _load_fake_bus(self):
+        spec = json.loads(Path(self.fake_bus).read_text(encoding="utf-8"))
+        after = spec.get("_after_stop")
+        if after and Path(after["file"]).read_text(encoding="utf-8").strip() != "active":
+            spec = dict(after["bus"], _ops_log=spec.get("_ops_log"))
+        return spec
+
+    def _detect_i2c(self):
+        """与 imu-module-install.sh 的 probe_i2c 相同的识别规则。"""
+        events = []
+
+        def emit(kind, text):
+            events.append((kind, text))
+
+        fake_spec = self._load_fake_bus() if self.fake_bus else None
+        fake_counts = {}
+        cands, unsure, hints, buses, held = [], [], [], 0, 0
+        for path in self.I2C_BUSES:
+            wire = "J5（i2c3-pihat）" if path.endswith("3") else "40 针 27/28 脚（i2c4-m0）"
+            try:
+                dev = _FakeDev(path, fake_spec, fake_counts) if fake_spec is not None \
+                    else _I2CDev(str(self.path(path)))
+            except FileNotFoundError:
+                emit("WARN", "%s 不存在：%s 的 overlay 没开，这条线不探" % (path, wire))
+                continue
+            except BlockingIOError:
+                comm, pid = _lock_holder(path if fake_spec is not None
+                                         else str(self.path(path)), fake_spec)
+                who = "%s，pid %s" % (comm, pid) if comm and pid else comm or "另一个进程"
+                emit("WARN", "%s 被 %s 占用（同一把 flock），这条线没探" % (path, who))
+                emit("HELD", "%s %s" % (path, comm or "?"))
+                unsure.append("%s 被 %s 占用，没探" % (path, who))
+                held += 1
+                continue
+            except OSError as exc:
+                emit("WARN", "%s 打不开（%s）" % (path, _errno_name(exc)))
+                unsure.append("%s 打不开（%s）" % (path, _errno_name(exc)))
+                continue
+            buses += 1
+            try:
+                found = {addr: _look(dev, addr, None) for addr in self.BNO_ADDRS}
+                found.update({addr: _look(dev, addr, self.WHO_AM_I) for addr in self.LSM_ADDRS})
+                if path == "/dev/i2c-3":
+                    found.update({addr: _look(dev, addr, 0x00)
+                                  for addr in (self.ACC_ADDR, self.GYRO_ADDR)})
+            finally:
+                dev.close()
+            for addr, (state, value, text) in found.items():
+                what = "BNO08x 头" if addr in self.BNO_ADDRS else \
+                    "WHO_AM_I" if addr in self.LSM_ADDRS else "chip ID"
+                emit("LOG", "%s %#04x %s：%s" % (path, addr, what, text))
+            for addr in self.BNO_ADDRS:
+                state, value, text = found[addr]
+                if state == "absent":
+                    continue
+                if state == "value" and _bno_header(value)[2]:
+                    cands.append(("bno08x", path, addr))
+                    continue
+                unsure.append("%s %#04x " % (path, addr) + {
+                    "busy": "被内核驱动占着",
+                    "error": "读出错：%s" % text,
+                    "unstable": "两次读得不一样：%s" % text,
+                }.get(state, "有应答，但不像 BNO08x：%s" % text))
+                if state == "value" and value == b"\xff\xff\xff\xff":
+                    hints.append("%s %#04x 读到 ff ff ff ff：BNO08x 可能正在复位，过几秒再试"
+                                 % (path, addr))
+            lsm = []
+            for addr in self.LSM_ADDRS:
+                state, value, text = found[addr]
+                if state == "absent":
+                    continue
+                if state == "value" and value == self.LSM_ID:
+                    lsm.append(addr)
+                    continue
+                unsure.append("%s %#04x " % (path, addr) + {
+                    "busy": "被内核驱动占着",
+                    "error": "读出错：%s" % text,
+                    "unstable": "两次读得不一样：%s" % text,
+                }.get(state, "有应答，但 WHO_AM_I 不是 0x70：%s" % text))
+                if state == "value":
+                    hints.append("%s %#04x 的 WHO_AM_I 不是 0x70：LSM6DSV16X 可能停在"
+                                 "嵌入功能的寄存器页，断电重上再试" % (path, addr))
+                if state == "busy" and path == "/dev/i2c-3" and addr == 0x6A:
+                    hints.append("J5 的 0x6a 被内核驱动占着：D1 版 HAT 上可能是给板载 IMU 绑的驱动。"
+                                 "确认躯干模块是 0x6B 后，用显式命令：install <文件目录> "
+                                 "lsm6dsv16x /dev/i2c-3 0x6B")
+            if path == "/dev/i2c-4":
+                cands += [("lsm6dsv16x", path, addr) for addr in lsm]
+                continue
+            c1 = (found[self.ACC_ADDR][:2] == ("value", self.ACC_ID)
+                  and found[self.GYRO_ADDR][:2] == ("value", self.GYRO_ID))
+            for addr in (self.ACC_ADDR, self.GYRO_ADDR):
+                state, value, text = found[addr]
+                if state in ("error", "unstable"):
+                    unsure.append("%s %#04x（BMI088 的地址）" % (path, addr)
+                                  + ("读出错" if state == "error" else "两次读得不一样")
+                                  + "：%s；这条线本身可能有问题，别的地址的「没应答」也不可信" % text)
+            emit("LOG", "%s：%s" % (
+                path,
+                "认出 C1 版 HAT（BMI088 0x19 = 0x1e，0x68 = 0x0f）" if c1 else
+                "没认出 C1 版 HAT（BMI088 的 0x19 = 0x1e、0x68 = 0x0f 没有同时对上）"))
+            if c1:
+                cands += [("lsm6dsv16x", path, addr) for addr in lsm]
+            elif lsm == [0x6A, 0x6B]:
+                emit("LOG", "%s 0x6a 当作 D1 版 HAT 板载的头部 IMU 跳过，0x6b 当作躯干模块" % path)
+                cands.append(("lsm6dsv16x", path, 0x6B))
+            elif lsm == [0x6A]:
+                emit("LOG", "%s 0x6a 当作 D1 版 HAT 板载的头部 IMU，不是躯干模块；"
+                            "这条线上没有躯干模块" % path)
+                hints.append("D1 版 HAT：J5 上的躯干模块必须设成 0x6B（模块 SA0 接 3.3 V），"
+                             "D1 上 0x6A 是板载的头部 IMU。只有确认 HAT 是 C1（有 BMI088）、"
+                             "只是 BMI088 读不出来时，才可以用显式命令装 0x6A")
+            elif lsm == [0x6B]:
+                unsure.append("%s 0x6b 有一颗 LSM6DSV16X，但这条线上既没认出 C1 版 HAT，"
+                              "也没有 D1 板载的 0x6a：分不清它是躯干模块还是头部 IMU" % path)
+                hints.append("J5 上只有 0x6B：可能是 R30 没焊好的 D1 版 HAT（板载的头部 IMU "
+                             "落到了 0x6B），也可能是 BMI088 读不出的 C1，或者没插 HAT。"
+                             "先查 HAT；确认 0x6B 就是你接在躯干上的模块，再用显式命令："
+                             "install <文件目录> lsm6dsv16x /dev/i2c-3 0x6B")
+        if not buses and not unsure:
+            hints.append("/dev/i2c-3 和 /dev/i2c-4 都不存在：J5 要 i2c3-pihat overlay，"
+                         "27/28 脚要 i2c4-m0 overlay（见 IMU-MODULE.md）")
+        for source, path, addr in cands:
+            emit("CAND", "%s %s %s" % (source, path, addr))
+        for why in unsure:
+            emit("UNSURE", why)
+        for hint in hints:
+            emit("HINT", hint)
+        emit("COUNTS", "%s %s" % (len(cands), len(unsure) - held))
+        verdict = "unsure" if unsure else "one" if len(cands) == 1 else \
+            "many" if cands else "none"
+        emit("VERDICT", verdict)
+        candidates = [{"source": source, "device": path, "address": addr}
+                      for source, path, addr in cands]
+        log = [text for kind, text in events if kind in ("LOG", "WARN")]
+        return verdict, candidates, unsure, hints, log
+
+    def _write_imu_json(self, verdict, candidates, unsure, hints, log, written):
+        target = self.path("/var/lib/microduck/imu-detect.json")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(target.parent, 0o755)
+        except OSError:
+            pass
+        data = {
+            "at": float(self.now()),
+            "verdict": verdict,
+            "candidates": candidates,
+            "unsure": unsure,
+            "hints": hints,
+            "log": log,
+            "written": bool(written),
+        }
+        _atomic_write(target,
+                      (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+                      0o644)
+        return target
+
+    @staticmethod
+    def _has_trunk_imu(path):
+        try:
+            text = Path(path).read_bytes().decode("utf-8", "replace")
+        except OSError:
+            return False
+        if any(TRUNK_HEADER_RE.match(line) for line in text.splitlines()):
+            return True
+        if tomllib is not None:
+            try:
+                return "trunk_imu" in tomllib.loads(text)
+            except Exception:
+                pass
+        return False
+
+    @staticmethod
+    def _section_text(text):
+        lines = text.splitlines()
+        start = None
+        for i, line in enumerate(lines):
+            if TRUNK_HEADER_RE.match(line):
+                start = i
+                break
+        if start is None:
+            return ""
+        end = len(lines)
+        for j in range(start + 1, len(lines)):
+            if ANY_HEADER_RE.match(lines[j]):
+                end = j
+                break
+        while end > start + 1 and not lines[end - 1].strip():
+            end -= 1
+        return "\n".join(lines[start:end])
+
+    @staticmethod
+    def _remove_section(text):
+        lines = text.splitlines(keepends=True)
+        start = None
+        for i, line in enumerate(lines):
+            if TRUNK_HEADER_RE.match(line.rstrip("\r\n")):
+                start = i
+                break
+        if start is None:
+            return text
+        end = len(lines)
+        for j in range(start + 1, len(lines)):
+            if ANY_HEADER_RE.match(lines[j].rstrip("\r\n")):
+                end = j
+                break
+        return "".join(lines[:start] + lines[end:])
+
+    @staticmethod
+    def _toml_block(chosen):
+        lines = ['["trunk_imu"]']
+        lines.append('"source" = "%s"' % chosen["driver"])
+        if chosen["driver"] == "bno08x":
+            lines.append('"bno08x_fusion" = "gyro"')
+        lines.append('"i2c_device" = "%s"' % chosen["bus"])
+        lines.append('"i2c_address" = %d' % chosen["address"])
+        return "\n".join(lines) + "\n"
+
+    def _write_toml(self, path, chosen, force):
+        path = Path(path)
+        original_exists = path.exists()
+        original = path.read_bytes() if original_exists else b""
+        stat_info = _file_stat(path)
+        text = original.decode("utf-8") if original_exists else ""
+        if self._has_trunk_imu(path):
+            if not force:
+                self.log("已有 trunk_imu 段，不动：%s" % path)
+                section = self._section_text(text)
+                if section:
+                    self.log(section)
+                return False
+            text = self._remove_section(text)
+        block = self._toml_block(chosen)
+        base = text.rstrip("\n")
+        new_text = (base + "\n\n" if base else "") + block
+        _atomic_write(path, new_text.encode("utf-8"), _mode_of(stat_info, 0o644), stat_info)
+        if tomllib is None:  # pragma: no cover
+            raise RuntimeError("没有 tomllib，无法校验 TOML")
+        try:
+            tomllib.loads(new_text)
+        except Exception as exc:
+            if original_exists:
+                _atomic_write(path, original, _mode_of(stat_info, 0o644), stat_info)
+            else:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+            raise RuntimeError("TOML 校验失败，已恢复原文件：%s：%s" % (path, exc))
+        self.log("已写 %s：%s %s 0x%02x" %
+                 (path, chosen["driver"], chosen["bus"], chosen["address"]))
+        return True
+
+    def _imu_targets(self):
+        base = self.path("/etc/robot/feetech-ft5")
+        return [base / "robotd.toml", base / "robotd.saved.toml"]
+
+    def detect_imu(self, force=False):
+        if self._run_allowed():
+            result = self._call(["modprobe", "i2c-dev"], timeout=10)
+            if result.returncode != 0:
+                self.log("提示：modprobe i2c-dev 失败（忽略）：%s" %
+                         (result.stderr or result.stdout).strip())
+        verdict, candidates, unsure, hints, log = self._detect_i2c()
+        for line in log:
+            self.log("IMU 探测：%s" % line)
+        chosen = None
+        if verdict == "one":
+            chosen = dict(candidates[0], driver=candidates[0]["source"],
+                          bus=candidates[0]["device"])
+        written = False
+        errors = []
+        if chosen is not None:
+            self.log("IMU 识别结论：one；选中 %s %s 0x%02x" %
+                     (chosen["source"], chosen["device"], chosen["address"]))
+            for target in self._imu_targets():
+                try:
+                    if self._write_toml(target, chosen, force):
+                        written = True
+                except Exception as exc:
+                    errors.append("%s: %s" % (target, exc))
+                    self.log("错误：写 %s 失败：%s" % (target, exc))
+        else:
+            self.log("IMU 识别结论：%s，不写 trunk_imu" % verdict)
+            for candidate in candidates:
+                self.log("候选：%s %s 0x%02x" % (candidate["source"], candidate["device"],
+                                                candidate["address"]))
+            for why in unsure:
+                self.log("认不准：%s" % why)
+            for hint in hints:
+                self.log("提示：%s" % hint)
+            if verdict == "none":
+                self.log("没找到 I²C IMU，主程序会去舵机总线上找 IMU 小板")
+        self._write_imu_json(verdict, candidates, unsure, hints, log, written)
+        if errors:
+            raise RuntimeError("；".join(errors))
+        return chosen
+
+    # ---- 完成标记与总流程 ----
+
+    def _write_marker(self):
+        target = self.path("/var/lib/microduck/firstboot.done")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(target.parent, 0o755)
+        except OSError:
+            pass
+        text = "%.6f %s\n" % (float(self.now()), self.hostname or "")
+        _atomic_write(target, text.encode("utf-8"), 0o644)
+        self.log("已写完成标记：%s" % target)
+
+    def run(self, detect_only=False, force=False, hotspot_only=False):
+        if hotspot_only:
+            self.log("==> 只重建热点连接")
+            name = self._read_hostname()
+            if not name:
+                name, _ = self.pick_name()
+            self.hostname = name
+            try:
+                self.setup_hotspot(name, force=True)
+            except Exception as exc:
+                self.log("错误：重建热点配置失败：%s" % exc)
+                self.log("汇总：热点连接没有重建成功")
+                return 1
+            self.log("汇总：热点连接已重建（SSID Microduck-%s）" %
+                     (name.split("-", 1)[1] if "-" in name else name))
+            return 0
+
+        if detect_only:
+            self.log("==> 只重新识别躯干 IMU")
+            try:
+                self.detect_imu(force=force)
+            except Exception as exc:
+                self.log("汇总：IMU 识别失败：%s" % exc)
+                return 1
+            self.log("汇总：IMU 识别完成")
+            return 0
+
+        failures = []
+        name_ok = False
+        hotspot_ok = False
+
+        self.log("==> 1/3 起名")
+        try:
+            self.setup_hostname()
+            name_ok = True
+        except Exception as exc:
+            failures.append("起名")
+            self.log("错误：起名失败：%s" % exc)
+
+        self.log("==> 2/3 配置热点")
+        try:
+            name = self.hostname
+            if not name:
+                name, _ = self.pick_name()
+                self.hostname = name
+            self.setup_hotspot(name)
+            hotspot_ok = True
+        except Exception as exc:
+            failures.append("热点配置")
+            self.log("错误：热点配置失败：%s" % exc)
+            self.log("热点配置没有成功，本次不写完成标记；下次开机会再试。")
+
+        self.log("==> 3/3 识别躯干 IMU")
+        try:
+            self.detect_imu()
+        except Exception as exc:
+            failures.append("IMU 识别")
+            self.log("错误：IMU 识别失败：%s" % exc)
+
+        if name_ok and hotspot_ok:
+            try:
+                self._write_marker()
+            except Exception as exc:
+                failures.append("完成标记")
+                self.log("错误：写完成标记失败：%s" % exc)
+        elif not name_ok:
+            self.log("起名没成功，不写完成标记")
+
+        if failures:
+            self.log("汇总：%d 步失败：%s" % (len(failures), "、".join(failures)))
+        else:
+            self.log("汇总：全部完成")
+        return 0 if name_ok else 1
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Microduck 第一次开机初始化")
+    parser.add_argument("--detect-imu-only", action="store_true", help="只识别躯干 IMU")
+    parser.add_argument("--hotspot-only", action="store_true", help="只重建热点连接，不起名、不识别 IMU")
+    parser.add_argument("--force", action="store_true", help="替换已有的 trunk_imu 段")
+    parser.add_argument("--root", default=DEFAULT_ROOT,
+                        help="测试用根目录（默认 /，也可用 MICRODUCK_ROOT）")
+    args = parser.parse_args(argv)
+    firstboot = Firstboot(root=args.root)
+    return firstboot.run(detect_only=args.detect_imu_only, force=args.force,
+                         hotspot_only=args.hotspot_only)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

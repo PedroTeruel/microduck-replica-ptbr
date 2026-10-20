@@ -98,37 +98,27 @@ The code below is for **Duck Replica Group 11** (WeChat disables QR joins once a
   If it has expired, open an <a href="https://github.com/fanhao375/microduck-replica/issues">issue</a> and I will post a fresh one</sub>
 </div>
 
-## Latest
+## Where things stand
 
-**2026-10-15 evening — the cause of "falls after two or three steps" found; the duck now walks steadily:** the BNO085's own fused orientation jumps 20–60° within 20 ms while walking (mostly around foot strikes), while its gyro says the trunk turned 1–2°; the policy believes it is falling and its correction makes it fall. robotd can now carry the attitude with the chip's own gyro and only follows the chip slowly when the two agree. On the robot: in the old mode, 9 s of pushing the stick gave 2 falls; in the new mode, 60 s of pushing gave none, and 10+ minutes in walk mode (60 s of it pushing the stick) only one fall, while the chip still jumped 745 times — none of them reached the policy. No interleaved A/B was run (the user saw it on site and kept the new mode); turning is still weak and the board still reboots now and then. Code on the fork branch [`hd1910-v167-gyro-fusion`](https://github.com/fanhao375/Microduck-kissqy/tree/hd1910-v167-gyro-fusion) (the default is still the old mode; switching: [IMU-MODULE.md 4.4](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-gyro-fusion/IMU-MODULE.md), Chinese). [Full record: symptom, strategy, analysis, fix, on-robot data](docs/HD1910-20261015-IMU乱跳根因与陀螺融合上机.md) (Chinese).
-
-**2026-10-14 evening — IMU modules for kissqy's full stack (fork):** kissqy's one-click stack only reads the IMU board on the servo bus, so a duck with a ready-made IMU module cannot use it. We added "IMU module on the board's own I²C" (BNO085 / LSM6DSV16X) to his robotd and published it in our fork [fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy) (branch `hd1910-v167-trunk-imu-i2c`, on top of his 10-14 V167). **It is not an official kissqy release** — report problems here. BNO085 has run on our first robot (on V164); the V167 merge has only passed unit tests and **has not run on a robot yet**, nor has LSM6DSV16X. We test it on our robot tonight and will update this note. Wiring, build, the installer and confirming the IMU mount: [IMU-MODULE.md](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-trunk-imu-i2c/IMU-MODULE.md). Also: kissqy's V167 "body jitter fix" writes servo D=0 and torque limit 1000 on every arm, matching our 10-13 finding; a duck with an IMU module **must not use "install/upgrade firmware" in his console**, which would remove the module support.
-
-**2026-10-14 — Feetech's official HD-1910 BAM actuator model:** At the end of September Feetech published [ftservo/ftservo-bam](https://gitee.com/ftservo/ftservo-bam) on Gitee (Apache-2.0, a fork of Rhoban/BAM), with m1–m6 parameters for the HD-1910 identified at 7.4 V and a dedicated HD-1910 controller model. Until now everyone has trained with the 1910 M6 parameters published by LuwuDynamics; the manufacturer's own set is now available to compare. The two differ substantially (motor resistance: Feetech 2.97 Ω, LuwuDynamics 4.91 Ω; computed stall torque: Feetech 1.37, LuwuDynamics 0.91 N·m), and **we have not yet verified on hardware which one matches the real servo better**. Feetech's recording script sets P but not D, so the servos were most likely at the factory D=40 — confirm D before deploying a policy trained on it. Loading and gain-conversion details: [comparison and integration notes](docs/HD-1910-M6参数来源.md#飞特官方-hd-1910-bam) (Chinese).
-
-**2026-10-13 night — Brownouts, servo D and foot scraping:** Both cards brown out while walking; the supply cannot hold the current spikes — it is not software. The walking jitter is linked to the servos' hardware D (damping): the actuator model used in training has no D term, and setting D=0 cut the high-frequency share of torso motion from 51% to 4–8%; we now run P3 / D0 / torque limit 700. The feet scrape because both lift only half as high as in simulation, and with D=0 the left toe also points down; next we try D=5–10. kissqy's one-click image (V164) does not write D or the torque limit, so changing them in the console has no effect. [Full record](docs/HD1910-20261013-夜-掉电-舵机D与蹭地.md) (Chinese) · [Where our software comes from and what we changed](docs/软件来源与我们的改动.md) (Chinese) · [Gait analysis scripts](tools/gait-analysis/).
-
-**2026-10-12 night — IMU calibrated, first stable stand and alternating steps:** The reason the walking policy charged backwards and fell as soon as it took over was an **IMU module mounted about 8.5° off**. The policy was trained with a level torso at HOME, but the IMU kept reporting an 8.5° forward lean, so the policy kept "recovering" backwards. We computed the expected torso attitude from the real joint angles in simulation and folded the difference into the IMU mounting quaternion. Afterwards the policy held the robot upright for 70 s (mean tilt 0.2°), and pushing the stick produced alternating steps (forward distance not measured yet). The web gamepad lag was traced to four layers; a Bluetooth gamepad paired directly to the robot bypasses all of them. [Full log and the IMU zero-calibration method](docs/HD1910-20261012-夜-IMU校准与首次迈步.md) (Chinese) · [analysis scripts](tools/radxa/onboard-analysis/).
-
-**2026-10-12 — Main board correction:** We previously recommended the Radxa Zero 3W "2 GB / 16 GB eMMC" SKU. **That was unnecessary and cost people money.** The official spec only says 1 GB RAM and 32 GB storage. Our first robot runs a 2 GB board **without eMMC** on a microSD card; with the full kissqy stack it uses 175 MB of RAM and 3.3 GB of storage. **A 1 GB or 2 GB board without eMMC plus a 32 GB microSD card is enough.** Buy from official distributors (ALLNET, Radxa's official stores) rather than resellers. A 2G/16G board you already bought works fine. See the [purchase guide](docs/电控采购清单.md#该买哪个配置) (Chinese).
-
-**2026-10-12 — Assembly videos:** 机械行者Robo is publishing a from-scratch assembly series on Bilibili. Six of eight episodes are out: parts list, lower legs, thighs, torso, neck and head. The same account is on Xiaohongshu and Douyin. See the [episode list](#-assembly-videos).
-
-**2026-09-29 — Image login correction:** The original public image requires **`root / 1234`** for the first login. Complete the Armbian wizard before using `duck / duck1234`; it also changes the root password. Change both default passwords immediately. The old image still needs the `wlan0` DHCP fix. The [guide](tools/radxa/镜像使用说明.md) is corrected, and a separate [DHCP fix candidate image](https://github.com/fanhao375/microduck-replica/releases/tag/radxa-zero3w-armbian-20260929) has passed offline checks; **this new artifact has not been flashed and boot-tested on hardware**. It contains neither the robot runtime nor the web servo console.
-
-**2026-09-28 — HAT feedback test:** Web console **0.15.4** is deployed on the board, with responses matched by their actual servo ID and a 50 Hz sampling target. While holding the existing pose for about 64 seconds, all 14 joints returned **3,000/3,000** valid samples (42,000 total), with no timeout, checksum or ID errors in that window. The observed rate was **46.87 Hz**. Torque remained enabled and goals/settings were unchanged. **The full control loop with IMU, inference and motion writes, and the walking policy, remain unverified.** Occasional missing responses have occurred outside this window. See the [test scope and results](tools/radxa/50Hz保持姿势读状态-20260928.md) (Chinese).
-
-**2026-09-28 — HAT and camera bring-up:** The HAT has arrived and been fitted to the board. After the camera ribbon orientation/contact was corrected, the Radxa Camera 8M219 was identified and **40 frames at 1920×1080** were captured on official Bookworm B1. The next step is to return to the project Armbian image and repeat the test with the corrected wiring. Sustained frame rate, all HAT functions and robot walking remain unverified. See the [wiring reference and test record](tools/radxa/摄像头调试记录-20260928.md) (Chinese).
+The dated log is further down under [Latest](#latest).
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### 🔌 Electronics · IMU fixed, it walks (2026-10-15)
+### 🔌 Electronics · IMU fixed, it walks; three new boards drawn (2026-10)
 
 <p align="center"><a href="assets/走路-2026-10-15.mp4"><img src="assets/走路-2026-10-15.gif" alt="2026-10-15: walking on a wooden floor after the IMU fix (click for the 5 s video)" width="220"></a></p>
 
 It used to fall after two or three steps of pushing the stick; the cause was the BNO085's own fused orientation jumping while walking. With robotd carrying the attitude on the chip's own gyro, 60 s of pushing the stick gave no fall (kissqy V167 + our fork, default servo gains, silicone feet). Turning is still weak; we are on it. **[How it was found and fixed](docs/HD1910-20261015-IMU乱跳根因与陀螺融合上机.md)** (Chinese).
+
+**New custom boards · three of them drawn (2026-10, not yet made or tested):** EasyEDA Pro projects and whole-board 3D models (for checking the fit against the frame) are in **[`hardware/新版/`](hardware/新版/)** (Chinese). Gerbers, BOMs and wiring tables are not out yet.
+
+- **Bus IMU board v2**: the IMU board that sits on the servo bus (LSM6DSV16X + STM32G031), the old circuit laid out again; the servo connector is now an A2007WR-3P that takes the Feetech plug, the external crystal is gone, the bus series resistor is now 0 Ω, and firmware 0.2.0 runs unchanged. Routed; when it arrives, measure the bus low level first, and since the IMU chip is rotated 180° the mount has to be found again on the duck.
+- **Servo bus hub**: battery in and bus split, connectors only (1.2 mm 3P ×2, 2.0 mm 3P right-angle and vertical ×2 each). Not made yet; the battery terminal CN1 is 8.4 mm tall and hits the frame, to be swapped for a low one.
+- **Battery terminal board**: two banana sockets and two wire pads, 39 × 6.8 mm. Holes, pads and traces follow the reference board; not made yet.
+
+The pinouts of the hub and the IMU board line up, so straight-through leads connect them.
 
 **Earlier: first power-on, 09-18** ([30 s video](assets/首次上电-2026-09-18.mp4))
 
@@ -172,35 +162,35 @@ horns were remodelled and reprinted. The editable SolidWorks drawings have an FT
 <tr>
 <td width="50%" valign="top">
 
-### 💻 Software · our fork: plug in an off-the-shelf IMU module
+### 💻 Software · Studio web console + replica image (2026-10-20)
 
-**No bus IMU board to build, no firmware to flash:** wire a BNO085 (or LSM6DSV16X) module to the board's I²C with four wires, install our fork, and the duck stands and walks.
+<p align="center"><a href="software/studio/"><img src="assets/studio-overview.png" alt="Microduck Studio overview: 3D duck, battery, servos, IMU, gamepad, board temperature and the getting-started checklist" width="420"></a></p>
 
-- **IMU module straight on the board**: BNO085 / LSM6DSV16X, one line in `robotd.toml`;
-- **One-command installer**: checks first, backs up, and rolls back by itself if any step fails;
-- **Step-by-step instructions**: wiring, build, install, confirming the IMU mount;
-- **Tracks the latest upstream release**, tested on our own duck, every pitfall written up in this repository.
+**Microduck Studio: a web console that runs on the duck, written by us.** Open `http://<duck IP>:8000/` in a browser on a computer or phone to watch the robot, tune servos, pair a gamepad and make it walk — no SSH, no commands (the interface is in Chinese):
 
-👉 **[Open our fork: fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy)**　·　[Instructions](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-trunk-imu-i2c/IMU-MODULE.md)
+- **Overview**: a 3D duck that follows the real one; battery, servos, IMU, gamepad and board temperature at a glance; one-click relax at the top right (or the space bar);
+- **Getting-started checklist**: servo zero → IMU mount → write into the main program → pair a gamepad → test the e-stop → stand up and take a few steps, telling you what to do next at each step;
+- **Servos**: scan all 15, drag sliders, centre-calibrate one or all, direction, P / D / torque limit;
+- **IMU**: a rough pass with the duck held in both hands, then a fine pass once it can stand, to work out how the IMU is mounted;
+- **Write into the main program**: zeros, directions and the IMU mount go into the main program's calibration in one go, so the duck walks from the gamepad at boot without opening the page;
+- **WiFi** (replica image only): when the duck finds no WiFi it opens its own hotspot; join it from a phone and enter your home WiFi at the top of the overview;
+- **Gamepad**: Bluetooth pairing (through the official pairing path), an on-screen gamepad, e-stop test;
+- **Remote**: stand up, walk, sit down, skills and moves;
+- **Logs**: categorised and levelled; export a diagnostics bundle in one click to ask for help.
 
-Status: BNO085 has run on our first duck; the current build goes on the robot tonight, results in "Latest" above. Based on [kissqy/Microduck-kissqy](https://github.com/kissqy/Microduck-kissqy) V167 (robotd and friends are Apache-2.0); not an official kissqy release — please report problems here.
+**Replica image (pre-release, real-duck test pending)**: one card with everything — our fork of the main program, the walking and skill models, Studio, and a first boot that names the duck, finds the IMU and opens a hotspot for WiFi setup. Flash → boot → join the duck's `Microduck-xxxx` hotspot from a phone → enter your home WiFi in Studio → follow the checklist, no SSH at any point. Review of the first build on 10-20 found that a fresh card could not get through the "IMU mount" and "write into the main program" steps; that is fixed. The rebuilt image passed the tests and a mounted inspection on a computer but has not been through a real duck yet, so it is out as a pre-release: **[download (Releases)](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261020)** · [flashing and first use](software/image/烧录和第一次使用.md) (Chinese). The image is free, for personal non-commercial builds only, and is not distributed with any paid product (the models in it are under their author's personal non-commercial licence).
 
-#### Web console: 15 servos over the serial bus
+**What has been tested**: Studio runs as a boot service on our second duck; gamepad pairing and the e-stop were tested on it. "Write into the main program", WiFi setup and the replica image have not been tested on a real duck yet; we are on it. Not done yet: editing the walking feel from the page.
 
-<p align="center"><a href="tools/servo-web/"><img src="assets/servo-web.png" alt="Web console: sliders, 3D duck, CoM projection" width="420"></a></p>
+The main program is our fork [fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy): an IMU module (BNO085 / LSM6DSV16X) goes straight onto the board's I²C with four wires — no bus IMU board to build — and integrating the gyro fixed the attitude jumps while walking. Studio is tested on it.
 
-Drag a slider in the browser and the servo moves; the 3D duck follows, and the centre-of-mass
-projection shows live whether it still falls inside the foot support polygon. Save poses, run
-sequences, calibrate the zero in one click, dump every register, measure bus timing — this is the
-tool used for assembly and bench acceptance.
-
-The backend does not use the Feetech SDK: [`feetech.py`](tools/servo-web/feetech.py) speaks the
-2026 protocol manual directly in about a hundred lines. It ships with a **packet-level servo
-simulator**, so calibration, ID changes and register writes are self-tested with no hardware attached.
-
-**[Our fork](https://github.com/fanhao375/Microduck-kissqy)**　·　
-**[Web console](tools/servo-web/)**　·　
-**[Feetech port architecture](software/飞特适配架构.md)**　(Chinese)　·　
+**[Studio](software/studio/)** (Chinese)　·
+**[Replica image](software/image/)** (Chinese)　·
+[Software overview](software/) (Chinese)　·
+**[Installing it on the duck](software/studio/README.md#装到鸭子上)**　·
+[Bench mode: tune servos with no main board](software/studio/README.md#台架模式主控没烧用飞特调试板在电脑上调舵机)　·
+[IMU module wiring and install](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-trunk-imu-i2c/IMU-MODULE.md)　·
+[The older web console, servo-web](tools/servo-web/)　·
 [Feetech official docs](docs/飞特资料/)
 
 </td>
@@ -273,6 +263,36 @@ Built something for the duck (a tool, tutorial, mod, policy…)? Open an issue w
 
 Want to join in: open an [issue](https://github.com/fanhao375/microduck-replica/issues) or send a PR.
 Hardware, firmware, algorithms, documentation, measured data — all of it counts. **Measured data especially**: the rule in this repo is that results get recorded honestly, positive or negative.
+
+---
+
+## Latest
+
+**2026-10-20 — Replica image, first build (pre-release, real-duck test pending).** One card with everything (our fork of the main program, the walking and skill models, Studio, first boot and WiFi setup): flash it, boot, join the duck's hotspot from a phone, enter your home WiFi in Studio and follow the checklist, no SSH. After the first build we ran a three-way review and found that a fresh card cannot get through the "IMU mount" and "write into the main program" steps: out of the box the main program has to run in commissioning mode, and the image had it in motion mode. Fixed and rebuilt; it is out as a pre-release on [Releases](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261020) and becomes a full release once it passes on a real duck. [Flashing and first use](software/image/烧录和第一次使用.md) · [image build scripts](software/image/) (Chinese).
+
+**2026-10-20 — Three new custom boards drawn.** Bus IMU board v2 (its servo connector is now an A2007WR-3P that takes the Feetech plug), a servo bus hub and a battery terminal board; EasyEDA projects and 3D models are in [`hardware/新版/`](hardware/新版/) (Chinese). None has been made or tested yet.
+
+**2026-10-20 — Microduck Studio, first release: a console in the browser.** A web console that runs on the duck, written by us. Open `http://<duck IP>:8000/` to watch the robot, relax it in one click, calibrate servo zeros, work out the IMU mount, write it into the main program, pair a Bluetooth gamepad, test the e-stop and make the duck stand up and walk, following a step-by-step checklist with no SSH. It already runs as a boot service on our second duck; gamepad pairing and the e-stop were tested on it. "Write into the main program" has not been tested on a real duck yet, and editing walking parameters from the page is not done yet. [Studio and how to install it](software/studio/) (Chinese).
+
+**2026-10-15 evening — the cause of "falls after two or three steps" found; the duck now walks steadily:** the BNO085's own fused orientation jumps 20–60° within 20 ms while walking (mostly around foot strikes), while its gyro says the trunk turned 1–2°; the policy believes it is falling and its correction makes it fall. robotd can now carry the attitude with the chip's own gyro and only follows the chip slowly when the two agree. On the robot: in the old mode, 9 s of pushing the stick gave 2 falls; in the new mode, 60 s of pushing gave none, and 10+ minutes in walk mode (60 s of it pushing the stick) only one fall, while the chip still jumped 745 times — none of them reached the policy. No interleaved A/B was run (the user saw it on site and kept the new mode); turning is still weak and the board still reboots now and then. Code on the fork branch [`hd1910-v167-gyro-fusion`](https://github.com/fanhao375/Microduck-kissqy/tree/hd1910-v167-gyro-fusion) (the default is still the old mode; switching: [IMU-MODULE.md 4.4](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-gyro-fusion/IMU-MODULE.md), Chinese). [Full record: symptom, strategy, analysis, fix, on-robot data](docs/HD1910-20261015-IMU乱跳根因与陀螺融合上机.md) (Chinese).
+
+**2026-10-14 evening — IMU modules for kissqy's full stack (fork):** kissqy's one-click stack only reads the IMU board on the servo bus, so a duck with a ready-made IMU module cannot use it. We added "IMU module on the board's own I²C" (BNO085 / LSM6DSV16X) to his robotd and published it in our fork [fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy) (branch `hd1910-v167-trunk-imu-i2c`, on top of his 10-14 V167). **It is not an official kissqy release** — report problems here. BNO085 has run on our first robot (on V164); the V167 merge has only passed unit tests and **has not run on a robot yet**, nor has LSM6DSV16X. We test it on our robot tonight and will update this note. Wiring, build, the installer and confirming the IMU mount: [IMU-MODULE.md](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-trunk-imu-i2c/IMU-MODULE.md). Also: kissqy's V167 "body jitter fix" writes servo D=0 and torque limit 1000 on every arm, matching our 10-13 finding; a duck with an IMU module **must not use "install/upgrade firmware" in his console**, which would remove the module support.
+
+**2026-10-14 — Feetech's official HD-1910 BAM actuator model:** At the end of September Feetech published [ftservo/ftservo-bam](https://gitee.com/ftservo/ftservo-bam) on Gitee (Apache-2.0, a fork of Rhoban/BAM), with m1–m6 parameters for the HD-1910 identified at 7.4 V and a dedicated HD-1910 controller model. Until now everyone has trained with the 1910 M6 parameters published by LuwuDynamics; the manufacturer's own set is now available to compare. The two differ substantially (motor resistance: Feetech 2.97 Ω, LuwuDynamics 4.91 Ω; computed stall torque: Feetech 1.37, LuwuDynamics 0.91 N·m), and **we have not yet verified on hardware which one matches the real servo better**. Feetech's recording script sets P but not D, so the servos were most likely at the factory D=40 — confirm D before deploying a policy trained on it. Loading and gain-conversion details: [comparison and integration notes](docs/HD-1910-M6参数来源.md#飞特官方-hd-1910-bam) (Chinese).
+
+**2026-10-13 night — Brownouts, servo D and foot scraping:** Both cards brown out while walking; the supply cannot hold the current spikes — it is not software. The walking jitter is linked to the servos' hardware D (damping): the actuator model used in training has no D term, and setting D=0 cut the high-frequency share of torso motion from 51% to 4–8%; we now run P3 / D0 / torque limit 700. The feet scrape because both lift only half as high as in simulation, and with D=0 the left toe also points down; next we try D=5–10. kissqy's one-click image (V164) does not write D or the torque limit, so changing them in the console has no effect. [Full record](docs/HD1910-20261013-夜-掉电-舵机D与蹭地.md) (Chinese) · [Where our software comes from and what we changed](docs/软件来源与我们的改动.md) (Chinese) · [Gait analysis scripts](tools/gait-analysis/).
+
+**2026-10-12 night — IMU calibrated, first stable stand and alternating steps:** The reason the walking policy charged backwards and fell as soon as it took over was an **IMU module mounted about 8.5° off**. The policy was trained with a level torso at HOME, but the IMU kept reporting an 8.5° forward lean, so the policy kept "recovering" backwards. We computed the expected torso attitude from the real joint angles in simulation and folded the difference into the IMU mounting quaternion. Afterwards the policy held the robot upright for 70 s (mean tilt 0.2°), and pushing the stick produced alternating steps (forward distance not measured yet). The web gamepad lag was traced to four layers; a Bluetooth gamepad paired directly to the robot bypasses all of them. [Full log and the IMU zero-calibration method](docs/HD1910-20261012-夜-IMU校准与首次迈步.md) (Chinese) · [analysis scripts](tools/radxa/onboard-analysis/).
+
+**2026-10-12 — Main board correction:** We previously recommended the Radxa Zero 3W "2 GB / 16 GB eMMC" SKU. **That was unnecessary and cost people money.** The official spec only says 1 GB RAM and 32 GB storage. Our first robot runs a 2 GB board **without eMMC** on a microSD card; with the full kissqy stack it uses 175 MB of RAM and 3.3 GB of storage. **A 1 GB or 2 GB board without eMMC plus a 32 GB microSD card is enough.** Buy from official distributors (ALLNET, Radxa's official stores) rather than resellers. A 2G/16G board you already bought works fine. See the [purchase guide](docs/电控采购清单.md#该买哪个配置) (Chinese).
+
+**2026-10-12 — Assembly videos:** 机械行者Robo is publishing a from-scratch assembly series on Bilibili. Six of eight episodes are out: parts list, lower legs, thighs, torso, neck and head. The same account is on Xiaohongshu and Douyin. See the [episode list](#-assembly-videos).
+
+**2026-09-29 — Image login correction:** The original public image requires **`root / 1234`** for the first login. Complete the Armbian wizard before using `duck / duck1234`; it also changes the root password. Change both default passwords immediately. The old image still needs the `wlan0` DHCP fix. The [guide](tools/radxa/镜像使用说明.md) is corrected, and a separate [DHCP fix candidate image](https://github.com/fanhao375/microduck-replica/releases/tag/radxa-zero3w-armbian-20260929) has passed offline checks; **this new artifact has not been flashed and boot-tested on hardware**. It contains neither the robot runtime nor the web servo console.
+
+**2026-09-28 — HAT feedback test:** Web console **0.15.4** is deployed on the board, with responses matched by their actual servo ID and a 50 Hz sampling target. While holding the existing pose for about 64 seconds, all 14 joints returned **3,000/3,000** valid samples (42,000 total), with no timeout, checksum or ID errors in that window. The observed rate was **46.87 Hz**. Torque remained enabled and goals/settings were unchanged. **The full control loop with IMU, inference and motion writes, and the walking policy, remain unverified.** Occasional missing responses have occurred outside this window. See the [test scope and results](tools/radxa/50Hz保持姿势读状态-20260928.md) (Chinese).
+
+**2026-09-28 — HAT and camera bring-up:** The HAT has arrived and been fitted to the board. After the camera ribbon orientation/contact was corrected, the Radxa Camera 8M219 was identified and **40 frames at 1920×1080** were captured on official Bookworm B1. The next step is to return to the project Armbian image and repeat the test with the corrected wiring. Sustained frame rate, all HAT functions and robot walking remain unverified. See the [wiring reference and test record](tools/radxa/摄像头调试记录-20260928.md) (Chinese).
 
 ---
 
@@ -497,7 +517,8 @@ Requires `mujoco`, `numpy`, `pillow`, `scipy`. Rendering needs a working OpenGL 
 
 ## License
 
-- `scripts/` — Apache-2.0
+- `scripts/`, the code in `software/studio/`, and `software/image/` — Apache-2.0
+- The walking and skill models in the replica image are not in this repository; they are under their author's personal non-commercial licence, so **the image must not be distributed with any paid product** (see the [model notes](software/image/overlay/usr/share/doc/microduck/模型说明.txt), Chinese)
 - `assembly-drawings/` and retained simulation meshes — **CC BY-SA-NC 4.0**. Upstream 3D models are CC BY-SA-NC;
   ShareAlike requires derivatives to carry the same license. **Non-commercial only.**
 

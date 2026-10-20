@@ -1,0 +1,23 @@
+# Microduck Studio 开机自启（用户 10-20 定：不再用 systemd-run 的临时 studio-trial）。
+# 装：sudo install -m 644 microduck-studio.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now microduck-studio
+# 撤：sudo systemctl disable --now microduck-studio && sudo rm /etc/systemd/system/microduck-studio.service && sudo systemctl daemon-reload
+# 资源上限跟试用期一样：Studio 不能跟 robotd 抢 CPU（robotd 是 50 Hz 控制环）。
+# 不等 network-online：Studio 监听 0.0.0.0，网络晚到也接得上；主程序不在时 Studio 自己会等、会重连。
+[Unit]
+Description=Microduck Studio（网页控制台，8000 端口）
+After=network.target
+
+[Service]
+User=radxa
+Group=radxa
+WorkingDirectory=/home/radxa/studio-dev
+ExecStart=/usr/bin/python3 -I run.py --listen 0.0.0.0:8000
+Restart=on-failure
+RestartSec=5
+Nice=10
+CPUWeight=20
+CPUQuota=60%
+MemoryMax=300M
+
+[Install]
+WantedBy=multi-user.target
