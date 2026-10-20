@@ -161,13 +161,14 @@ HUB 和 IMU 板的脚序对得上，同向线直连。
 - **遥控**：站起来、开始走、坐下，技能和动作；
 - **日志**：分类分级，出问题一键导出诊断包，发群里求助。
 
-**复刻镜像（第一版在修）**：一张卡装好整套，包括我们 fork 的主程序、走路和动作模型、Studio，以及首次开机自动起名、认 IMU、开热点配网。烧卡 → 开机 → 手机连鸭子的热点 `Microduck-xxxx` → 在 Studio 里填家里 WiFi → 按上手清单走，全程不用 SSH。10-20 出了第一版，审查时发现新卡走不过「IMU 方向」和「写进主程序」两步，正在修；修好、真机验收过了放下载，使用说明跟镜像一起放出来。镜像免费，只供个人非商业复刻，不随收费产品分发（里面的模型是作者的个人非商业许可）。
+**复刻镜像（预发布，待真机验收）**：一张卡装好整套，包括我们 fork 的主程序、走路和动作模型、Studio，以及首次开机自动起名、认 IMU、开热点配网。烧卡 → 开机 → 手机连鸭子的热点 `Microduck-xxxx` → 在 Studio 里填家里 WiFi → 按上手清单走，全程不用 SSH。10-20 第一版审查出新卡走不过「IMU 方向」和「写进主程序」两步，已经修好；重出的镜像在电脑上测试、挂载核验都过了，还没在真鸭子上走完一遍，先作为预发布放出：**[下载（Releases）](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261020)** · [烧录和第一次使用](software/image/烧录和第一次使用.md)。镜像免费，只供个人非商业复刻，不随收费产品分发（里面的模型是作者的个人非商业许可）。
 
-**实测到哪了**：Studio 装在二号鸭上当开机服务用，手柄配对和急停实测通过；「写进主程序」、连 WiFi、复刻镜像还没在真机上验过。还没做的：网页上改走路手感参数。
+**实测到哪了**：Studio 装在二号鸭上当开机服务用，手柄配对和急停实测通过；「写进主程序」、连 WiFi、复刻镜像还没在真机上验过，我们正在验。还没做的：网页上改走路手感参数。
 
 主程序用我们的 fork [fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy)：IMU 模块（BNO085 / LSM6DSV16X）4 根线直接接主板 I²C，不用做总线 IMU 小板；用陀螺积分治好了走路时姿态乱跳。Studio 在它上面测过。
 
 **[Studio 说明](software/studio/)**　·
+**[复刻镜像](software/image/)**　·
 [软件一览](software/)　·
 **[装到鸭子上](software/studio/README.md#装到鸭子上)**　·
 [台架模式：没装主控也能调舵机](software/studio/README.md#台架模式主控没烧用飞特调试板在电脑上调舵机)　·
@@ -243,7 +244,7 @@ HUB 和 IMU 板的脚序对得上，同向线直连。
 
 ## 最近更新
 
-**2026-10-20 · 复刻镜像第一版，审查后在修**：一张卡装好整套（我们 fork 的主程序、走路和动作模型、Studio、首次开机和配网），烧卡开机后手机连鸭子的热点、在 Studio 里填家里 WiFi、按上手清单走，不用 SSH。第一版出来以后做了三路审查，发现新卡走不过「IMU 方向」和「写进主程序」两步：出厂时主程序该跑标定模式，镜像里却是运动模式。正在修，修好、真机验收过了放下载。
+**2026-10-20 · 复刻镜像第一版（预发布，待真机验收）**：一张卡装好整套（我们 fork 的主程序、走路和动作模型、Studio、首次开机和配网），烧卡开机后手机连鸭子的热点、在 Studio 里填家里 WiFi、按上手清单走，不用 SSH。第一版出来以后做了三路审查，发现新卡走不过「IMU 方向」和「写进主程序」两步：出厂时主程序该跑标定模式，镜像里却是运动模式。修好以后重出，先作为预发布放到 [Releases](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261020)，真机验收过了转正式。[烧录和第一次使用](software/image/烧录和第一次使用.md) · [镜像构建脚本](software/image/)。
 
 **2026-10-20 · 新版自制板三块画好了**：总线 IMU 板 v2（舵机座换成能插飞特线的 A2007WR-3P）、舵机总线 HUB、接电池板，嘉立创 EDA 工程和整板 3D 在 [`hardware/新版/`](hardware/新版/)，都还没打样实测。
 
@@ -491,7 +492,7 @@ python scripts/analyze_holes.py upstream/microduck_rl/src/mjlab_microduck/robot/
 ## 许可证
 
 - `scripts/`、`software/studio/` 的代码、`software/image/` —— Apache-2.0
-- 复刻镜像里的走路和动作模型不在本仓库，适用模型作者的个人非商业许可，**镜像不得随收费产品分发**（许可全文随镜像提供）
+- 复刻镜像里的走路和动作模型不在本仓库，适用模型作者的个人非商业许可，**镜像不得随收费产品分发**（见[模型说明](software/image/overlay/usr/share/doc/microduck/模型说明.txt)）
 - `assembly-drawings/` 及保留的仿真网格 —— **CC BY-SA-NC 4.0**（上游 3D 模型为 CC BY-SA-NC，
   依 ShareAlike 条款衍生作品须沿用同协议，**不得商用**）
 

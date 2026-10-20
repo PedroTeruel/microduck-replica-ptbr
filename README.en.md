@@ -178,13 +178,14 @@ horns were remodelled and reprinted. The editable SolidWorks drawings have an FT
 - **Remote**: stand up, walk, sit down, skills and moves;
 - **Logs**: categorised and levelled; export a diagnostics bundle in one click to ask for help.
 
-**Replica image (first build being fixed)**: one card with everything — our fork of the main program, the walking and skill models, Studio, and a first boot that names the duck, finds the IMU and opens a hotspot for WiFi setup. Flash → boot → join the duck's `Microduck-xxxx` hotspot from a phone → enter your home WiFi in Studio → follow the checklist, no SSH at any point. The first build came out on 10-20; review found that a fresh card cannot get through the "IMU mount" and "write into the main program" steps, and we are fixing it. It will be published once it passes on a real duck, together with its instructions. The image is free, for personal non-commercial builds only, and is not distributed with any paid product (the models in it are under their author's personal non-commercial licence).
+**Replica image (pre-release, real-duck test pending)**: one card with everything — our fork of the main program, the walking and skill models, Studio, and a first boot that names the duck, finds the IMU and opens a hotspot for WiFi setup. Flash → boot → join the duck's `Microduck-xxxx` hotspot from a phone → enter your home WiFi in Studio → follow the checklist, no SSH at any point. Review of the first build on 10-20 found that a fresh card could not get through the "IMU mount" and "write into the main program" steps; that is fixed. The rebuilt image passed the tests and a mounted inspection on a computer but has not been through a real duck yet, so it is out as a pre-release: **[download (Releases)](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261020)** · [flashing and first use](software/image/烧录和第一次使用.md) (Chinese). The image is free, for personal non-commercial builds only, and is not distributed with any paid product (the models in it are under their author's personal non-commercial licence).
 
-**What has been tested**: Studio runs as a boot service on our second duck; gamepad pairing and the e-stop were tested on it. "Write into the main program", WiFi setup and the replica image have not been tested on a real duck yet. Not done yet: editing the walking feel from the page.
+**What has been tested**: Studio runs as a boot service on our second duck; gamepad pairing and the e-stop were tested on it. "Write into the main program", WiFi setup and the replica image have not been tested on a real duck yet; we are on it. Not done yet: editing the walking feel from the page.
 
 The main program is our fork [fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy): an IMU module (BNO085 / LSM6DSV16X) goes straight onto the board's I²C with four wires — no bus IMU board to build — and integrating the gyro fixed the attitude jumps while walking. Studio is tested on it.
 
 **[Studio](software/studio/)** (Chinese)　·
+**[Replica image](software/image/)** (Chinese)　·
 [Software overview](software/) (Chinese)　·
 **[Installing it on the duck](software/studio/README.md#装到鸭子上)**　·
 [Bench mode: tune servos with no main board](software/studio/README.md#台架模式主控没烧用飞特调试板在电脑上调舵机)　·
@@ -267,7 +268,7 @@ Hardware, firmware, algorithms, documentation, measured data — all of it count
 
 ## Latest
 
-**2026-10-20 — Replica image, first build, being fixed after review.** One card with everything (our fork of the main program, the walking and skill models, Studio, first boot and WiFi setup): flash it, boot, join the duck's hotspot from a phone, enter your home WiFi in Studio and follow the checklist, no SSH. After the first build we ran a three-way review and found that a fresh card cannot get through the "IMU mount" and "write into the main program" steps: out of the box the main program has to run in commissioning mode, and the image had it in motion mode. Being fixed; it will be published once it passes on a real duck.
+**2026-10-20 — Replica image, first build (pre-release, real-duck test pending).** One card with everything (our fork of the main program, the walking and skill models, Studio, first boot and WiFi setup): flash it, boot, join the duck's hotspot from a phone, enter your home WiFi in Studio and follow the checklist, no SSH. After the first build we ran a three-way review and found that a fresh card cannot get through the "IMU mount" and "write into the main program" steps: out of the box the main program has to run in commissioning mode, and the image had it in motion mode. Fixed and rebuilt; it is out as a pre-release on [Releases](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261020) and becomes a full release once it passes on a real duck. [Flashing and first use](software/image/烧录和第一次使用.md) · [image build scripts](software/image/) (Chinese).
 
 **2026-10-20 — Three new custom boards drawn.** Bus IMU board v2 (its servo connector is now an A2007WR-3P that takes the Feetech plug), a servo bus hub and a battery terminal board; EasyEDA projects and 3D models are in [`hardware/新版/`](hardware/新版/) (Chinese). None has been made or tested yet.
 
@@ -517,7 +518,7 @@ Requires `mujoco`, `numpy`, `pillow`, `scipy`. Rendering needs a working OpenGL 
 ## License
 
 - `scripts/`, the code in `software/studio/`, and `software/image/` — Apache-2.0
-- The walking and skill models in the replica image are not in this repository; they are under their author's personal non-commercial licence, so **the image must not be distributed with any paid product** (the full licence ships with the image)
+- The walking and skill models in the replica image are not in this repository; they are under their author's personal non-commercial licence, so **the image must not be distributed with any paid product** (see the [model notes](software/image/overlay/usr/share/doc/microduck/模型说明.txt), Chinese)
 - `assembly-drawings/` and retained simulation meshes — **CC BY-SA-NC 4.0**. Upstream 3D models are CC BY-SA-NC;
   ShareAlike requires derivatives to carry the same license. **Non-commercial only.**
 
