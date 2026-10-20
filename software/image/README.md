@@ -89,6 +89,9 @@ sudo STUDIO_VERSION=<Studio 的提交号> IMAGE_VERSION=<本目录的提交号> 
 ```
 
 - `OUT_DIR` 不能放在 `/mnt` 下：WSL 的 Windows 盘上 loop 很慢、权限也不对；用 `~/microduck-out`。
+- 只给自己的验收卡用：`DEV_AUTHORIZED_KEY="$(cat 某把.pub)"` 会把这把公钥写进 radxa 的
+  `authorized_keys`，测出问题能直接远程改，不用重烧卡，镜像清单里会注明。**正式发布绝对不要设**：
+  那等于给所有用户的鸭子留了一扇后门。
 - 版本号不给的话脚本自己用 `git rev-parse`（有未提交改动加 `-dirty`），拿不到就写「未知」。
   WSL 里读 Windows 盘上的 git worktree 常常拿不到，所以发布时自己传。
 - 大约 10 分钟。产出：

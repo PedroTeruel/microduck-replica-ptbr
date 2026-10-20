@@ -871,5 +871,39 @@ class test_residual_scan_more(ApplyTestBase):
         self.assertIn("引用", text)
 
 
+class test_dev_authorized_key(ApplyTestBase):
+    KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItest microduck-accept@test"
+
+    def test_key_written_only_when_asked(self):
+        payload = self.fx.make_payload()
+        root = self.fx.make_rootfs()
+        self.run_ok(root, payload, self.fx.make_studio(), self.fx.make_overlay(),
+                    env_extra={"DEV_AUTHORIZED_KEY": self.KEY})
+        keys = root / "home/radxa/.ssh/authorized_keys"
+        self.assertEqual(keys.read_text(encoding="utf-8"), self.KEY + "\n")
+        if not IS_WINDOWS:
+            self.assertEqual(stat.S_IMODE(keys.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(keys.parent.stat().st_mode), 0o700)
+            if os.geteuid() == 0:
+                self.assertEqual((keys.stat().st_uid, keys.stat().st_gid), (1000, 1000))
+        manifest = (root / "usr/share/doc/microduck/镜像清单.txt").read_text(encoding="utf-8")
+        self.assertIn("验收卡：radxa 带了一把开发用 SSH 公钥（microduck-accept@test）", manifest)
+
+    def test_no_key_by_default(self):
+        payload = self.fx.make_payload()
+        root = self.fx.make_rootfs()
+        self.run_ok(root, payload, self.fx.make_studio(), self.fx.make_overlay())
+        self.assertFalse((root / "home/radxa/.ssh/authorized_keys").exists())
+        manifest = (root / "usr/share/doc/microduck/镜像清单.txt").read_text(encoding="utf-8")
+        self.assertNotIn("开发用 SSH 公钥", manifest)
+
+    def test_not_a_key_fails(self):
+        payload = self.fx.make_payload()
+        root = self.fx.make_rootfs()
+        result = self.run_fail(root, payload, self.fx.make_studio(), self.fx.make_overlay(),
+                               env_extra={"DEV_AUTHORIZED_KEY": "hello"})
+        self.assertIn("不像一行 SSH 公钥", result.stdout + result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1086,6 +1086,33 @@ for f in root/.ssh/authorized_keys root/.ssh/known_hosts home/radxa/.ssh/authori
     remove_path "$ROOT/$f"
 done
 
+# 只给自己的验收卡用：DEV_AUTHORIZED_KEY（一行 SSH 公钥）写进 radxa 的 authorized_keys，
+# 测出问题能直接远程改，不用重烧卡。正式发布的镜像不要设：那等于给所有用户的鸭子留后门。
+DEV_KEY_NOTE=
+if [ -n "${DEV_AUTHORIZED_KEY:-}" ]; then
+    case "$DEV_AUTHORIZED_KEY" in
+        "ssh-ed25519 "*|"ssh-rsa "*|"ecdsa-sha2-"*) ;;
+        *) fail "DEV_AUTHORIZED_KEY 不像一行 SSH 公钥" "给一行 ssh-ed25519 开头的公钥（.pub 文件的内容）。" ;;
+    esac
+    case "$DEV_AUTHORIZED_KEY" in
+        *"
+"*) fail "DEV_AUTHORIZED_KEY 只能是一行" "只给一把公钥。" ;;
+    esac
+    RADXA_IDS=$(awk -F: '$1=="radxa" {print $3":"$4; exit}' "$ROOT/etc/passwd")
+    [ -n "$RADXA_IDS" ] || fail "ROOT/etc/passwd 里没有 radxa" "确认底图。"
+    SSH_DIR=$ROOT/home/radxa/.ssh
+    safe_dir "$SSH_DIR"
+    safe_file "$SSH_DIR/authorized_keys"
+    printf '%s\n' "$DEV_AUTHORIZED_KEY" > "$SSH_DIR/authorized_keys" || fail "写不进 $SSH_DIR/authorized_keys" "检查权限。"
+    chmod 0700 "$SSH_DIR" && chmod 0600 "$SSH_DIR/authorized_keys" || fail "设不了 .ssh 的权限" "检查 ROOT 文件系统。"
+    if [ "$(id -u)" -eq 0 ]; then
+        chown "$RADXA_IDS" "$SSH_DIR" "$SSH_DIR/authorized_keys" || fail "设不了 .ssh 的属主 $RADXA_IDS" "检查 ROOT 文件系统。"
+    fi
+    add_add "$SSH_DIR/authorized_keys"
+    DEV_KEY_NOTE="验收卡：radxa 带了一把开发用 SSH 公钥（${DEV_AUTHORIZED_KEY##* }），正式发布的镜像不带。"
+    echo "    $DEV_KEY_NOTE"
+fi
+
 : > "$WORK/official-install-residue.txt"
 if [ -d "$ROOT/home/radxa" ]; then
     find "$ROOT/home/radxa" -mindepth 1 -maxdepth 1 \
@@ -1400,6 +1427,7 @@ safe_file "$MANIFEST"
     echo "Studio 版本：$STUDIO_VERSION"
     echo "Studio 只装运行文件（不含 tests/dev/docs）。"
     echo "radxa 默认密码 microduck（只能本机或钥匙登录后 sudo 用；第一次登录请用 passwd 改掉）。"
+    [ -z "$DEV_KEY_NOTE" ] || echo "$DEV_KEY_NOTE"
     echo ""
     echo "删除（路径相对镜像根目录）"
     echo "--------------------------------"

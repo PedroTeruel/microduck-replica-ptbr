@@ -39,6 +39,15 @@ class OverlayStatic(unittest.TestCase):
                  (REAL_OVERLAY / "enable.list").read_text(encoding="utf-8").splitlines()]
         self.assertIn("ssh.service", lines)
 
+    def test_ssh_generates_missing_host_keys(self):
+        # 10-21 验收卡：sshd-keygen 靠 ConditionFirstBoot，空 machine-id 不算第一次开机，钥匙没生成、sshd 起不来
+        conf = REAL_OVERLAY / "etc/systemd/system/ssh.service.d/10-microduck-hostkeys.conf"
+        lines = [line.strip() for line in conf.read_text(encoding="utf-8").splitlines()
+                 if line.strip() and not line.startswith("#")]
+        self.assertEqual(lines, ["[Service]", "ExecStartPre=",
+                                 "ExecStartPre=/usr/bin/ssh-keygen -A",
+                                 "ExecStartPre=/usr/sbin/sshd -t"])
+
     def test_model_doc(self):
         text = (REAL_OVERLAY / "usr/share/doc/microduck/模型说明.txt").read_text(encoding="utf-8")
         self.assertIn("本镜像 /opt/robot/feetech-ft5-r5/models/ 和 roller/ 下列出的全部模型", text)
