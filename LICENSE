@@ -6,6 +6,10 @@
 
      scripts/              渲染、导出、孔位分析脚本 / rendering, export, hole-analysis scripts
      tools/                零依赖 STL 查看器 / zero-dependency STL viewer
+     software/studio/      Microduck Studio 网页中控的代码（第三方库和 3D 网格除外，见下）
+                           Microduck Studio web console code (except vendored
+                           third-party libraries and the 3D mesh, see below)
+     software/image/       复刻镜像的构建脚本和开机脚本 / replica image build and boot scripts
 
    Apache-2.0 全文 / full text: https://www.apache.org/licenses/LICENSE-2.0
 
@@ -20,6 +24,8 @@
                            保留的上游仿真几何 / retained upstream simulation geometry
      tools/servo-web/model/
                            网页显示模型 / web visualization geometry
+     software/studio/web/model/
+                           Studio 网页里的 3D 鸭子 / 3D duck in the Studio web console
      cad/, print/ 的历史 STL / historical STLs in cad/ and print/
                            旧模型已于 2026-09-28 移除，Git 历史中的衍生作品许可不变
                            removed on 2026-09-28; their licence in Git history is unchanged
@@ -56,6 +62,16 @@
   upstream CC BY-NC-SA statement. The documentation licence above does not
   override Apache-licensed documentation in that directory.
   Fixed sources and attribution: software/training/UPSTREAM.md.
+
+- software/studio/web/vendor/（Preact、htm、three.js）和 software/studio/deps/（Python 包）
+  是原样收录的第三方软件，保留各自的许可证，许可证文件在原目录里。
+  Vendored third-party code in software/studio/web/vendor/ and software/studio/deps/
+  keeps its own licences; the licence files sit next to the code.
+
+- 复刻镜像里带的走路和动作模型不在本仓库里，适用模型作者的个人非商业许可，见
+  software/image/overlay/usr/share/doc/microduck/模型说明.txt。
+  The walking and skill models shipped in the replica image are not in this
+  repository; they are under their author's personal non-commercial licence.
 
 - 规范名称是 CC BY-NC-SA 4.0。上游 README 写作「BY-SA-NC」，指的是同一个许可证。
   The canonical name is CC BY-NC-SA 4.0; upstream writes it "BY-SA-NC" — same licence.

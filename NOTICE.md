@@ -31,6 +31,7 @@ Microduck 是 Pollen Robotics 的商业产品，硬件**部分开源**：
 | `assembly-drawings/` | 全部渲染图与爆炸图 | 由上游 MJCF + STL 渲染生成 |
 | `software/training/` 内的 3D 网格 | 训练使用的仿真几何 | 保留上游模型来源与许可，不作为实物打印文件 |
 | `tools/servo-web/model/` | 网页调试显示模型 | 从上游 MJCF / STL 转换，非最新实物 CAD |
+| `software/studio/web/model/` | Studio 网页里的 3D 鸭子 | 从上游仿真模型转换，只留外形，非最新实物 CAD |
 | `docs/hole_analysis.json` | 孔位几何分析数据 | 由上游 STL 计算得出 |
 
 > **模型下载迁移（2026-09-28）**：`print/` 和 `cad/` 已改为指向 [CAD 仓库](https://github.com/fanhao375/microduck-replica-cad) 的入口说明，旧单件 STL、装配 STL 与对照表已从当前版本移除，避免误作最新打印件。Git 历史中的旧模型仍为上游 STL 的重命名、分类或装配变换衍生作品，继续遵循 CC BY-NC-SA；移除下载副本不改变历史文件的作者与许可。
@@ -41,6 +42,8 @@ Microduck 是 Pollen Robotics 的商业产品，硬件**部分开源**：
 |---|---|---|
 | `scripts/` | 渲染、导出、孔位分析等脚本 | **Apache-2.0** |
 | `tools/stl_viewer.html` | 零依赖 WebGL STL 查看器 | **Apache-2.0** |
+| `software/studio/` 的代码 | Microduck Studio 网页中控（不含 `web/vendor/`、`deps/`、`web/model/`） | **Apache-2.0** |
+| `software/image/` | 复刻镜像的构建脚本、首次开机和配网脚本 | **Apache-2.0** |
 | `docs/*.md`、`*.md` | 全部文档与逆向分析文本 | **CC BY-NC-SA 4.0** |
 | `build-log/` 照片 | 实物构建照片 | **CC BY-NC-SA 4.0**，由本项目参与者拍摄并授权 |
 | `assets/` | 封面与交流群二维码 | 同上 |
@@ -68,6 +71,8 @@ Microduck 是 Pollen Robotics 的商业产品，硬件**部分开源**：
 | 路径 | 内容 | 来源 | 许可证 |
 |---|---|---|---|
 | `tools/飞特/` | 飞特 FD 调试软件 1.9.8.5 + CH340 驱动 | [gitee.com/ftservo/fddebug](https://gitee.com/ftservo/fddebug)，2026-09-11 复制 | **MIT**（FTServo 2024，LICENSE 同目录） |
+| `software/studio/web/vendor/` | Studio 前端库：Preact、htm 3.1.1、three.js 0.160.0 | 各自官方发布 | Preact、three.js **MIT**，htm **Apache-2.0**（许可证在 `web/vendor/licenses/`） |
+| `software/studio/deps/` | Studio 的 Python 依赖（anyio、click、h11、idna、pyserial、sniffio、starlette、typing_extensions、uvicorn、wsproto） | pypi.org 原版 wheel，版本和校验值见 `deps/VERSIONS.txt` | MIT / BSD-3-Clause / PSF-2.0 等，各包许可证在各自的 `*.dist-info` 里 |
 
 > 文档中引用的上游源码片段（注释、常量、寄存器定义）来自 `pollen-robotics/microduck`，
 > 遵循其 **Apache-2.0** 许可证，引用处均已标注文件路径。
