@@ -4,24 +4,31 @@
     卡片头（不编号）连上鸭子
     1 舵机零位   2 IMU 方向   3 写进主程序   4 配手柄   5 测急停   6 站起来、走几步（记录还是两条：stood、walked）
 每一步五种状态：ok ✓ 完成 · skip ↷ 跳过了 · todo ● 该做 / 要重做 · no ○ 没做 · unk ? 读不到。
-「现在该做」= 第一个 ● / ○ 的步（跳过的算完成）。后面的不锁，照样能做。
+「现在该做」= 第一个 ● / ○ 的步（跳过的、标了已完成的都算完成）。后面的不锁，照样能做。
 
-**跳过**（用户 10-18 在二号鸭上：「以前标定过，应该跳过就行……应该允许跳过、允许重新做」）：● / ○ 的行能跳过，记一笔
-skipped.<步> = {at, by, fp}，fp 跟这一步的正式记录绑同样的东西（舵机：关节指纹；IMU：芯片 + 方向；配手柄：不绑；
-测急停：手柄 MAC + 主程序 build；站走：标定指纹）。指纹变了跳过作废、那行回 ●；指纹读不到不作废、也不记新的跳过（照 C2）。
-主程序明说不行的（标定没做完、IMU 方向没确认、不让上力）跳过也站不起来：跳过按钮灰着，后端也拒。读不到（?）的不让跳。
-**测出了问题的不让跳**（第三批代码审查 D5）：IMU 站着核过但差 8.5°、急停测过但现在不管用、两套零位打架——这些是
-「做过、结果不行」，跳过只会把问题藏起来（以前跳过以后一直显示「你说以前做过」）。只有「没有记录」（或者记录对不上
-现在的手柄 / 标定）的行能跳；测出问题的行按钮灰着写原因，只给「重新做」；已经存在的这类跳过记录作废、从记录里删掉。
-测急停的跳过要点两次，确认那句按情况写（没测过 / 换了手柄 / 主程序升级过 / 急停现在不管用：审查 D11）。
-调舵机时清单冻结：跳过、取消跳过都不收（后端拒、页面灰，审查 D11）。
+**每一行任何时候都能「去做」「已完成」「跳过」**（用户 10-20 真机验收：「这个逻辑绝对有问题，允许人家直接跳过」
+「可能有人之前做过重新走一遍」；10-18 就定过每步都能跳。二号鸭零位早校过，以前却被锁着逼重校）：
+- 「已完成」= 我以前做过：记 done.<步> = {at, by, fp}，这一行 ✓、写「你标了已完成（时间）」；
+- 「跳过」= 先不做：记 skipped.<步> = {at, by, fp}，这一行 ↷；
+- 两种互斥（标一种就删掉另一种）；标过的行给「重新做」+「取消」，Studio 自己有记录的 ✓ 只给「重新做」。
+fp 跟这一步的正式记录绑同样的东西（舵机：关节指纹；IMU：芯片 + 方向；写进主程序、站走：标定指纹；测急停：
+手柄 MAC + 主程序 build；配手柄：不绑）。指纹变了标的作废、那行回 ●（记录留着，指纹变回来又算）；
+标的时候指纹读不到就先记 null，tick 第一次读到时绑上（照 C2：读不到不作废）。
+**不再锁，但有后果的要点两次**：主程序明说没做完（hard：标定没做完、IMU 方向没确认、不让上力）、读不到（?）、
+测出了问题（found：IMU 站着核过差 8.5°、急停测过但现在不管用、两套零位打架，第三批代码审查 D5）、测急停（审查 D11）、
+指纹读不到、调舵机时（清单冻着，标了要交还以后才显示）——点「已完成」「跳过」都是两步，第二下按钮上写后果
+（「确定跳过？主程序说标定没做完：跳过了鸭子也站不起来」这种），后端没收到 confirmed 也拒。
+记录里的 ack 记下第二下确认过哪几种：没确认过 hard 的标记在主程序明说不行时不算（「标的不管用」）；
+没确认过 found 的标记在测出问题以后作废、从记录里删掉（以前「跳过」以后会一直显示「你说以前做过」，把问题藏起来）。
 ✓ 和跳过了的行都能「重新做」：就是那一步的「去做」，旧记录留着，新结果出来才替换。
+第 1 步标了已完成 / 跳过：第 3 步准备情况里「舵机零位」算满足（commit.py 读 user_mark）；第 2 步标了、主程序里方向没确认、
+IMU 页也没新校准：第 3 步按默认装法写正在用的那颗 IMU 并标成已确认（任务 17，commit.py 的 _default_imu）。
 
 **主程序的字段只当「没完成」的证据**（审查 O4）：fork 的运动模式要 15 颗都标了、IMU 也 verified 才肯开总线
 （fork robotd main.rs:1510-1519），所以 control 阶段这两个字段恒为 true；而这个 true 可能是安装脚本拿一号鸭的种子值
 补上的（fork packaging/rebuild-config.py:75-99），也可能是手写的（二号鸭 10-17 手写了 verified = true）。
-「完成」要靠 Studio 自己的记录：舵机页标定留下的 servo-calib/eeprom-*.json、用户点过的「已经校过，核对一下」、
-IMU 页站着完整校过一次且跟主程序用的方向差 < 2°。
+「完成」要靠 Studio 自己的记录：舵机页标定留下的 servo-calib/eeprom-*.json、用户点过的「已经校过，核对一下」（老接口，
+页面现在不给这个按钮了）、IMU 页站着完整校过一次且跟主程序用的方向差 < 2°；或者用户自己标的「已完成」。
 
 记录存 state_dir/onboarding.json（审查 O6）：先写临时文件再改名；文件坏了改名成 .bad 留着、当空的，记一行 warn。
 每条记录带「它成立的条件」，条件变了显示「要重做」，记录本身不删：
@@ -29,8 +36,9 @@ IMU 页站着完整校过一次且跟主程序用的方向差 < 2°。
     站 / 走  {at, fp}                        fp = 标定指纹（15 颗 zero_raw / direction + 现在用的 IMU 方向）
     舵机核对 {at, fp}                        fp = 关节指纹（只看 15 颗 zero_raw / direction）
     IMU 核对 {at, source, mount_fp, ...}     芯片或方向改过 → 再核一次
+    已完成 / 跳过 done.<步> / skipped.<步> = {at, by, fp, ack?}   fp 变了 → 不算；ack 见上
 时间存 time.time()（墙钟，给人看的）；鸭子开机没联网时墙钟停在 1970，页面上年份 < 2024 写「时间不准」。
-换卡：state 目录跟着卡走，新卡上自然是空的（舵机 EEPROM 里的零位还在，第 1 步走「已经校过，核对一下」）；
+换卡：state 目录跟着卡走，新卡上自然是空的（舵机 EEPROM 里的零位还在，第 1 步点「已完成」）；
 重装 Studio 不动 /var/lib 就留着；换主板不清（零位在舵机和卡上，不跟主板走）。
 
 只在后端一处判：app 的小任务每 0.5 秒调一次 tick()，summarize 只读 view()（每个页面每秒 10 次，不能在那里写盘）。
@@ -46,10 +54,10 @@ import tempfile
 import threading
 import time
 
-from .estop import STARTING_PHASES
+from .estop import STARTING_LONG_S, STARTING_PHASES
 from .imu import mount_of
 from .robotd import fresh_calib
-from .state import JOINT_CN, MAX_AGE, posture
+from .state import JOINT_CN, MAX_AGE, STILL_STARTING, posture, starting_secs
 
 ONBOARD_FILE = "onboarding.json"
 SERVO_IDS = (20, 21, 22, 23, 24, 30, 31, 32, 33, 34, 10, 11, 12, 13, 14)   # 跟 servo.IDS 一样（这里不 import servo：它带串口）
@@ -79,11 +87,30 @@ TITLES = {"servo": "舵机零位", "imu": "IMU 方向", "commit": "写进主程�
 ORDER = ("servo", "imu", "commit", "pad", "estop", "walk")
 GO = {"servo": "servos", "imu": "imu", "commit": "commit", "pad": "pad_wizard", "estop": "estop", "walk": "remote"}   # 每一步的「去做」/「重新做」
 SKIP_CHANGED = {"servo": "舵机零位", "imu": "IMU 方向（或芯片）", "commit": "标定", "estop": "手柄（或主程序版本）", "walk": "标定"}
-HARD_SERVO = "主程序说标定没做完，跳过了鸭子也站不起来：先去舵机页"
-HARD_IMU = "主程序没确认方向，跳过了鸭子也站不起来，先去 IMU 页"
-HARD_STUCK = "主程序不让上力（标定或 IMU 方向没过），跳过了鸭子也站不起来：先去舵机页 / IMU 页"
 COMMIT_TEXT = "把舵机零位、方向、IMU 方向写进主程序。出厂镜像是标定模式；写完会切到运动模式并重启（约 20 秒），以后开机直接就能站、能走，不开网页也行。"
-FROZEN_WHY = "在调舵机：清单先停在调之前的样子，跳过 / 取消跳过等交还主程序以后再点"
+
+# 「已完成」「跳过」（用户 10-20）：页面上的动作 → 记录里的键；两种互斥
+KINDS = {"done": "done", "skip": "skipped"}
+OTHER = {"done": "skip", "skip": "done"}
+MARKED_TEXT = {"done": "你标了已完成", "skip": "跳过了（先不做）"}
+MARKED_WORD = {"done": "标了已完成", "skip": "点过跳过"}
+CHANGED_WORD = {"done": "标了已完成", "skip": "跳过"}
+# 要点两次的第二下那句：{q} 换成「跳过」/「标成已完成」（问句），{v} 换成「跳过了」/「标成已完成」（后果）
+ASK_Q = {"done": "标成已完成", "skip": "跳过"}
+ASK_V = {"done": "标成已完成", "skip": "跳过了"}
+# 原来不让跳的几种情况（主程序明说不行 hard、测出了问题 found）：现在都能点，第二下按钮上写后果
+HARD_SERVO = "主程序说标定没做完：{v}鸭子也站不起来"
+HARD_IMU = "主程序没确认 IMU 方向：{v}鸭子也站不起来"
+HARD_STUCK = "主程序不让上力（标定或 IMU 方向没过）：{v}鸭子也站不起来"
+UNK_WHY = "这一步现在读不到（{text}）：Studio 核对不了，就按你说的算"
+FP_WHY = "{what}：Studio 先记下，读到以后再核对"
+FROZEN_ASK = "确定{q}？在调舵机：清单停在调之前的样子，{v}要等交还主程序以后才显示"
+FROZEN_UNDO = "确定取消？在调舵机：清单停在调之前的样子，取消了要等交还主程序以后才显示"
+
+
+def fill(text, kind):
+    """把问句 / 后果里的 {q}、{v} 换成这个动作的说法（用 replace：原因里可能带花括号）。"""
+    return text.replace("{q}", ASK_Q[kind]).replace("{v}", ASK_V[kind]) if text else text
 
 
 # ---------------- 指纹 ----------------
@@ -247,12 +274,13 @@ def _f1(x):
 
 
 def _row(key, state, text, when=None, actions=(), note=None, hard=None, found=None, ask=None):
-    """hard：主程序明说这一步不行（标定没做完、IMU 方向没确认、不让上力）——跳过了鸭子也站不起来，不让跳（写原因）。
-    found：做过 / 查过、结果不行（测出了问题，审查 D5）——不让跳，只给「重新做」（写原因）。
-    ask：要点两次的跳过（测急停）第二下按钮上的那句（按情况写：审查 D11）。"""
+    """hard：主程序明说这一步不行（标定没做完、IMU 方向没确认、不让上力）——标了鸭子也站不起来，「已完成」「跳过」要点两次。
+    found：做过 / 查过、结果不行（测出了问题，审查 D5）——第一个按钮写「重新做」，标的要点两次。
+    hard / found 是带 {v} 的后果（fill 换成「跳过了」/「标成已完成」）。ask：测急停第二下按钮上的那句（带 {q}、{v}，按情况写：审查 D11）。
+    mark：「已完成」「跳过」两个按钮要不要点两次、第二下写什么（with_mark 填）；marked：这一行现在是用户标的（done / skip）。"""
     return {"key": key, "n": ORDER.index(key) + 1, "title": TITLES[key], "tip": TIPS[key], "state": state,
             "text": text, "when": when, "note": note, "actions": [{"do": d, "label": lab} for d, lab in actions],
-            "hard": hard, "found": found, "ask": ask, "go": GO[key], "skip": None}
+            "hard": hard, "found": found, "ask": ask, "go": GO[key], "mark": None, "marked": None}
 
 
 def header_of(inp):
@@ -270,9 +298,20 @@ def header_of(inp):
     if phase in STARTING_PHASES:
         if err and CALIB_ERR.search(str(err)):
             return {"ok": False, "kind": "stuck_calib", "text": "主程序不让上力：标定或 IMU 方向没过", "raw": str(err)}
-        return {"ok": False, "kind": "starting", "text": "在等舵机总线（多半是舵机没上电）" if phase == "waiting_for_bus"
-                else "主程序还在启动", "raw": str(err) if err else None}
+        if phase == "waiting_for_bus":
+            text = "在等舵机总线（多半是舵机没上电）"
+        elif (inp.get("starting_s") or 0) >= STARTING_LONG_S:
+            # 超过 30 秒还报启动阶段：不再说「还在启动」（10-20 真机：旧 fork 的标定模式永远报 configuring_bus）
+            text = f"主程序一直报「启动中」，超过 {STARTING_LONG_S:.0f} 秒了：{STILL_STARTING}"
+        else:
+            text = "主程序还在启动"
+        return {"ok": False, "kind": "starting", "text": text, "raw": str(err) if err else None}
     if mode == "commissioning":
+        # 标定模式的实时快照（phase 是 ready / moving / read_error / stop_unconfirmed / power_pending）：主程序起来了。
+        # read_error 也算起来了，只是这一拍读舵机出错：照原样把主程序的原话带出来
+        if phase == "read_error":
+            return {"ok": False, "kind": "commissioning", "text": "标定模式：主程序起来了，但读舵机出错（看舵机电源和线）",
+                    "raw": str(bus.get("last_cycle_error") or err or "") or None}
         return {"ok": False, "kind": "commissioning", "text": "标定模式：做完 IMU 粗校，第 3 步写完会自动切运动模式"}
     if mode == "motion" and phase == "control":
         return {"ok": True, "kind": "ok", "text": "连上了"}
@@ -320,7 +359,7 @@ def servo_row(inp, rec, head):
         text = f"两套零位会打架：主程序文件里 {len(off)} 颗的 zero_raw 不是 2048——" + "、".join(one(j) for j in off[:3]) \
             + ("…" if len(off) > 3 else "") + "。多半是随包的一号鸭数值，在舵机页标一遍"
         return _row("servo", "todo", text, actions=[("servos", "去舵机页")],
-                    found="两套零位会打架：跳过了也会站歪、走偏，要在舵机页标一遍")
+                    found="两套零位会打架：{v}也会站歪、走偏（第 3 步按 2048 写零位）")
     st = inp.get("studio_servo") or {}
     fp = joints_fp(calib)
     if set(SERVO_IDS) <= set(st.get("ids") or ()):
@@ -330,16 +369,17 @@ def servo_row(inp, rec, head):
         if ss and ss.get("src") == st.get("time") and ss.get("fp") == fp:
             return _row("servo", "ok", "舵机页标过；主程序文件里 15 颗都是 2048", when=st.get("time"))
         if ss and ss.get("src") == st.get("time"):
-            return _row("servo", "todo", "舵机页标过以后，主程序的标定文件改过了：再核对一次，或者在舵机页再标一遍",
-                        when=st.get("time"), actions=[("servos", "去舵机页"), ("confirm_servo", "已经校过，核对一下")])
+            return _row("servo", "todo", "舵机页标过以后，主程序的标定文件改过了：确实校过就点「已完成」，或者在舵机页再标一遍",
+                        when=st.get("time"), actions=[("servos", "去舵机页")])
     c = rec.get("confirm_servo") if isinstance(rec.get("confirm_servo"), dict) else None
     if c and c.get("fp") == fp:
         return _row("servo", "ok", "核对过：主程序文件里 15 颗都是 2048", when=c.get("at"))
     if c:
-        return _row("servo", "todo", "核对以后主程序的标定文件改过了：再核对一次，或者在舵机页标一遍",
-                    actions=[("servos", "去舵机页"), ("confirm_servo", "已经校过，核对一下")])
-    return _row("servo", "todo", "主程序文件里写着标过（可能是随包的一号鸭数值或手改的），Studio 这边没有记录",
-                actions=[("servos", "去舵机页"), ("confirm_servo", "已经校过，核对一下")])
+        return _row("servo", "todo", "核对以后主程序的标定文件改过了：确实校过就点「已完成」，或者在舵机页标一遍",
+                    actions=[("servos", "去舵机页")])
+    # 以前这里还有个「已经校过，核对一下」：现在三个按钮里的「已完成」就是它（用户 10-20：去做、已完成、跳过）
+    return _row("servo", "todo", "主程序文件里写着标过（可能是随包的一号鸭数值或手改的），Studio 这边没有记录："
+                "以前用 Studio 的舵机页校过就点「已完成」", actions=[("servos", "去舵机页")])
 
 
 def imu_row(inp, rec, head):
@@ -369,7 +409,7 @@ def imu_row(inp, rec, head):
             return _row("imu", "ok", f"IMU 页站着核过：跟主程序用的方向差 {_f1(d)}°", when=chk.get("at"))
         return _row("imu", "todo", f"上次站着核对：主程序用的方向跟算出来的差 {_f1(d)}°、站姿倾斜 {_f1(t)}°"
                     "（要差 < 2°、倾斜 ≤ 5°）", when=chk.get("at"), actions=[("imu", "去 IMU 页")],
-                    found=f"站着核过，方向差 {_f1(d)}°：跳过了走路也会往前冲（一号鸭 10-12 就是装歪 8.5°），去 IMU 页重新核")
+                    found=f"站着核过，方向差 {_f1(d)}°：{{v}}走路也会往前冲（一号鸭 10-12 就是装歪 8.5°）")
     if chk:
         return _row("imu", "todo", "核对以后 IMU 方向（或芯片）改过了：去 IMU 页站着再核一次", actions=[("imu", "去 IMU 页")])
     return _row("imu", "todo", "文件里写着已确认；装歪 8.5° 也会显示已确认：去 IMU 页站着核一次", actions=[("imu", "去 IMU 页")])
@@ -480,11 +520,12 @@ def _many_unconnected(pad):
     return len(paired) if len(paired) >= 2 and not any(p.get("connected") for p in paired) else 0
 
 
-ESTOP_ASK = {"never": "确定跳过？没测过：手柄 Select 能不能停住它没验过",
-             "web": "确定跳过？只用网页的话急停是空格 / 顶上红按钮，以后配了手柄要再测",
-             "pad": "确定跳过？换了手柄：这只手柄的 Select 没测过",
-             "build": "确定跳过？主程序升级过：升级以后 Select 没测过",
-             "bad": "确定跳过？急停现在不管用（{why}）：跳过也不会变好用"}
+# 测急停的「已完成」「跳过」都要点两次（审查 D11）；{q}、{v} 由 fill 换成这个动作的说法
+ESTOP_ASK = {"never": "确定{q}？没测过：手柄 Select 能不能停住它没验过",
+             "web": "确定{q}？只用网页的话急停是空格 / 顶上红按钮，以后配了手柄要再测",
+             "pad": "确定{q}？换了手柄：这只手柄的 Select 没测过",
+             "build": "确定{q}？主程序升级过：升级以后 Select 没测过",
+             "bad": "确定{q}？急停现在不管用（{why}）：{v}也不会变好用"}
 
 
 def estop_row(inp, rec, head):
@@ -499,7 +540,7 @@ def estop_row(inp, rec, head):
         web = _no_physical_pad(pad)
         web_only = "。只用网页的话：空格就是急停，跟顶上红按钮同一条路，不用测；可以跳过这步" if web else ""
         now = f"（配过 {many} 只手柄、现在都没连：先连上一只手柄再测）" if many else (f"（现在测不了：{bad_why}）" if bad_why else "")
-        ask = ESTOP_ASK["web"] if web else (ESTOP_ASK["bad"].format(why=bad_why) if es.get("state") == "bad" and bad_why
+        ask = ESTOP_ASK["web"] if web else (ESTOP_ASK["bad"].replace("{why}", bad_why) if es.get("state") == "bad" and bad_why
                                             else ESTOP_ASK["never"])
         return _row("estop", "no", "还没真按一次 Select 测过" + now + web_only, actions=[("estop", "去测急停")], ask=ask)
     mac, _ = _current_pad(pad)
@@ -516,7 +557,7 @@ def estop_row(inp, rec, head):
                     ask=ESTOP_ASK["build"])
     if es.get("state") == "bad":
         return _row("estop", "todo", f"测过，但现在急停不管用：{bad_why}", when=r.get("at"), actions=[("estop", "去看看")],
-                    found=f"测过，但现在急停不管用（{bad_why}）：跳过也不会变好用，先把它弄好")
+                    found=f"测过，但现在急停不管用（{bad_why}）：{{v}}也不会变好用，先把它弄好")
     ms = r.get("ms")
     return _row("estop", "ok", f"{r.get('name') or '手柄'} 测过：松开 Select 到卸力 {ms} ms" if _num(ms)
                 else f"{r.get('name') or '手柄'} 测过", when=r.get("at"))
@@ -565,44 +606,79 @@ def step_fp(key, inp):
 
 FP_WHAT = {"servo": "读不到主程序的标定文件", "imu": "读不到主程序存的 IMU 方向", "commit": "读不到标定",
            "estop": "读不到现在连的是哪只手柄（或主程序版本）", "walk": "读不到标定"}
-BOUND = ("servo", "imu", "commit", "estop", "walk")      # 跳过要绑指纹的步（配手柄不绑）
+BOUND = ("servo", "imu", "commit", "estop", "walk")      # 标记要绑指纹的步（配手柄不绑）
 
 
-def with_skip(row, inp, rec):
-    """把「跳过」套到一行上：✓ 的不变；有跳过记录、指纹没变 → 「跳过了」；指纹变了 → ●「跳过以后 xx 改过了」；
-    主程序明说不行（hard）→ 跳过不管用、按钮灰着。测出了问题（found）→ 不让跳，已有的跳过作废（void_skip：tick 删掉它）。
-    ● / ○ 的行带上 skip（能不能跳、为什么不能、要不要二次确认、确认那句）。"""
+def _marks(rec, key):
+    """这一步的「已完成」「跳过」记录：{kind: 记录}（正常最多一种，两种都有时「已完成」优先）。"""
+    out = {}
+    for kind, rk in KINDS.items():
+        d = rec.get(rk) if isinstance(rec.get(rk), dict) else {}
+        if isinstance(d.get(key), dict):
+            out[kind] = d[key]
+    return out
+
+
+def mark_offer(row, bound, fp):
+    """「已完成」「跳过」两个按钮（用户 10-20：每一行任何时候都能点）：要不要点两次、第二下按钮上写什么。
+    原来不让跳的几种都要点两次：测出了问题（found）> 主程序明说不行（hard）> 测急停（按情况那句，审查 D11）>
+    读不到（?）> 指纹读不到。ack 是这一行有的那几种问题：标的时候存进记录，确认过的问题以后不再作废它。"""
+    key = row["key"]
+    acks = [k for k in ("found", "hard") if row.get(k)]
+    if row["state"] == "unk":
+        acks.append("unk")
+    if bound and fp is None:
+        acks.append("fp")
+    if row.get("found"):
+        ask = "确定{q}？" + row["found"]
+    elif row.get("hard"):
+        ask = "确定{q}？" + row["hard"]
+    elif key == "estop" and row.get("ask"):
+        ask = row["ask"]
+    elif row["state"] == "unk":
+        ask = "确定{q}？" + UNK_WHY.replace("{text}", row["text"])
+    elif key == "estop":
+        ask = ESTOP_ASK["never"]
+    elif bound and fp is None:
+        ask = "确定{q}？" + FP_WHY.replace("{what}", FP_WHAT[key])
+    else:
+        ask = None
+    out = {"ack": acks}
+    for kind in KINDS:
+        out[kind] = {"confirm": ask is not None, "ask": fill(ask, kind)}
+    return out
+
+
+def with_mark(row, inp, rec):
+    """把用户标的「已完成」「跳过」套到一行上。Studio 自己有记录、判成 ✓ 的不变（只给「重新做」）。
+    有标记、指纹没变 → ✓「你标了已完成」/ ↷「跳过了」（底下真实的情况放进 note）；指纹变了 → ●「标了已完成以后 xx 改过了」。
+    标的时候没确认过的问题后来出现了：主程序明说不行（hard）→ 标的不管用；测出了问题（found）→ 作废（void：tick 删掉它）。
+    没标的行带上 mark：两个按钮要不要点两次、第二下那句（mark_offer）。"""
     key = row["key"]
     if row["state"] == "ok":
         return row
-    sk = (rec.get("skipped") or {}).get(key) if isinstance(rec.get("skipped"), dict) else None
     bound, fp = step_fp(key, inp)
-    if row.get("hard"):
-        row["skip"] = {"ok": False, "why": row["hard"], "confirm": False}
-        if sk:
-            row["note"] = "之前点过跳过，但现在主程序明说这一步不行：跳过不管用"
-        return row
-    if row.get("found"):
-        row["skip"] = {"ok": False, "why": row["found"], "confirm": False}
-        if sk:
-            row["note"] = "之前点过跳过；测出了问题以后跳过不算了"
-            row["void_skip"] = True
-        return row
-    if sk:
-        old = sk.get("fp")
+    for kind, m in _marks(rec, key).items():
+        ack = m.get("ack") if isinstance(m.get("ack"), list) else []
+        if row.get("found") and "found" not in ack:
+            row["note"] = f"之前{MARKED_WORD[kind]}；测出了问题以后{'跳过' if kind == 'skip' else '标的'}不算了"
+            row["void"] = row.get("void", []) + [kind]
+            continue
+        if row.get("hard") and "hard" not in ack:
+            row["note"] = f"之前{MARKED_WORD[kind]}，但现在主程序明说这一步不行：{'跳过' if kind == 'skip' else '标的'}不管用"
+            continue
+        old = m.get("fp")
         if bound and fp is not None and old is not None and old != fp:
-            row = dict(row, state="todo", text=f"跳过以后{SKIP_CHANGED[key]}改过了：{row['text']}")
-        else:
-            out = _row(key, "skip", "跳过了（你说以前做过）", when=sk.get("at"))
-            out["note"] = row["text"] if row["state"] != "unk" else None   # 底下真实的情况，页面小字写
-            return out
-    if row["state"] in ("todo", "no"):
-        why = None
-        if bound and fp is None:
-            many = _many_unconnected(inp.get("pad")) if key == "estop" else 0
-            why = (f"配过 {many} 只手柄、现在都没连：先连上一只手柄" if many else f"{FP_WHAT[key]}，现在记不了跳过：等几秒再点")
-        row["skip"] = {"ok": why is None, "why": why, "confirm": key == "estop",
-                       "ask": (row.get("ask") or ESTOP_ASK["never"]) if key == "estop" else None}
+            row = dict(row, state="todo", text=f"{CHANGED_WORD[kind]}以后{SKIP_CHANGED[key]}改过了：{row['text']}")
+            continue
+        out = _row(key, "ok" if kind == "done" else "skip", MARKED_TEXT[kind], when=m.get("at"))
+        out["note"] = row["text"] if row["state"] != "unk" else None   # 底下真实的情况，页面小字写
+        out["marked"] = kind
+        for k in ("desc", "commit"):                                  # 第 3 步那张卡片点开还看得到准备情况
+            if k in row:
+                out[k] = row[k]
+        return out
+    row["mark"] = mark_offer(row, bound, fp)
     return row
 
 
@@ -611,10 +687,11 @@ def evaluate(inp, rec):
     head = header_of(inp)
     rows = [servo_row(inp, rec, head), imu_row(inp, rec, head), commit_row(inp, rec, head),
             pad_row(inp, rec, head), estop_row(inp, rec, head), walk_row(inp, rec, head)]
-    rows = [with_skip(r, inp, rec) for r in rows]
+    rows = [with_mark(r, inp, rec) for r in rows]
     nxt = next((r["key"] for r in rows if r["state"] in ("todo", "no")), None)
     return {"header": head, "rows": rows, "next": nxt, "all_done": all(r["state"] in ("ok", "skip") for r in rows),
-            "skipped_n": sum(1 for r in rows if r["state"] == "skip"), "frozen": False}
+            "skipped_n": sum(1 for r in rows if r["state"] == "skip"),
+            "marked_n": sum(1 for r in rows if r.get("marked") == "done"), "frozen": False}
 
 
 # ---------------- 记录文件逐条校验（代码审查 C1：合法 JSON、但某一条类型不对，不能让整张清单每 0.5 秒出错一次） ----------------
@@ -651,18 +728,21 @@ def clean_records(data):
             else:
                 bad.append((k, f"不是对象（{type(v).__name__}）"))
             continue
-        if k == "skipped":
+        if k in KINDS.values():
+            # skipped.<步> / done.<步>：at 必须是数字（审查 D10）；fp 是字符串，或者 null（标的时候指纹读不到：
+            # tick 第一次读到时绑上，绑上以后指纹变了照样作废）；ack 是字符串列表（可以没有）
             if not isinstance(v, dict):
                 bad.append((k, f"不是对象（{type(v).__name__}）"))
                 continue
             good = {}
             for step, e in v.items():
-                # at 必须是数字；绑指纹的步 fp 必须是字符串（null 的话指纹变了也作废不了，会一直「跳过了」：审查 D10）
                 if (step in ORDER and isinstance(e, dict) and _num(e.get("at")) and _opt(e.get("by"), str)
-                        and (isinstance(e.get("fp"), str) if step in BOUND else _opt(e.get("fp"), str))):
+                        and _opt(e.get("fp"), str)
+                        and (e.get("ack") is None or (isinstance(e.get("ack"), list)
+                                                      and all(isinstance(a, str) for a in e["ack"])))):
                     good[step] = e
                 else:
-                    bad.append((f"skipped.{step}", json.dumps(e, ensure_ascii=False, default=str)[:120]))
+                    bad.append((f"{k}.{step}", json.dumps(e, ensure_ascii=False, default=str)[:120]))
             out[k] = good
             continue
         chk = CHECKS.get(k)
@@ -684,7 +764,7 @@ def error_view(why):
     """判清单整体出错：六行都写「?」和原因（不要永远「还在判…」，代码审查 C1）。"""
     rows = [_row(k, "unk", f"Studio 判这一步时出错：{why}") for k in ORDER]
     return {"header": {"ok": False, "kind": "error", "text": "清单判的时候出错（看日志里「系统」那几行）", "raw": why},
-            "rows": rows, "next": None, "all_done": False, "skipped_n": 0, "frozen": False}
+            "rows": rows, "next": None, "all_done": False, "skipped_n": 0, "marked_n": 0, "frozen": False}
 
 
 # ---------------- 主体 ----------------
@@ -829,51 +909,83 @@ class Onboarding:
                   say=f"上手清单：舵机零位「已经校过，核对一下」（{by or '页面'}；主程序文件里 15 颗都是 2048）", cat="校准")
         return True, None
 
-    def skip(self, step, rd, pad=None, servo=None, by=None):
-        """「跳过」：按现在的情况重判一遍，这一行是 ● / ○、又没被主程序明说不行、指纹读得到，才记 skipped.<步>。
-        不能跳回 (False, 原因)：页面按钮灰着也不能只靠它（IMU 方向主程序明说没确认时，前端灰、后端也拒）。"""
+    def mark(self, step, kind, rd, pad=None, servo=None, by=None, confirmed=False):
+        """「已完成」（kind=done，记 done.<步>）/「跳过」（kind=skip，记 skipped.<步>）。按现在的情况重判一遍：
+        要点两次的（主程序明说不行、读不到、测出了问题、测急停、指纹读不到、调舵机时）没带 confirmed 回 (False, 第二下那句)——
+        页面的两步确认不能只靠前端。记下 {at, by, fp, ack}：ack 是第二下确认过的那几种问题；两种标记互斥。"""
         if step not in ORDER:
             return False, f"不认识的步骤：{step}"
+        if kind not in KINDS:
+            return False, f"不认识的标法：{kind}"
         if servo is not None:
             self._servo = servo
         inp = self._inputs(rd, pad, servo, self.clock())
-        if inp["servo_session"]:
-            return False, FROZEN_WHY
         if inp["bench"]:
-            return False, "台架模式：清单现在不判，也不能跳过"
+            return False, "台架模式：清单现在不判，也不用标"
         with self._lk:
             rec = dict(self.rec)
         row = next(r for r in evaluate(inp, rec)["rows"] if r["key"] == step)
-        if row["state"] == "skip":
-            return True, "已经跳过了"
+        if row.get("marked") == kind:
+            return True, "已经跳过了" if kind == "skip" else "已经标了已完成"
+        if row.get("marked"):
+            return False, "这一步已经跳过了：先点「取消跳过」" if row["marked"] == "skip" else "这一步标了已完成：先点「取消」"
         if row["state"] == "ok":
-            return False, "这一步已经完成了，不用跳过"
-        sk = row.get("skip")
-        if sk is None:
-            return False, "这一步现在读不到（?），不让跳过：等它读出来再说"
-        if not sk["ok"]:
-            return False, sk["why"]
+            return False, "这一步已经完成了（Studio 有记录），不用再标"
+        offer = row.get("mark") or {}
+        ask = (offer.get(kind) or {}).get("ask")
+        if inp["servo_session"] and not ask:
+            ask = fill(FROZEN_ASK, kind)             # 调舵机时清单冻着：标了要交还以后才显示（审查 D11 的冻结，现在能点了）
+        if ask and confirmed is not True:
+            return False, f"要点两次确认：{ask}"
         bound, fp = step_fp(step, inp)
+        entry = {"at": self.wall(), "by": by, "fp": fp if bound else None}
+        if offer.get("ack"):
+            entry["ack"] = list(offer["ack"])
         with self._lk:
-            skipped = dict(self.rec.get("skipped") or {})
-        skipped[step] = {"at": self.wall(), "by": by, "fp": fp if bound else None}
-        self._put("skipped", skipped, say=f"上手清单：{TITLES[step]} 跳过（{by or '页面'}）", cat="校准")
+            mine = dict(self.rec.get(KINDS[kind]) or {})
+            theirs = dict(self.rec.get(KINDS[OTHER[kind]]) or {})
+        mine[step] = entry
+        word = "跳过" if kind == "skip" else "标了已完成"
+        self._put(KINDS[kind], mine, cat="校准",
+                  say=f"上手清单：{TITLES[step]} {word}（{by or '页面'}）" + (f"；点了两次确认：{ask}" if ask else ""))
+        if theirs.pop(step, None) is not None:
+            self._put(KINDS[OTHER[kind]], theirs)
         return True, None
 
-    def unskip(self, step, by=None, servo=None):
-        """「取消跳过」：删掉 skipped.<步>，那一行回到按真实情况判。调舵机时清单冻结着，也不收（审查 D11）。"""
+    def skip(self, step, rd, pad=None, servo=None, by=None, confirmed=False):
+        return self.mark(step, "skip", rd, pad, servo, by, confirmed)
+
+    def mark_done(self, step, rd, pad=None, servo=None, by=None, confirmed=False):
+        return self.mark(step, "done", rd, pad, servo, by, confirmed)
+
+    def unmark(self, step, kind, by=None, servo=None, confirmed=False):
+        """「取消跳过」/「取消」（已完成的）：删掉那条记录，那一行回到按真实情况判。
+        调舵机时清单冻着：要点两次（取消了要交还以后才显示），没带 confirmed 回 (False, 那句)。"""
         if step not in ORDER:
             return False, f"不认识的步骤：{step}"
-        sv = servo if servo is not None else self._servo      # 没传就看 tick / skip 最近见到的那个舵机会话
-        if sv is not None and getattr(sv, "state", None) in ("open", "opening"):
-            return False, FROZEN_WHY
+        if kind not in KINDS:
+            return False, f"不认识的标法：{kind}"
+        sv = servo if servo is not None else self._servo      # 没传就看 tick / mark 最近见到的那个舵机会话
+        if sv is not None and getattr(sv, "state", None) in ("open", "opening") and confirmed is not True:
+            return False, f"要点两次确认：{FROZEN_UNDO}"
         with self._lk:
-            skipped = dict(self.rec.get("skipped") or {})
-        if step not in skipped:
-            return True, "本来就没跳过"
-        skipped.pop(step)
-        self._put("skipped", skipped, say=f"上手清单：{TITLES[step]} 取消跳过（{by or '页面'}）", cat="校准")
+            mine = dict(self.rec.get(KINDS[kind]) or {})
+        if step not in mine:
+            return True, "本来就没跳过" if kind == "skip" else "本来就没标已完成"
+        mine.pop(step)
+        word = "取消跳过" if kind == "skip" else "取消已完成"
+        self._put(KINDS[kind], mine, say=f"上手清单：{TITLES[step]} {word}（{by or '页面'}）", cat="校准")
         return True, None
+
+    def unskip(self, step, by=None, servo=None, confirmed=False):
+        return self.unmark(step, "skip", by, servo, confirmed)
+
+    def user_mark(self, step):
+        """第 step 步现在算数的是不是用户自己标的：done（「已完成」）/ skip（「跳过」）/ None。
+        commit.py 的准备情况用（第 1 步标了 → 「舵机零位」算满足）；读的是上一拍判好的缓存（tick 每 0.5 秒）。"""
+        rows = (self._view or {}).get("rows") or []
+        r = next((x for x in rows if isinstance(x, dict) and x.get("key") == step), None)
+        return r.get("marked") if r else None
 
     # ---- 读文件：在线程里（app 用 asyncio.to_thread 调），tick 只用缓存（代码审查 C9-1） ----
 
@@ -922,7 +1034,8 @@ class Onboarding:
         return {"bench": getattr(rd, "addr", None) == "none", "present": rd.present, "bus": bus, "calib": calib,
                 "servo_session": servo is not None and getattr(servo, "state", None) in ("open", "opening"),
                 "pad": pv, "studio_servo": self._studio, "fp": full_fp(bus, calib),
-                "commit": self._commit_view(rd, servo)}
+                # starting_since 是轮询按真的钟记的：这里也用真的钟（测试里 tick 的 now 是拨出来的）
+                "commit": self._commit_view(rd, servo), "starting_s": starting_secs(rd, bus)}
 
     def _commit_view(self, rd, servo):
         """第 3 步的准备情况（CommitService.view）。读不出来只让这一步显示「?」，别把整张卡弄没。"""
@@ -948,14 +1061,17 @@ class Onboarding:
             inp = self._inputs(rd, pad, servo, now)
             if not inp["servo_session"]:
                 self._track(rd, inp, now)
+                self._bind_marks(inp)
             with self._lk:
                 rec = dict(self.rec)
             v = evaluate(inp, rec)
             if not inp["servo_session"]:
-                self._void_skips(v)
+                self._void_marks(v)
             if inp["servo_session"] and self._view is not None and self._view["header"].get("kind") != "error":
-                # 在舵机页调舵机：主程序按计划停着，各步保留上一次的显示、变灰（审查判法表「在调舵机」一行）
-                v = dict(self._view, header=v["header"], frozen=True)
+                # 在舵机页调舵机：主程序按计划停着，各步保留上一次的显示、变灰（审查判法表「在调舵机」一行）。
+                # 「已完成」「跳过」「取消」照样能点，但要点两次：第二下写「要等交还以后才显示」（frozen_ask）
+                v = dict(self._view, header=v["header"], frozen=True,
+                         frozen_ask={"done": fill(FROZEN_ASK, "done"), "skip": fill(FROZEN_ASK, "skip"), "undo": FROZEN_UNDO})
             self._eval_err = None
         except Exception as e:  # noqa: BLE001 —— 清单出错：五行写「?」和原因，记一行（同一种错只记一次）
             why = f"{type(e).__name__}: {e}"[:200]
@@ -968,17 +1084,37 @@ class Onboarding:
         with self._lk:
             return self._dirty
 
-    def _void_skips(self, v):
-        """测出了问题的行（found），之前的跳过作废：从记录里删掉、记一行（审查 D5）。页面这一拍已经按问题显示了。"""
-        gone = [r for r in v["rows"] if r.get("void_skip")]
-        if not gone:
-            return
-        with self._lk:
-            skipped = dict(self.rec.get("skipped") or {})
-        for r in gone:
-            skipped.pop(r["key"], None)
-        self._put("skipped", skipped, cat="校准",
-                  say="上手清单：" + "、".join(f"{r['title']}的跳过作废（{r['found']}）" for r in gone))
+    def _void_marks(self, v):
+        """测出了问题的行（found），之前没确认过这个问题的「跳过」「已完成」作废：从记录里删掉、记一行（审查 D5）。
+        页面这一拍已经按问题显示了。标的时候第二下确认过这个问题的（ack 里有 found）不动。"""
+        for kind, rk in KINDS.items():
+            gone = [r for r in v["rows"] if kind in (r.get("void") or ())]
+            if not gone:
+                continue
+            with self._lk:
+                d = dict(self.rec.get(rk) or {})
+            for r in gone:
+                d.pop(r["key"], None)
+            word = "跳过" if kind == "skip" else "「已完成」"
+            self._put(rk, d, cat="校准",
+                      say="上手清单：" + "、".join(f"{r['title']}的{word}作废（{fill(r['found'], kind)}）" for r in gone))
+
+    def _bind_marks(self, inp):
+        """标的时候指纹读不到（记的是 null）：第一次读到时绑上现在的指纹，之后变了照样作废（照 C2：读不到不作废）。"""
+        for kind, rk in KINDS.items():
+            with self._lk:
+                d = dict(self.rec.get(rk) or {}) if isinstance(self.rec.get(rk), dict) else {}
+            named = []
+            for step, e in list(d.items()):
+                if step not in BOUND or not isinstance(e, dict) or e.get("fp") is not None:
+                    continue
+                _bound, fp = step_fp(step, inp)
+                if fp is not None:
+                    d[step] = dict(e, fp=fp)
+                    named.append(TITLES[step])
+            if named:
+                word = "跳过" if kind == "skip" else "「已完成」"
+                self._put(rk, d, cat="校准", say=f"上手清单：{'、'.join(named)}的{word}标的时候读不到指纹，现在读到了、绑上")
 
     def _track(self, rd, inp, now):
         """站起来过、走过、配过哪些手柄（只看 Studio 自己收到的状态：robot.state 要有页面看着才推）。"""

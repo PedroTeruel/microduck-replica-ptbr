@@ -78,7 +78,10 @@ class Robot:
         self.step4 = "success"
         # 开机剧本
         self.boot_at = None
-        self.behaviour = "adopt"   # adopt / decline / ignore / never_read / stuck_imu / never_ready
+        # adopt / decline / ignore / never_read / stuck_imu / never_ready；
+        # 标定模式（mode="commissioning"）：commissioning = 修好的 fork（第一次读成功以后换成实时快照）、
+        # commissioning_stuck = 旧 fork（启动报告永远不清，一直 configuring_bus）
+        self.behaviour = "adopt"
         self.consume_delay, self.control_delay = 1.0, 5.0
         self.consumed = False
         self.read_marker = None
@@ -94,6 +97,14 @@ class Robot:
         if self.boot_at is None or self.w.robotd != "active":
             return
         dt = t - self.boot_at
+        if self.mode == "commissioning":
+            # 照 fork feetech_commissioning.rs：不认交接标记，开总线时先全部卸力，第一个周期第 4 步就成功；
+            # 修好的 fork 第一次读成功以后 busStatus 换成实时快照（舵机读不到是 read_error），旧 fork 永远停在启动报告
+            if dt >= self.consume_delay and not self.consumed:
+                self.consumed, self.torque, self.step4 = True, False, "success"
+            if dt >= self.control_delay and self.consumed and self.behaviour != "commissioning_stuck":
+                self.phase = "read_error" if self.error else "ready"
+            return
         if dt >= self.consume_delay and not self.consumed:
             self.consumed = True
             marker = Path(self.w.root, "run/microduck-handover/handover.json")
@@ -122,6 +133,8 @@ class Robot:
         if self.w.robotd != "active" or not self.reachable:
             raise H.RpcError(f"{method}：连不上")
         self.w.rpc_calls.append(method)
+        if method == "robot.busStatus" and self.mode == "commissioning":
+            return self.commissioning_status()
         if method == "robot.busStatus":
             if self.phase != "control":
                 d = {"build": "fake", "mode": self.mode, "phase": self.phase}
@@ -151,6 +164,21 @@ class Robot:
         if method == "robot.startupSubscribe":
             return {"steps": {"1": {"status": "success"}, "4": {"status": self.step4}}}
         raise H.RpcError(f"{method}：不认识")
+
+    def commissioning_status(self):
+        """标定模式的 busStatus：启动报告（只有四个键，fork main.rs:1310-1315），或者实时快照（feetech_commissioning.rs 的 Status）。"""
+        if self.phase in H.STARTING_PHASES:
+            return {"build": "fake", "mode": "commissioning", "phase": self.phase, "port": "/dev/ttyS2"}
+        servos = [{"id": i, "joint": f"j{i}", "position_raw": 2048, "position_wire_raw": 2048, "position_signed_raw": 0,
+                   "speed_raw": 0, "load_raw": 0, "current_raw": 0, "voltage_v": 7.6, "temperature_c": 36,
+                   "moving": False, "calibrated": True} for i in IDS]
+        return {"build": "fake", "port": "/dev/ttyS2", "mode": "commissioning", "phase": self.phase, "session": 4242,
+                "target_hz": 50.0, "achieved_hz": 49.9, "total_cycles": 100, "total_success": 100,
+                "total_communication_failures": 0, "errors_by_id": {}, "device_communication": {},
+                "last_cycle_error": self.error, "last_failure": None,
+                "last_sample": {"cycle": 100, "at_us": 2000000, "servos": servos, "imu": {"source": "bus", "ready": True}},
+                "calibrated": True, "imu_mount_verified": True, "torque_state": "off", "torque_off_pending": None,
+                "power_pending": False, "motion": None, "policy_motion_enabled": False, "updated_at_us": 2000000}
 
 
 class World:
@@ -991,6 +1019,22 @@ class MarkerTest(Base):
         self.assertFalse(self.w.path(H.MARKER).exists())
         self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive")
 
+    def test_commissioning_snapshot_is_limp_not_retake(self):
+        """任务 16：标定模式不认交接标记（开总线先全部卸力）。快照来了就算起来了：照「没接手、全卸了」结束，
+        不等 15 秒再把总线拿回来、停主程序。"""
+        self.w.robot.mode, self.w.robot.behaviour = "commissioning", "commissioning"
+        t0 = self.w.clock.t
+        code, _ = self.give({"by": "x", "marker": marker()})
+        self.assertEqual(code, H.EXIT_FAIL)
+        last = self.last()
+        self.assertEqual(last["result"], "limp")
+        self.assertIn("标定模式", last["reason"])
+        self.assertLess(self.w.clock.t - t0, 10.0)
+        self.assertFalse(self.w.flag())
+        self.assertEqual(self.w.robotd, "active")
+        self.assertFalse(self.w.path(H.MARKER).exists())
+        self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive")
+
     def test_port_busy_refuses_and_keeps_session(self):
         self.w.port_users = [1234]
         code, _ = self.give({"by": "x", "marker": marker()})
@@ -1125,6 +1169,45 @@ class SoftTest(Base):
         code, _ = self.give({"by": "x", "soft": True})
         self.assertEqual(code, H.EXIT_FAIL)
         self.assertTrue(self.w.flag())
+
+    def test_soft_commissioning_snapshot_counts_as_up(self):
+        """任务 16：标定模式的实时快照（ready）算主程序起来了：不能等满 30 秒判「起不来」（10-20 真机每次交还都这样）。"""
+        self.w.robot.mode, self.w.robot.behaviour = "commissioning", "commissioning"
+        t0 = self.w.clock.t
+        code, _ = self.give({"by": "x", "soft": True})
+        self.assertEqual(code, H.EXIT_OK)
+        last = self.last()
+        self.assertEqual(last["result"], "soft")
+        self.assertIn("标定模式", last["reason"])
+        self.assertEqual(last["detail"]["phase"], "ready")
+        self.assertLess(self.w.clock.t - t0, 10.0)
+        self.assertFalse(self.w.flag())
+        self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive")
+
+    def test_soft_commissioning_read_error_is_up_with_the_error(self):
+        """read_error：主程序起来了，只是读舵机出错——交还算成，把主程序的原话带上。"""
+        self.w.robot.mode, self.w.robot.behaviour = "commissioning", "commissioning"
+        self.w.robot.error = "Feetech Sync Read timeout; missing IDs [21]"
+        code, _ = self.give({"by": "x", "soft": True})
+        self.assertEqual(code, H.EXIT_OK)
+        self.assertIn("读舵机出错：Feetech Sync Read timeout; missing IDs [21]", self.last()["reason"])
+
+    def test_soft_old_fork_stuck_status_still_fails_but_says_why(self):
+        """旧 fork：启动报告永远不清（一直 configuring_bus）。照旧判没起来，话照实说（跟总览「一直报启动中」一个口气）。"""
+        self.w.robot.mode, self.w.robot.behaviour = "commissioning", "commissioning_stuck"
+        t0 = self.w.clock.t
+        code, _ = self.give({"by": "x", "soft": True})
+        self.assertEqual(code, H.EXIT_FAIL)
+        last = self.last()
+        self.assertEqual(last["result"], "soft_failed")
+        self.assertIn("30 秒一直报「启动中」（phase=configuring_bus）", last["reason"])
+        self.assertIn("旧版主程序的毛病", last["reason"])
+        self.assertIn("去日志页", last["reason"])
+        self.assertTrue(last["detail"]["still_starting"])
+        self.assertEqual(last["detail"]["msg"], last["reason"])          # Studio 只读 done 那一行的 detail
+        self.assertGreaterEqual(self.w.clock.t - t0, 30.0)
+        self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive")
+        self.assertFalse(self.w.flag())                                  # 软交还没拿回总线：主程序照样在跑
 
 
 class PlumbingTest(Base):

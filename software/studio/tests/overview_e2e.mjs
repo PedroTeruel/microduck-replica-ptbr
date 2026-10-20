@@ -349,7 +349,7 @@ if (PHASE === 'done') {
   await js(`location.hash = '#/'`);
   await sleep(500);
 
-  // ================= 跳过 / 取消跳过 / 重新做（用户 10-18：「应该允许跳过、允许重新做」） =================
+  // ================= 已完成 / 跳过 / 取消 / 重新做（用户 10-18：「应该允许跳过、允许重新做」；10-20：「去做、已完成、跳过」） =================
   await js('window.scrollTo(0, 0)');
   await sleep(300);
   const rowState = (step) => js(`(() => { const r = document.querySelector('.onb-row[data-step="${step}"]'); return r ? [...r.classList].find((c) => /^onb-(ok|skip|todo|no|unk)$/.test(c)) : null; })()`);
@@ -370,9 +370,14 @@ if (PHASE === 'done') {
       if (!b) return false; b.click(); return true; })()`);
     if (!ok) throw new Error(`清单「${step}」那行找不到能点的「${label}」`);
   };
-  // 舵机先「已经校过，核对一下」（✓），IMU 跳过 → 「跳过了」，现在该做到第 3 行
-  await rowBtn('servo', '已经校过，核对一下');
+  // 每一行三个按钮：去做、已完成、跳过（✓ 的没有）
+  out.threeButtons = await js(`[...document.querySelectorAll('.onb-row')].filter((r) => !r.classList.contains('onb-ok'))
+    .map((r) => ({ step: r.dataset.step, labels: [...r.querySelectorAll('.onb-acts > button, .onb-acts .two-step > button:first-child')].map((b) => b.textContent.trim()) }))`);
+  // 舵机点「已完成」（没有后果，点一下：以前的「已经校过，核对一下」）→ ✓「你标了已完成」；IMU 跳过 → 「跳过了」，现在该做到第 4 行
+  await rowBtn('servo', '已完成');
   await waitFor(`document.querySelector('.onb-row[data-step="servo"]')?.classList.contains('onb-ok')`, '舵机零位 ✓');
+  out.marked = { text: await js(`document.querySelector('.onb-row[data-step="servo"] .onb-text').textContent`),
+    buttons: await js(`[...document.querySelectorAll('.onb-row[data-step="servo"] .onb-acts button')].map((b) => b.textContent.trim())`) };
   await rowBtn('imu', '跳过');
   await waitFor(`document.querySelector('.onb-row[data-step="imu"]')?.classList.contains('onb-skip')`, 'IMU 变成「跳过了」');
   out.skip = { imu: await rowState('imu'), imuText: await js(`document.querySelector('.onb-row[data-step="imu"] .onb-text').textContent`),
@@ -389,6 +394,10 @@ if (PHASE === 'done') {
   await js(`location.hash = '#/'`);
   await waitFor(`/连上鸭子/.test(document.querySelector('.onb-h')?.innerText || '') && !document.querySelector('.onb-frozen')`, '交还主程序、清单恢复', 20000);
   await sleep(500);
+  // 「已完成」的「取消」：复原（后面「读不到」那一步要看到 ?，标着的 ✓ 会把它盖住）
+  await rowBtn('servo', '取消');
+  await waitFor(`document.querySelector('.onb-row[data-step="servo"]')?.classList.contains('onb-todo')`, '舵机零位取消已完成');
+  out.undone = await rowState('servo');
   // 测急停的跳过要点两次（3 秒内）：先连上一只实体手柄（测急停的跳过绑手柄 MAC）
   await fakeSet({ pad_connected: true });
   await waitFor(`(() => { const r = document.querySelector('.onb-row[data-step="estop"]'); const b = r && [...r.querySelectorAll('button')].find((x) => x.textContent === '跳过'); return b && !b.disabled; })()`,
@@ -415,13 +424,17 @@ if (PHASE === 'done') {
   await rowBtn('estop', '取消跳过');
   await waitFor(`!document.querySelector('.onb-row[data-step="estop"]')?.classList.contains('onb-skip')`, '测急停取消跳过');
   await fakeSet({ pad_connected: false });
-  // IMU 方向主程序明说没确认：跳过灰着，旁边写为什么
+  // IMU 方向主程序明说没确认：以前跳过灰着；现在能点，但要点两次，第二下按钮上写后果（用户 10-20：不再锁）
   await fakeSet({ imu_verified: false });
-  await waitFor(`(() => { const r = document.querySelector('.onb-row[data-step="imu"]'); const b = r && r.querySelector('button.onb-skip'); return b && b.disabled; })()`,
-    'IMU 不能跳', 10000);
+  await waitFor(`document.querySelector('.onb-row[data-step="imu"]')?.classList.contains('onb-no')`, 'IMU 变成「主程序没确认」', 10000);
+  await rowBtn('imu', '跳过');
+  await sleep(300);
   out.imuBlocked = await js(`(() => { const r = document.querySelector('.onb-row[data-step="imu"]');
-    return { disabled: r.querySelector('button.onb-skip').disabled, text: r.innerText.replace(/\\s+/g, ' ') }; })()`);
-  await shot('skip-imu-blocked.png', '.onb');
+    return { disabled: r.querySelector('button.onb-skip').disabled, ask: r.querySelector('.two-step-ask')?.textContent || null,
+      state: [...r.classList].find((c) => /^onb-(ok|skip|todo|no|unk)$/.test(c)) }; })()`);
+  await shot('skip-imu-two-step.png', '.onb');
+  await sleep(3300);                                                   // 不点确认：3 秒后复原，还是 ○
+  out.imuBlocked.after = await rowState('imu');
   await fakeSet({ imu_verified: true });
   await waitFor(`!/实体手柄连着/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '实体手柄断开', 10000);
   await sleep(500);

@@ -37,8 +37,16 @@ def startup_report(fake):
     elif p == "stuck_calib":
         steps = {"1": s1, "2": {"status": "waiting", "detail": fake.bus.get("error")}}
     elif p == "commissioning":
-        steps = {"1": s1, "2": _ok("标定模式：第一份有效反馈读到了"), "3": _ok("标定模式不加载策略模型"),
-                 "4": _ok("标定模式第一个周期完成；运动策略关闭")}
+        # 照 fork feetech_commissioning.rs：开总线前第 2 步 starting / 打不开 waiting；第一次读成功以后四步都成功。
+        # 旧 fork（comm_stuck）四步照样都成功，只是 busStatus 一直回启动报告
+        cp = fake.comm_phase() if hasattr(fake, "comm_phase") and fake.mode == "commissioning" else "up"
+        if cp == "waiting":
+            steps = {"1": s1, "2": {"status": "waiting", "detail": "torque readback at register 40: Feetech Sync Read timeout"}}
+        elif cp == "boot" and not getattr(fake, "comm_stuck", False):
+            steps = {"1": s1, "2": {"status": "starting", "detail": "标定模式：读取已有标定，关闭并确认扭矩，初始化 IMU"}}
+        else:
+            steps = {"1": s1, "2": _ok("标定模式：第一份有效反馈读到了"), "3": _ok("标定模式不加载策略模型"),
+                     "4": _ok("标定模式第一个周期完成；运动策略关闭")}
     elif p == "walk_unloaded":
         steps = {"1": s1, "2": _ok("第一份有效关节和 IMU 反馈读到了"), "3": _ok(POLICY_OFF), "4": _ok("第一个控制周期完成")}
     else:

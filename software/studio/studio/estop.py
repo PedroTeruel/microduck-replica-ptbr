@@ -33,11 +33,26 @@ robot.relax 在运动模式下只是把请求放进槽里，马上回 accepted:t
 import time
 
 STARTING_PHASES = ("configuring_bus", "waiting_for_bus", "configuration_error")
+# 标定模式起来了：robot.busStatus 回的是 feetech_commissioning.rs 的实时快照（Status，fork 1083 行附近），phase 是这几个。
+# 启动时那份报告（{"mode":"commissioning","phase":"configuring_bus",...}）的 phase 在 STARTING_PHASES 里；
+# 旧 fork 从来不清它，Studio 就永远看到「启动中」（10-20 真机验收），新 fork 第一次读成功以后清掉（1497 行附近）
+# holding：标定模式「站姿使能」（fork hold-home）站住了；扭矩在 torque_state=all_enabled，卸力照常走 robot.relax
+COMMISSIONING_UP = ("ready", "moving", "holding", "read_error", "stop_unconfirmed", "power_pending")
+STARTING_LONG_S = 30.0       # 主程序连续报启动阶段这么久（Studio 从这次连上算）：改口「一直报启动中」（旧 fork 的毛病，或者真卡住了）
 CONFIRM_TIMEOUT_S = 8.0
 RESEND_AT_S = 2.0
 CONFIRMED_FRESH_S = 2.5      # 显示「已卸力」要求回读不超过这么旧（轮询 1 秒一次；1.5 秒在查询慢时会来回闪，复核 #7）
 OUTCOME_SHOW_S = 6.0
 JOIN_S = 0.3                 # 按下时已经在路上、开始不到 0.3 秒的发送，算这次按下的
+
+
+def robotd_up(bus):
+    """主程序起来了吗（不管站没站）：运动模式进了 control，或者标定模式回的是实时快照（phase 在 COMMISSIONING_UP 里；
+    read_error 也算起来了，只是读舵机出错）。启动阶段、看不懂的都是 False。"""
+    if not isinstance(bus, dict):
+        return False
+    mode, phase = bus.get("mode"), bus.get("phase")
+    return (mode == "motion" and phase == "control") or (mode == "commissioning" and phase in COMMISSIONING_UP)
 
 
 def relaxed(bus):

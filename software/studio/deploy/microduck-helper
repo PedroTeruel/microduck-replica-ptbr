@@ -10,7 +10,8 @@
 
 动词（参数是 stdin 里的一个 JSON 对象，先一次读完）：
   bus-take       {"by": str, "allow_seated": bool}   Studio 接管总线（不卸力）
-  bus-give-back  {"by": str, "soft": true}            软交还：Studio 已经在总线上全卸了，起 robotd
+  bus-give-back  {"by": str, "soft": true}            软交还：Studio 已经在总线上全卸了，起 robotd（起来了 = 运动模式 control，
+                                                      或者标定模式的实时快照 ready / moving / read_error / stop_unconfirmed / power_pending）
                  {"by": str, "marker": {...}}         不卸力交还：写交接标记，robotd 接手保持
   bus-abort      {"by": str}                          中止交接：立旗、KILL robotd，总线还给 Studio
   pad-pair       {"by": str, "mac": 可选, "timeout": 10–120（默认 60）}
@@ -61,7 +62,7 @@ import sys
 import time
 import tomllib
 
-VERSION = "0.5.1"
+VERSION = "0.5.2"
 VERBS = ("bus-take", "bus-give-back", "bus-abort", "pad-pair", "pad-forget",
          "wifi-hotspot-down", "wifi-hotspot-up", "calib-read", "calib-commit")
 
@@ -117,6 +118,11 @@ SCHEMA = "microduck-handover/1"
 JOINT_IDS = frozenset([10, 11, 12, 13, 14, 20, 21, 22, 23, 24, 30, 31, 32, 33, 34])
 TTL_DEFAULT_MS, TTL_MAX_MS, TTL_MIN_MS = 20000, 30000, 1000
 STARTING_PHASES = ("configuring_bus", "waiting_for_bus", "configuration_error", "handover_declined")
+# 标定模式起来了：busStatus 回的是实时快照（fork feetech_commissioning.rs 的 Status），phase 是这几个。启动时那份报告
+# （mode=commissioning、phase=configuring_bus）旧 fork 从来不清，新 fork 第一次读成功以后清掉（10-20 真机验收：
+# 以前每次从舵机页交还都等满 30 秒判「起不来」）
+COMMISSIONING_UP = ("ready", "moving", "read_error", "stop_unconfirmed", "power_pending")
+STILL_STARTING = "可能其实起来了、只是状态没更新（旧版主程序的毛病），也可能卡在启动：去日志页看主程序最后说了什么"
 
 # 时间（秒）
 GATE_GAP = 0.2            # gate 两次读 busStatus 的间隔
@@ -1886,6 +1892,22 @@ def bus_status(op):
         return None
 
 
+def robotd_up(bus):
+    """主程序起来了吗：运动模式进了 control，或者标定模式回的是实时快照（read_error 也算：起来了，只是读舵机出错）。"""
+    if not isinstance(bus, dict):
+        return False
+    mode, phase = bus.get("mode"), bus.get("phase")
+    return (mode == "motion" and phase == "control") or (mode == "commissioning" and phase in COMMISSIONING_UP)
+
+
+def still_starting_text(bus, waited):
+    """等满了，主程序还在回话、但一直报启动阶段：照实说（Studio 总览「一直报启动中」同一个口气）。"""
+    phase, err = bus.get("phase"), bus.get("error")
+    if err:
+        return f"主程序 {waited:.0f} 秒一直报「启动中」（{phase}：{err}）：去日志页看主程序最后说了什么"
+    return f"主程序 {waited:.0f} 秒一直报「启动中」（phase={phase}）：{STILL_STARTING}"
+
+
 def start_robotd(op):
     op.ctx.run(["systemctl", "reset-failed", "robotd"])
     rc, out, err = op.ctx.run(["systemctl", "start", "--no-block", "robotd"])
@@ -1960,6 +1982,14 @@ def give_marker(op, given, requested):
             if phase == "handover_declined" or ho.get("result") == "declined":
                 text, detail = declined_reason(bus)
                 return retake(op, text, detail)
+            if bus.get("mode") == "commissioning" and robotd_up(bus):
+                # 标定模式不认交接标记：开总线时先全部卸力（feetech_commissioning.rs 的 torque_off），没东西可拿回。
+                # 起来了就别等 15 秒再把总线拿回来
+                remove(op.ctx, MARKER)
+                pads_start(op)
+                hold_stop(op)
+                return op.finish(EXIT_FAIL, "limp", "主程序起来了，在标定模式：标定模式不接手保持，起来时已经全部卸力",
+                                 {"mode": "commissioning", "phase": phase})
             if phase == "control":
                 s4 = startup_step4(op)
                 if s4 == "success":
@@ -1997,6 +2027,7 @@ def give_soft(op, requested):
     op.emit("flag", "info", "撤旗")
     start_robotd(op)
     t_start = op.ctx.now()
+    last_bus = None
     while True:
         op.ctx.sleep(GIVE_POLL)
         if abort_requested(op, requested):
@@ -2005,13 +2036,28 @@ def give_soft(op, requested):
         if stopped(st) and st.get("ConditionResult") == "no":
             hold_stop(op)
             return op.finish(EXIT_FAIL, "soft_failed", "主程序被 Condition 挡住了，没起来（旗又出现了？）", st)
-        if (bus_status(op) or {}).get("phase") == "control" and startup_step4(op) == "success":
+        bus = bus_status(op)
+        if bus is not None:
+            last_bus = bus
+        # 起来了 = 运动模式 control，或者标定模式的实时快照（ready / moving / read_error / stop_unconfirmed / power_pending）
+        if robotd_up(bus) and startup_step4(op) == "success":
             pads_start(op)
             hold_stop(op)
+            if bus.get("mode") == "commissioning":
+                err = bus.get("last_cycle_error") if bus.get("phase") == "read_error" else None
+                return op.finish(EXIT_OK, "soft", "交还好了：主程序起来了，在标定模式（照老规矩全卸着）"
+                                 + (f"；但读舵机出错：{err}" if err else ""),
+                                 {"mode": "commissioning", "phase": bus.get("phase")})
             return op.finish(EXIT_OK, "soft", "交还好了：主程序起来了（照老规矩全卸着）")
         if op.ctx.now() - t_start >= SOFT_TIMEOUT:
             pads_start(op)
             hold_stop(op)
+            if isinstance(last_bus, dict) and last_bus.get("phase") in STARTING_PHASES:
+                # 主程序在回话，只是一直报启动阶段（旧 fork 的标定模式永远报 configuring_bus）：照旧判没起来，话照实说。
+                # msg 也放进 detail：Studio 只读 done 那一行的 detail，靠它把整句给页面（不说成「起不来」）
+                text = still_starting_text(last_bus, SOFT_TIMEOUT)
+                return op.finish(EXIT_FAIL, "soft_failed", text,
+                                 dict(st, phase=last_bus.get("phase"), mode=last_bus.get("mode"), still_starting=True, msg=text))
             return op.finish(EXIT_FAIL, "soft_failed",
                              f"主程序 {SOFT_TIMEOUT:.0f} 秒没走完启动（舵机已经卸着了，不用拿回）：看 robotd 日志", st)
 

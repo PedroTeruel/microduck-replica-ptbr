@@ -37,6 +37,8 @@ SCAN_TIMEOUT_S = 15.0
 FORGET_TIMEOUT_S = 10.0
 STATUS_MAX_AGE_S = 15.0        # 5 秒一次，三次都失败才当作不知道
 PORT = 8000
+HOTSPOT_IP = "10.42.0.1"       # NetworkManager 共享热点的默认地址（net.json 没写 hotspot_ip 时用）
+OWN_PREFIX = "Microduck-"      # 鸭子热点的名字都是 Microduck-xxxx（netcheck 起的）
 PSK_HEX = re.compile(r"^[0-9A-Fa-f]{64}$")
 PERMISSION = "Studio 没权限改 WiFi（configd 没放行 radxa）"
 
@@ -84,6 +86,28 @@ def validate_psk(value):
 
 def validate_connect(ssid, psk):
     return validate_ssid(ssid), validate_psk(psk)
+
+
+def addresses(host, ip, port=PORT):
+    """「这只鸭子的地址」：现在能用的几个，按设备说该用哪个（10-20 真机：开着 Clash 系统代理的 Windows 打不开 .local——
+    走了代理、502；不带点的主机名 Windows 用 LLMNR 问得到，代理按 <local> 绕过；IP 哪儿都能开）。"""
+    out = []
+    if ip:
+        out.append({"kind": "ip", "url": f"http://{ip}:{port}/", "note": "IP：哪台设备都能打开（换了路由器、重新分了地址会变）"})
+    out.append({"kind": "host", "url": f"http://{host}:{port}/", "note": "Windows 电脑用这个：开着代理也能打开"})
+    out.append({"kind": "local", "url": f"http://{host}.local:{port}/", "note": "苹果手机、Mac 用这个"})
+    return out
+
+
+def own_hotspot(n, hotspot_ssid):
+    """扫描结果里这一条是不是鸭子自己的热点（真机扫出来 Microduck-0de6、显示「已保存」，点了会让人往里填家里密码）。
+    net.json 有 hotspot_ssid 就按它认；没有就认「Microduck- 开头、而且是已保存」的。"""
+    ssid = n.get("ssid") if isinstance(n, dict) else None
+    if not isinstance(ssid, str):
+        return False
+    if hotspot_ssid:
+        return ssid == hotspot_ssid
+    return ssid.startswith(OWN_PREFIX) and bool(n.get("saved"))
 
 
 def explain(reason, detail=None):
@@ -244,14 +268,21 @@ class Net:
         if isinstance(self.last_try, dict):
             last = {k: self.last_try.get(k) for k in ("ssid", "at", "ok", "reason", "detail", "ip4")}
             last["reason_text"] = explain(last.get("reason"), last.get("detail"))
+        mode = self.info.get("mode")
+        ip4 = st.get("ip4") if connected else None
+        # 现在能用的 IP：热点模式就是鸭子热点的地址（10.42.0.1），否则是 configd net.status 的 ip4（没连上就没有）
+        ip_now = (self.info.get("hotspot_ip") or HOTSPOT_IP) if mode == "hotspot" else ip4
         return {
             "known": True,
-            "mode": self.info.get("mode"),
+            "mode": mode,
             "ssid": st.get("ssid") if connected else None,
             "signal": st.get("signal") if connected else None,
-            "ip4": st.get("ip4") if connected else None,
+            "ip4": ip4,
+            "ip_now": ip_now,
             "hostname": host,
             "url_local": f"http://{host}.local:{self.port}/",
+            "url_host": f"http://{host}:{self.port}/",
+            "urls": addresses(host, ip_now, self.port),
             "hotspot": {"ssid": self.info.get("hotspot_ssid"), "ip": self.info.get("hotspot_ip"),
                         "psk": self.info.get("hotspot_psk")},
             "last_try": last,
@@ -270,9 +301,11 @@ class Net:
     # ---- 扫描 ----
 
     async def scan(self):
-        """configd net.scan。热点模式下网卡可能扫不了：空 / 出错就用 net.json 里开热点前的 scan。"""
+        """configd net.scan。热点模式下网卡可能扫不了：空 / 出错就用 net.json 里开热点前的 scan。
+        鸭子自己的热点滤掉（own_hotspot）：不然它在列表里显示「已保存」，点了会让人往里填家里的密码。"""
         if not isinstance(self.info, dict):
             raise Refused("不知道鸭子的配网状态：WiFi 功能现在用不了")
+        own = self.info.get("hotspot_ssid")
         result, error = None, None
         with log_cmd(self.log, "扫 WiFi", "configd net.scan") as t:
             try:
@@ -280,7 +313,7 @@ class Net:
                 nets = r.get("networks") if isinstance(r, dict) else None
                 if not isinstance(nets, list):
                     raise Refused("configd 回的 WiFi 列表看不懂")
-                result = [n for n in nets if isinstance(n, dict) and n.get("ssid")]
+                result = [n for n in nets if isinstance(n, dict) and n.get("ssid") and not own_hotspot(n, own)]
                 t.ok({"networks": len(result)})
             except (Unreachable, Timeout, RpcError, Refused) as e:
                 error = _rpc_error(e, "扫 WiFi") if not isinstance(e, Refused) else str(e)
@@ -292,7 +325,7 @@ class Net:
                 if self.log:
                     self.log.info("热点模式下用开热点前的扫描结果", cat="网络", raw=error or "configd 回的列表是空的",
                                   dedup=True)
-                return {"networks": [n for n in cached if isinstance(n, dict)], "cached": True,
+                return {"networks": [n for n in cached if isinstance(n, dict) and not own_hotspot(n, own)], "cached": True,
                         "scan_at": self.info.get("scan_at")}
         if result is None:
             raise Refused(error or "读不到 WiFi 列表")

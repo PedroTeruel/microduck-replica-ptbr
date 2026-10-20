@@ -3,10 +3,13 @@
 // 一个把 studio.helper.calib_commit 换成假实现的启动脚本拉起（电脑上没有 root 小助手）。
 //
 // --phase factory：出厂状态的准备情况（按钮灰着）、预览能展开、每颗的方向 / 限位 / TOML 都在。
+// --phase mark   ：第 1 步点「已完成」（主程序说没标：两步确认）→ ✓，第 3 步准备情况里「舵机零位」一项变绿（任务 16）。
 // --phase imu    ：IMU 页粗校：托起摆正采静止 -> 往前低头采前倾 -> 算方向 -> 交给主程序 verify-imu。
 // --phase servo  ：舵机页一键中位（--servo-sim），然后交还主程序。
 // --phase commit ：第 3 步写进主程序；假小助手让假主程序切 motion + control，清单第 3 步 ✓、顶栏显示运动模式。
 // --phase fail   ：假小助手让标定被拒；页面要能看到失败原因，而且断线期间进度卡不能被「断线时不检查」盖掉。
+// --phase stance0：标定模式下 IMU 页的「站姿使能 / 失能」灰着、写清楚原因、能去第 3 步（任务 17）。
+// --phase stance ：运动模式下「站姿使能」发出的命令跟遥控卡「站起来」一样，「失能」跟顶上「卸力」一样（任务 17）。
 // 结果用 JSON 打到 stdout，由 tests/test_commit_e2e.py 判断。Node >= 22，不需要装包。
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
@@ -53,7 +56,10 @@ ws.addEventListener('message', (ev) => {
   if (m.id && waiting.has(m.id)) { waiting.get(m.id).ok(m); waiting.delete(m.id); }
   if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
   if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') errors.push(m.params.args.map((a) => a.value ?? a.description).join(' '));
+  // 浏览器自带的确认框（比如「它现在是躺着的……确定托好了吗？」）：照 overview_e2e 的做法点「确定」，记下问了什么
+  if (m.method === 'Page.javascriptDialogOpening') { dialogs.push(m.params.message); send('Page.handleJavaScriptDialog', { accept: true }); }
 });
+const dialogs = [];
 const send = (method, params = {}) => new Promise((ok, fail) => {
   const i = ++id;
   const timer = setTimeout(() => {
@@ -120,6 +126,104 @@ const snapshot = () => js(`(() => {
     msgs: [...c.querySelectorAll('.onb-commit-msg')].map((e) => e.innerText.replace(/\\s+/g, ' ').trim()),
   };
 })()`);
+
+// IMU 页的「站姿使能 / 失能」（任务 17）：按钮状态、旁边那行字；页面发出去的命令（拦 WebSocket.send，只记 cmd）
+const stance = () => js(`(() => { const c = document.querySelector('.imu-stance'); if (!c) return null;
+  const b = (sel) => { const e = c.querySelector(sel); return e ? { text: e.textContent.trim(), disabled: e.disabled } : null; };
+  return { stand: b('.imu-stand'), relax: b('.imu-relax'),
+    now: c.querySelector('.imu-stance-now')?.innerText.replace(/\\s+/g, ' ').trim() || '',
+    why: c.querySelector('.imu-stance-why')?.innerText.replace(/\\s+/g, ' ').trim() || null,
+    goCommit: !!c.querySelector('.imu-go-commit'), text: c.innerText.replace(/\\s+/g, ' ').trim() }; })()`);
+const recordSends = () => js(`(() => { if (window.__sent) { window.__sent.length = 0; return true; } window.__sent = [];
+  const orig = WebSocket.prototype.send;
+  WebSocket.prototype.send = function (d) {
+    try { const m = JSON.parse(d); if (m.t === 'cmd') window.__sent.push({ name: m.name, args: m.args }); } catch (e) { /* 不是 JSON */ }
+    return orig.call(this, d);
+  };
+  return true; })()`);
+const sentStand = () => js(`(window.__sent || []).filter((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`);
+const remoteStand = `[...document.querySelectorAll('.pd-remote .pd-big')].find((x) => x.querySelector('b')?.textContent === '站起来')`;
+
+if (PHASE === 'stance0') {
+  // 标定模式也能站（用户 10-21）：「站姿使能」能点，确认框点确定以后发 imu.op hold（fork hold-home），站姿卡写「标定模式（站着）」；
+  // 「失能（卸力）」也能点，发顶上同一个 relax，卸完回「标定模式（软着）」
+  await js(`location.hash = '#/imu'`);
+  await waitFor(`!!document.querySelector('.imu-stance')`, 'IMU 页的站姿卡', 20000);
+  await waitFor(`/标定模式（软着）/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`, '站姿卡写着标定模式（软着）', 10000);
+  await waitFor(`(() => { const b = document.querySelector('.imu-stance .imu-stand'); return !!b && !b.disabled; })()`,
+    '标定模式：「站姿使能」能点', 10000);
+  out.stance = await stance();
+  await shot('imu-stance-commissioning.png');
+  await recordSends();
+  await js(`document.querySelector('.imu-stance .imu-stand').click()`);
+  await waitFor(`/标定模式（站着）/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`, '站姿使能以后写着站着', 15000);
+  out.holdSent = await js(`(window.__sent || []).filter((m) => m.name === 'imu.op')`);
+  out.dialogs = dialogs.slice();
+  out.holding = await stance();
+  await shot('imu-stance-commissioning-holding.png');
+  await recordSends();
+  await js(`document.querySelector('.imu-stance .imu-relax').click()`);
+  await waitFor(`/标定模式（软着）/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`, '失能以后回到软着', 15000);
+  out.relaxSent = await js(`(window.__sent || []).filter((m) => m.name === 'relax')`);
+  out.after = await stance();
+}
+
+if (PHASE === 'stance') {
+  // 运动模式：软着时「站姿使能」能点，发出去的跟遥控卡「站起来」一模一样；「失能」跟顶上「卸力」一样
+  await fakeSet({ posture: 'limp' });
+  await sleep(3000);       // 刚卸力 2 秒内不接受让它动的指令（按钮会灰），手柄快照也 1 秒才刷新：等它过去
+  await js(`location.hash = '#/imu'`);
+  await waitFor(`!!document.querySelector('.imu-stance')`, 'IMU 页的站姿卡', 20000);
+  await waitFor(`(() => { const b = document.querySelector('.imu-stance .imu-stand'); return !!b && !b.disabled; })()`,
+    '运动模式软着：「站姿使能」能点', 20000);
+  out.before = await stance();
+  await shot('imu-stance-motion.png');
+  await recordSends();
+  // 按钮亮着那一刻才点（在页面里等，免得查和点之间它又灰了）
+  await js(`new Promise((ok) => { const t0 = Date.now(); const t = setInterval(() => {
+    const b = document.querySelector('.imu-stance .imu-stand');
+    if (b && !b.disabled) { clearInterval(t); b.click(); ok(true); } else if (Date.now() - t0 > 10000) { clearInterval(t); ok(false); } }, 50); })`);
+  // 假主程序不一定模拟「站起来」的过程：要验的是发出去的命令跟遥控卡「站起来」一样（那条路真机上是通的）
+  await waitFor(`(window.__sent || []).some((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`, '点了站姿使能以后发出站起来', 5000);
+  out.standSent = await sentStand();
+  out.standing = await stance();
+  await fakeSet({ posture: 'limp' });
+  await js(`location.hash = '#/pad'`);
+  await waitFor(`(() => { const b = ${remoteStand}; return !!b && !b.disabled; })()`, '遥控卡「站起来」能点', 20000);
+  await recordSends();
+  await js(`${remoteStand}.click()`);
+  await waitFor(`(window.__sent || []).some((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`, '遥控卡发出站起来', 5000);
+  out.remoteSent = await sentStand();
+  await js(`location.hash = '#/imu'`);
+  await waitFor(`(() => { const b = document.querySelector('.imu-stance .imu-relax'); return !!b && !b.disabled; })()`, '「失能（卸力）」能点', 10000);
+  await recordSends();
+  await js(`document.querySelector('.imu-stance .imu-relax').click()`);
+  await waitFor(`(window.__sent || []).some((m) => m.name === 'relax')`, '失能发出卸力', 5000);
+  out.relaxSent = await js(`(window.__sent || []).filter((m) => m.name === 'relax')`);
+}
+
+if (PHASE === 'mark') {
+  // 出厂：舵机零位那一行主程序说 15 颗没标（hard）。以前「跳过」灰着、也没有「已完成」；现在点两次能标（用户 10-20）
+  const servoRow = `document.querySelector('.onb-row[data-step="servo"]')`;
+  const servoCheck = `[...(${card}?.querySelectorAll('.onb-checks li') || [])].find((li) => li.innerText.includes('舵机零位'))`;
+  await waitFor(`!!${servoRow} && !!${card} && !!(${servoCheck})`, '第 1 步和第 3 步的准备情况', 20000);
+  out.before = await js(`({ row: ${servoRow}.querySelector('.onb-mark').getAttribute('aria-label'), check: (${servoCheck}).className })`);
+  const doneBtn = `[...${servoRow}.querySelectorAll('button')].find((b) => b.textContent.trim() === '已完成')`;
+  if (!await js(`(() => { const b = ${doneBtn}; if (!b) return false; b.scrollIntoView({ block: 'center' }); b.click(); return true; })()`)) {
+    throw new Error('舵机零位那一行找不到「已完成」');
+  }
+  await waitFor(`!!${servoRow}.querySelector('.two-step-ask')`, '「已完成」的第二下（写着后果）', 5000);
+  out.ask = await js(`${servoRow}.querySelector('.two-step-ask').textContent`);
+  out.afterOne = await js(`${servoRow}.querySelector('.onb-mark').getAttribute('aria-label')`);   // 点一下不算
+  await shot('commit-mark-servo-ask.png');
+  await sleep(900);                                                  // TwoStep 的 700 ms 保护
+  await js(`${servoRow}.querySelector('.two-step-ask').click()`);
+  await waitFor(`${servoRow}.querySelector('.onb-mark')?.getAttribute('aria-label') === '完成'`, '第 1 步变成 ✓', 10000);
+  await waitFor(`(${servoCheck})?.classList.contains('ok')`, '第 3 步「舵机零位」变绿', 10000);
+  out.after = await js(`({ row: ${servoRow}.querySelector('.onb-mark').getAttribute('aria-label'),
+    text: ${servoRow}.querySelector('.onb-text').textContent, check: (${servoCheck}).innerText.replace(/\\s+/g, ' ').trim() })`);
+  await shot('commit-mark-servo-done.png');
+}
 
 if (PHASE === 'imu') {
   log('IMU 页：粗校');

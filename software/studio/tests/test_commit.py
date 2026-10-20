@@ -188,6 +188,78 @@ class ReadinessTest(Base):
         self.assertIn("IMU 页校过了", self.item("imu", view)["text"])
         self.assertIn("15 颗舵机都有新读数", self.item("mode", view)["text"])
 
+    def test_commissioning_boot_report_is_starting_not_missing_servos(self):
+        """任务 16：标定模式没读成功之前 busStatus 是启动报告（没有 last_sample）：写「还在启动」，不写「只有 0 颗」；
+        连续 30 秒还这样：「一直报启动中」（旧 fork 的毛病）；读舵机出错（read_error）：起来了，带主程序的原话。"""
+        self.rd.bus.set({"build": "fake", "mode": "commissioning", "phase": "configuring_bus", "port": "/dev/ttyS2"})
+        mode = self.item("mode")
+        self.assertFalse(mode["ok"])
+        self.assertIn("主程序还在启动（phase=configuring_bus）", mode["text"])
+        self.assertNotIn("0 颗", mode["text"])
+        self.rd.starting_since = time.monotonic() - 31
+        mode = self.item("mode")
+        self.assertIn("一直报「启动中」", mode["text"])
+        self.assertIn("旧版主程序的毛病", mode["text"])
+        self.assertEqual(mode["action"]["do"], "robotd")                    # 「去看日志页」
+        self.rd.starting_since = None
+        self.rd.bus.set({"build": "fake", "mode": "commissioning", "phase": "waiting_for_bus", "error": "Sync Read timeout"})
+        self.assertIn("舵机没上电）：Sync Read timeout", self.item("mode")["text"])
+        bus = dict(Rd(self.calib).bus.value, phase="read_error", last_cycle_error="missing IDs [21]")
+        self.rd.bus.set(bus)
+        mode = self.item("mode")
+        self.assertFalse(mode["ok"])
+        self.assertIn("主程序起来了，但读舵机出错：missing IDs [21]", mode["text"])
+
+    def test_marked_steps_from_the_checklist(self):
+        """任务 16：上手清单第 1 步标了已完成 / 跳过 →「舵机零位」算满足（15 颗按 2048 写）。
+        任务 17：第 2 步标了、主程序里方向没确认、也没有 imu-pending.json →「IMU 方向」按默认装法写，算满足。"""
+        class Ob:
+            marks = {}
+
+            def user_mark(self, step):
+                return self.marks.get(step)
+        self.svc.onboard = Ob()
+        self.assertFalse(self.item("servo")["ok"])
+        self.assertFalse(self.item("imu")["ok"])
+        Ob.marks = {"servo": "done", "imu": "done"}
+        servo = self.item("servo")
+        self.assertTrue(servo["ok"])
+        self.assertEqual(servo["text"], "你标了第 1 步已完成：15 颗按 2048 写零位（零位要是用 Studio 的舵机页校过的才对）")
+        self.assertEqual(servo["by_mark"], "done")
+        imu = self.item("imu")
+        self.assertTrue(imu["ok"])
+        self.assertTrue(imu["default"])
+        self.assertIsNone(imu["action"])
+        self.assertEqual(imu["text"], "你标了第 2 步已完成：IMU 按默认装法写（总线小板（ID 200）：官方装法）。"
+                                      "装得不一样的，站起来会往一边倒——写完以后在 IMU 页站着校一次，再写一次主程序")
+        self.assertTrue(self.svc.view(self.rd)["ready"])
+        Ob.marks = {"servo": "skip"}
+        self.assertIn("你跳过了第 1 步", self.item("servo")["text"])
+        self.assertTrue(self.item("servo")["ok"])
+        self.assertFalse(self.item("imu")["ok"])                               # 第 2 步没标：照旧要校
+        C.save_pending(self.dir, "bus", BUS_QUAT, {}, "测试", at=2)            # IMU 页有新校准：照常满足
+        self.svc.reload(force=True)
+        Ob.marks = {"servo": "done", "imu": "skip"}
+        self.assertTrue(self.item("imu")["ok"])
+        self.assertIn("IMU 页校过了", self.item("imu")["text"])
+        self.assertFalse(self.item("imu")["default"])
+        self.assertTrue(self.svc.view(self.rd)["ready"])
+
+    def test_skipped_imu_step_also_needs_a_known_chip(self):
+        """任务 17：第 2 步标了，但 IMU 页记下的是另一颗芯片的（有 imu-pending.json）：不按默认写，照旧要重校。"""
+        class Ob:
+            def user_mark(self, step):
+                return "skip"
+        self.svc.onboard = Ob()
+        C.save_pending(self.dir, "bno08x", BUS_QUAT, {}, "测试", at=1)
+        self.svc.reload(force=True)
+        view = self.svc.view(Rd(calibration(False, "lsm6dsv16x"), source="lsm6dsv16x"))
+        imu = self.item("imu", view)
+        self.assertFalse(imu["ok"])
+        self.assertIn("你跳过了第 2 步，但没法按默认装法写", imu["text"])
+        self.assertIn("IMU 芯片换过了", imu["text"])
+        self.assertIsNone(view["imu_default"])
+
     def test_motion_control_ready_but_policy_blocks(self):
         C.record_centered(self.dir, C.JOINT_IDS.values(), "测试", at=1)
         C.save_pending(self.dir, "bus", BUS_QUAT, {}, "测试", at=2)
@@ -426,6 +498,112 @@ class PreviewCommitTest(Base):
         self.assertIsNotNone(self.svc.view(self.rd)["job"])
         self.svc.job["finished"] = time.time() - 121
         self.assertIsNone(self.svc.view(self.rd)["job"])
+
+
+class DefaultImuTest(Base):
+    """任务 17（10-21 真机验收：「我一直跳过跳过，最后还是不进运动模式」）：第 1、2 步跳过 → 第 3 步按默认装法写
+    正在用的那颗 IMU、标成已确认 → 主程序能进运动模式。有 imu-pending.json 就照旧用它。"""
+    LSM = [0.7071067811865476, 0.0, 0.7071067811865476, 0.0]
+
+    def setUp(self):
+        super().setUp()
+
+        class Ob:
+            marks = {"servo": "skip", "imu": "skip"}
+
+            def user_mark(self, step):
+                return self.marks.get(step)
+        self.ob = Ob()
+        self.svc.onboard = self.ob
+
+    def rd_for(self, source, file_quat):
+        cal = calibration(False, source)
+        if source == "bus":
+            cal["calibration"]["imu_mount_quat"] = list(file_quat)
+        else:
+            cal["calibration"]["imu_mounts"][source]["quat"] = list(file_quat)   # 文件里没确认的那份：不能拿它写
+        rd = Rd(cal, source=source)
+        self.svc.rd = rd
+        return rd
+
+    def check(self, source, file_quat, want, label, how):
+        rd = self.rd_for(source, file_quat)
+        view = self.svc.view(rd)
+        imu = self.item("imu", view)
+        self.assertTrue(imu["ok"], imu)
+        self.assertEqual(imu["text"], f"你跳过了第 2 步：IMU 按默认装法写（{label}：{how}）。"
+                                      "装得不一样的，站起来会往一边倒——写完以后在 IMU 页站着校一次，再写一次主程序")
+        self.assertTrue(view["ready"], view)
+        self.assertEqual(view["imu_default"]["source"], source)
+        self.assertEqual(view["imu_default"]["quat"], want)
+        payload = self.svc._payload(rd)
+        self.assertEqual(payload["imu"], {"source": source, "quat": want})      # 小助手照旧只收 {source, quat}
+        with mock.patch.object(helper, "available", return_value=True), \
+                mock.patch.object(helper, "calib_commit", return_value=(True, "committed", {"exit": 0})) as call:
+            res = self.svc.commit("测试")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(call.call_args.args[2], {"source": source, "quat": want})
+        self.assertFalse(call.call_args.kwargs["dry_run"])
+        self.assertTrue(any("IMU 按默认装法写" in r[1] for r in self.log.rows if r[0] == "info"))
+        # 小助手按这份写出来：正在用的那颗标成已确认，过得了运动模式的校验
+        built = C.build_calibration(rd.calib.value["calibration"], payload["joints"], payload["imu"])
+        C.validate_calibration(built, source)
+        if source == "bus":
+            self.assertTrue(built["imu_mount_verified"])
+            self.assertEqual(built["imu_mount_quat"], want)
+        else:
+            self.assertEqual(built["imu_mounts"][source], {"quat": want, "verified": True})
+
+    def test_bus_uses_the_file_quat(self):
+        self.check("bus", BUS_QUAT, BUS_QUAT, "总线小板（ID 200）", "官方装法")
+
+    def test_bus_keeps_a_custom_file_quat(self):
+        self.check("bus", [1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], "总线小板（ID 200）", "官方装法")
+
+    def test_bno08x_uses_fork_default(self):
+        self.check("bno08x", [1.0, 0.0, 0.0, 0.0], [0.5, 0.5, 0.5, 0.5], "BNO085（I²C）", "fork 的默认装法")
+
+    def test_lsm6dsv16x_uses_replica_mount_not_identity(self):
+        self.check("lsm6dsv16x", [1.0, 0.0, 0.0, 0.0], self.LSM, "LSM6DSV16X（I²C）", "复刻推荐装法，模块 x 朝下、z 朝前")
+
+    def test_preview_marks_default(self):
+        rd = self.rd_for("lsm6dsv16x", [1.0, 0.0, 0.0, 0.0])
+        with mock.patch.object(helper, "available", return_value=False):
+            data = self.svc.preview("测试", rd)
+        self.assertEqual(data["imu"]["quat"], self.LSM)
+        self.assertEqual(data["imu"]["default"], "复刻推荐装法，模块 x 朝下、z 朝前")
+        back = H.tomllib.loads(data["toml"])
+        self.assertEqual(back["imu_mounts"]["lsm6dsv16x"], {"quat": self.LSM, "verified": True})
+
+    def test_pending_wins_over_default(self):
+        rd = self.rd_for("lsm6dsv16x", [1.0, 0.0, 0.0, 0.0])
+        mine = [0.9238795325112867, 0.0, 0.3826834323650898, 0.0]
+        C.save_pending(self.dir, "lsm6dsv16x", mine, {}, "测试", at=3)
+        self.svc.reload(force=True)
+        view = self.svc.view(rd)
+        self.assertIsNone(view["imu_default"])
+        self.assertIn("IMU 页校过了", self.item("imu", view)["text"])
+        payload = self.svc._payload(rd)
+        self.assertNotIn("imu_default", payload)
+        self.assertEqual(payload["imu"]["source"], "lsm6dsv16x")
+        for a, b in zip(payload["imu"]["quat"], mine):
+            self.assertAlmostEqual(a, b, places=12)
+
+    def test_verified_mount_wins_over_default(self):
+        rd = Rd(calibration(True, "bno08x"), source="bno08x", mode="motion", phase="control")
+        self.svc.rd = rd
+        view = self.svc.view(rd)
+        self.assertIsNone(view["imu_default"])
+        self.assertIn("已经确认过", self.item("imu", view)["text"])
+        self.assertEqual(self.svc._payload(rd)["imu"], {"source": "bno08x", "quat": MODULE_QUAT})
+
+    def test_unmarked_step_two_still_blocks(self):
+        self.ob.marks = {"servo": "skip"}
+        rd = self.rd_for("bno08x", [1.0, 0.0, 0.0, 0.0])
+        view = self.svc.view(rd)
+        self.assertFalse(self.item("imu", view)["ok"])
+        self.assertIsNone(view["imu_default"])
+        self.assertFalse(view["ready"])
 
 
 class SharedCodeTest(unittest.TestCase):

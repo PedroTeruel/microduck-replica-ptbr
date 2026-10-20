@@ -3,6 +3,7 @@
 流程：tests/commit_e2e.mjs 先在出厂状态看第 3 步的灰按钮和预览；然后 IMU 页粗校（假主程序模拟托起、低头、
 verify-imu 成功）、舵机页一键中位（--servo-sim）、第 3 步写入。假小助手让假主程序切到 motion + control，
 清单第 3 步变成完成、顶栏显示运动模式。最后再跑一次「标定被拒」：页面要看到原因，断线期间进度卡也不能丢。
+IMU 页的「站姿使能 / 失能」（任务 17）：标定模式下灰着、能去第 3 步；运动模式下发的命令跟遥控卡「站起来」、顶上「卸力」一样。
 
 电脑上没有 root 小助手：用临时启动脚本把 studio.helper.calib_commit 换成假实现（只在这一段里）。
 要电脑上有 Node（≥ 22）和 Edge；没有（比如鸭子上）就跳过。设 STUDIO_E2E=0 也跳过。
@@ -196,6 +197,44 @@ class CommitE2E(unittest.TestCase):
         self.assertTrue(first["preview"]["imu"], first["preview"])
         self.assertIn("motion_enabled = true", first["preview"]["toml"])
 
+    def test_01b_mark_servo_step_done(self):
+        """任务 16：出厂场景第 1 步点「已完成」（主程序说没标：两步，第二下写后果）→ ✓，第 3 步准备情况「舵机零位」变绿。"""
+        m = self.node("mark")
+        self.assertEqual(m["before"]["check"], "bad", m)
+        self.assertEqual(m["ask"], "确定标成已完成？主程序说标定没做完：标成已完成鸭子也站不起来", m)
+        self.assertNotEqual(m["afterOne"], "完成", m)                          # 点一下不算
+        self.assertEqual(m["after"]["row"], "完成", m)
+        self.assertIn("你标了已完成", m["after"]["text"])
+        self.assertIn("你标了第 1 步已完成：15 颗按 2048 写零位（零位要是用 Studio 的舵机页校过的才对）", m["after"]["check"])
+        self.assertEqual(m["errors"], [])
+
+    def test_01c_stance_buttons_in_commissioning(self):
+        """用户 10-21「咱标定也能站姿不就好了吗」：标定模式下「站姿使能」能点，确认以后发 imu.op hold，
+        主程序（fork hold-home）回站住，站姿卡写「标定模式（站着）」；「失能（卸力）」走 relax，卸完回软着。"""
+        s = self.node("stance0")
+        st = s["stance"]
+        self.assertEqual(st["stand"], {"text": "站姿使能", "disabled": False}, st)
+        self.assertEqual(st["relax"], {"text": "失能（卸力）", "disabled": False}, st)
+        self.assertIn("现在：标定模式（软着）", st["now"])
+        self.assertIsNone(st["why"], st)
+        self.assertFalse(st["goCommit"], st)
+        self.assertIn("标定模式也能站", st["text"])
+        self.assertEqual(s["holdSent"], [{"name": "imu.op", "args": {"op": "hold"}}])
+        self.assertEqual(len(s["dialogs"]), 1, s["dialogs"])
+        self.assertIn("15 颗舵机会在 3 秒内一起转到站姿并锁住", s["dialogs"][0])
+        self.assertIn("现在：标定模式（站着）", s["holding"]["now"])
+        self.assertEqual(s["holding"]["stand"], {"text": "站姿使能", "disabled": True}, s["holding"])
+        self.assertEqual(s["holding"]["why"], "已经站着了")
+        self.assertEqual(s["relaxSent"], [{"name": "relax", "args": {}}])
+        self.assertIn("现在：标定模式（软着）", s["after"]["now"])
+        recv = [json.loads(x) for x in (self.dir / "robotd-recv.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+        holds = [r for r in recv if r.get("method") == "robot.busCommand" and (r.get("params") or {}).get("action") == "hold-home"]
+        self.assertEqual(len(holds), 1, holds)
+        dirs = holds[0]["params"]["directions"]
+        self.assertEqual(len(dirs), 15)
+        self.assertEqual(holds[0]["params"]["duration_ms"], 3000)
+        self.assertEqual(s["errors"], [])
+
     def test_02_imu_coarse_verify(self):
         imu = self.node("imu")
         self.assertIn("方向已确认", imu["imu"], imu)
@@ -216,6 +255,23 @@ class CommitE2E(unittest.TestCase):
         self.assertEqual(second["done"]["rowState"], "完成", second["done"])
         self.assertIn("运动模式", second["topbar"], second)
         self.assertEqual(second["errors"], [])
+
+    def test_03b_stance_buttons_in_motion(self):
+        """任务 17：运动模式软着时「站姿使能」能点，发出的命令跟遥控卡「站起来」一样（pad.op stand → robot.init）；
+        「失能（卸力）」跟顶上「卸力」一样（relax）。"""
+        s = self.node("stance")
+        self.assertEqual(s["before"]["stand"], {"text": "站姿使能", "disabled": False}, s["before"])
+        self.assertFalse(s["before"]["relax"]["disabled"], s["before"])
+        self.assertIn("现在：软着", s["before"]["now"])
+        self.assertFalse(s["before"]["goCommit"])
+        self.assertEqual(s["standSent"], [{"name": "pad.op", "args": {"op": "stand"}}])
+        self.assertEqual(s["remoteSent"], s["standSent"])
+        self.assertEqual(s["relaxSent"], [{"name": "relax", "args": {}}])
+        recv = [json.loads(x) for x in (self.dir / "robotd-recv.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+        methods = [r.get("method") for r in recv]
+        self.assertGreaterEqual(methods.count("robot.init"), 2, methods[-40:])      # IMU 页一次、遥控卡一次
+        self.assertIn("robot.relax", methods)
+        self.assertEqual(s["errors"], [])
 
     def test_04_failure_rollback_is_visible(self):
         self.outcome_file.write_text(json.dumps({"outcome": "reject"}), encoding="utf-8")

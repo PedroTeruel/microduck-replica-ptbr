@@ -15,7 +15,7 @@ sys.path[:0] = [str(HERE.parent), str(HERE.parent / "deps"), str(HERE.parent / "
 
 from fake_robotd import FakeRobotd  # noqa: E402
 from studio import robotd as robotd_mod  # noqa: E402
-from studio.estop import EStop, relaxed  # noqa: E402
+from studio.estop import EStop, relaxed, robotd_up  # noqa: E402
 from studio.log import Log  # noqa: E402
 from studio.robotd import Robotd  # noqa: E402
 from studio.rpc import LINE_LIMIT, Conn, RpcError, Timeout, Unreachable  # noqa: E402
@@ -449,6 +449,126 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
                 break
             await asyncio.sleep(0.05)
         self.assertIs(self.rd.present, True)
+
+
+# ---------------- 标定模式的 busStatus（任务 16：10-20 真机验收，旧 fork 永远报 configuring_bus） ----------------
+
+STATUS_KEYS = ("build", "port", "mode", "phase", "session", "target_hz", "achieved_hz", "total_cycles", "total_success",
+               "total_communication_failures", "errors_by_id", "device_communication", "last_cycle_error", "last_failure",
+               "last_sample", "calibrated", "imu_mount_verified", "torque_state", "torque_off_pending", "power_pending",
+               "motion", "policy_motion_enabled", "updated_at_us")     # fork feetech_commissioning.rs 的 Status
+
+
+class FakeCommissioningTest(unittest.IsolatedAsyncioTestCase):
+    """假 robotd 照 fork 真实行为（上一轮的毛病：假的直接给快照，测试全过、真机露馅）：
+    标定模式没读成功之前回启动报告（只有四个键），读成功以后回实时快照；--commissioning-stuck-status 永远回启动报告。"""
+
+    async def bus(self, fake):
+        return (await fake.dispatch("robot.busStatus", {}))[0]
+
+    async def test_boot_report_then_snapshot(self):
+        fake = FakeRobotd(FIXTURE, posture="commissioning", mode="commissioning")
+        fake.comm_read_s = 0.2
+        b = await self.bus(fake)
+        self.assertEqual(sorted(b), sorted(("build", "mode", "phase", "port")))
+        self.assertEqual((b["mode"], b["phase"], b["port"]), ("commissioning", "configuring_bus", "/dev/ttyS2"))
+        self.assertEqual(posture(True, b, None, None), "starting")
+        self.assertFalse(robotd_up(b))
+        self.assertIsNotNone((await fake.dispatch("robot.busCommand", {"action": "calibration-status"}))[0])   # 标定照样能读
+        await asyncio.sleep(0.25)
+        b = await self.bus(fake)
+        self.assertEqual(b["phase"], "ready")
+        for k in STATUS_KEYS:
+            self.assertIn(k, b)
+        self.assertEqual(len(b["last_sample"]["servos"]), 15)
+        self.assertIsNone(b["last_cycle_error"])
+        self.assertTrue(robotd_up(b))
+        self.assertEqual(posture(True, b, None, None), "commissioning")
+        # 读成功过以后舵机断电：还是快照，phase read_error（起来了，只是读舵机出错）
+        fake.servo_power = False
+        b = await self.bus(fake)
+        self.assertEqual(b["phase"], "read_error")
+        self.assertIn("Sync Read timeout", b["last_cycle_error"])
+        self.assertTrue(robotd_up(b))
+        fake.servo_power = True
+        # 重启：又从启动报告开始，读成功才回快照
+        fake.restart(0.05)
+        self.assertEqual((await self.bus(fake))["phase"], "configuring_bus")
+        await asyncio.sleep(0.35)
+        self.assertEqual((await self.bus(fake))["phase"], "ready")
+
+    async def test_stuck_status_never_clears(self):
+        import fake_tune
+        fake = FakeRobotd(FIXTURE, posture="commissioning", mode="commissioning")
+        fake.comm_read_s = 0.05
+        fake.comm_stuck = True
+        await asyncio.sleep(0.15)
+        for _ in range(3):
+            b = await self.bus(fake)
+            self.assertEqual(sorted(b), sorted(("build", "mode", "phase", "port")))
+            self.assertEqual(b["phase"], "configuring_bus")
+        steps = fake_tune.startup_report(fake)["steps"]
+        self.assertEqual(steps["4"]["status"], "success")                    # 旧 fork：四步都成功了，只是状态不更新
+        await fake.dispatch("fake.set", {"commissioning_stuck": False})
+        self.assertEqual((await self.bus(fake))["phase"], "ready")           # 新 fork：读成功一次就清掉
+
+    async def test_no_servo_power_before_first_read_is_waiting_for_bus(self):
+        fake = FakeRobotd(FIXTURE, posture="commissioning", mode="commissioning")
+        fake.servo_power = False
+        await asyncio.sleep(0.4)
+        b = await self.bus(fake)
+        self.assertEqual((b["mode"], b["phase"]), ("commissioning", "waiting_for_bus"))
+        self.assertIn("Sync Read timeout", b["error"])
+        self.assertEqual(posture(True, b, None, None), "starting")
+
+    def test_cli_flag_exists(self):
+        src = (HERE.parent / "dev" / "fake_robotd.py").read_text(encoding="utf-8")
+        self.assertIn('"--commissioning-stuck-status"', src)
+
+
+class StartingTimerTest(unittest.IsolatedAsyncioTestCase):
+    """Studio 自己计时「一直报启动中」：从这次连上算（hello 以后），连续报启动阶段超过 30 秒才改口；起来了清零。"""
+
+    async def asyncSetUp(self):
+        self.fake = FakeRobotd(FIXTURE, posture="commissioning", mode="commissioning")
+        self.fake.comm_stuck = True                                       # 旧 fork
+        self.s1, p1 = await self.fake.serve_tcp()
+        self.s2, p2 = await self.fake.serve_tcp()
+        self.rd = Robotd(f"tcp:127.0.0.1:{p1}", f"tcp:127.0.0.1:{p2}", quiet_log())
+        self.rd.start()
+
+    async def asyncTearDown(self):
+        await self.rd.stop()
+        self.s1.close()
+        self.s2.close()
+
+    async def wait_for(self, cond, timeout=4.0):
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if cond():
+                return True
+            await asyncio.sleep(0.02)
+        return cond()
+
+    async def test_stuck_commissioning_then_cleared(self):
+        self.assertTrue(await self.wait_for(lambda: self.rd.starting_since is not None))
+        self.assertEqual(self.rd.bus.value["phase"], "configuring_bus")
+        since = self.rd.starting_since
+        s = summarize(self.rd, {})
+        self.assertEqual(s["posture"], "starting")
+        self.assertFalse(s["starting_long"])
+        await asyncio.sleep(1.2)
+        self.assertEqual(self.rd.starting_since, since)                      # 连续报着：不重新计
+        s = summarize(self.rd, {}, now=since + 31)                          # 假时钟：过了 31 秒
+        self.assertTrue(s["starting_long"])
+        self.assertIn("主程序一直报「启动中」", [t["msg"] for t in s["todo"]])
+        self.fake.comm_stuck = False                                        # 换上修好的 fork：快照来了，清零
+        self.assertTrue(await self.wait_for(lambda: self.rd.starting_since is None
+                                            and (self.rd.bus.value or {}).get("phase") == "ready"))
+        self.assertEqual(summarize(self.rd, {})["posture"], "commissioning")
+        self.fake.comm_stuck = True                                         # 再重启一次（又是旧 fork）：从新的 hello 重新算
+        self.fake.restart(0.2)
+        self.assertTrue(await self.wait_for(lambda: self.rd.starting_since is not None and self.rd.starting_since > since, 6.0))
 
 
 if __name__ == "__main__":

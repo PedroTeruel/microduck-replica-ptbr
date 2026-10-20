@@ -270,15 +270,29 @@ class OverviewE2E(unittest.TestCase):
         self.assertEqual(self.done["expandedAfterReload"], 6)        # 展开状态存在 localStorage
         self.assertTrue(self.done["collapsedAfterReload"])
 
+    def test_every_row_has_three_buttons(self):
+        """用户 10-20：每一行任何时候都有「去做」「已完成」「跳过」（✓ 的行只有「重新做」）。"""
+        rows = self.out["threeButtons"]
+        self.assertGreaterEqual(len(rows), 3, rows)
+        for r in rows:
+            with self.subTest(step=r["step"]):
+                self.assertEqual(len(r["labels"]), 3, r)
+                self.assertEqual(r["labels"][1:], ["已完成", "跳过"], r)
+
     def test_skip_unskip_and_redo(self):
-        """IMU 跳过 → 「跳过了」（灰 ↷），现在该做到第 3 行；取消跳过复原；✓ 行的「重新做」去舵机页。"""
+        """舵机「已完成」→ ✓「你标了已完成（时间）」，有「重新做」「取消」；IMU 跳过 → 「跳过了」（灰 ↷），现在该做到第 4 行；
+        取消跳过复原；✓ 行的「重新做」去舵机页；「取消」复原。"""
+        m = self.out["marked"]
+        self.assertTrue(m["text"].startswith("你标了已完成（"), m)
+        self.assertEqual(m["buttons"], ["重新做", "取消"])
         sk = self.out["skip"]
         self.assertEqual(sk["imu"], "onb-skip")
         self.assertEqual(sk["mark"], "↷")
-        self.assertIn("跳过了（你说以前做过）", sk["imuText"])
+        self.assertIn("跳过了（先不做）", sk["imuText"])
         self.assertEqual(sk["now"], "pad")
         self.assertEqual(self.out["unskip"], {"imu": "onb-todo", "now": "imu"})
         self.assertEqual(self.out["redoHash"], "#/servos")
+        self.assertEqual(self.out["undone"], "onb-todo")
 
     def test_estop_skip_needs_two_clicks_within_3s(self):
         self.assertIn("确定跳过", self.out["estopOnce"]["text"])
@@ -288,10 +302,13 @@ class OverviewE2E(unittest.TestCase):
         self.assertEqual(self.out["estopTimeout"], {"text": "跳过", "state": "onb-no"})   # 3 秒没再点：复原
         self.assertEqual(self.out["estopTwice"], "onb-skip")
 
-    def test_imu_cannot_be_skipped_when_main_says_unverified(self):
+    def test_imu_unverified_skip_needs_two_clicks(self):
+        """主程序明说 IMU 方向没确认：以前跳过灰着；现在能点，第一下冒出写着后果的确认按钮，不点就不跳。"""
         b = self.out["imuBlocked"]
-        self.assertTrue(b["disabled"])
-        self.assertIn("主程序没确认方向，跳过了鸭子也站不起来，先去 IMU 页", b["text"])
+        self.assertFalse(b["disabled"])
+        self.assertEqual(b["ask"], "确定跳过？主程序没确认 IMU 方向：跳过了鸭子也站不起来")
+        self.assertEqual(b["state"], "onb-no")
+        self.assertEqual(b["after"], "onb-no")
 
 
 if __name__ == "__main__":

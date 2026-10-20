@@ -125,6 +125,9 @@ def _bus_give_back(by, servo=None):
     if servo is not None:
         servo.helper_available = True
     ok, result, detail = helper.bus_give_back(by, soft=True, timeout=60)
+    if servo is not None:
+        # 主程序其实在回话、只是一直报启动阶段（旧 fork 的标定模式）：交还后的提示不能叫人手动起 robotd
+        servo.giveback_stuck = bool(isinstance(detail, dict) and detail.get("still_starting"))
     if ok:
         return True, None
     return False, helper.friendly(result, detail, "bus-give-back")
@@ -133,6 +136,8 @@ def _bus_give_back(by, servo=None):
 def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev_autologin=False, servo=None, imu=None, pad=None,
               onboard=None, battery=None, tune=None, net=None, commit=None):
     guard = OriginGuard(names=names)
+    if imu is not None and commit is not None:
+        imu.commit = commit                          # 标定模式「站姿使能」：跟写进主程序同一套方向
     if onboard is not None:
         # 上手清单的两条记录从这两处来：测急停过了（pad.py 测急停线程）、IMU 页站着核过（imu.py）
         if pad is not None:
@@ -141,6 +146,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             imu.on_check = onboard.note_imu_check
         if commit is not None:
             onboard.commit_service = commit          # 第 3 步「写进主程序」的准备情况 / 完成判定
+            commit.onboard = onboard                 # 第 1 / 2 步用户标了「已完成」「跳过」：准备情况那两项要知道
     web_dir = Path(web_dir)
     clients = {}           # websocket -> {"visible": bool, "by": str, "hb_at": monotonic}
     login_gate = asyncio.Semaphore(1)
@@ -678,23 +684,27 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
 
         async def onboard_op(cid, args):
             """上手清单上的按钮（只记一笔，不碰鸭子）：
-                confirm_servo        舵机零位「已经校过，核对一下」（审查 O4）
-                skip {step}          跳过这一步（用户 10-18：「应该允许跳过、允许重新做」）；后端按现在的情况再判一遍，
-                                     主程序明说不行的（比如 IMU 方向没确认）、读不到的拒，不能只靠页面把按钮灰掉
-                unskip {step}        取消跳过"""
+                confirm_servo              舵机零位「已经校过，核对一下」（审查 O4；页面现在用「已完成」，老接口留着）
+                done {step, confirmed}     「已完成」：我以前做过（用户 10-20：「去做、已完成、跳过，有三个也行」）
+                skip {step, confirmed}     「跳过」：先不做（用户 10-18：「应该允许跳过、允许重新做」）
+                undone / unskip {step, confirmed}   取消
+            每一行任何时候都能点；有后果的（主程序明说没做完、读不到、测出了问题、测急停、调舵机时）要点两次，
+            页面第二下才带 confirmed: true，后端按现在的情况再判一遍，没带就拒（不能只靠页面）"""
             op = args.get("op")
             if onboard is None:
                 return {"t": "result", "id": cid, "ok": False, "reason": "这只鸭子没开上手清单"}
-            what = {"confirm_servo": "「已经校过，核对一下」", "skip": "跳过", "unskip": "取消跳过"}.get(op)
+            what = {"confirm_servo": "「已经校过，核对一下」", "done": "「已完成」", "skip": "跳过", "unskip": "取消跳过",
+                    "undone": "取消「已完成」"}.get(op)
             if what is None:
                 return {"t": "result", "id": cid, "ok": False, "reason": f"不认识的指令：{op}"}
             step = str(args.get("step") or "")
+            confirmed = args.get("confirmed") is True
             if op == "confirm_servo":
                 ok, why = onboard.confirm_servo(robotd, by)
-            elif op == "skip":
-                ok, why = onboard.skip(step, robotd, pad, servo, by)
+            elif op in ("done", "skip"):
+                ok, why = onboard.mark(step, op, robotd, pad, servo, by, confirmed)
             else:
-                ok, why = onboard.unskip(step, by, servo)
+                ok, why = onboard.unmark(step, "skip" if op == "unskip" else "done", by, servo, confirmed)
             if ok:
                 onboard.tick(robotd, pad, servo)               # 马上重判一次，页面不用等下一拍
                 await asyncio.to_thread(onboard.save)
@@ -987,6 +997,9 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             if flag:
                 servo.giveback_hint = ("旗还在：手动 start robotd 会被挡住。再进一次舵机页、再点交还；"
                                        "或者重启鸭子（旗在 /run，重启就没了）")
+            elif getattr(servo, "giveback_stuck", False):
+                servo.giveback_hint = "主程序在回话，只是一直报启动阶段：多半是旧版主程序的毛病，去日志页看它最后说了什么"
+                await asyncio.to_thread(marker_drop)
             else:
                 servo.giveback_hint = "手动 sudo systemctl start robotd，或者再进一次舵机页再交还"
                 await asyncio.to_thread(marker_drop)

@@ -324,6 +324,9 @@ def friendly(result, detail, verb):
     # 其它动词保持「结果词：原话」的写法（test_helper 的 friendly 约定）。
     if msg and verb == "calib-commit" and result not in ("committed", "preview"):
         return msg
+    # 交还以后主程序在回话、只是一直报启动阶段（旧 fork 的标定模式）：别说成「起不来」，小助手的原话就是完整的一句
+    if msg and verb == "bus-give-back" and isinstance(detail, dict) and detail.get("still_starting"):
+        return msg
     text = table.get(result) or _COMMON.get(result) or (result or "没成")
     if result == "pair_failed" and isinstance(detail, dict) and detail.get("reason"):
         text = f"{text}（{detail['reason']}）"

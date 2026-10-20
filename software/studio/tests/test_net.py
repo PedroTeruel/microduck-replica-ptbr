@@ -143,6 +143,28 @@ class StateFileTest(Base):
         self.assertEqual(v["last_try"]["reason_text"], "密码不对")
         self.assertIsNone(v["busy"])
 
+    def test_addresses_hotspot_and_wifi(self):
+        """任务 16：「这只鸭子的地址」——IP（热点模式是 10.42.0.1，否则 net.status 的 ip4）、duck-xxxx、duck-xxxx.local，
+        按设备写该用哪个（开着 Clash 系统代理的 Windows 打不开 .local，不带点的能开）。"""
+        self.write_state(mode="hotspot")
+        self.net._read_once()
+        v = self.net.view()
+        self.assertEqual(v["ip_now"], "10.42.0.1")
+        self.assertEqual(v["url_host"], "http://duck-c51b:8000/")
+        self.assertEqual([(u["kind"], u["url"]) for u in v["urls"]],
+                         [("ip", "http://10.42.0.1:8000/"), ("host", "http://duck-c51b:8000/"), ("local", "http://duck-c51b.local:8000/")])
+        self.assertIn("Windows", v["urls"][1]["note"])
+        self.assertIn("苹果", v["urls"][2]["note"])
+        self.write_state(mode="wifi")
+        self.net._read_once()
+        self.assertEqual([u["kind"] for u in self.net.view()["urls"]], ["host", "local"])     # 没连上：不知道 IP 就不列
+        self.net.status = {"state": "connected", "ssid": "Home", "signal": 72, "ip4": "192.168.0.102"}
+        self.net.status_at = time.monotonic()
+        v = self.net.view()
+        self.assertEqual(v["ip_now"], "192.168.0.102")
+        self.assertEqual(v["urls"][0], {"kind": "ip", "url": "http://192.168.0.102:8000/",
+                                        "note": "IP：哪台设备都能打开（换了路由器、重新分了地址会变）"})
+
     def test_state_summarize_has_net_shapes(self):
         rd = FakeRd()
         self.assertEqual(summarize(rd, {"label": "鸭"})["net"], {"known": False})
@@ -176,6 +198,32 @@ class ScanTest(Base):
             data = await self.net.scan()
         self.assertTrue(data["cached"])
         self.assertEqual(data["networks"][0]["ssid"], "Cached")
+
+    async def test_own_hotspot_is_filtered(self):
+        """任务 16：真机扫描结果里有鸭子自己的热点（Microduck-0de6，显示「已保存」），点了会让人往里填家里密码：滤掉。
+        按 net.json 的 hotspot_ssid 认；没有 hotspot_ssid 时认「Microduck- 开头、而且是已保存」的。"""
+        nets = [{"ssid": "Microduck-c51b", "signal": 90, "security": "wpa_psk", "saved": True},
+                {"ssid": "Home", "signal": 70, "security": "wpa_psk", "saved": False},
+                {"ssid": "Microduck-0de6", "signal": 40, "security": "wpa_psk", "saved": False}]
+        self.write_state(mode="wifi")
+        self.net._read_once()
+        with mock.patch.object(N, "call_once", FakeRpc(lambda m, p: {"networks": [dict(n) for n in nets]})):
+            data = await self.net.scan()
+        self.assertEqual([n["ssid"] for n in data["networks"]], ["Home", "Microduck-0de6"])   # 别的鸭子的热点不滤
+        self.write_state(mode="wifi", hotspot_ssid=None)
+        self.net._read_once()
+        nets.append({"ssid": "Microduck-0de6", "signal": 40, "security": "wpa_psk", "saved": True})
+        with mock.patch.object(N, "call_once", FakeRpc(lambda m, p: {"networks": [dict(n) for n in nets]})):
+            data = await self.net.scan()
+        self.assertEqual([n["ssid"] for n in data["networks"]], ["Home", "Microduck-0de6"])   # 已保存的 Microduck-* 滤掉
+        self.assertTrue(all(not (n["ssid"].startswith("Microduck-") and n["saved"]) for n in data["networks"]))
+        self.write_state(mode="hotspot", scan=[{"ssid": "Microduck-c51b", "signal": 99, "security": "wpa_psk"},
+                                               {"ssid": "Cached", "signal": 61, "security": "wpa_psk"}])
+        self.net._read_once()
+        with mock.patch.object(N, "call_once", FakeRpc(lambda m, p: {"networks": []})):
+            data = await self.net.scan()
+        self.assertTrue(data["cached"])
+        self.assertEqual([n["ssid"] for n in data["networks"]], ["Cached"])              # 开热点前的缓存也滤
 
     async def test_wifi_mode_error_is_not_hidden_by_cache(self):
         self.write_state(mode="wifi")

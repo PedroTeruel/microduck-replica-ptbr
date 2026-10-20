@@ -37,6 +37,12 @@ class FriendlyTest(unittest.TestCase):
     def test_give_limp(self):
         self.assertIn("全卸", helper.friendly("limp", None, "bus-give-back"))
 
+    def test_give_still_starting_is_not_called_cannot_start(self):
+        # 任务 16：主程序在回话、只是一直报启动阶段（旧 fork）：不说「起不来」，用小助手的整句原话
+        msg = "主程序 30 秒一直报「启动中」（phase=configuring_bus）：可能其实起来了、只是状态没更新（旧版主程序的毛病）"
+        self.assertEqual(msg, helper.friendly("soft_failed", {"msg": msg, "still_starting": True}, "bus-give-back"))
+        self.assertIn("主程序起不来", helper.friendly("soft_failed", {"msg": "x"}, "bus-give-back"))
+
     def test_unknown_result(self):
         # 不认识的结果回退成原样，不带 msg 就不拼原话
         self.assertEqual("weird", helper.friendly("weird", None, "bus-take"))

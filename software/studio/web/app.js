@@ -12,7 +12,7 @@ import { PadPage, padActivity, padGo } from './pad.js';
 import { BatteryCell } from './battery.js';
 import { BatterySettings } from './settings-battery.js';
 import { TuneSection, ModelSettings } from './tune.js';
-import { WifiCard, WifiSettings } from './wifi.js';
+import { WifiCard, WifiSettings, DuckAddresses } from './wifi.js';
 import { TwoStep } from './confirm.js';
 
 const STALE_GRAY_MS = 1000;   // 超过 1 秒没新数据：数值变灰
@@ -214,17 +214,21 @@ function EStop({ st, live, open }) {
 
 function TopBar({ duck, st, live, age, open, hideEStop }) {
   // 顶栏先说现在是什么模式（出厂标定模式 / 写完切运动模式），再带姿势；标定模式没有策略，别写成「调试中」。
-  const postureText = st ? ({ starting: '启动中', absent: '主程序没在跑', homing: '在站起来', servo_session: '调舵机中' }[st.posture]
-    || WAS[st.posture] || '状态不明') : null;
+  // 连续报启动阶段超过 30 秒（Studio 从这次连上算）：写「一直报启动中」（10-20 真机：旧 fork 的标定模式永远报 configuring_bus）
+  const postureText = st ? ({ starting: st.starting_long ? '一直报启动中' : '启动中', absent: '主程序没在跑', homing: '在站起来',
+    servo_session: '调舵机中' }[st.posture] || WAS[st.posture] || '状态不明') : null;
   const modeText = !st ? '连接中'
     : st.mode === 'commissioning' ? (st.posture === 'commissioning' ? '标定模式' : `标定模式 · ${postureText}`)
     : st.mode === 'motion' && st.posture !== 'absent' && st.posture !== 'servo_session' ? `运动模式 · ${postureText}`
     : postureText;
   const pct = st?.battery?.pct;
+  // 鼠标停在名字上看得到现在的 IP 和几个地址（「更多」页有能复制的那一块）
+  const net = st?.net;
+  const addrTitle = net?.known ? [`IP ${net.ip_now || '不知道'}`, ...(net.urls || []).map((u) => u.url)].join('\n') : undefined;
   return html`<header class="topbar">
     <div class="duckid">
       <span class="dot" style=${{ background: duck?.color || '#0F7C80' }}></span>
-      <span class="name">${duck?.label || '鸭子'}</span>
+      <span class="name" title=${addrTitle}>${duck?.label || '鸭子'}</span>
       ${st?.servo_session ? html`<span class="sv-badge">调舵机中</span>` : null}
       <span class="meta num">${live ? '' : `${Math.round(age / 1000)} 秒前 · `}${modeText}${typeof pct === 'number' ? ` · ${Math.round(pct)}%` : ''}</span>
     </div>
@@ -285,7 +289,14 @@ function stageCopy(st, live, name, age) {
   }
   switch (st.posture) {
     case 'absent': return { h: '鸭子主程序没在跑', sub: '可能正在重启（约 2 秒）。注意：主程序停了不会卸力，舵机可能还顶着。', stale: true };
-    case 'starting': return { h: '主程序正在启动', sub: st.start_error ? `卡在：${st.start_error}` : '通常 10 秒内完成。' };
+    case 'starting':
+      // 连续报启动阶段超过 30 秒：不再说「通常 10 秒内完成」，给「去日志页」（10-20 真机：旧 fork 的标定模式永远报 configuring_bus）
+      if (st.starting_long) {
+        return { h: '主程序一直报「启动中」', act: { href: '#/logs', label: '去日志页' },
+          sub: st.start_error ? `已经 ${st.starting_s} 秒了，卡在：${st.start_error}。去日志页看主程序最后说了什么。`
+            : `已经 ${st.starting_s} 秒了。主程序可能其实起来了、只是状态没更新（旧版主程序的毛病），也可能卡在启动：去日志页看主程序最后说了什么。` };
+      }
+      return { h: '主程序正在启动', sub: st.start_error ? `卡在：${st.start_error}` : '通常 10 秒内完成。' };
     case 'commissioning': return { h: '标定模式', sub: '出厂第一次：先粗校 IMU、再一键中位，第 3 步写进主程序会自动切到运动模式。' };
     case 'limp': return { h: `${name}软着`, sub: '双手托起它，往下滑到「遥控」点「站起来」（或者按手柄 +）。' };
     case 'homing': return { h: '正在站起来…', sub: '扶着它，别松手。' };
@@ -336,6 +347,7 @@ function Stage({ st, live, age, name }) {
     <div class="copy">
       <h1>${c.h}</h1>
       <p class="sub">${c.sub}</p>
+      ${c.act ? html`<div class="btns"><button class="btn2 stage-act" onClick=${(e) => { e.currentTarget.blur(); location.hash = c.act.href; }}>${c.act.label}</button></div>` : null}
       ${msg ? html`<span class="tip" role="alert">${msg}</span>` : c.tip ? html`<span class="tip">${c.tip}</span>` : null}
     </div>
     ${c.stale && isFinite(age) ? html`<span class="age num">${Math.round(age / 1000)} 秒前</span>` : null}
@@ -429,14 +441,15 @@ function Band({ st, pd, gray, onSame }) {
 // ---------------- 上手清单（总览重排 §1.3、§5 O14：6 行 + 卡片头的「连上鸭子」；任务 11 加了「写进主程序」） ----------------
 // 判法都在后端（studio/onboard.py，0.5 秒判一次），这里只画。五种状态：✓ 完成 · ↷ 跳过了 · ● 该做 / 要重做 · ○ 没做 · ? 读不到。
 // 「现在该做」= 第一个 ● / ○ 的步（ob.next），它的第一个按钮是深色的「去做」；后面的不锁，照样能点。
-// 跳过 / 重新做（用户 10-18：「应该允许跳过、允许重新做」）：● / ○ 的行有「跳过」（主程序明说不行的灰着、旁边写为什么）；
-// 测急停的跳过要点两次（3 秒内，不用浏览器弹窗）；✓ 和跳过了的行有「重新做」（就是那一步的去做）；跳过了的还有「取消跳过」。
-// 全部完成收成一行，能点开看 5 行（每行能重新做），开没开记在 localStorage
+// 每一行任何时候都有三个按钮：「去做」「已完成」「跳过」（用户 10-20：「去做、已完成、跳过，有三个也行」；以前锁着的情况也能点）。
+// 有后果的（主程序明说没做完、读不到、测出了问题、测急停、调舵机时）点两次：第二下按钮上写后果（后端给的 mark.*.ask），
+// 页面第二下才带 confirmed，后端没收到也拒。✓ 的行有「重新做」（就是那一步的去做）；用户标的 ✓ / ↷ 还有「取消」/「取消跳过」。
+// 全部完成收成一行，能点开看 6 行（每行能重新做），开没开记在 localStorage
 
 const ONB_MARK = { ok: '✓', skip: '↷', todo: '●', no: '○', unk: '?' };
 const ONB_WORD = { ok: '完成', skip: '跳过了', todo: '该做', no: '没做', unk: '读不到' };
 const ONB_OPEN_KEY = 'studio.onb.open';
-const ONB_FROZEN = '在调舵机：跳过 / 取消跳过等交还主程序以后再点';
+const ONB_FROZEN = '在调舵机：清单停在调之前的样子；这时标的「已完成」「跳过」要等交还主程序以后才显示';
 function fmtWhen(w) {
   if (w == null || w === '') return null;
   let d = null;
@@ -449,12 +462,6 @@ function fmtWhen(w) {
 }
 function loadOnbOpen() { try { return localStorage.getItem(ONB_OPEN_KEY) === '1'; } catch { return false; } }
 function saveOnbOpen(v) { try { localStorage.setItem(ONB_OPEN_KEY, v ? '1' : '0'); } catch { /* 隐私模式 */ } }
-
-const CONFIRM_SERVO = ['「已经校过，核对一下」：',
-  '',
-  '主程序文件里 15 颗的零位都是 2048、都标了，这一步才记成完成。',
-  '只有你确实在这只鸭子上用 Studio 的舵机页（或 servo-web）标过中位，才点确定：',
-  '随包的一号鸭数值、手改的文件，零位也可能都写着 2048，但跟舵机里的对不上，鸭子会站歪。'];
 
 function Onboard({ st, live }) {
   const ob = st?.onboarding;
@@ -489,7 +496,9 @@ function Onboard({ st, live }) {
   if (head.kind === 'bench') return html`<section class="onb board"><div class="onb-h"><b>上手清单</b><span class="quiet">${head.text}</span></div></section>`;
   const done = ob.all_done && head.ok;
   const n = ob.skipped_n || 0;
-  const doneText = `上手 6 步都完成了${n ? `（跳过 ${n} 步）` : ''}`;
+  const m = ob.marked_n || 0;
+  const counts = [n ? `跳过 ${n} 步` : '', m ? `标了已完成 ${m} 步` : ''].filter(Boolean).join('、');
+  const doneText = `上手 6 步都完成了${counts ? `（${counts}）` : ''}`;
   const toggle = () => { const v = !open; setOpen(v); saveOnbOpen(v); };
   if (done && !open) {
     return html`<section class="onb board onb-done" aria-label="上手清单">
@@ -512,11 +521,7 @@ function Onboard({ st, live }) {
     else if (a.do === 'pad_known') padGo('known');
     else if (a.do === 'estop') padGo('estop');
     else if (a.do === 'remote') padGo('remote');
-    else if (a.do === 'confirm_servo') {
-      if (!window.confirm(CONFIRM_SERVO.join('\n'))) return;
-      op({ op: 'confirm_servo' }, '记下了：舵机零位核对过');
-    } else if (a.do === 'skip') op({ op: 'skip', step: row.key });
-    else if (a.do === 'unskip') op({ op: 'unskip', step: row.key });
+    else if (a.do === 'robotd' || a.do === 'logs') location.hash = '#/logs';   // 第 3 步「主程序模式」那一项的「去看日志页」
   };
   // 第 3 步：预览（小助手 dry_run / 电脑上 Studio 直接算）与真正写入。写入回到 ack 就开始，进度看 st.commit.job。
   const commitPreview = async () => {
@@ -538,6 +543,23 @@ function Onboard({ st, live }) {
     }
   };
   const btn = (a, row, dark) => html`<button class=${dark ? 'btn-dark' : 'btn-light'} onClick=${() => go(a, row)}>${a.label}</button>`;
+  const frozen = !!ob.frozen;               // 调舵机时清单冻着：标、取消都要点两次（标了要交还以后才显示）
+  const fa = ob.frozen_ask || {};
+  // 「已完成」（done）/「跳过」（skip）：后端说要点两次（mark.*.ask）或者冻着，用 TwoStep，第二下才带 confirmed
+  const markBtn = (row, kind, label, cls) => {
+    const ask = (row.mark || {})[kind]?.ask || (frozen ? fa[kind] : null);
+    const args = { op: kind, step: row.key };
+    return ask ? html`<${TwoStep} label=${label} ask=${ask} cls=${'btn-light ' + cls} askCls="btn-light onb-skip-arm"
+        onConfirm=${() => op({ ...args, confirmed: true })} />`
+      : html`<button class=${'btn-light ' + cls} onClick=${() => op(args)}>${label}</button>`;
+  };
+  const undoBtn = (row) => {
+    const args = { op: row.marked === 'skip' ? 'unskip' : 'undone', step: row.key };
+    const label = row.marked === 'skip' ? '取消跳过' : '取消';
+    return frozen ? html`<${TwoStep} label=${label} ask=${fa.undo || '确定取消？'} cls="btn-light onb-unskip" askCls="btn-light onb-skip-arm"
+        onConfirm=${() => op({ ...args, confirmed: true })} />`
+      : html`<button class="btn-light onb-unskip" onClick=${() => op(args)}>${label}</button>`;
+  };
   return html`<section class=${'onb board' + (ob.frozen ? ' onb-frozen' : '')} aria-label="上手清单">
     <div class="onb-h">
       <b>上手清单</b>
@@ -555,36 +577,27 @@ function Onboard({ st, live }) {
         const now = ob.next === r.key;
         const when = fmtWhen(r.when);
         const goA = { do: r.go, label: '去做' };
-        const frozen = !!ob.frozen;               // 调舵机时清单冻着：跳过、取消跳过都灰（后端也拒：审查 D11）
         // 第 3 步那张卡片只在「写进主程序」这一行里展开：还没做（● / ○）、正在写 / 刚写完、或者点了「去看看」「重新做」；
         // 做完了（✓）、跳过了、判不出（?）时收着
         const isCommit = r.key === 'commit' && (r.state === 'todo' || r.state === 'no' || copen || !!job || !!cmsg || !!cprev);
         let acts;
-        if (r.state === 'ok') acts = html`<button class="btn-light onb-redo" onClick=${() => go(goA, r)}>重新做</button>`;
-        else if (r.state === 'skip') {
-          // 跳过了的行：「重新做」（就是那一步的去做）+「取消跳过」（审查 D12）
-          acts = html`${btn({ ...goA, label: '重新做' }, r)}<button class="btn-light onb-unskip" disabled=${frozen} title=${frozen ? ONB_FROZEN : ''}
-            onClick=${() => go({ do: 'unskip' }, r)}>取消跳过</button>`;
-        } else {
-          const sk = r.skip;
-          // 测急停的跳过要点两次（confirm.js 的 TwoStep，跟交还主程序共用：审查 D4）；确认那句后端按情况写（审查 D11）
-          const skipBtn = !sk ? null : sk.confirm && sk.ok && !frozen
-            ? html`<${TwoStep} label="跳过" ask=${sk.ask || '确定跳过？'} cls="btn-light onb-skip" askCls="btn-light onb-skip-arm"
-                onConfirm=${() => op({ op: 'skip', step: r.key })} />`
-            : html`<button class="btn-light onb-skip" disabled=${!sk.ok || frozen} title=${!sk.ok ? sk.why : frozen ? ONB_FROZEN : ''}
-                onClick=${() => go({ do: 'skip' }, r)}>跳过</button>`;
-          // 测出了问题的行（found：审查 D5）只给「重新做」，不能跳
-          acts = html`${(r.actions || []).map((a, i) => btn(r.found && i === 0 ? { ...a, label: '重新做' }
-            : now && i === 0 && a.do !== 'confirm_servo' ? { ...a, label: '去做' } : a, r, now && i === 0))}${skipBtn}`;
+        if (r.marked) {
+          // 用户自己标的 ✓ / ↷：「重新做」（就是那一步的去做）+「取消」/「取消跳过」（审查 D12）
+          acts = html`<button class="btn-light onb-redo" onClick=${() => go(goA, r)}>重新做</button>${undoBtn(r)}`;
+        } else if (r.state === 'ok') acts = html`<button class="btn-light onb-redo" onClick=${() => go(goA, r)}>重新做</button>`;
+        else {
+          // 三个按钮：去做（这一行自己的动作，没有就去 GO 那一页）、已完成、跳过。测出了问题的行（found：审查 D5）第一个写「重新做」
+          const first = (r.actions || []).length ? r.actions : [goA];
+          acts = html`${first.map((a, i) => btn(r.found && i === 0 ? { ...a, label: '重新做' }
+            : now && i === 0 ? { ...a, label: '去做' } : a, r, now && i === 0))}${markBtn(r, 'done', '已完成', 'onb-donebtn')}${markBtn(r, 'skip', '跳过', 'onb-skip')}`;
         }
         return html`<li class=${'onb-row onb-' + r.state + (now ? ' onb-now' : '')} key=${r.key} data-step=${r.key}>
           <span class=${'onb-mark onb-' + r.state} aria-label=${ONB_WORD[r.state] || '读不到'}>${ONB_MARK[r.state] || '?'}</span>
           <span class="onb-body">
-            <span class="onb-title"><b>${r.n} ${r.title}</b>${now ? html`<span class="onb-tag">现在该做</span>` : null}${when ? html`<span class="onb-when num">${when}</span>` : null}</span>
-            <span class="onb-text">${r.text}</span>
-            ${r.note ? html`<span class="onb-tip">${r.state === 'skip' ? `现在：${r.note}` : r.note}</span>` : null}
+            <span class="onb-title"><b>${r.n} ${r.title}</b>${now ? html`<span class="onb-tag">现在该做</span>` : null}${when && !r.marked ? html`<span class="onb-when num">${when}</span>` : null}</span>
+            <span class="onb-text">${r.text}${r.marked ? `（${when || '时间不知道'}）` : ''}</span>
+            ${r.note ? html`<span class="onb-tip">${r.marked ? `现在：${r.note}` : r.note}</span>` : null}
             ${r.tip && r.state !== 'ok' && r.state !== 'skip' ? html`<span class="onb-tip">坑：${r.tip}</span>` : null}
-            ${r.skip && !r.skip.ok && r.skip.why ? html`<span class="onb-tip onb-noskip">不能跳过：${r.skip.why}</span>` : null}
             ${isCommit ? html`<div class="onb-commit">
               <div class="onb-commit-desc">${r.desc || ''}</div>
               ${(r.commit?.items || []).length ? html`<ul class="onb-checks">
@@ -596,7 +609,8 @@ function Onboard({ st, live }) {
               </ul>` : null}
               <div class="onb-commit-acts">
                 <button class="btn-light" disabled=${cbusy} onClick=${commitPreview}>${cprev ? '收起要写的内容' : '先看看要写什么'}</button>
-                <${TwoStep} label="写进主程序" ask="会重启主程序，鸭子会先卸力，扶好鸭子"
+                ${/* 第 2 步标了、IMU 按默认装法写（任务 17）：第二下写清楚 */ ''}
+                <${TwoStep} label="写进主程序" ask=${r.commit?.imu_default ? '确定？IMU 按默认装法写' : '会重启主程序，鸭子会先卸力，扶好鸭子'}
                   cls="btn-dark" disabled=${!r.commit?.ready || cbusy}
                   title=${!r.commit?.ready ? '准备情况还没全绿：照上面的清单补齐' : ''} onConfirm=${commitRun} />
               </div>
@@ -604,7 +618,7 @@ function Onboard({ st, live }) {
               ${job && job.phase === 'running' ? html`<div class="onb-commit-job" role="status"><span class="onb-spin">⋯</span>${job.msg || '在写…'}</div>` : null}
               ${job && job.phase !== 'running' && job.reason ? html`<div class=${'onb-commit-msg ' + (job.ok ? 'ok' : 'bad')}>${job.reason}</div>` : null}
               ${cprev ? html`<div class="onb-preview">
-                <div class="onb-preview-imu"><b>IMU</b> ${cprev.imu?.label || ''} · ${cprev.imu?.text || ''}</div>
+                <div class="onb-preview-imu"><b>IMU</b> ${cprev.imu?.label || ''} · ${cprev.imu?.text || ''}${cprev.imu?.default ? `（按默认装法写：${cprev.imu.default}）` : ''}</div>
                 <table class="onb-preview-table"><thead><tr><th>关节</th><th>方向</th><th>限位</th></tr></thead><tbody>
                   ${(cprev.joints || []).map((j) => html`<tr><td>${j.cn || j.name}</td><td>${j.direction > 0 ? '+1' : '−1'}</td><td class="num">${j.min_deg}° ~ ${j.max_deg}°</td></tr>`)}
                 </tbody></table>
@@ -784,6 +798,7 @@ function Settings({ st, tune }) {
       <a class="settings-logs" href="#/logs" style="font-size:15px">日志</a>
       <a class="settings-diag" href="/api/diag" style="font-size:15px" title="含鸭子的序列号和局域网 IP">导出诊断包</a>
     </div>
+    <${DuckAddresses} net=${st?.net} />
     <${WifiSettings} net=${st?.net} link=${link} />
     <${PasswordSettings} hasPassword=${st?.auth?.has_password} />
     <${BatterySettings} link=${link} st=${st} />
@@ -946,7 +961,7 @@ function Main({ duck }) {
   else if (route === '/logs') page = html`<${LogsPage} />`;
   else if (route === '/servos') page = html`<${ServoPage} sv=${sv} link=${link} leaveGuards=${leaveGuards} />`;
   else if (route === '/settings') page = html`<${Settings} st=${st} tune=${tune} />`;
-  else if (route === '/imu') page = html`<${ImuPage} st=${st} imu=${imu} link=${link} live=${live} age=${age} />`;
+  else if (route === '/imu') page = html`<${ImuPage} st=${st} imu=${imu} link=${link} live=${live} age=${age} pd=${pd} />`;
   else page = html`<${Later} what="这一页" />`;
 
   document.title = `${duck?.label || '鸭子'} · Microduck Studio`;

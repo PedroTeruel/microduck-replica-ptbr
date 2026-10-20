@@ -9,7 +9,9 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
 
 - 停、起 robotd 要 root，Studio 不是 root。
 - 所以只给 Studio 一把「只能开这一扇门的钥匙」：sudoers 只放行 `/usr/local/sbin/microduck-helper` 这一个文件。
-- 它只认九个动词，参数逐个校验，robotd 是什么状态它自己去读，不信网页传来的（0.5.0 起：新增 `calib-read`，`calib-commit` 按 fork 的真实启动方式认标定 / 运动模式）。
+- 它只认九个动词，参数逐个校验，robotd 是什么状态它自己去读，不信网页传来的（0.5.0 起：新增 `calib-read`，`calib-commit` 按 fork 的真实启动方式认标定 / 运动模式；0.5.2：`bus-give-back` 把标定模式的实时快照也算成「主程序起来了」）。
+
+**标定模式的 busStatus**（fork `robotd/src/main.rs` 的 `robot.busStatus`、`feetech_commissioning.rs` 的 `Status`）：robotd 一起来先写一份启动报告 `{"build","mode":"commissioning","phase":"configuring_bus","port"}`，phase 还是启动阶段就一直回它；第一次读成功以后才回实时快照（phase `ready` / `moving` / `read_error` / `stop_unconfirmed` / `power_pending`，带 `last_sample`）。旧版 fork 从来不清启动报告——从舵机页交还时小助手会等满 30 秒判 `soft_failed`（`detail.still_starting = true`，话写「一直报启动中」，不说成「起不来」）。要新版 fork（20261020 之后的镜像）。
 
 **出厂镜像跑标定模式**：镜像放 `/etc/systemd/system/robotd.service.d/zzzz-zz-microduck-commissioning.conf`，`ExecStart` 带 `--commissioning`（fork `main.rs:1300-1315`：busStatus 的 mode 只看启动参数，跟标定文件里写了什么无关）。标定模式下 `calibration-status` 马上能读，busStatus 带 `last_sample`（15 颗舵机 + `imu`），`verify-imu` 会把方向写进标定文件；运动模式下标定不合格 / 舵机总线打不开会停在 `waiting_for_bus`，`calibration-status` 回 `calibration not available yet`。第 3 步写成功时小助手删掉这个文件、`daemon-reload`、重启 robotd，主程序回到运动模式。如果 `ExecStart` 里有 `--commissioning` 但文件不在，小助手拒绝自动切（`foreign_commissioning`），让人去日志页导出诊断包。
 
@@ -28,8 +30,8 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
 | 动词 | stdin（一个 JSON 对象） | 做什么 |
 |---|---|---|
 | `bus-take` | `{"by": "谁·哪台电脑", "allow_seated": false}` | 接管，**不卸力**：先停手柄服务 → 隔 200 ms 读两次主程序状态（策略在跑就拒绝；坐姿只有 `allow_seated` 并且不动才放行；正在回站姿最多等 3 秒）→ 立旗 → `systemctl stop --no-block robotd`，10 秒没停就 KILL → 确认串口没人占 |
-| `bus-give-back` | `{"by": …, "soft": true}` | 软交还：Studio 已经在总线上全卸了。撤旗 → 起 robotd → 等启动 4 步都 success → 拉回手柄服务 → 放锁 |
-| | `{"by": …, "marker": {…}}` | 不卸力交还：写交接标记 → 撤旗（**锁不放**）→ 起 robotd → 等 robotd 接手（接手保持、不开模型）。没接手就把总线拿回来，交给 Studio 接着保持 |
+| `bus-give-back` | `{"by": …, "soft": true}` | 软交还：Studio 已经在总线上全卸了。撤旗 → 起 robotd → 等启动 4 步都 success、而且主程序起来了（运动模式 `phase=control`，或者标定模式的实时快照 `ready` / `moving` / `read_error` / `stop_unconfirmed` / `power_pending`；`read_error` 照样算成，原话写进 reason）→ 拉回手柄服务 → 放锁。30 秒还一直报启动阶段：`soft_failed`、`detail.still_starting = true` |
+| | `{"by": …, "marker": {…}}` | 不卸力交还：写交接标记 → 撤旗（**锁不放**）→ 起 robotd → 等 robotd 接手（接手保持、不开模型）。没接手就把总线拿回来，交给 Studio 接着保持。标定模式不认标记（开总线先全部卸力）：实时快照一来就回 `limp`，不等 15 秒再拿回总线 |
 | `bus-abort` | `{"by": …}` | 中止交接（交接倒数期间按了网页卸力）：立旗 → KILL robotd → 删标记 → 确认串口空出来。目标 1 秒以内，之后 Studio 自己开串口卸力。**没有会话时拒绝（退出 3）**：旗、管理锁、交接标记都不在就什么都不碰 |
 | `pad-pair` | `{"by": …, "mac": 可选, "timeout": 10–120（默认 60）}` | 以 root 跑官方 `/usr/local/bin/robotctl pad pair --json --timeout N [MAC]`。MAC 先转大写再校验。子进程总超时 = `timeout + 30` 秒（超时就杀掉）。robotctl 在 `/var/lib/robot/weird-ble` 板上会先停 btd、给适配器断电再开，最后把 btd 起回来。**不碰**总线旗子、hold 单元、robotd，也不拿服务管理锁；只拿 `helper.lock`，一次只跑一个配对 |
 | `pad-forget` | `{"by": …, "mac": …}` | 以 root 跑官方 `/usr/local/bin/robotctl pad forget MAC`（MAC 必填，校验同上）。同样不碰总线、hold 单元、robotd |
@@ -56,7 +58,7 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
 `result` 的取值：
 
 - bus-take：`taken`、`refused`、`no_guard`、`busy`、`stop_failed`、`port_busy`
-- bus-give-back：`adopted`、`retake`、`retake_failed`、`limp`、`aborted`、`soft`、`soft_failed`、`refused`、`no_session`、`detach_failed`
+- bus-give-back：`adopted`、`retake`、`retake_failed`、`limp`（运动模式没认标记，或者标定模式）、`aborted`、`soft`、`soft_failed`（主程序一直报启动阶段时 `detail.still_starting = true`、`detail.msg` 是整句）、`refused`、`no_session`、`detach_failed`
 - bus-abort：`aborted`、`abort_incomplete`、`no_session`（没有会话时拒绝，退出 3）
 - pad-pair：`paired`、`pair_failed`（退出 5，`detail.reason` 是官方原因）、`timeout`、`no_robotctl`、`bad_output`
 - pad-forget：`forgotten`、`forget_failed`、`timeout`、`no_robotctl`

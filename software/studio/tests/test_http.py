@@ -165,6 +165,21 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
         st, _, _ = await self.call("GET", "/healthz", headers={"Host": f"microduck-2:{self.port}"})
         self.assertEqual(st, 200)
 
+    async def test_probe_svg_for_finding_the_duck(self):
+        """任务 17：连 WiFi 以后页面用 new Image() 加载 http://duck-xxxx:8000/probe.svg 找鸭子的新地址：
+        设了密码也不用登录；duck-xxxx、duck-xxxx.local 这两种 Host 都给；是 SVG 图片；不缓存（每次都真的问到鸭子）。"""
+        import socket
+        hn = socket.gethostname().lower()
+        for host in (f"{hn}:{self.port}", f"{hn}.local:{self.port}", f"127.0.0.1:{self.port}"):
+            st, h, body = await self.call("GET", "/probe.svg?t=1790000000000", headers={"Host": host})
+            self.assertEqual(st, 200, host)
+            self.assertTrue(h["content-type"].startswith("image/svg+xml"), h)
+            self.assertEqual(h["cache-control"], "no-cache")
+            self.assertIn(b"<svg", body)
+            self.assertLess(len(body), 1024)                     # 很小：每 2 秒探一次也不费事
+        st, _, _ = await self.call("GET", "/probe.svg", headers={"Host": "evil.example.com"})
+        self.assertEqual(st, 421)                                 # Host 校验照旧
+
     async def test_login_origin_matrix_and_cookie(self):
         bad = [None, "http://evil.example.com", f"http://127.0.0.1:{self.port + 1}", "null"]
         for o in bad:
@@ -429,7 +444,8 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
         c.close()
 
     async def test_onboard_skip_and_unskip_via_ws(self):
-        """上手清单的「跳过」「取消跳过」走 onboard.op；IMU 方向主程序明说没确认时后端拒（不能只靠页面把按钮灰掉）。"""
+        """上手清单的「已完成」「跳过」「取消」走 onboard.op；IMU 方向主程序明说没确认时要点两次：
+        没带 confirmed 后端拒（不能只靠页面的两步确认），带了就记（用户 10-20：每一步都能跳）。"""
         token, _ = await self.login()
         c = WsClient(self.port, origin=self.origin, cookie=token)
         await c.open()
@@ -449,11 +465,18 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await imu_state(), "skip")
         self.assertTrue((await op("s2", {"op": "unskip", "step": "imu"}))["ok"])
         self.assertEqual(await imu_state(), "todo")
+        self.assertTrue((await op("d1", {"op": "done", "step": "imu"}))["ok"])
+        self.assertEqual(await imu_state(), "ok")
+        self.assertTrue((await op("d2", {"op": "undone", "step": "imu"}))["ok"])
+        self.assertEqual(await imu_state(), "todo")
         self.fake.bus["native"]["imu_mount_verified"] = False
         await asyncio.sleep(1.3)                                   # 等 busStatus 轮询到
         r = await op("s3", {"op": "skip", "step": "imu"})
         self.assertFalse(r["ok"])
-        self.assertIn("先去 IMU 页", r["reason"])
+        self.assertIn("要点两次确认：确定跳过？主程序没确认 IMU 方向", r["reason"])
+        r = await op("s3b", {"op": "skip", "step": "imu", "confirmed": True})
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(await imu_state(), "skip")
         self.assertFalse((await op("s4", {"op": "skip", "step": "bogus"}))["ok"])
         c.close()
 

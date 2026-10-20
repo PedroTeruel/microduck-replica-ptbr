@@ -523,7 +523,8 @@ function StatusCard({ st, imu, live, age }) {
       <span></span><span class="sv-small">${S.hint}</span>
       <span>芯片</span><b>${src ? CHIP_CN[src] || src : '—'}</b>
       <span>倾角</span><b class="num">${fmt(st?.tilt_deg)}°<small> 跟竖直比；主程序 ${guard?.tilt_tolerance_deg ?? 10}° 以内才让走</small></b>
-      <span>站姿</span><b class="num">${guard?.max_joint_error_deg != null ? html`离 HOME 最多差 ${fmt(guard.max_joint_error_deg)}°<small> ${guard.joint_tolerance_deg ?? 5}° 以内算站好</small>` : '—'}</b>
+      <span>站姿</span><b class="num">${st?.hold ? html`离 HOME 最多差 ${fmt(st.hold.max_error_deg)}°<small> 标定模式站姿使能${st.hold.stage === 'holding' ? '：站住了' : '：正在站起来'}</small>`
+        : guard?.max_joint_error_deg != null ? html`离 HOME 最多差 ${fmt(guard.max_joint_error_deg)}°<small> ${guard.joint_tolerance_deg ?? 5}° 以内算站好</small>` : '—'}</b>
       <span>读数</span><b class=${'num' + (F.live ? '' : ' imu-dim')}>${F.text}${imu?.reader?.errors ? html`<small> 读错 ${imu.reader.errors} 次</small>` : null}</b>
     </div>
     ${imu?.mount?.quat ? html`<details class="imu-details"><summary>安装方向（四元数 w, x, y, z）</summary>
@@ -545,17 +546,91 @@ function blockReason(st, imu, live) {
   if (live === false) return '连不上鸭子：等它回来';
   if (st.posture === 'servo_session') return '舵机页还占着总线（有舵机保持着时不会自动交还）：点顶上的「交还主程序」';
   if (st.posture === 'absent') return '鸭子主程序没在跑';
-  if (imu?.mount?.verified === false) return '方向还没确认过：先做上面的「粗校」';
   if (st.posture === 'starting') return `主程序还在启动${st.start_error ? `：${st.start_error}` : ''}`;
-  if (st.mode === 'commissioning') return '现在是标定模式（舵机软着、没有实时姿态）：站不起来，先用上面的「粗校」';
-  if (st.posture === 'limp' || st.posture === 'homing') return '先让它站起来：双手托着，按手柄 +';
+  if (st.mode === 'commissioning') {
+    // 标定模式也能站（fork hold-home，用户 10-21）：站住了就能站着校，方向没确认过也能校（算出整份新方向，第 3 步写进去）
+    if (!st.hold) return '标定模式软着：先点上面的「站姿使能」让它站起来（双手扶着）';
+    if (st.hold.stage !== 'holding') return '正在站起来：等它站稳';
+    if (!okVec(st.gravity) || st.joints_age_ms == null || st.joints_age_ms > RULES.stale_ms) return '没有实时姿态数据';
+    return null;
+  }
+  if (imu?.mount?.verified === false) return '方向还没确认过：先做上面的「粗校」';
+  // 站姿没使能：提示先点上面的「站姿使能」（任务 17）
+  if (st.posture === 'limp') return '软着：先点上面的「站姿使能」让它站起来（双手托着）';
+  if (st.posture === 'homing') return '正在站起来：等它站稳';
   if (st.posture === 'walking') return '正在走：先停下';
   if (st.posture === 'policy') return '策略在跑，一提起来它会迈腿：按一下手柄 +，回到「站好」再做';
-  if (st.posture === 'sitting') return '坐着：先让它站起来';
+  if (st.posture === 'sitting') return '坐着：先点上面的「站姿使能」让它站起来';
   if (st.posture !== 'holding') return '读不出它现在的姿势';
   if (!okVec(st.gravity) || st.joints_age_ms == null || st.joints_age_ms > RULES.stale_ms) return '没有实时姿态数据';
   if (st.imu?.status === 'missing' || st.imu?.status === 'frozen') return 'IMU 读数不正常，先查线';
   return null;
+}
+
+// ---------------- 站姿使能 / 失能（任务 17，用户 10-21：「得有个按钮站姿使能、失能」） ----------------
+// 「站姿使能」走遥控卡「站起来」同一条路：link.cmd('pad.op', {op: 'stand'})，后端按姿势再判一遍（软着 robot.init、坐着 sit_toggle）；
+// 能不能按用手柄快照里遥控卡那颗「站起来」的判断（pd.motion.buttons.stand）。「失能（卸力）」走顶上「卸力」同一条路：link.cmd('relax')。
+// 标定模式也能站（用户 10-21：「咱标定也能站姿不就好了吗？非要切到运动模式」）：「站姿使能」发 imu.op hold →
+// fork 标定模式的 hold-home，15 颗一起 3 秒转到 HOME 锁住（没有平衡，扶着点），IMU 照常读，站着校准就在标定模式做；
+// 「失能」一样走顶上「卸力」（标定模式下 robot.relax 就是总线 relax）。
+const POSE_CN = { holding: '站着', policy: '站着（策略在跑）', walking: '在走', limp: '软着', homing: '正在站起来',
+  sitting: '坐着', commissioning: '标定模式（软着）', starting: '主程序在启动', absent: '主程序没在跑', servo_session: '调舵机中' };
+const HOLD_CN = { holding: '标定模式（站着）', ramping: '标定模式（正在站起来）' };
+const HOLD_CONFIRM = '标定模式站姿使能：15 颗舵机会在 3 秒内一起转到站姿并锁住。\n'
+  + '标定模式不管平衡，站起来以后要扶着点；方向用舵机页设的（没设过的沿用主程序文件里的）。\n双手扶好鸭子，确定吗？';
+
+function StanceCard({ st, imu, pd, link, live }) {
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const commissioning = (st?.mode || imu?.mode) === 'commissioning';
+  const open = link.status === 'open';
+  const hold = st?.hold || imu?.hold || null;
+  const now = !st ? '还没连上' : live === false ? '连不上鸭子' : st.posture === 'servo_session' ? POSE_CN.servo_session
+    : commissioning && hold ? HOLD_CN[hold.stage] || '标定模式（站着）' : (POSE_CN[st.posture] || '读不出');
+  const sb = pd?.motion?.buttons?.stand;              // 遥控卡「站起来」的判断（后端推的手柄快照，1 Hz 也够用）
+  const standWhy = !st || live === false ? '连不上鸭子：等它回来'
+    : st.posture === 'servo_session' ? '舵机页还占着总线：点顶上的「交还主程序」'
+      : st.posture === 'starting' ? '主程序还在启动：等它起来'
+        : commissioning ? (hold ? (hold.stage === 'holding' ? '已经站着了' : '正在站起来') : null)
+          : sb && !sb.ok ? sb.why : null;
+  const stand = async () => {
+    if (commissioning) {
+      if (!window.confirm(HOLD_CONFIRM)) return;
+      setBusy(true); setMsg(null);
+      const r = await link.cmd('imu.op', { op: 'hold' }, 25000);
+      setBusy(false);
+      setMsg(r.ok ? { ok: true, text: '站住了：扶着点它，现在可以做下面的「站着校准」；做完点「失能」或顶上「卸力」' }
+        : { ok: false, text: r.reason || r.error || '没站起来' });
+      return;
+    }
+    if (typeof st?.tilt_deg === 'number' && st.tilt_deg > 30
+      && !window.confirm(`它现在是躺着的（倾斜 ${Math.round(st.tilt_deg)}°）。站起来时腿会突然用力：确定托好了吗？`)) return;
+    setBusy(true); setMsg(null);
+    const r = await link.cmd('pad.op', { op: 'stand' }, 10000);
+    setBusy(false);
+    setMsg(r.ok ? { ok: true, text: '站起来发出去了：双手托着它，站稳了再开始站着校准' } : { ok: false, text: r.reason || r.error || '没站起来' });
+  };
+  const relax = async () => {
+    setMsg(null);
+    const r = await link.cmd('relax', {}, 7000);
+    setMsg(r.ok ? { ok: true, text: '卸力发出去了：鸭子会软下来，扶住' } : { ok: false, text: r.reason || r.error || '卸力没发出去：用手柄 − 或关电源' });
+  };
+  return html`<section class="board imu-card imu-stance">
+    <h3>站姿 <span class="sv-small">站着校准要它先站住</span></h3>
+    <div class="imu-actions">
+      <button class="btn-dark imu-stand" disabled=${!!standWhy || busy} onClick=${stand}
+        title=${standWhy || '跟遥控卡上的「站起来」同一条路'}>${busy ? '等它回话…' : '站姿使能'}</button>
+      <button class="btn-light imu-relax" disabled=${!open} onClick=${relax}
+        title="跟顶上的「卸力」同一条路：15 颗舵机全部卸力">失能（卸力）</button>
+      <span class="sv-small imu-stance-now">现在：<b>${now}</b></span>
+    </div>
+    ${standWhy ? html`<p class="sv-small imu-stance-why">${standWhy}</p>` : null}
+    ${commissioning
+      ? html`<p class="sv-small">标定模式也能站：站姿使能 = 15 颗一起转到站姿锁住（不管平衡，扶着点）；失能 = 顶上的「卸力」，鸭子会软下来，扶住。站住以后就能做下面的「站着校准」。</p>`
+      : standWhy ? null
+        : html`<p class="sv-small">站姿使能 = 遥控卡上的「站起来」（双手托着它）；失能 = 顶上的「卸力」，鸭子会软下来，扶住。</p>`}
+    ${msg ? html`<div class=${'banner ' + (msg.ok ? 'warn' : 'bad')} role="status"><span>${msg.text}</span></div>` : null}
+  </section>`;
 }
 
 /** 采集中这一刻该跟人说的一句话（大字）+ 一句补充（小字）。 */
@@ -591,7 +666,7 @@ function CollectCard({ st, imu, live, W, act, muted, setMuted }) {
   return html`<section class="board imu-card imu-collect">
     <h3>站着校准 <span class="sv-small">约 1 分钟 · 两只手</span>${mute}</h3>
     ${ph === 'idle' ? html`<ol class="imu-howto">
-      <li>鸭子站好（手柄 + 站起来，别开走路），点「开始采集」。</li>
+      <li>鸭子站好（点上面的「站姿使能」或者按手柄 +，别开走路），点「开始采集」。</li>
       <li>放在平桌上，<b>别碰它 3 秒</b>。</li>
       <li>站到鸭子后面（跟它朝一个方向，它的左就是你的左），双手捏住躯干两侧提起来，<b>前、后、左、右各倾一次</b>：
         每次先端平停半秒，再倾 15° 左右停 1 秒。顺序随便，3D 上的箭头会示范。</li>
@@ -797,7 +872,7 @@ export const _test = { RULES, STEPS, TILTS, feed, freshWizard, startCollect, end
 // ---------------- 页面 ----------------
 
 /** live / age：跟总览同一个判断（app.js 的 Main 里算好传进来）；没传就只看 st.joints_age_ms。 */
-export function ImuPage({ st, imu, link, live, age }) {
+export function ImuPage({ st, imu, link, live, age, pd }) {
   const W = useRef(freshWizard());
   const [, bump] = useState(0);
   const redraw = () => bump((n) => n + 1);
@@ -867,6 +942,7 @@ export function ImuPage({ st, imu, link, live, age }) {
       <div class="imu-side">
         <${StatusCard} st=${st} imu=${imu} live=${live} age=${age} />
         <${CoarseCard} st=${st} imu=${imu} link=${link} />
+        <${StanceCard} st=${st} imu=${imu} pd=${pd} link=${link} live=${live} />
         <${CollectCard} st=${st} imu=${imu} live=${live} W=${w} act=${act} muted=${muted} setMuted=${setMuted} />
         <${ResultCard} res=${w.phase === 'done' ? res || w.result : null} imu=${imu} link=${link} onRedo=${onRedo} />
         <${ChipCard} imu=${imu} />

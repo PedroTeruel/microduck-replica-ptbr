@@ -50,6 +50,14 @@ LIMITS_DEG = {
 IMU_SOURCES = ("bus", "bno08x", "lsm6dsv16x")
 CHIP_CN = {"bus": "总线小板（ID 200）", "bno08x": "BNO085（I²C）", "lsm6dsv16x": "LSM6DSV16X（I²C）"}
 DEFAULT_BUS_QUAT = [math.sqrt(0.5), 0.0, math.sqrt(0.5), 0.0]     # fork imu.rs: SflpDecoder::DEFAULT_MOUNT
+# 第 2 步标了已完成 / 跳过、主程序里方向没确认、IMU 页也没校过时，第 3 步按这些「默认装法」写（任务 17，用户 10-21：
+# 「我一直跳过跳过，最后还是不进运动模式」）。总线小板用文件里现有的 imu_mount_quat（出厂就是上面的官方装法）
+DEFAULT_MOUNTS = {
+    "bno08x": [0.5, 0.5, 0.5, 0.5],                                  # fork duck-control/src/trunk_imu.rs: BNO08X_DEFAULT_MOUNT
+    # 复刻推荐装法：模块 x 朝下、z 朝前（二号鸭 10-17 实测）。fork 给的是单位四元数（「小板没有公认的朝上方向」），不用它
+    "lsm6dsv16x": [0.7071067811865476, 0.0, 0.7071067811865476, 0.0],
+}
+DEFAULT_HOW = {"bus": "官方装法", "bno08x": "fork 的默认装法", "lsm6dsv16x": "复刻推荐装法，模块 x 朝下、z 朝前"}
 TOP_KEYS = ("motion_enabled", "imu_mount_verified", "imu_mount_quat", "current_ma_per_count", "units_verified")
 TAU = 2.0 * math.pi
 
@@ -484,6 +492,7 @@ class CommitService:
         self._file_calib_at = -1e9
         self.cal_from_file = False
         self.job = None
+        self.onboard = None                    # 上手清单（app 接上）：第 1 / 2 步用户标了「已完成」「跳过」，准备情况要知道
         self._writing = threading.Lock()
         self._reload_at = -1e9
         self.reload(force=True)
@@ -577,9 +586,41 @@ class CommitService:
             why.append("舵机页设的方向和主程序文件不一样")
         return why
 
+    def _user_mark(self, step):
+        """上手清单第 step 步是不是用户自己标的（done / skip / None）；没接上清单、出错都当没标。"""
+        ob = self.onboard
+        if ob is None:
+            return None
+        try:
+            return ob.user_mark(step)
+        except Exception:  # noqa: BLE001 —— 准备情况每帧都算，清单出错不能把它弄没
+            return None
+
+    def _default_imu(self, source, mount, cal, mark=None):
+        """第 2 步标了「已完成」/「跳过」、主程序里正在用的那颗 IMU 方向没确认、也没有 imu-pending.json：
+        按默认装法写这颗、标成已确认（任务 17）。回 {source, quat, label, how, mark}；不该用默认的回 None。
+        有 pending（站着校过）照旧用 pending；方向已确认照旧用主程序的；芯片不知道的不猜。"""
+        if self.pending or source not in IMU_SOURCES or (mount or {}).get("verified") is True:
+            return None
+        mark = self._user_mark("imu") if mark is None else mark
+        if mark not in ("done", "skip"):
+            return None
+        if source == "bus":
+            quat = list(DEFAULT_BUS_QUAT)
+            raw = (cal or {}).get("imu_mount_quat") if isinstance(cal, dict) else None
+            if raw is not None:
+                try:
+                    quat = normalize_quat(raw)
+                except CalibError:
+                    pass
+        else:
+            quat = list(DEFAULT_MOUNTS[source])
+        return {"source": source, "quat": quat, "label": CHIP_CN[source], "how": DEFAULT_HOW[source], "mark": mark}
+
     def readiness(self, rd=None, servo=None):
+        from .estop import STARTING_LONG_S, STARTING_PHASES
         from .imu import mount_of
-        from .state import JOINT_CN
+        from .state import JOINT_CN, STILL_STARTING, starting_secs
         self.reload()
         rd = rd or self.rd
         cal, calib = self._calibration(rd)
@@ -601,8 +642,24 @@ class CommitService:
         except Exception:  # noqa: BLE001
             age = None
         fresh = age is not None and age <= 3.0
+        starting_s = starting_secs(rd, bus)
+        err = bus.get("error") if isinstance(bus, dict) else None
         if not online:
             mode_ok, mode_text = False, "连上主程序才判得出现在是什么模式"
+        elif mode == "commissioning" and phase in STARTING_PHASES:
+            # 标定模式的启动报告（还没第一次读成功）：不是「last_sample 里只有 0 颗」。旧 fork 永远停在这里（10-20 真机验收）
+            mode_ok = False
+            if phase == "waiting_for_bus":
+                mode_text = "标定模式，主程序在等舵机总线（多半是舵机没上电）" + (f"：{err}" if err else "")
+            elif starting_s is not None and starting_s >= STARTING_LONG_S:
+                mode_text = f"标定模式，主程序一直报「启动中」（phase={phase}，已经 {starting_s} 秒了）：{STILL_STARTING}"
+            else:
+                mode_text = f"标定模式，主程序还在启动（phase={phase}）：起来以后才有舵机读数，等几秒"
+        elif mode == "commissioning" and phase == "read_error":
+            # 起来了（实时快照），只是这一拍读舵机出错：照原样把主程序的原话带出来
+            mode_ok = False
+            cycle_err = bus.get("last_cycle_error")
+            mode_text = "标定模式，主程序起来了，但读舵机出错" + (f"：{cycle_err}" if cycle_err else "") + "。先看舵机电源和线"
         elif mode == "commissioning":
             mode_ok = len(servos) == 15 and fresh
             mode_text = ("标定模式：15 颗舵机都有新读数" if mode_ok
@@ -624,22 +681,33 @@ class CommitService:
                       "mode": mode, "phase": phase})
 
         safe_ok = True
+        safe_text = "鸭子在走 / 站着：先坐下或卸力再写"
         if mode == "motion" and phase == "control":
             if bus.get("policy_enabled") is True or native.get("torque_state_confirmed") is True:
                 safe_ok = False
+        elif mode == "commissioning" and isinstance(bus.get("hold"), dict):
+            # 标定模式「站姿使能」站着：写进主程序会重启主程序，15 颗一下子全卸力，鸭子直接塌
+            safe_ok = False
+            safe_text = "鸭子在标定模式站着（站姿使能）：先在 IMU 页点「失能」或者顶上「卸力」，扶好再写"
         items.append({"key": "safety", "label": "鸭子姿势", "ok": safe_ok,
-                      "text": "没在走、没站着，可以写" if safe_ok else "鸭子在走 / 站着：先坐下或卸力再写",
+                      "text": "没在走、没站着，可以写" if safe_ok else safe_text,
                       "action": None})
 
         missing = [name for name in JOINT_ORDER if JOINT_ID[name] not in self.centered]
-        if missing:
+        servo_mark = self._user_mark("servo")
+        servo_ok = not missing or servo_mark in ("done", "skip")
+        if not missing:
+            servo_text = "15 颗的零位都记在 servo-centered.json 里了"
+        elif servo_mark:
+            # 用户说第 1 步以前做过 / 先不做（用户 10-20：二号鸭零位早校过，以前被逼着重校）：写的时候 15 颗照样按 2048 写
+            servo_text = (("你标了第 1 步已完成" if servo_mark == "done" else "你跳过了第 1 步")
+                          + "：15 颗按 2048 写零位（零位要是用 Studio 的舵机页校过的才对）")
+        else:
             names = "、".join(JOINT_CN.get(n, n) for n in missing[:6]) + ("…" if len(missing) > 6 else "")
             servo_text = f"还有 {len(missing)} 颗没在一键中位校过：{names}"
-        else:
-            servo_text = "15 颗的零位都记在 servo-centered.json 里了"
-        items.append({"key": "servo", "label": "舵机零位", "ok": not missing, "text": servo_text,
-                      "action": {"do": "servos", "label": "去舵机页"} if missing else None,
-                      "missing": missing, "done": 15 - len(missing)})
+        items.append({"key": "servo", "label": "舵机零位", "ok": servo_ok, "text": servo_text,
+                      "action": {"do": "servos", "label": "去舵机页"} if not servo_ok else None,
+                      "missing": missing, "done": 15 - len(missing), "by_mark": servo_mark if missing else None})
 
         # 写的方向：舵机页明确设过的用舵机页的，其余沿用主程序文件里现有的（不拿默认 −1 去盖）
         file_dirs = _file_directions(cal)
@@ -674,8 +742,22 @@ class CommitService:
             imu_ok, imu_text = False, "标定模式：先在 IMU 页粗校一次，交给主程序验证"
         else:
             imu_ok, imu_text = False, "还没在 IMU 页校过安装方向"
+        imu_mark = self._user_mark("imu")
+        imu_default = None
+        if not imu_ok and imu_mark:
+            said = "你标了第 2 步已完成" if imu_mark == "done" else "你跳过了第 2 步"
+            imu_default = self._default_imu(source, mount, cal, imu_mark)
+            if imu_default:
+                # 用户 10-21：「我一直跳过跳过，最后还是不进运动模式」「我以前 IMU 已经校准过」：按默认装法写、标成已确认
+                imu_ok = True
+                imu_text = (f"{said}：IMU 按默认装法写（{imu_default['label']}：{imu_default['how']}）。"
+                            "装得不一样的，站起来会往一边倒——写完以后在 IMU 页站着校一次，再写一次主程序")
+            else:
+                # 芯片不知道、或者 IMU 页记下的是另一颗芯片的：没法按默认装法写
+                imu_text = f"{said}，但没法按默认装法写：{imu_text}"
         items.append({"key": "imu", "label": "IMU 方向", "ok": imu_ok, "text": imu_text,
-                      "action": {"do": "imu", "label": "去 IMU 页"} if not imu_ok else None, "source": source})
+                      "action": {"do": "imu", "label": "去 IMU 页"} if not imu_ok else None, "source": source,
+                      "default": bool(imu_default)})
 
         servo_open = servo is not None and getattr(servo, "state", None) in ("open", "opening")
         items.append({"key": "bus", "label": "舵机总线", "ok": not servo_open,
@@ -685,6 +767,7 @@ class CommitService:
         why = self._dirty(cal)
         note = ("主程序现在没在用这份标定，下面是文件里的内容" if self.cal_from_file else None)
         return {"ready": all(i["ok"] for i in items), "items": items, "source": source,
+                "imu_default": ({k: imu_default[k] for k in ("source", "label", "how", "quat")} if imu_default else None),
                 "pending": bool(self.pending), "centered": len(self.centered),
                 "preview_ok": bool(cal.get("joints")), "mode": mode, "phase": phase,
                 "from_file": bool(self.cal_from_file), "note": note,
@@ -701,6 +784,23 @@ class CommitService:
                 self.job = None
         out["job"] = job
         out["simulate"] = self.simulate
+        return out
+
+    def hold_directions(self, rd=None):
+        """标定模式「站姿使能」（fork hold-home）用的 15 颗方向，按 JOINT_ORDER：跟 _payload 写进主程序的同一套
+        （舵机页设过的用舵机页的，其余沿用主程序文件里的）。站起来的样子就是写进去以后运动模式的 HOME。"""
+        self.reload()
+        cal, _calib = self._calibration(rd or self.rd)
+        if not isinstance(cal, dict) or not isinstance(cal.get("joints"), list) or len(cal["joints"]) != 15:
+            raise Refused("还没读到主程序的 15 颗标定：等几秒再试")
+        by_name = {j.get("name"): j for j in cal["joints"] if isinstance(j, dict)}
+        out = []
+        for name in JOINT_ORDER:
+            row = by_name.get(name)
+            if not isinstance(row, dict) or not _is_int(row.get("id")):
+                raise Refused(f"主程序的标定文件里 {name} 不对：读不到 id")
+            file_dir = row.get("direction") if row.get("direction") in (1, -1) else -1
+            out.append(self.directions.get(row["id"], file_dir))
         return out
 
     def _payload(self, rd=None):
@@ -724,15 +824,25 @@ class CommitService:
                 source = self.pending["source"]
             else:
                 raise Refused("主程序还没报用的是哪颗 IMU：等几秒再试")
+        # 用哪份 IMU 方向：IMU 页站着校过的（pending）> 主程序里已确认的 > 第 2 步标了时的默认装法（任务 17）> 主程序里没确认的
+        # （最后这种只有「先看看要写什么」走得到：准备情况不满足时写不了）
+        dflt = None
         if self.pending:
             if self.pending.get("source") != source:
                 raise Refused("IMU 芯片换过了，重校一次")
             quat = self.pending["quat"]
+        elif mount.get("verified") is True and mount.get("quat"):
+            quat = mount["quat"]
+        elif (dflt := self._default_imu(source, mount, cal)) is not None:
+            quat = dflt["quat"]
         elif mount.get("quat"):
             quat = mount["quat"]
         else:
             raise Refused("IMU 方向还没读到：等主程序报上来，或者去 IMU 页校一次")
-        return {"joints": joints, "imu": {"source": source, "quat": list(quat)}}
+        out = {"joints": joints, "imu": {"source": source, "quat": list(quat)}}
+        if dflt:
+            out["imu_default"] = dflt["how"]          # 只给预览 / 日志看；交给小助手的 imu 照旧只有 {source, quat}
+        return out
 
     def _summary(self, payload, toml, used_helper):
         from .imu_calib import describe_mount
@@ -749,7 +859,8 @@ class CommitService:
             rows.append({"name": name, "cn": JOINT_CN.get(name, name), "id": jid, "direction": row["direction"],
                          "min_deg": lo, "max_deg": hi})
         return {"imu": {"source": payload["imu"]["source"], "label": CHIP_CN.get(payload["imu"]["source"]),
-                        "text": desc["text"], "off_deg": desc["off_deg"], "quat": list(q)},
+                        "text": desc["text"], "off_deg": desc["off_deg"], "quat": list(q),
+                        "default": payload.get("imu_default")},
                 "joints": rows, "toml": toml, "helper": used_helper,
                 "from_file": bool(self.cal_from_file), "note": "主程序现在没在用这份标定，下面是文件里的内容" if self.cal_from_file else None}
 
@@ -816,6 +927,11 @@ class CommitService:
                         pass
 
             say("准备写入")
+            if payload.get("imu_default"):
+                src = payload["imu"]["source"]
+                self.log.info(f"IMU 按默认装法写（{CHIP_CN.get(src, src)}：{payload['imu_default']}）：第 2 步标了已完成 / 跳过，"
+                              "主程序里方向没确认、IMU 页也没校过", cat="校准", raw=json.dumps(payload["imu"]),
+                              hint="装得不一样的站起来会往一边倒：写完在 IMU 页站着校一次，再写一次主程序")
             if self.simulate:
                 cal, _ = self._calibration(rd)
                 built = build_calibration(cal, payload["joints"], payload["imu"])

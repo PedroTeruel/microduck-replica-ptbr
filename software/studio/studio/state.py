@@ -2,8 +2,10 @@
 
 姿势判定照 review-impl-plan I2 的表，先看 mode，再看 phase：
     absent         robotd 的 socket 不在 / 拒绝连接
-    starting       phase 是 configuring_bus / waiting_for_bus / configuration_error
-    commissioning  mode == "commissioning"（这时 robotd 只读，init/enable/do 都拒绝）
+    starting       phase 是 configuring_bus / waiting_for_bus / configuration_error（标定模式第一次读成功之前的启动报告也是；
+                   旧 fork 永远停在这里，连续 30 秒以上页面改口「一直报启动中」：starting_secs）
+    commissioning  mode == "commissioning" 的实时快照（ready / moving / read_error / stop_unconfirmed / power_pending：
+                   主程序起来了；这时 robotd 只读，init/enable/do 都拒绝）
     sitting        robot.policies.sitting
     limp           native.torque_state_confirmed == False
     walking        policy_enabled，且 move.applied 不为 0
@@ -17,7 +19,7 @@
 import math
 import time
 
-from .estop import STARTING_PHASES
+from .estop import STARTING_LONG_S, STARTING_PHASES
 from .startup import startup_todo
 
 JOINT_NAMES = ["left_hip_yaw", "left_hip_roll", "left_hip_pitch", "left_knee", "left_ankle",
@@ -40,6 +42,18 @@ def _fresh(sample, key, now):
 
 def _ms(age):
     return None if age is None else int(age * 1000)
+
+
+def starting_secs(rd, bus, now=None):
+    """主程序从这次连上起、连续报启动阶段多少秒（robotd.Robotd.starting_since，轮询里记）。不在启动阶段 / 不知道回 None。
+    超过 STARTING_LONG_S 页面就不再说「通常 10 秒内完成」（10-20 真机：旧 fork 的标定模式永远报 configuring_bus）。"""
+    since = getattr(rd, "starting_since", None)
+    if since is None or not isinstance(bus, dict) or bus.get("phase") not in STARTING_PHASES:
+        return None
+    return max(0, int((time.monotonic() if now is None else now) - since))
+
+
+STILL_STARTING = "主程序可能其实起来了、只是状态没更新（旧版主程序的毛病），也可能卡在启动：去日志页看主程序最后说了什么"
 
 
 def posture(present, bus, policies, state):
@@ -208,6 +222,19 @@ def summarize(rd, duck, servo=None, now=None, ob=None, bat=None, net=None, commi
     js = st_any.get("joints")
     grav = (st_any.get("safety") or {}).get("gravity")
 
+    st_age_live = st_age
+    state_t_ns = st_any.get("t_ns")
+    hold = (bus or {}).get("hold") if isinstance((bus or {}).get("hold"), dict) else None
+    if (bus or {}).get("mode") == "commissioning":
+        # 标定模式没有 robot.state：IMU 读数从 busStatus.last_sample 拿（标定模式 10 Hz 轮询），
+        # IMU 页的「现在」和站着校准就都有实时数据了（用户 10-21：标定模式也能站姿、站着校）
+        ls = (bus or {}).get("last_sample") if isinstance((bus or {}).get("last_sample"), dict) else {}
+        s_imu = ls.get("imu") if isinstance(ls.get("imu"), dict) else {}
+        g = s_imu.get("gravity")
+        if s_imu.get("valid") is True and isinstance(g, list) and len(g) == 3:
+            grav = g
+            st_age_live = bus_age
+            state_t_ns = ls.get("at_us") * 1000 if isinstance(ls.get("at_us"), int) else None
     pose = posture(rd.present, bus, pol, st)
     est = rd.estop.status(present=rd.present is not False, bus=bus, bus_age_s=bus_age, now=now)
     if servo_orphan_view(servo) is not None and rd.present is not True:
@@ -225,6 +252,7 @@ def summarize(rd, duck, servo=None, now=None, ob=None, bat=None, net=None, commi
         servos = {"online": snap.get("online"), "total": snap.get("total"), "hottest": None, "stale": []}
     if bat is not None:
         battery = bat.view(now)         # 电压查表的估算（调舵机时它自己从 Studio 的总线读数取）：battery-plan.md v2
+    starting_s = starting_secs(rd, bus, now) if pose == "starting" else None
     return {
         "t": "state",
         "robotd_ok": robotd_ok,
@@ -236,6 +264,9 @@ def summarize(rd, duck, servo=None, now=None, ob=None, bat=None, net=None, commi
         "build": (bus or {}).get("build"),
         "posture": pose,
         "start_error": (bus or {}).get("error") if pose == "starting" else None,
+        # 连续报启动阶段多少秒（这次连上算）、超没超过 30 秒：总览头图、顶栏、待办改口「一直报启动中」
+        "starting_s": starting_s,
+        "starting_long": starting_s is not None and starting_s >= STARTING_LONG_S,
         "battery": battery,
         "servos": servos,
         "imu": {"status": imu_status},
@@ -243,15 +274,17 @@ def summarize(rd, duck, servo=None, now=None, ob=None, bat=None, net=None, commi
         "cpu": cpu,
         "loop": {"hz": loop.get("achieved_hz"), "target": loop.get("target_hz"), "missed": loop.get("missed")},
         "joints": js if isinstance(js, list) and len(js) == 15 else None,
-        "joints_age_ms": _ms(st_age),
-        "state_t_ns": st_any.get("t_ns"),   # robotd 这一帧的时间戳：IMU 页靠它去重（同一帧别当两个读数）
+        "joints_age_ms": _ms(st_age_live),
+        "state_t_ns": state_t_ns,   # robotd 这一帧的时间戳：IMU 页靠它去重（同一帧别当两个读数）
         "gravity": grav if isinstance(grav, list) and len(grav) == 3 else None,
         "tilt_deg": tilt_deg(grav),
         "guard": (bus or {}).get("home_start_guard"),
+        "hold": hold,                  # 标定模式站姿使能：{stage: ramping|holding, max_error_deg, directions}
         "estop": est,
         # startup_todo（调参方案 T1）：「还在启动」换成第几步的原话、补「走路模型没加载」
         "todo": startup_todo(rd, todo(health, bus, servos, imu_status, cpu, loop, battery, pose, rd.health.age(now),
-                     battery_shutdown=getattr(ob, "battery_shutdown", None) if ob is not None else None), pol, bus),
+                     battery_shutdown=getattr(ob, "battery_shutdown", None) if ob is not None else None,
+                     starting_s=starting_s), pol, bus),
         # 上手清单：后端 0.5 秒判一次（onboard.Onboarding.tick），这里只拿缓存（审查 O6：这里每秒跑 10 次 × 每个页面）
         "onboarding": ob.view() if ob is not None else None,
         # 写进主程序：准备情况 + 后台任务的进度（CommitService；没有这个后端时是 None）
@@ -280,9 +313,10 @@ def summarize(rd, duck, servo=None, now=None, ob=None, bat=None, net=None, commi
     }
 
 
-def todo(health, bus, servos, imu_status, cpu, loop, battery, pose, health_age=None, battery_shutdown=None):
+def todo(health, bus, servos, imu_status, cpu, loop, battery, pose, health_age=None, battery_shutdown=None, starting_s=None):
     """把 health 结论翻成人话，最要紧的在前。只放「要处理的事」，正常的不放。
-    每条带 key：总览上手清单已经说了的（卡片头的「连上鸭子」、IMU 方向）页面按 key 去重，同一件事只说一次（审查 O15）。"""
+    每条带 key：总览上手清单已经说了的（卡片头的「连上鸭子」、IMU 方向）页面按 key 去重，同一件事只说一次（审查 O15）。
+    starting_s：连续报启动阶段多少秒；超过 30 秒「还在启动」那条改口「一直报启动中」，不再说「通常 10 秒内完成」。"""
     items = []
     # 电量：battery 是估算器的结果（有 mode）就用 battery.todo_items；电压很低 / 红线放最前面，调舵机时也出（审查 B-R6）。
     # 没接估算器（battery 只有 pct / volts）还按下面 robotd 直线的老写法
@@ -298,8 +332,13 @@ def todo(health, bus, servos, imu_status, cpu, loop, battery, pose, health_age=N
                       "hint": f"电量、温度、IMU 这些{when}；看日志里的 robotd 那几行"})
     if pose == "starting":
         raw = (bus or {}).get("error")
-        items.append({"key": "starting", "level": "warn", "msg": "鸭子主程序还在启动",
-                      "hint": f"原文：{raw}" if raw else "通常 10 秒内完成"})
+        if starting_s is not None and starting_s >= STARTING_LONG_S:
+            items.append({"key": "starting", "level": "warn", "msg": "主程序一直报「启动中」",
+                          "hint": f"已经 {starting_s} 秒了。" + (f"原文：{raw}。去日志页看主程序最后说了什么" if raw
+                                                                  else STILL_STARTING)})
+        else:
+            items.append({"key": "starting", "level": "warn", "msg": "鸭子主程序还在启动",
+                          "hint": f"原文：{raw}" if raw else "通常 10 秒内完成"})
     if pose == "servo_session":
         items.append({"key": "servo_session", "level": "warn", "msg": "正在调舵机",
                       "hint": "主程序停着，手柄、遥控、站走都不能用；离开舵机页舵机照样保持，点「交还主程序」才交还"})

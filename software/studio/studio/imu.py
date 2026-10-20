@@ -64,6 +64,7 @@ class ImuBackend:
         self.last_result = None      # 最近一次 solve 的结果：写入只认这一份
         # 总览上手清单的「IMU 核对过」记录（审查 O4）：app 接上 Onboarding.note_imu_check。不是写入鸭子：写入照旧要上鸭子再接
         self.on_check = None
+        self.commit = None           # 写进主程序的后端（app 接上）：标定模式「站姿使能」要跟它同一套方向
 
     # ---- 推给页面 ----
 
@@ -82,6 +83,7 @@ class ImuBackend:
             "reader": reader, "age_ms": native.get("imu_age_ms", s_imu.get("age_ms")),
             "ready": native.get("imu_ready", s_imu.get("ready")),
             "valid": s_imu.get("valid"), "gravity": s_imu.get("gravity"),
+            "hold": bus.get("hold") if isinstance(bus.get("hold"), dict) else None,
             "detected": self.detected, "stand_calib_at": self._stand_calib_at(), "job": self.job,
         }
 
@@ -185,6 +187,42 @@ class ImuBackend:
             msg = f"主程序没通过验证：{text}"
         return msg + "。主程序什么都没存（Nothing saved）"
 
+    async def _hold(self, by=None):
+        """标定模式「站姿使能」（用户 10-21：「咱标定也能站姿不就好了吗？非要切到运动模式」）。
+        fork 标定模式的 hold-home：15 颗一起 3 秒转到 HOME、锁住，IMU 照常读，站着校准就在标定模式里做。
+        方向跟第 3 步「写进主程序」同一套，零位用主程序文件里的（出厂 2048）。失能 = 顶上的「卸力」（robot.relax）。"""
+        bus = await self._bus_once()
+        if bus.get("mode") != "commissioning":
+            raise Refused("主程序不在标定模式：运动模式下用遥控卡的「站起来」")
+        if self.commit is None:
+            raise Refused("这只鸭子没开「写进主程序」的后端，算不出 15 颗的方向")
+        from .commit import Refused as CommitRefused
+        try:
+            dirs = self.commit.hold_directions()
+        except CommitRefused as e:
+            raise Refused(str(e)) from e
+        try:
+            # fork 的 command_timeout：3 秒爬升 + 2 秒稳住 + 10 秒；再加余量
+            r = await self._rpc_once("robot.busCommand",
+                                     {"action": "hold-home", "directions": dirs, "duration_ms": 3000},
+                                     20.0, "站姿使能")
+        except (RpcError, Timeout, Unreachable) as e:
+            text = getattr(e, "message", None) or str(e)
+            low = text.lower()
+            if "unknown variant" in low or "hold-home" in low and "unknown" in low:
+                msg = "主程序版本太旧，标定模式还不会站：要更新主程序"
+            elif "still" in low and "from home" in low:
+                msg = f"有关节转不到站姿（{text}）：多半是方向反了或者被卡住，已经卸力。去舵机页核对方向"
+            elif "relax" in low:
+                msg = "站起来的途中被卸力打断了"
+            else:
+                msg = f"没站起来：{text}"
+            self.log.warn(f"标定模式站姿使能没成：{msg}", cat="IMU", raw=text, ctx={"by": by, "directions": dirs})
+            raise Refused(msg) from e
+        self.log.info("标定模式站姿使能：站住了", cat="IMU", raw=json.dumps(r, ensure_ascii=False)[:400],
+                      ctx={"by": by, "directions": dirs})
+        return r
+
     async def _verify(self, args, by=None):
         bus = await self._bus_once()
         if bus.get("mode") != "commissioning":
@@ -263,6 +301,8 @@ class ImuBackend:
                               ctx={"by": by, "source": view["source"], "mode": mode},
                               hint="照页面上的提示重做那一步；还不行就导出诊断包")
             return res
+        if op == "hold":
+            return await self._hold(by)
         if op == "coarse-capture":
             return await self._capture(args, by)
         if op == "verify":

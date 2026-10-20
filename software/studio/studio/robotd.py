@@ -77,6 +77,9 @@ class Robotd:
         # 刚起来还没开总线的那 20 秒，旧的「15 颗都标了」不能当真。None = 还没 hello 过（测试里的假对象也是 None）
         self.calib_valid_after = None
         self._last_phase = None
+        # 这次连上以后 busStatus 从什么时候起一直报启动阶段（monotonic）；不在启动阶段是 None。超过 30 秒页面改口
+        # 「一直报启动中」（10-20 真机：旧 fork 的标定模式永远报 configuring_bus）
+        self.starting_since = None
         self._wake_poll = asyncio.Event()   # 卸力时把轮询从退避的睡眠里叫醒
         self._loop = None                   # 事件循环：别的线程调 set_paused 时用它叫醒轮询（线程安全）
         self.paused = None                  # 调舵机时 robotd 按计划停着：轮询暂停，不报「主程序不在」
@@ -276,6 +279,7 @@ class Robotd:
                     self.hello.set(r)
                     self.calib_valid_after = self.hello.at    # 这之前读到的标定状态作废（审查 O5）
                     self._last_phase = None
+                    self.starting_since = None                # 「一直报启动中」从这次连上重新算
                     self._mark_present(True)
                     hello_done = True
                     hello_link = self.poll.reconnects
@@ -288,7 +292,9 @@ class Robotd:
                     self.log.info(f"连上主程序（接口 v{v}，版本 {ver}）", cat="robotd")
                 now = time.monotonic()
                 if now >= due["bus"]:
-                    bus, asked = await self._ask("bus", "robot.busStatus", every=1.0)
+                    # 标定模式 10 Hz：IMU 页的实时读数、站着校准都从 last_sample 拿（标定模式没有 robot.state）
+                    every = 0.1 if (self.bus.value or {}).get("mode") == "commissioning" else 1.0
+                    bus, asked = await self._ask("bus", "robot.busStatus", every=every)
                     if bus is not None:
                         self.bus.set(bus)
                         self._check_build(bus)
@@ -302,6 +308,11 @@ class Robotd:
                                 and phase not in STARTING_PHASES):
                             self._ask_calib(again=True)
                         self._last_phase = phase
+                        if phase in STARTING_PHASES:
+                            if self.starting_since is None:
+                                self.starting_since = time.monotonic()
+                        else:
+                            self.starting_since = None
                         if self.estop.on_bus(bus, asked):
                             self.log.info(f"卸力已确认（按下到确认 {self.estop.confirm_ms} ms）", cat="安全",
                                           step="busStatus 回读")
