@@ -262,6 +262,67 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         log.info(f"管理员密码已{'设置' if not had_password else '修改'}（{_client_desc(request)}）", cat="连接")
         return resp
 
+    ssh_gate = asyncio.Lock()
+
+    def ssh_view(detail):
+        d = detail if isinstance(detail, dict) else {}
+        return {"password_login": d.get("password_login") is True, "ssh_active": d.get("ssh_active"),
+                "keys": d.get("keys"), "user": d.get("user") or "radxa"}
+
+    async def api_ssh(request):
+        """「更多」页的 SSH 开关：status / on（用户自己定的密码）/ off。镜像出厂只认钥匙、不带任何人的钥匙，
+        也没有人人都知道的默认密码。打开要先设网页登录密码：不然连上热点（密码公开）的人都能打开网页、
+        顺手打开 SSH 拿到 root。密码只交给小助手的 stdin，不进日志。"""
+        _, sess = session_of(request)
+        if not origin_ok(request):
+            return JSONResponse({"ok": False, "error": "请求来源不对"}, status_code=403)
+        if not sess:
+            return JSONResponse({"ok": False, "error": "先登录"}, status_code=401)
+        if request.headers.get("x-csrf") != sess["csrf"]:
+            return JSONResponse({"ok": False, "error": "请求校验失败，刷新页面再试"}, status_code=403)
+        try:
+            body = await request.json()
+        except ValueError:
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        action = body.get("action", "status")
+        if action not in ("status", "on", "off"):
+            return JSONResponse({"ok": False, "error": "不认识的操作"}, status_code=400)
+        if action == "on":
+            if not auth.has_password():
+                return JSONResponse({"ok": False, "error": "先在上面设网页登录密码，再打开 SSH：不然连上热点的人都能打开网页、"
+                                                         "顺手把 SSH 打开"}, status_code=403)
+            pw, confirm = body.get("password"), body.get("confirm")
+            if not isinstance(pw, str) or not 8 <= len(pw) <= 64:
+                return JSONResponse({"ok": False, "error": "SSH 密码要 8–64 位"}, status_code=400)
+            if pw != confirm:
+                return JSONResponse({"ok": False, "error": "两次输入不一样"}, status_code=400)
+        if not await asyncio.to_thread(helper.available):
+            return JSONResponse({"ok": False, "error": "这只鸭子没装 root 小助手，网页里开不了 SSH"}, status_code=503)
+        by = _client_desc(request)
+        async with ssh_gate:
+            if action == "status":
+                ok, result, detail = await asyncio.to_thread(helper.ssh_status)
+                if not ok:
+                    return JSONResponse({"ok": False, "error": helper.friendly(result, detail, "ssh-status")},
+                                        status_code=502)
+                return JSONResponse({"ok": True, "ssh": ssh_view(detail)})
+            if action == "on":
+                ok, result, detail = await asyncio.to_thread(helper.ssh_password, by, True, body["password"])
+            else:
+                ok, result, detail = await asyncio.to_thread(helper.ssh_password, by, False)
+            word = "打开" if action == "on" else "关掉"
+            if not ok:
+                why = helper.friendly(result, detail, "ssh-password")
+                log.warn(f"SSH 密码登录没{word}：{why}", cat="系统", step=f"ssh-password {action}",
+                         hint="照提示改；还不行就导出诊断包")
+                return JSONResponse({"ok": False, "error": why},
+                                    status_code=400 if result in ("bad_password", "bad_args") else 502)
+            log.info(f"SSH 密码登录{word}了（{by}）", cat="系统")
+            ok2, _, d2 = await asyncio.to_thread(helper.ssh_status)
+        return JSONResponse({"ok": True, "ssh": ssh_view(d2) if ok2 else ssh_view(detail)})
+
     async def api_logs(request):
         _, sess = session_of(request)
         if not sess:
@@ -1222,6 +1283,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         Route("/api/login", api_login, methods=["POST"]),
         Route("/api/logout", api_logout, methods=["POST"]),
         Route("/api/password", api_password, methods=["POST"]),
+        Route("/api/ssh", api_ssh, methods=["POST"]),
         Route("/api/logs", api_logs),
         Route("/api/diag", api_diag),
         Route("/api/profile", api_profile),

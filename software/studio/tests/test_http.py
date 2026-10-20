@@ -105,6 +105,7 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         log = Log(Path(self.tmp.name) / "logs", echo=False, background=False)
+        self.log = log
         self.auth = Auth(Path(self.tmp.name) / "state", log)
         self.auth.set_password(PW)
         self.fake = FakeRobotd(FIXTURE)
@@ -267,6 +268,76 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(st, 200)
         self.assertFalse(self.auth.has_password())
         self.assertFalse(self.auth.pw_path.exists())
+
+    # ---- 「更多」页的 SSH 开关（用户 10-21：出了问题自己 SSH 修，不用重烧卡；密码用户自己定） ----
+
+    async def ssh_post(self, payload):
+        token, _ = await self.login()
+        ck = {"Cookie": f"{COOKIE}={token}", "Origin": self.origin}
+        _, _, body = await self.call("GET", "/api/session", headers=ck)
+        csrf = json.loads(body)["csrf"]
+        st, _, body = await self.call("POST", "/api/ssh", payload, dict(ck, **{"X-CSRF": csrf}))
+        return st, json.loads(body or "{}")
+
+    def ssh_patches(self, pw_result=("ssh_password_on", True)):
+        result, on = pw_result
+        view = {"password_login": on, "ssh_active": True, "keys": 0, "user": "radxa", "exit": 0, "result": "ssh_status"}
+        return (unittest.mock.patch("studio.helper.available", return_value=True),
+                unittest.mock.patch("studio.helper.ssh_password",
+                                    return_value=(True, result, {"exit": 0, "result": result, "password_login": on})),
+                unittest.mock.patch("studio.helper.ssh_status", return_value=(True, "ssh_status", view)))
+
+    async def test_ssh_needs_login(self):
+        st, _, _ = await self.call("POST", "/api/ssh", {"action": "status"}, {"Origin": self.origin})
+        self.assertEqual(st, 401)
+
+    async def test_ssh_on_needs_web_password_first(self):
+        os.remove(self.auth.pw_path)
+        _, _, body = await self.call("GET", "/api/session")
+        csrf = json.loads(body)["csrf"]
+        a, b, c = self.ssh_patches()
+        with a, b as sp, c:
+            st, _, body = await self.call("POST", "/api/ssh",
+                                          {"action": "on", "password": "duck-secret-42", "confirm": "duck-secret-42"},
+                                          {"Origin": self.origin, "X-CSRF": csrf})
+        self.assertEqual(st, 403)
+        self.assertIn("先在上面设网页登录密码", json.loads(body)["error"])
+        sp.assert_not_called()
+
+    async def test_ssh_on_goes_to_helper_and_password_is_never_logged(self):
+        pw = "duck-secret-42"
+        a, b, c = self.ssh_patches()
+        with a, b as sp, c:
+            st, data = await self.ssh_post({"action": "on", "password": pw, "confirm": pw})
+        self.assertEqual(st, 200, data)
+        self.assertTrue(data["ssh"]["password_login"])
+        self.assertEqual(sp.call_args.args[1:], (True, pw))
+        recent = json.dumps(self.log.recent(limit=500), ensure_ascii=False)
+        self.assertIn("SSH 密码登录打开了", recent)
+        self.assertNotIn(pw, recent)
+        for f in (Path(self.tmp.name) / "logs").rglob("*"):
+            if f.is_file():
+                self.assertNotIn(pw, f.read_text(encoding="utf-8", errors="replace"), f)
+
+    async def test_ssh_password_rules_checked_before_the_helper(self):
+        a, b, c = self.ssh_patches()
+        with a, b as sp, c:
+            for payload in ({"action": "on", "password": "short77", "confirm": "short77"},
+                            {"action": "on", "password": "duck-secret-42", "confirm": "duck-secret-43"},
+                            {"action": "nope"}):
+                st, _ = await self.ssh_post(payload)
+                self.assertEqual(st, 400, payload)
+        sp.assert_not_called()
+
+    async def test_ssh_off_and_status(self):
+        a, b, c = self.ssh_patches(("ssh_password_off", False))
+        with a, b as sp, c:
+            st, data = await self.ssh_post({"action": "off"})
+            self.assertEqual(st, 200, data)
+            self.assertEqual(sp.call_args.args[1], False)
+            st, data = await self.ssh_post({"action": "status"})
+        self.assertEqual(st, 200, data)
+        self.assertEqual(data["ssh"], {"password_login": False, "ssh_active": True, "keys": 0, "user": "radxa"})
 
     async def test_ws_without_login_tells_page_to_login(self):
         c = WsClient(self.port, origin=self.origin)

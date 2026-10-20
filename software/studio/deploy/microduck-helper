@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -IS
 """microduck-helper：Microduck Studio 的 root 小助手。舵机总线交接三个动词，手柄配对 / 忘掉两个，鸭子热点开关两个，
-写进主程序 / 读标定两个。
+写进主程序 / 读标定两个，SSH 密码登录开关两个。
 
 为什么要它：Studio 的舵机页要自己打开舵机总线 /dev/ttyS2，主程序 robotd 就得先停下，用完再交还。
 停、起 robotd 要 root，Studio 不是 root。所以 sudoers 只放行这一个文件，它只认白名单里的动词，
@@ -30,6 +30,13 @@
                                                       出厂镜像跑标定模式时，写完删掉 zzzz-zz-microduck-commissioning.conf
                                                       切回运动模式；等 mode=motion、phase=control 且读回逐项一致；
                                                       任何异常都先换回备份。dry_run 只回要写的 TOML
+  ssh-status     {"by": 可选}                       只读：SSH 密码登录开没开、ssh 服务在不在跑、radxa 登记了几把钥匙；不写任何东西
+  ssh-password   {"by": str, "on": true, "password": str}
+                                                       用户自己定的密码设给 radxa（chpasswd，走 stdin），写
+                                                      /etc/ssh/sshd_config.d/05-microduck-ssh-password.conf 打开密码登录，
+                                                      sshd -t、sshd -T 读回确认真打开了，再 reload ssh；哪一步不对就删掉这个文件退回去。
+                                                      密码 8–64 个可见字符，不能是 microduck；**密码不进日志、不进结果**
+                 {"by": str, "on": false}             删掉那个文件、reload ssh：回到只认钥匙（radxa 的密码不动，sudo 还用它）
 
 输出：一行一个 JSON {"step","level","ms","msg","detail"}，最后一行 step="done"。
 同一份结果写进 /run/microduck-helper/last-result.json（Studio 重启以后读它）。
@@ -62,9 +69,9 @@ import sys
 import time
 import tomllib
 
-VERSION = "0.5.2"
+VERSION = "0.6.0"
 VERBS = ("bus-take", "bus-give-back", "bus-abort", "pad-pair", "pad-forget",
-         "wifi-hotspot-down", "wifi-hotspot-up", "calib-read", "calib-commit")
+         "wifi-hotspot-down", "wifi-hotspot-up", "calib-read", "calib-commit", "ssh-status", "ssh-password")
 
 EXIT_OK, EXIT_ARGS, EXIT_STATE, EXIT_BUSY, EXIT_FAIL, EXIT_RETAKE = 0, 2, 3, 4, 5, 6
 
@@ -75,6 +82,14 @@ ABORT = HELPER_DIR + "/abort"
 LAST = HELPER_DIR + "/last-result.json"
 LOCK = HELPER_DIR + "/helper.lock"
 WIFI_LOCK = HELPER_DIR + "/wifi.lock"
+SSH_LOCK = HELPER_DIR + "/ssh.lock"
+# 镜像里 10-microduck.conf 写的是 PasswordAuthentication no。sshd 每项取第一次读到的值、sshd_config.d 按文件名排序，
+# 所以开关文件叫 05-…，排在它前面。打开以后照样用 sshd -T 读回确认，不靠这个假设。
+SSH_PASSWORD_CONF = "/etc/ssh/sshd_config.d/05-microduck-ssh-password.conf"
+SSH_USER = "radxa"
+SSH_KEYS = "/home/radxa/.ssh/authorized_keys"
+SSH_PW_MIN, SSH_PW_MAX = 8, 64
+SSH_PW_BANNED = ("microduck", "radxa", "12345678", "password")
 MARKER_DIR = "/run/microduck-handover"
 MARKER = MARKER_DIR + "/handover.json"
 SERVICE_LOCK = "/run/microduck-service-management.lock"
@@ -142,7 +157,8 @@ STDIN_LIMIT = 256 * 1024
 
 BIN = {"systemctl": "/usr/bin/systemctl", "systemd-run": "/usr/bin/systemd-run", "fuser": "/usr/bin/fuser",
        "logger": "/usr/bin/logger", "flock": "/usr/bin/flock", "sleep": "/usr/bin/sleep",
-       "nmcli": "/usr/bin/nmcli", "journalctl": "/usr/bin/journalctl"}
+       "nmcli": "/usr/bin/nmcli", "journalctl": "/usr/bin/journalctl",
+       "chpasswd": "/usr/sbin/chpasswd", "sshd": "/usr/sbin/sshd"}
 CHILD_ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8", "SYSTEMD_PAGER": "", "SYSTEMD_COLORS": "0"}
 
 
@@ -2278,6 +2294,118 @@ def verb_wifi_hotspot_up(op, args):
 
 
 # ---------------------------------------------------------------------------
+# SSH 密码登录开关（Studio「更多」页）。镜像出厂只认钥匙、不带任何人的钥匙；用户在网页上自己定一个密码再打开，
+# 没有人人都知道的默认密码（热点密码是公开的，默认密码等于给附近的人留门）。
+
+def ssh_password_on(ctx):
+    return os.path.isfile(ctx.p(SSH_PASSWORD_CONF))
+
+
+def ssh_key_count(ctx):
+    try:
+        with open(ctx.p(SSH_KEYS), encoding="utf-8", errors="replace") as f:
+            return sum(1 for line in f if line.strip() and not line.lstrip().startswith("#"))
+    except OSError:
+        return 0
+
+
+def ssh_effective_password(op):
+    """sshd -T 读回实际生效的 passwordauthentication：True / False / None（读不出）。"""
+    rc, out, err = op.ctx.run(["sshd", "-T"], timeout=10.0)
+    if rc != 0:
+        return None
+    for line in (out or "").splitlines():
+        parts = line.strip().split()
+        if len(parts) == 2 and parts[0].lower() == "passwordauthentication":
+            return parts[1].lower() == "yes"
+    return None
+
+
+def verb_ssh_status(op, args):
+    check_keys(args, ("by",), "ssh-status 的参数")
+    if "by" in args:
+        op.by = check_by(args)
+    rc, out, _ = op.ctx.run(["systemctl", "is-active", "ssh"], timeout=5.0)
+    detail = {"password_login": ssh_password_on(op.ctx), "ssh_active": (out or "").strip() == "active",
+              "keys": ssh_key_count(op.ctx), "user": SSH_USER}
+    return op.finish(EXIT_OK, "ssh_status", "读到了 SSH 的状态", detail, record=False)
+
+
+def check_ssh_password(pw):
+    if not isinstance(pw, str):
+        raise Stop(EXIT_ARGS, "bad_args", "password 要是字符串")
+    if not SSH_PW_MIN <= len(pw) <= SSH_PW_MAX:
+        raise Stop(EXIT_ARGS, "bad_password", f"SSH 密码要 {SSH_PW_MIN}–{SSH_PW_MAX} 位")
+    if any(ord(c) < 32 or ord(c) == 127 for c in pw):
+        raise Stop(EXIT_ARGS, "bad_password", "SSH 密码里不能有换行、制表这类控制字符")
+    if pw.strip().lower() in SSH_PW_BANNED:
+        raise Stop(EXIT_ARGS, "bad_password", "这个密码大家都猜得到，换一个")
+    return pw
+
+
+def ssh_reload(op):
+    rc, out, err = op.ctx.run(["systemctl", "reload-or-restart", "ssh"], timeout=20.0)
+    if rc != 0:
+        return (err or out or "").strip()[:400] or f"systemctl 退出码 {rc}"
+    return None
+
+
+def verb_ssh_password(op, args):
+    check_keys(args, ("by", "on", "password"), "ssh-password 的参数")
+    op.by = check_by(args)
+    on = args.get("on")
+    if not isinstance(on, bool):
+        raise Stop(EXIT_ARGS, "bad_args", "on 要是 true（打开）或 false（关掉）")
+    if not on and "password" in args:
+        raise Stop(EXIT_ARGS, "bad_args", "关掉 SSH 密码登录不用传密码")
+    pw = check_ssh_password(args.get("password")) if on else None
+    op.take_lock("SSH 设置", SSH_LOCK)
+    conf = op.ctx.p(SSH_PASSWORD_CONF)
+    if not on:
+        existed = os.path.isfile(conf)
+        if existed:
+            os.remove(conf)
+            op.emit("ssh", "info", "删掉了 SSH 密码登录的开关文件", {"path": SSH_PASSWORD_CONF})
+        why = ssh_reload(op)
+        if why:
+            return op.finish(EXIT_FAIL, "reload_failed", f"开关文件删了，但 ssh 没重新加载：{why}（重启鸭子也会生效）",
+                             {"password_login": False})
+        return op.finish(EXIT_OK, "ssh_password_off", "SSH 密码登录关掉了，只认钥匙" if existed else "SSH 密码登录本来就是关着的",
+                         {"password_login": False, "keys": ssh_key_count(op.ctx)})
+    # 1. 密码：chpasswd 从 stdin 读「用户:密码」，不进命令行（ps 看得到命令行）、不进日志
+    rc, out, err = op.ctx.run(["chpasswd"], input=f"{SSH_USER}:{pw}\n".encode("utf-8"), timeout=15.0)
+    if rc != 0:
+        why = (err or out or "").strip()[:300] or f"退出码 {rc}"
+        return op.finish(EXIT_FAIL, "chpasswd_failed", f"{SSH_USER} 的密码没设上：{why}")
+    op.emit("ssh", "info", f"{SSH_USER} 的密码设好了（密码本身不记）")
+    # 2. 开关文件
+    ensure_dir(op.ctx, "/etc/ssh/sshd_config.d", 0o755)
+    body = ("# Microduck Studio「更多」页打开的 SSH 密码登录（microduck-helper ssh-password）。\n"
+            "# 关掉：Studio 里点「关掉 SSH 密码登录」，或者删掉这个文件再 systemctl reload ssh。\n"
+            "PasswordAuthentication yes\n")
+    write_atomic(op.ctx, SSH_PASSWORD_CONF, body.encode("utf-8"), 0o644)
+    # 3. 先验配置再生效：语法不对、或者别的配置把密码登录压住了，都退回去
+    rc, out, err = op.ctx.run(["sshd", "-t"], timeout=10.0)
+    if rc != 0:
+        os.remove(conf)
+        why = (err or out or "").strip()[:400] or f"退出码 {rc}"
+        return op.finish(EXIT_FAIL, "sshd_config_bad", f"sshd 配置检查没过，已经退回去：{why}")
+    eff = ssh_effective_password(op)
+    if eff is not True:
+        os.remove(conf)
+        return op.finish(EXIT_FAIL, "not_effective",
+                         "sshd 读回来密码登录还是关着（别的配置压住了它），已经退回去" if eff is False
+                         else "读不出 sshd 实际生效的配置，已经退回去", {"effective": eff})
+    why = ssh_reload(op)
+    if why:
+        os.remove(conf)
+        ssh_reload(op)
+        return op.finish(EXIT_FAIL, "reload_failed", f"ssh 没重新加载，已经退回去：{why}")
+    return op.finish(EXIT_OK, "ssh_password_on", f"SSH 密码登录打开了：用户 {SSH_USER}，密码是你刚设的",
+                     {"password_login": True, "user": SSH_USER})
+
+
+# ---------------------------------------------------------------------------
 
 def run(argv, ctx):
     verb = argv[1] if len(argv) > 1 else None
@@ -2312,6 +2440,10 @@ def run(argv, ctx):
             return verb_calib_read(op, args)
         if verb == "calib-commit":
             return verb_calib_commit(op, args, raw)
+        if verb == "ssh-status":
+            return verb_ssh_status(op, args)
+        if verb == "ssh-password":
+            return verb_ssh_password(op, args)
         return verb_abort(op, args)
     except Stop as s:
         # bad_verb 是 Studio 探测小助手可用性用的：不能把上一次真正的结果覆盖成 bad_verb

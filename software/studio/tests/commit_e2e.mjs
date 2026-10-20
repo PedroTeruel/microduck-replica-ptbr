@@ -144,6 +144,18 @@ const recordSends = () => js(`(() => { if (window.__sent) { window.__sent.length
 const sentStand = () => js(`(window.__sent || []).filter((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`);
 const remoteStand = `[...document.querySelectorAll('.pd-remote .pd-big')].find((x) => x.querySelector('b')?.textContent === '站起来')`;
 
+if (PHASE === 'ssh') {
+  // 「更多」页的 SSH 开关（10-21）：卡片在、写清出厂只认钥匙；电脑上没有 root 小助手，后端回「没装小助手」，卡片照实写，不报错
+  await js(`location.hash = '#/settings'`);
+  await waitFor(`!!document.querySelector('.ssh-settings')`, '更多页的 SSH 卡片', 20000);
+  await waitFor(`!/正在读/.test(document.querySelector('.ssh-settings .ssh-now')?.innerText || '正在读')`, 'SSH 卡片读到状态', 20000);
+  out.ssh = await js(`(() => { const c = document.querySelector('.ssh-settings');
+    return { text: c.innerText.replace(/\\s+/g, ' ').trim(), now: c.querySelector('.ssh-now').innerText.trim(),
+      onDisabled: c.querySelector('.ssh-on').disabled, needWebPw: !!c.querySelector('.ssh-need-web-pw'),
+      inputs: c.querySelectorAll('input[type=password]').length }; })()`);
+  await shot('settings-ssh.png');
+}
+
 if (PHASE === 'stance0') {
   // 标定模式也能站（用户 10-21）：「站姿使能」能点，确认框点确定以后发 imu.op hold（fork hold-home），站姿卡写「标定模式（站着）」；
   // 「失能（卸力）」也能点，发顶上同一个 relax，卸完回「标定模式（软着）」

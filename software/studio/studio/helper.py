@@ -212,6 +212,19 @@ def calib_read(by=None, timeout=10):
     return _call("calib-read", payload, timeout)
 
 
+def ssh_status(timeout=10):
+    """SSH 密码登录开没开、ssh 在不在跑、radxa 登记了几把钥匙（ssh-status，只读）。回 (ok, result, detail)。"""
+    return _call("ssh-status", {}, timeout)
+
+
+def ssh_password(by, on, password=None, timeout=40):
+    """打开（用户自己定的密码设给 radxa）/ 关掉 SSH 密码登录（ssh-password）。密码只走小助手的 stdin，不进日志。"""
+    payload = {"by": by, "on": bool(on)}
+    if on:
+        payload["password"] = password
+    return _call("ssh-password", payload, timeout)
+
+
 def last_result():
     """读小助手最后一次写下的完整结果（Studio 重启 / 调用超时以后用）。读不到回 None。"""
     try:
@@ -320,6 +333,13 @@ def friendly(result, detail, verb):
     else:
         table = _TAKE_WHY if verb == "bus-take" else _GIVE_WHY
     msg = detail.get("msg") if isinstance(detail, dict) else None
+    if verb in ("ssh-status", "ssh-password"):
+        # 小助手的原话就是完整的一句（「sshd 配置检查没过，已经退回去：…」）
+        if msg and result not in ("ssh_status", "ssh_password_on", "ssh_password_off"):
+            return msg
+        if result == "bad_verb":
+            return "小助手太旧，不会开 SSH：重装 deploy/install.sh（0.6.0 起才有）"
+        return _COMMON.get(result) or (result or "没成")
     # calib-commit 的小助手原话已经是完整的一句话（带「已经换回原来的文件」这类收尾），直接用；
     # 其它动词保持「结果词：原话」的写法（test_helper 的 friendly 约定）。
     if msg and verb == "calib-commit" and result not in ("committed", "preview"):

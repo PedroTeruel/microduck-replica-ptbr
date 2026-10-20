@@ -208,6 +208,17 @@ class CommitE2E(unittest.TestCase):
         self.assertIn("你标了第 1 步已完成：15 颗按 2048 写零位（零位要是用 Studio 的舵机页校过的才对）", m["after"]["check"])
         self.assertEqual(m["errors"], [])
 
+    def test_01d_ssh_card_on_the_more_page(self):
+        """10-21「出了问题自己 SSH 修，不用重烧卡」：「更多」页有 SSH 卡片，写清出厂只认钥匙、没有默认密码；
+        电脑上没有鸭子的 root 小助手（Windows 11 自带的 sudo 还会回一句用法错误），读不到状态时照实写出来、按钮灰着，页面不报错。"""
+        r = self.node("ssh")
+        s = r["ssh"]
+        self.assertIn("SSH 远程登录", s["text"])
+        self.assertIn("出厂只认钥匙、不认密码，也没有默认密码", s["text"])
+        self.assertNotIn("正在读", s["now"])
+        self.assertTrue(s["onDisabled"])
+        self.assertEqual(r["errors"], [])
+
     def test_01c_stance_buttons_in_commissioning(self):
         """用户 10-21「咱标定也能站姿不就好了吗」：标定模式下「站姿使能」能点，确认以后发 imu.op hold，
         主程序（fork hold-home）回站住，站姿卡写「标定模式（站着）」；「失能（卸力）」走 relax，卸完回软着。"""
