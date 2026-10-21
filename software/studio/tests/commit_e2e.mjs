@@ -202,7 +202,13 @@ if (PHASE === 'stance') {
   await fakeSet({ posture: 'limp' });
   await sleep(3000);       // 同上：刚变软 2 秒内后端不接受站起来（按钮靠 1 秒一次的手柄快照，可能还亮着），点了会被拒
   await js(`location.hash = '#/pad'`);
-  await waitFor(`(() => { const b = ${remoteStand}; return !!b && !b.disabled; })()`, '遥控卡「站起来」能点', 20000);
+  try {
+    await waitFor(`(() => { const b = ${remoteStand}; return !!b && !b.disabled; })()`, '遥控卡「站起来」能点', 20000);
+  } catch (e) {
+    // 偶发（全套一起跑、机器忙时）：把遥控卡每个按钮的字、灰没灰、为什么灰都带上
+    const why = await js(`[...document.querySelectorAll('.pd-remote .pd-big')].map((x) => (x.querySelector('b')?.textContent || '?') + '|' + (x.disabled ? '灰' : '亮') + '|' + (x.title || '')).join(' ; ')`);
+    throw new Error(`${e.message} ／ 遥控卡按钮：${why}`);
+  }
   await recordSends();
   await js(`new Promise((ok) => { const t0 = Date.now(); const t = setInterval(() => {
     const b = ${remoteStand};
