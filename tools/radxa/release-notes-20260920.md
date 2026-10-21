@@ -1,3 +1,5 @@
+> **这个 Release 已于 2026-10-21 撤下**（太旧了）。现成的卡请用[复刻镜像](https://github.com/fanhao375/microduck-replica/releases/latest)。下面是当时的发布说明，留作记录。
+
 > **2026-09-29 首次登录勘误：先用 `root` / `1234`。** 公开镜像中尚无 `duck`；完成 Armbian 首次登录向导后，才创建 `duck` / `duck1234` 并把 root 密码改为 `duck1234`。这是对原公开镜像账户库及首登脚本只读核实的结果。此前“首次直接用 duck 登录、root 初始密码相同”的说明有误。请完成向导后立即修改两个默认密码。
 >
 > **2026-09-28 联网勘误：** 旧版制卡脚本遗漏了 `wlan0` 的 DHCP 配置。即使 WiFi 名和密码正确，也可能无法取得 IPv4 地址，导致 SSH 找不到主板。仓库脚本已经补上；已经烧录的卡可按下文补配置，不必仅为此重刷。
@@ -6,7 +8,7 @@
 
 这是面向此前本机 Radxa Zero 3W V1.12（AIC8800 WiFi）引导兼容性问题制作的社区镜像：使用 Armbian 26.2.1 Trixie vendor 6.1.115 minimal 的内核和系统软件包，替换瑞莎引导程序，并调整启动、登录和网络配置。不同板卡批次需单独验证。
 
-另有独立的 [20260929 DHCP 修复候选版](https://github.com/fanhao375/microduck-replica/releases/tag/radxa-zero3w-armbian-20260929)，保留本页旧文件。候选版只做过离线检查，未对该新产物烧卡实测。离线检查还发现旧版携带预生成 SSH 主机密钥；旧卡请按[更新后的使用指南](https://github.com/fanhao375/microduck-replica/blob/master/tools/radxa/%E9%95%9C%E5%83%8F%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.md#%E6%97%A7%E7%89%88%E5%8D%A1%E9%87%8D%E6%96%B0%E7%94%9F%E6%88%90-ssh-%E4%B8%BB%E6%9C%BA%E5%AF%86%E9%92%A5)通过本地终端重新生成，不必重刷。
+另有独立的 20260929 DHCP 修复候选版，保留本页旧文件。候选版只做过离线检查，未对该新产物烧卡实测。离线检查还发现旧版携带预生成 SSH 主机密钥；旧卡请按[更新后的使用指南](https://github.com/fanhao375/microduck-replica/blob/master/tools/radxa/%E9%95%9C%E5%83%8F%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.md#%E6%97%A7%E7%89%88%E5%8D%A1%E9%87%8D%E6%96%B0%E7%94%9F%E6%88%90-ssh-%E4%B8%BB%E6%9C%BA%E5%AF%86%E9%92%A5)通过本地终端重新生成，不必重刷。
 
 **绿灯双闪可为正常 `heartbeat`，不能单凭闪灯判断启动失败或镜像损坏。** 基础镜像也不等于已安装完整机器人软件；联网、摄像头和舵机控制要分别验收。
 

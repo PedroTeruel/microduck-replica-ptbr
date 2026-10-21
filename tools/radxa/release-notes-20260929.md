@@ -1,4 +1,6 @@
-> **候选镜像（Pre-release）：已完成离线核验，尚未对这份新产物烧卡、启动和联网实测。** 本版从 20260920 原公开镜像制作，只补无线 DHCP、修正卡内登录/联网说明、移除预生成 SSH 主机密钥。旧版文件仍保留在[原 Release](https://github.com/fanhao375/microduck-replica/releases/tag/radxa-zero3w-armbian-20260920)。已有旧卡可按指南修复，不必只为这次更新重刷。
+> **这个 Release 已于 2026-10-21 撤下**（太旧了）。现成的卡请用[复刻镜像](https://github.com/fanhao375/microduck-replica/releases/latest)。下面是当时的发布说明，留作记录。
+
+> **候选镜像（Pre-release）：已完成离线核验，尚未对这份新产物烧卡、启动和联网实测。** 本版从 20260920 原公开镜像制作，只补无线 DHCP、修正卡内登录/联网说明、移除预生成 SSH 主机密钥。旧版文件仍保留在原 Release。已有旧卡可按指南修复，不必只为这次更新重刷。
 
 适用基线：Radxa Zero 3W V1.12 / AIC8800，Armbian 26.2.1 Trixie vendor 6.1.115 minimal + 瑞莎 `u-boot-rk2410`。其他板卡批次、摄像头和路由器需要分别验证。
 
