@@ -41,6 +41,7 @@ from .auth import COOKIE, REMEMBER_S, Auth, OriginGuard
 from . import helper
 from .rpc import open_conn
 from .servo import boot_id, view_from_robotd
+from .sshkeys import BadKey, SshKeys
 from .state import summarize
 from .pad import Refused as PadRefused, robot_view  # 手柄页
 
@@ -134,7 +135,7 @@ def _bus_give_back(by, servo=None):
 
 
 def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev_autologin=False, servo=None, imu=None, pad=None,
-              onboard=None, battery=None, tune=None, net=None, commit=None):
+              onboard=None, battery=None, tune=None, net=None, commit=None, ssh_home=None):
     guard = OriginGuard(names=names)
     if imu is not None and commit is not None:
         imu.commit = commit                          # 标定模式「站姿使能」：跟写进主程序同一套方向
@@ -263,16 +264,25 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         return resp
 
     ssh_gate = asyncio.Lock()
+    ssh_keys = SshKeys(ssh_home)        # Studio 以 radxa 身份跑：~/.ssh/authorized_keys 是它自己的文件，不用小助手
 
-    def ssh_view(detail):
+    async def ssh_view(detail=None):
+        """密码登录开没开、ssh 服务（小助手 ssh-status；读不到就是 None）+ 登记的钥匙（Studio 自己读）。"""
+        if detail is None and await asyncio.to_thread(helper.available):
+            ok, _, d = await asyncio.to_thread(helper.ssh_status)
+            detail = d if ok else None
         d = detail if isinstance(detail, dict) else {}
-        return {"password_login": d.get("password_login") is True, "ssh_active": d.get("ssh_active"),
-                "keys": d.get("keys"), "user": d.get("user") or "radxa"}
+        try:
+            keys = await asyncio.to_thread(ssh_keys.list)
+        except OSError:
+            keys = []
+        return {"password_login": d.get("password_login") if isinstance(d.get("password_login"), bool) else None,
+                "ssh_active": d.get("ssh_active"), "keys": len(keys), "key_list": keys, "user": d.get("user") or "radxa"}
 
     async def api_ssh(request):
-        """「更多」页的 SSH 开关：status / on（用户自己定的密码）/ off。镜像出厂只认钥匙、不带任何人的钥匙，
-        也没有人人都知道的默认密码。打开要先设网页登录密码：不然连上热点（密码公开）的人都能打开网页、
-        顺手打开 SSH 拿到 root。密码只交给小助手的 stdin，不进日志。"""
+        """「更多」页的 SSH：status / on（用户自己定的密码）/ off / add_key（贴自己的公钥）/ remove_key。
+        镜像出厂只认钥匙、不带任何人的钥匙，也没有人人都知道的默认密码。打开密码登录、登记钥匙都要先设网页登录密码：
+        不然连上热点（密码公开）的人都能打开网页、顺手打开 SSH 拿到 root。密码只交给小助手的 stdin，不进日志。"""
         _, sess = session_of(request)
         if not origin_ok(request):
             return JSONResponse({"ok": False, "error": "请求来源不对"}, status_code=403)
@@ -287,27 +297,44 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         if not isinstance(body, dict):
             body = {}
         action = body.get("action", "status")
-        if action not in ("status", "on", "off"):
+        if action not in ("status", "on", "off", "add_key", "remove_key"):
             return JSONResponse({"ok": False, "error": "不认识的操作"}, status_code=400)
+        if action in ("on", "add_key") and not auth.has_password():
+            what = "打开 SSH" if action == "on" else "登记钥匙"
+            return JSONResponse({"ok": False, "error": f"先在上面设网页登录密码，再{what}：不然连上热点的人都能打开网页、"
+                                                     "顺手把 SSH 打开"}, status_code=403)
         if action == "on":
-            if not auth.has_password():
-                return JSONResponse({"ok": False, "error": "先在上面设网页登录密码，再打开 SSH：不然连上热点的人都能打开网页、"
-                                                         "顺手把 SSH 打开"}, status_code=403)
             pw, confirm = body.get("password"), body.get("confirm")
             if not isinstance(pw, str) or not 8 <= len(pw) <= 64:
                 return JSONResponse({"ok": False, "error": "SSH 密码要 8–64 位"}, status_code=400)
             if pw != confirm:
                 return JSONResponse({"ok": False, "error": "两次输入不一样"}, status_code=400)
-        if not await asyncio.to_thread(helper.available):
-            return JSONResponse({"ok": False, "error": "这只鸭子没装 root 小助手，网页里开不了 SSH"}, status_code=503)
         by = _client_desc(request)
         async with ssh_gate:
             if action == "status":
-                ok, result, detail = await asyncio.to_thread(helper.ssh_status)
-                if not ok:
-                    return JSONResponse({"ok": False, "error": helper.friendly(result, detail, "ssh-status")},
-                                        status_code=502)
-                return JSONResponse({"ok": True, "ssh": ssh_view(detail)})
+                return JSONResponse({"ok": True, "ssh": await ssh_view()})
+            if action in ("add_key", "remove_key"):
+                try:
+                    if action == "add_key":
+                        added, k = await asyncio.to_thread(ssh_keys.add, body.get("key"))
+                    else:
+                        gone = await asyncio.to_thread(ssh_keys.remove, body.get("fp"))
+                except BadKey as e:
+                    return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+                except OSError as e:
+                    log.error("SSH 钥匙没写进去", cat="系统", raw=f"{type(e).__name__}: {e}", step=action,
+                              hint="看看 /home/radxa/.ssh 的权限；还不行就导出诊断包")
+                    return JSONResponse({"ok": False, "error": f"写不进 authorized_keys：{e}"}, status_code=500)
+                if action == "add_key":
+                    what = f"{k['type']} {k['comment'] or '（没注释）'} {k['fp']}"
+                    log.info(f"SSH 钥匙{'登记了' if added else '本来就在'}：{what}（{by}）", cat="系统")
+                    return JSONResponse({"ok": True, "added": added, "fp": k["fp"], "ssh": await ssh_view()})
+                if gone:
+                    log.info(f"SSH 钥匙删掉了：{body.get('fp')}（{by}）", cat="系统")
+                return JSONResponse({"ok": True, "removed": gone, "ssh": await ssh_view()})
+            if not await asyncio.to_thread(helper.available):
+                return JSONResponse({"ok": False, "error": "这只鸭子没装 root 小助手，网页里开不了 SSH 密码登录"},
+                                    status_code=503)
             if action == "on":
                 ok, result, detail = await asyncio.to_thread(helper.ssh_password, by, True, body["password"])
             else:
@@ -320,8 +347,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 return JSONResponse({"ok": False, "error": why},
                                     status_code=400 if result in ("bad_password", "bad_args") else 502)
             log.info(f"SSH 密码登录{word}了（{by}）", cat="系统")
-            ok2, _, d2 = await asyncio.to_thread(helper.ssh_status)
-        return JSONResponse({"ok": True, "ssh": ssh_view(d2) if ok2 else ssh_view(detail)})
+            return JSONResponse({"ok": True, "ssh": await ssh_view()})
 
     async def api_logs(request):
         _, sess = session_of(request)

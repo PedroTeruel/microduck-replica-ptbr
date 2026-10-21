@@ -200,10 +200,13 @@ if (PHASE === 'stance') {
   out.standSent = await sentStand();
   out.standing = await stance();
   await fakeSet({ posture: 'limp' });
+  await sleep(3000);       // 同上：刚变软 2 秒内后端不接受站起来（按钮靠 1 秒一次的手柄快照，可能还亮着），点了会被拒
   await js(`location.hash = '#/pad'`);
   await waitFor(`(() => { const b = ${remoteStand}; return !!b && !b.disabled; })()`, '遥控卡「站起来」能点', 20000);
   await recordSends();
-  await js(`${remoteStand}.click()`);
+  await js(`new Promise((ok) => { const t0 = Date.now(); const t = setInterval(() => {
+    const b = ${remoteStand};
+    if (b && !b.disabled) { clearInterval(t); b.click(); ok(true); } else if (Date.now() - t0 > 10000) { clearInterval(t); ok(false); } }, 50); })`);
   await waitFor(`(window.__sent || []).some((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`, '遥控卡发出站起来', 5000);
   out.remoteSent = await sentStand();
   await js(`location.hash = '#/imu'`);

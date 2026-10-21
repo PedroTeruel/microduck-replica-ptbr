@@ -298,7 +298,8 @@ class OverviewE2E(unittest.TestCase):
         self.assertIn("确定跳过", self.out["estopOnce"]["text"])
         self.assertEqual(self.out["estopOnce"]["skipStill"], ["跳过"])  # 原按钮不在原地变（审查 D4），确认按钮是另一个
         self.assertEqual(self.out["estopOnce"]["state"], "onb-no")    # 点一次不生效
-        self.assertEqual(self.out["estopDbl"], {"state": "onb-no", "armed": True})   # 真鼠标双击：不跳过，只是冒出确认
+        self.assertEqual(self.out["estopDbl"], {"state": "onb-no", "armed": True},   # 真鼠标双击：不跳过，只是冒出确认
+                         {k: self.out.get(k) for k in ("estopDblGap", "estopArmed300", "estopClicks", "estopTargets", "estopArms", "dblAtRects")})
         self.assertEqual(self.out["estopTimeout"], {"text": "跳过", "state": "onb-no"})   # 3 秒没再点：复原
         self.assertEqual(self.out["estopTwice"], "onb-skip")
 

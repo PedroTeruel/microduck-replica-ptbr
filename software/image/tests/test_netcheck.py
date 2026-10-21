@@ -61,6 +61,7 @@ class FakeNmcli:
         self.stations = ""
         self.iw_rc = 0
         self.firstboot_rc = 0
+        self.conn_rc = 0
 
     def __call__(self, args, timeout=None):
         args = list(args)
@@ -90,6 +91,8 @@ class FakeNmcli:
             return NC.Result(0, nmcli_escape(self.ssids[name]) + "\n", "")
         if (args[:1] == ["nmcli"] and "-t" in args and "NAME,TYPE" in args
                 and "connection" in args and "show" in args):
+            if self.conn_rc:
+                return NC.Result(self.conn_rc, "", "connection show failed\n")
             out = "".join("%s:%s\n" % (nmcli_escape(name), nmcli_escape(kind))
                           for name, kind in self.connections)
             return NC.Result(0, out, "")
@@ -142,6 +145,41 @@ class NetcheckTests(unittest.TestCase):
         nc.tick(45)
         self.assertEqual(nc.mode, "hotspot")
         self.assertEqual(len(fake.calls_of("connection", "up")), 1)
+
+    def test_no_saved_wifi_opens_the_hotspot_at_once(self):
+        # 10-21：新卡一个 WiFi 都没存，热点也要等 45 秒才开，白等
+        root, fake, nc, log = self.make()
+        fake.connections = [("Microduck-Hotspot", "802-11-wireless"), ("Wired", "802-3-ethernet")]
+        nc.tick(0)
+        self.assertEqual(nc.mode, "hotspot")
+        self.assertEqual(len(fake.calls_of("connection", "up")), 1)
+        self.assertIn("一个 WiFi 都没存过", log.getvalue())
+
+    def test_unknown_saved_list_keeps_the_45_second_rule(self):
+        root, fake, nc, log = self.make()
+        fake.connections = [("Microduck-Hotspot", "802-11-wireless")]
+        fake.conn_rc = 4
+        nc.tick(0)
+        nc.tick(44)
+        self.assertEqual(nc.mode, "none")
+        fake.conn_rc = 0
+        nc.tick(45)
+        self.assertEqual(nc.mode, "hotspot")
+
+    def test_saved_wifi_still_waits_45_seconds_and_respects_retry(self):
+        root, fake, nc, log = self.make()
+        nc.tick(0)
+        nc.tick(30)
+        self.assertEqual(nc.mode, "none")            # Home 存着：照旧等 45 秒
+        fake.connections = [("Microduck-Hotspot", "802-11-wireless")]
+        fake.up_rc = 1
+        nc.tick(33)                                   # 刚删光：马上开，但开失败
+        self.assertEqual(len(fake.calls_of("connection", "up")), 1)
+        fake.up_rc = 0
+        nc.tick(36)                                   # 失败后 60 秒内不重试
+        self.assertEqual(len(fake.calls_of("connection", "up")), 1)
+        nc.tick(93)
+        self.assertEqual(nc.mode, "hotspot")
 
     def test_scan_happens_before_hotspot_up(self):
         root, fake, nc, log = self.make()

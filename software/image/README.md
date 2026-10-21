@@ -98,6 +98,7 @@ sudo STUDIO_VERSION=<Studio 的提交号> IMAGE_VERSION=<本目录的提交号> 
   那等于给所有用户的鸭子留了一扇后门。
 - 版本号不给的话脚本自己用 `git rev-parse`（有未提交改动加 `-dirty`），拿不到就写「未知」。
   WSL 里读 Windows 盘上的 git worktree 常常拿不到，所以发布时自己传。
+- 镜像文件名默认是 `microduck-replica-日期.img.xz`；同一天出第二版时传 `IMAGE_TAG=20261021b` 这样的名字（只能数字和小写字母）。
 - 大约 10 分钟。产出：
   - `microduck-replica-YYYYMMDD.img.xz` 和同名 `.sha256`；
   - `镜像清单.txt`：底图和 payload 的 sha256、删了什么、加了什么；

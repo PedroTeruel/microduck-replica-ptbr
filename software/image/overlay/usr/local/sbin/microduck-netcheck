@@ -6,6 +6,8 @@ nmcli 都在 self.run_cmd 里；时间从 tick(now) 传进来，测试可以完�
 时间常数（密码错了最快/最慢多久热点回来）：
 - wlan0 真的存在、且 NetworkManager 报 30（disconnected）后，连续 45 秒没连上才开热点。
   tick 是 3 秒，所以最快约 45~48 秒。
+- 例外：一个 WiFi 都没存过（新卡第一次开机），没有可等的，断网那一拍就开热点（10-21 新卡上热点约 2 分钟才出来）。
+  查已保存的 WiFi 时 nmcli 出错，当成不知道，照旧等 45 秒。
 - NetworkManager 报「正在连」时最多等 120 秒；超时后按「没连上」再等 45 秒。
 - 热点连续 5 分钟没有客户端才去试已保存的 WiFi；从最后一个客户端离开时算。
 - 开热点失败、关热点失败或尝试 WiFi 失败后，60 秒再试。
@@ -320,6 +322,17 @@ class Netcheck:
         return [name for name, kind in self._connection_rows()
                 if kind == "802-11-wireless" and name != HOTSPOT_NAME]
 
+    def has_saved_wifi(self):
+        """存没存过家里的 WiFi（热点自己那条不算）：True / False；nmcli 出错回 None，当成不知道。"""
+        result = self._nmcli(["-t", "-f", "NAME,TYPE", "connection", "show"], 10)
+        if result.returncode != 0:
+            return None
+        for line in result.stdout.splitlines():
+            parts = terse_split(line, 1)
+            if len(parts) == 2 and parts[1] == "802-11-wireless" and parts[0] != HOTSPOT_NAME:
+                return True
+        return False
+
     def saved_ssids(self):
         ssids = set()
         for name in self.saved_wifi_names():
@@ -613,8 +626,13 @@ class Netcheck:
         public_mode = "none" if effective in ("connecting", "unavailable") else effective
         self._enter_mode(public_mode, now)
 
+        need = NONE_NEED_S
+        if (effective == "none" and self.mode == "none" and self.none_accum < NONE_NEED_S
+                and now >= self.hotspot_retry_at and self.has_saved_wifi() is False):
+            need = 0.0
+            self.log("一个 WiFi 都没存过：不等 45 秒，马上开热点")
         if (effective == "none" and self.mode == "none" and
-                self.none_accum >= NONE_NEED_S and now >= self.hotspot_retry_at):
+                self.none_accum >= need and now >= self.hotspot_retry_at):
             self.open_hotspot(now)
 
         if self.mode == "hotspot":

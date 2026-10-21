@@ -211,6 +211,10 @@ button:disabled { cursor: default; }
 .onb-row.onb-ok .onb-text { color: var(--text-2); }
 .onb-tip { font-size: 12px; line-height: 1.5; color: var(--text-2); }
 .onb-acts { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 46%; }
+/* 两步确认的确认按钮另起一行：这一行靠右对齐，确认按钮挤在同一行会把前面的「已完成」「去做」整体往左推，
+   双击「跳过」的第二下就落在「已完成」上（10-21 浏览器测试抓到）。另起一行，原来的按钮一个都不挪 */
+.onb-acts .two-step { display: contents; }
+.onb-acts .two-step-ask { order: 99; flex-basis: 100%; }
 .onb-acts .btn-dark { height: 32px; padding: 0 16px; font-size: 14px; }
 .onb-frozen .onb-rows { opacity: .5; }
 .onb-done { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 24px; font-size: 15px; }

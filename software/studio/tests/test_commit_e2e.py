@@ -43,6 +43,9 @@ helper.available = lambda: True
 helper.flag_present = lambda: False
 helper.bus_take = lambda by, allow_seated=False, timeout=30: (True, "taken", {})
 helper.bus_give_back = lambda by, *, soft=True, marker=None, timeout=60: (True, "soft", {})
+# 「更多」页的 SSH 卡片：出厂只认钥匙、一把钥匙都没有（跟公开镜像一样）
+helper.ssh_status = lambda timeout=10: (True, "ssh_status", {"exit": 0, "result": "ssh_status", "password_login": False,
+                                                            "ssh_active": True, "keys": 0, "user": "radxa"})
 
 
 def fake_set(obj):
@@ -210,12 +213,14 @@ class CommitE2E(unittest.TestCase):
 
     def test_01d_ssh_card_on_the_more_page(self):
         """10-21「出了问题自己 SSH 修，不用重烧卡」：「更多」页有 SSH 卡片，写清出厂只认钥匙、没有默认密码；
-        电脑上没有鸭子的 root 小助手（Windows 11 自带的 sudo 还会回一句用法错误），读不到状态时照实写出来、按钮灰着，页面不报错。"""
+        假小助手回「只认钥匙、0 把钥匙」（跟公开镜像出厂一样）。这只测试鸭子没设网页登录密码：提示先设，按钮灰着，没有密码框。"""
         r = self.node("ssh")
         s = r["ssh"]
         self.assertIn("SSH 远程登录", s["text"])
         self.assertIn("出厂只认钥匙、不认密码，也没有默认密码", s["text"])
-        self.assertNotIn("正在读", s["now"])
+        self.assertEqual(s["now"], "现在：只认钥匙（密码登录关着），一把钥匙都没登记")
+        self.assertTrue(s["needWebPw"], s)
+        self.assertEqual(s["inputs"], 0)
         self.assertTrue(s["onDisabled"])
         self.assertEqual(r["errors"], [])
 

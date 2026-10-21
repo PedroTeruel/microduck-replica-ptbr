@@ -338,7 +338,11 @@ if [ -n "$LOOP" ]; then
     LOOP=
 fi
 DATE=$(date +%Y%m%d)
-XZ_NAME=microduck-replica-$DATE.img.xz
+# IMAGE_TAG：同一天出第二版时用（比如 20261021b），不给就是日期
+case "${IMAGE_TAG:-}" in
+    ''|*[!0-9a-z]*) [ -z "${IMAGE_TAG:-}" ] || fail "IMAGE_TAG 只能是数字和小写字母：$IMAGE_TAG" "比如 20261021b。" ;;
+esac
+XZ_NAME=microduck-replica-${IMAGE_TAG:-$DATE}.img.xz
 xz -T0 -6 -c "$WORK_IMG" > "$OUT/$XZ_NAME" || fail "xz 压缩失败" "检查 OUT_DIR 空间。"
 (
     cd "$OUT"

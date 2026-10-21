@@ -224,6 +224,7 @@ python3 -I run_tests.py                # 鸭子
   标定模式下 Studio 每 0.1 秒读一次 `busStatus`，`last_sample.imu` 当实时读数：「现在」那块的倾角、站着校准都能用，方向没确认过也能站着校（算出整份新方向，第 3 步写进去）。
   站着的时候第 3 步挡住（「先点失能」），因为写进主程序要重启主程序，鸭子会直接塌。软着时开始站着校准，提示先点「站姿使能」。
 - **SSH 远程登录**（「更多」页，10-21 用户：「出了问题他们 SSH 自己修，不用重新烧卡」）：镜像出厂只认钥匙、不带任何人的钥匙，也没有能远程登录的默认密码。用户先设网页登录密码（没设时后端拒绝：不然连上热点的人都能打开网页、顺手打开 SSH），再自己定一个 SSH 密码（8–64 位，不能是 microduck 这类大家都猜得到的），`POST /api/ssh {action: on}` → 小助手 `ssh-password`：`chpasswd` 从 stdin 设 radxa 的密码，写 `/etc/ssh/sshd_config.d/05-microduck-ssh-password.conf`（排在镜像的 `10-microduck.conf` 前面），`sshd -t`、`sshd -T` 读回密码登录真开了才 `reload`，哪一步不对就删掉文件退回去。关掉 = 删这个文件再 reload。**密码只走小助手的 stdin，不进命令行、日志、结果文件**（测试逐项核对）。卡片上给出 `ssh radxa@<现在这个地址>` 的登录命令。
+  「办法二：登记钥匙」（`studio/sshkeys.py`）：Studio 本来就以 radxa 身份跑，`~/.ssh/authorized_keys` 是它自己的文件，不经过小助手。只收一整行公钥（ed25519 / rsa / ecdsa / sk-*），base64 里的类型要跟开头写的一致，前面不能带 `command=` 这类选项；贴私钥会被认出来拦下。同一把（按 SHA256 指纹，跟 `ssh-keygen -l` 一样）不重复写；删掉按指纹删。目录 700、文件 600，`~/.ssh` 或文件是软链接就拒绝。跟打开密码登录一样，要先设网页登录密码。
 - **写进主程序**：上手清单第 3 步把舵机零位、方向、IMU 方向一次写进 robotd 的标定。出厂镜像是标定模式；写成功后小助手删掉 commissioning drop-in、重启主程序切运动模式。成功不只看重启：还要 `mode=motion`、`phase=control`，并且 `calibration-status` 读回逐项一致；不成就把文件和模式换回去。Studio 重启后会读 `last-result.json` 把上次结果放回第 3 步卡片。
 - **手柄**：配对（走官方 `robotctl pad pair`）、网页手柄、测急停。
 - **遥控**：站起来 / 开始走 / 坐下、技能、动作和组合动作。

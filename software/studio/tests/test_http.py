@@ -117,7 +117,7 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
         self.onboard = Onboarding(str(Path(self.tmp.name) / "state"), log)
         app = build_app(auth=self.auth, robotd=self.rd, log=log, web_dir=WEB, duck={"label": "测试鸭"},
                         names=["microduck-2"], servo=self.servo, imu=ImuBackend(self.rd, log, self.tmp.name),
-                        pad=self.pad, onboard=self.onboard)
+                        pad=self.pad, onboard=self.onboard, ssh_home=str(Path(self.tmp.name) / "home"))
         cfg = uvicorn.Config(app, host="127.0.0.1", port=0, ws="wsproto", http="h11", lifespan="on",
                              log_level="critical")
         self.server = uvicorn.Server(cfg)
@@ -337,7 +337,53 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(sp.call_args.args[1], False)
             st, data = await self.ssh_post({"action": "status"})
         self.assertEqual(st, 200, data)
-        self.assertEqual(data["ssh"], {"password_login": False, "ssh_active": True, "keys": 0, "user": "radxa"})
+        self.assertEqual(data["ssh"], {"password_login": False, "ssh_active": True, "keys": 0, "key_list": [],
+                                       "user": "radxa"})
+
+    async def test_ssh_keys_add_list_remove(self):
+        from tests.test_sshkeys import make_key
+        line, fp = make_key(comment="laptop")
+        a, b, c = self.ssh_patches(("ssh_password_off", False))
+        with a, b, c:
+            st, data = await self.ssh_post({"action": "add_key", "key": line})
+            self.assertEqual(st, 200, data)
+            self.assertTrue(data["added"])
+            self.assertEqual([(k["fp"], k["comment"]) for k in data["ssh"]["key_list"]], [(fp, "laptop")])
+            self.assertEqual(data["ssh"]["keys"], 1)
+            st, data = await self.ssh_post({"action": "add_key", "key": line})
+            self.assertEqual((st, data["added"]), (200, False))
+            st, data = await self.ssh_post({"action": "add_key", "key": "-----BEGIN OPENSSH PRIVATE KEY-----"})
+            self.assertEqual(st, 400)
+            self.assertIn("私钥", data["error"])
+            st, data = await self.ssh_post({"action": "remove_key", "fp": fp})
+            self.assertEqual((st, data["removed"], data["ssh"]["key_list"]), (200, 1, []))
+        text = (Path(self.tmp.name) / "home" / ".ssh" / "authorized_keys").read_text(encoding="utf-8")
+        self.assertEqual(text, "")
+        self.assertIn("SSH 钥匙登记了：ssh-ed25519 laptop", json.dumps(self.log.recent(limit=200), ensure_ascii=False))
+
+    async def test_ssh_add_key_needs_web_password_first(self):
+        from tests.test_sshkeys import make_key
+        line, _ = make_key()
+        os.remove(self.auth.pw_path)
+        _, _, body = await self.call("GET", "/api/session")
+        csrf = json.loads(body)["csrf"]
+        st, _, body = await self.call("POST", "/api/ssh", {"action": "add_key", "key": line},
+                                      {"Origin": self.origin, "X-CSRF": csrf})
+        self.assertEqual(st, 403)
+        self.assertIn("再登记钥匙", json.loads(body)["error"])
+        self.assertFalse((Path(self.tmp.name) / "home" / ".ssh" / "authorized_keys").exists())
+
+    async def test_ssh_status_lists_keys_even_without_the_helper(self):
+        from tests.test_sshkeys import make_key
+        line, fp = make_key(comment="pc")
+        home = Path(self.tmp.name) / "home" / ".ssh"
+        home.mkdir(parents=True)
+        (home / "authorized_keys").write_text(line + "\n", encoding="utf-8")
+        with unittest.mock.patch("studio.helper.available", return_value=False):
+            st, data = await self.ssh_post({"action": "status"})
+        self.assertEqual(st, 200, data)
+        self.assertIsNone(data["ssh"]["password_login"])            # 小助手不在：密码登录开没开读不到
+        self.assertEqual([k["fp"] for k in data["ssh"]["key_list"]], [fp])
 
     async def test_ws_without_login_tells_page_to_login(self):
         c = WsClient(self.port, origin=self.origin)

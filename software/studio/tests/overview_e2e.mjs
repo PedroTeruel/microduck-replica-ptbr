@@ -358,6 +358,14 @@ if (PHASE === 'done') {
       return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
     if (!b) throw new Error(`双击：找不到 ${expr}`);
     await sleep(200);
+    // 页面 0.5 秒刷新一次，量完坐标以后按钮可能被挤开（点到这一行的空白处）：点之前确认这个位置还是它，不是就重量
+    for (let i = 0; i < 20; i++) {
+      const hit = await js(`(() => { const e = ${expr}; const at = document.elementFromPoint(${b.x}, ${b.y}); return !!e && !!at && (at === e || e.contains(at)); })()`);
+      if (hit) break;
+      Object.assign(b, await js(`(() => { const e = ${expr}; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`));
+      await sleep(50);
+    }
+    out.dblAtRects = await js(`(() => { const row = document.querySelector('.onb-row[data-step="estop"]'); const rc = (sel) => { const e = row && row.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y), Math.round(r.width)]; }; return { done: rc('.onb-donebtn'), skip: rc('.onb-skip'), at: [${b.x}, ${b.y}] }; })()`);
     const mouse = (type, clickCount, buttons) => send('Input.dispatchMouseEvent', { type, x: b.x, y: b.y, button: 'left', buttons, clickCount });
     await mouse('mouseMoved', 0, 0);
     await mouse('mousePressed', 1, 1); await mouse('mouseReleased', 1, 0);
@@ -405,9 +413,24 @@ if (PHASE === 'done') {
   // 两步确认（审查 D4）：第一下原按钮不动、旁边冒出确认按钮；700 ms 内的点击不算；3 秒不点就收起
   const estopSkipText = () => js(`(() => { const r = document.querySelector('.onb-row[data-step="estop"]');
     const a = r && r.querySelector('.two-step-ask'); return a ? a.textContent : r && r.querySelector('button.onb-skip')?.textContent; })()`);
-  // 先双击（真鼠标）：不能直接跳过
-  await dblAt(`[...document.querySelectorAll('.onb-row[data-step="estop"] button')].find((x) => x.textContent === '跳过')`);
-  await sleep(1500);
+  // 先双击（真鼠标）：不能直接跳过。机器忙的时候两下之间可能被拖过 700 ms 保护（第二下就成了「收起」），
+  // 在页面里记下两下点击的真实间隔，超了就等它 3 秒自己复原、重新双击，最多 3 次
+  await js(`(() => { window.__clicks = []; document.addEventListener('click', (e) => window.__clicks.push(performance.now()), true); window.__targets = []; document.addEventListener('click', (e) => { const t = e.target; window.__targets.push((t.className || t.tagName) + ':' + (t.textContent || '').slice(0, 12)); }, true); window.__arms = []; new MutationObserver(() => { const a = !!document.querySelector('.onb-row[data-step="estop"] .two-step-ask'); if (window.__arms[window.__arms.length - 1]?.[1] !== a) { const row = document.querySelector('.onb-row[data-step="estop"]'); const rc = (sel) => { const e = row && row.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y), Math.round(r.width)]; }; window.__arms.push([Math.round(performance.now()), a, rc('.onb-donebtn'), rc('.onb-skip'), rc('.two-step-ask'), getComputedStyle(row.querySelector('.two-step') || row).display]); } }).observe(document.body, { subtree: true, childList: true }); return true; })()`);
+  for (let i = 0; i < 3; i++) {
+    await js(`(() => { window.__clicks.length = 0; return true; })()`);
+    await dblAt(`[...document.querySelectorAll('.onb-row[data-step="estop"] button')].find((x) => x.textContent === '跳过')`);
+    await sleep(300);
+    const gap = await js(`window.__clicks.length >= 2 ? window.__clicks[1] - window.__clicks[0] : null`);
+    out.estopDblGap = gap;
+    out.estopArmed300 = await js(`!!document.querySelector('.onb-row[data-step="estop"] .two-step-ask')`);
+    out.estopClicks = await js(`window.__clicks.slice()`);
+    out.estopTargets = await js(`window.__targets.slice(-4)`);
+    out.estopArms = await js(`window.__arms.slice(-6)`);
+    const onSkip = await js(`window.__targets.slice(-2).every((t) => t.includes('onb-skip'))`);
+    if (gap != null && gap < 600 && onSkip) break;
+    await sleep(3500);
+  }
+  await sleep(1200);
   out.estopDbl = { state: await rowState('estop'), armed: await js(`!!document.querySelector('.onb-row[data-step="estop"] .two-step-ask')`) };
   await sleep(2500);
   await rowBtn('estop', '跳过');

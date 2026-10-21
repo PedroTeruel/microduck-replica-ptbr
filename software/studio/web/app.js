@@ -795,6 +795,7 @@ function SshSettings({ hasPassword }) {
   const [loadErr, setLoadErr] = useState(null);
   const [pw, setPw] = useState('');
   const [again, setAgain] = useState('');
+  const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
@@ -804,61 +805,95 @@ function SshSettings({ hasPassword }) {
     if (r.ok) { setSsh(r.ssh); setLoadErr(null); } else setLoadErr(r.error || '读不到 SSH 的状态');
   };
   useEffect(() => { load(); }, []);
-  const on = !!ssh?.password_login;
+  const on = ssh?.password_login === true;
+  const keys = ssh?.key_list || [];
   const cmd = `ssh ${ssh?.user || 'radxa'}@${location.hostname}`;
-  const submit = async (e) => {
+  const call = async (body, okText) => {
+    setErr(null); setMsg(null); setBusy(true);
+    let r;
+    try { r = await api('/api/ssh', body, 60000); } catch { r = { error: '连不上鸭子，检查网络后再试' }; }
+    setBusy(false);
+    if (!r.ok) { setErr(r.status === 401 ? '登录过期了，刷新页面重新登录' : (r.error || '没成')); return null; }
+    if (r.ssh) setSsh(r.ssh);
+    setMsg(typeof okText === 'function' ? okText(r) : okText);
+    return r;
+  };
+  const submitPw = async (e) => {
     e.preventDefault();
     setErr(null); setMsg(null);
     if (pw.length < 8) { setErr('SSH 密码至少 8 位'); return; }
     if (pw !== again) { setErr('两次输入不一样'); return; }
-    setBusy(true);
-    let r;
-    try { r = await api('/api/ssh', { action: 'on', password: pw, confirm: again }, 60000); }
-    catch { r = { error: '连不上鸭子，检查网络后再试' }; }
-    setBusy(false);
-    if (!r.ok) { setErr(r.status === 401 ? '登录过期了，刷新页面重新登录' : (r.error || '没打开')); return; }
-    setPw(''); setAgain(''); setSsh(r.ssh);
-    setMsg(on ? 'SSH 密码改好了。' : 'SSH 密码登录打开了：在电脑上运行下面那行，输刚设的密码。');
+    const r = await call({ action: 'on', password: pw, confirm: again },
+      on ? 'SSH 密码改好了。' : 'SSH 密码登录打开了：在电脑上运行上面那行，输刚设的密码。');
+    if (r) { setPw(''); setAgain(''); }
   };
-  const off = async () => {
-    setErr(null); setMsg(null);
-    let r;
-    try { r = await api('/api/ssh', { action: 'off' }, 60000); } catch { r = { error: '连不上鸭子' }; }
-    if (!r.ok) { setErr(r.error || '没关掉'); return; }
-    setSsh(r.ssh); setMsg('SSH 密码登录关掉了，只认钥匙。');
+  const submitKey = async (e) => {
+    e.preventDefault();
+    const r = await call({ action: 'add_key', key },
+      (x) => (x.added ? '钥匙登记好了：用这台电脑运行上面那行，不用输密码。' : '这把钥匙本来就登记过了。'));
+    if (r) setKey('');
   };
+  const removeKey = (fp) => call({ action: 'remove_key', fp }, '这把钥匙删掉了。');
+  const off = () => call({ action: 'off' }, 'SSH 密码登录关掉了，只认钥匙。');
   const copy = () => { try { navigator.clipboard.writeText(cmd); setMsg('登录命令复制好了。'); } catch { /* 不让复制就手抄 */ } };
   const input = 'height:40px;padding:0 10px;border:1px solid var(--line);border-radius:8px';
-  return html`<form class="board ssh-settings" style="padding:16px 20px;display:flex;flex-direction:column;gap:10px" onSubmit=${submit}>
+  const small = 'font-size:13px;line-height:1.6;color:var(--text-2)';
+  const blue = 'height:40px;padding:0 18px;border:0;border-radius:999px;background:var(--blue);color:#FFF;font-weight:600';
+  const pwState = ssh == null ? null : ssh.password_login === true ? '密码登录开着'
+    : ssh.password_login === false ? '只认钥匙（密码登录关着）' : '密码登录开没开读不到';
+  return html`<div class="board ssh-settings" style="padding:16px 20px;display:flex;flex-direction:column;gap:10px">
     <div style="font-size:15px;font-weight:600">SSH 远程登录</div>
-    <div style="font-size:13px;line-height:1.6;color:var(--text-2)">
+    <div style=${small}>
       用电脑的终端登进鸭子：改程序、看日志、换文件，不用重烧卡。出厂只认钥匙、不认密码，也没有默认密码；
-      在这里自己定一个 SSH 密码再打开（至少 8 位）。这个密码也是鸭子上 sudo 用的密码。</div>
+      两种办法二选一：自己定一个 SSH 密码打开，或者把自己电脑的公钥登记进来。</div>
     <div class="ssh-now" style="font-size:14px">现在：${ssh == null ? (loadErr || '正在读…')
-      : html`<b>${on ? '密码登录开着' : '只认钥匙（密码登录关着）'}</b>${ssh.keys ? `，登记了 ${ssh.keys} 把钥匙` : ''}${ssh.ssh_active === false ? '；ssh 服务没在跑' : ''}`}</div>
-    ${on ? html`<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+      : html`<b>${pwState}</b>，${keys.length ? `登记了 ${keys.length} 把钥匙` : '一把钥匙都没登记'}${ssh.ssh_active === false ? '；ssh 服务没在跑' : ''}`}</div>
+    ${on || keys.length ? html`<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
       <code class="num ssh-cmd" style="padding:6px 10px;background:#F2F2F7;border-radius:8px">${cmd}</code>
       <button type="button" onClick=${copy} style="height:34px;padding:0 14px;border:0;border-radius:999px;background:#E5E5EA">复制</button></div>
-      <div style="font-size:13px;color:var(--text-2)">Windows 打开 PowerShell、Mac 打开终端，运行上面这行；第一次会问 yes/no，输 yes。</div>` : null}
+      <div style=${small}>Windows 打开 PowerShell、Mac 打开终端，运行上面这行；第一次会问 yes/no，输 yes。</div>` : null}
     ${!hasPassword ? html`<div class="ssh-need-web-pw" role="note" style="font-size:13px;color:var(--warn, #B25000)">
-      先在上面设网页登录密码，才能打开 SSH：不然连上热点的人都能打开这个网页、顺手把 SSH 打开。</div>` : html`
-    <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text-2)">
-      ${on ? '新的 SSH 密码' : 'SSH 密码'}
-      <input type="password" name="ssh-password" autocomplete="new-password" value=${pw} minLength="8" maxLength="64"
-        onInput=${(e) => setPw(e.target.value)} style=${input} /></label>
-    <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text-2)">
-      再输一遍
-      <input type="password" name="ssh-confirm" autocomplete="new-password" value=${again} minLength="8" maxLength="64"
-        onInput=${(e) => setAgain(e.target.value)} style=${input} /></label>`}
+      先在上面设网页登录密码，才能打开 SSH、登记钥匙：不然连上热点的人都能打开这个网页、顺手把 SSH 打开。</div>` : null}
     ${err ? html`<div role="alert" style="font-size:13px;color:var(--danger)">${err}</div>` : null}
     ${msg ? html`<div class="ssh-msg" style="font-size:13px;color:var(--text-2)">${msg}</div>` : null}
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-      <button type="submit" class="ssh-on" disabled=${busy || !hasPassword || ssh == null || !pw || !again}
-        style="height:40px;padding:0 18px;border:0;border-radius:999px;background:var(--blue);color:#FFF;font-weight:600">
-        ${busy ? '正在设…' : (on ? '改 SSH 密码' : '打开 SSH 密码登录')}</button>
-      ${on ? html`<${TwoStep} label="关掉 SSH 密码登录" ask="真的关掉？" onConfirm=${off} />` : null}
-    </div>
-  </form>`;
+
+    <form class="ssh-pw" onSubmit=${submitPw} style="display:flex;flex-direction:column;gap:10px;padding-top:8px;border-top:1px solid var(--line)">
+      <div style="font-size:14px;font-weight:600">办法一：密码登录</div>
+      <div style=${small}>至少 8 位，不能是 microduck。这个密码也是鸭子上 sudo 用的密码。</div>
+      ${hasPassword ? html`
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text-2)">
+        ${on ? '新的 SSH 密码' : 'SSH 密码'}
+        <input type="password" name="ssh-password" autocomplete="new-password" value=${pw} minLength="8" maxLength="64"
+          onInput=${(e) => setPw(e.target.value)} style=${input} /></label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text-2)">
+        再输一遍
+        <input type="password" name="ssh-confirm" autocomplete="new-password" value=${again} minLength="8" maxLength="64"
+          onInput=${(e) => setAgain(e.target.value)} style=${input} /></label>` : null}
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+        <button type="submit" class="ssh-on" disabled=${busy || !hasPassword || ssh == null || !pw || !again} style=${blue}>
+          ${busy ? '正在设…' : (on ? '改 SSH 密码' : '打开 SSH 密码登录')}</button>
+        ${on ? html`<${TwoStep} label="关掉 SSH 密码登录" ask="真的关掉？" onConfirm=${off} />` : null}
+      </div>
+    </form>
+
+    <form class="ssh-key" onSubmit=${submitKey} style="display:flex;flex-direction:column;gap:10px;padding-top:8px;border-top:1px solid var(--line)">
+      <div style="font-size:14px;font-weight:600">办法二：登记钥匙（不用密码，更安全）</div>
+      <div style=${small}>
+        还没有钥匙的话：Windows 在 PowerShell 里运行 <code>ssh-keygen -t ed25519</code>，一路回车；
+        再运行 <code>type $env:USERPROFILE\\.ssh\\id_ed25519.pub</code>（Mac：<code>cat ~/.ssh/id_ed25519.pub</code>），
+        把打出来的那一整行贴到下面。<b>只贴 .pub 那个</b>，另一个是私钥，别给任何人。</div>
+      ${keys.length ? html`<ul class="ssh-keys" style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px">
+        ${keys.map((k) => html`<li key=${k.fp} style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px">
+          <span>${k.comment || '（没注释）'}</span><code class="num" style="color:var(--text-2)">${k.type} ${k.fp.slice(0, 19)}…</code>
+          ${hasPassword ? html`<${TwoStep} label="删掉" ask="真的删掉这把？" onConfirm=${() => removeKey(k.fp)} />` : null}</li>`)}
+      </ul>` : null}
+      ${hasPassword ? html`<textarea name="ssh-key" rows="3" value=${key} onInput=${(e) => setKey(e.target.value)}
+        placeholder="ssh-ed25519 AAAA… 你的电脑名" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:13px/1.5 ui-monospace,monospace;resize:vertical"></textarea>` : null}
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+        <button type="submit" class="ssh-addkey" disabled=${busy || !hasPassword || !key.trim()} style=${blue}>登记这把钥匙</button>
+      </div>
+    </form>
+  </div>`;
 }
 
 function Settings({ st, tune }) {
