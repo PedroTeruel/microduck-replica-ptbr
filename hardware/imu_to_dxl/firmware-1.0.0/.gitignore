@@ -1,0 +1,9 @@
+Build/
+.venv/
+__pycache__/
+*.pyc
+*.uvguix.*
+*.bak
+*.dep
+*.o
+*.obj
