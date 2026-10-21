@@ -106,31 +106,20 @@ The dated log is further down under [Latest](#latest).
 <tr>
 <td width="50%" valign="top">
 
-### 🔌 Electronics · IMU fixed, it walks; three new boards drawn (2026-10)
+### 🔌 Electronics · three new boards drawn (2026-10)
 
-<p align="center"><a href="assets/走路-2026-10-15.mp4"><img src="assets/走路-2026-10-15.gif" alt="2026-10-15: walking on a wooden floor after the IMU fix (click for the 5 s video)" width="220"></a></p>
+**Three custom boards are drawn, not yet made or tested.** EasyEDA Pro projects and whole-board 3D models (for checking the fit against the frame) are in **[`hardware/新版/`](hardware/新版/)** (Chinese). Gerbers, BOMs and wiring tables are not out yet.
 
-It used to fall after two or three steps of pushing the stick; the cause was the BNO085's own fused orientation jumping while walking. With robotd carrying the attitude on the chip's own gyro, 60 s of pushing the stick gave no fall (kissqy V167 + our fork, default servo gains, silicone feet). Turning is still weak; we are on it. **[How it was found and fixed](docs/HD1910-20261015-IMU乱跳根因与陀螺融合上机.md)** (Chinese).
-
-**New custom boards · three of them drawn (2026-10, not yet made or tested):** EasyEDA Pro projects and whole-board 3D models (for checking the fit against the frame) are in **[`hardware/新版/`](hardware/新版/)** (Chinese). Gerbers, BOMs and wiring tables are not out yet.
-
-- **Bus IMU board v2**: the IMU board that sits on the servo bus (LSM6DSV16X + STM32G031), the old circuit laid out again; the servo connector is now an A2007WR-3P that takes the Feetech plug, the external crystal is gone, the bus series resistor is now 0 Ω, and firmware 0.2.0 runs unchanged. Routed; when it arrives, measure the bus low level first, and since the IMU chip is rotated 180° the mount has to be found again on the duck.
-- **Servo bus hub**: battery in and bus split, connectors only (1.2 mm 3P ×2, 2.0 mm 3P right-angle and vertical ×2 each). Not made yet; the battery terminal CN1 is 8.4 mm tall and hits the frame, to be swapped for a low one.
-- **Battery terminal board**: two banana sockets and two wire pads, 39 × 6.8 mm. Holes, pads and traces follow the reference board; not made yet.
+- **Bus IMU board v2**: the IMU board that sits on the servo bus (LSM6DSV16X + STM32G031), the old circuit laid out again; the servo connector is now an A2007WR-3P that takes the Feetech plug, the external crystal is gone, and the bus series resistor is now 0 Ω. The firmware is unchanged — [0.2.0](hardware/imu_to_dxl/firmware/) and [1.0.0](hardware/imu_to_dxl/firmware-1.0.0/) both work — and the main program in replica image 20261021b and later recognises it. When it arrives, measure the bus low level first; the IMU chip is rotated 180°, so the mount has to be calibrated again on the duck.
+- **Servo bus hub**: battery in and bus split, connectors only (1.2 mm 3P ×2, 2.0 mm 3P right-angle and vertical ×2 each). The battery terminal CN1 is 8.4 mm tall and hits the frame, to be swapped for a low one.
+- **Battery terminal board**: two banana sockets and two wire pads, 39 × 6.8 mm. Holes, pads and traces follow the reference board.
 
 The pinouts of the hub and the IMU board line up, so straight-through leads connect them.
 
-**Earlier: first power-on, 09-18** ([30 s video](assets/首次上电-2026-09-18.mp4))
-
-First time the assembled duck was on the bus: URT-2 over USB, 7.4 V into V1, **all 15 HD-1910 online, 0 timeouts, 0 checksum errors**, one sync_read of 15 servos in 4.8 ms.
-Driven from the new [web servo console](tools/servo-web/) in this repo: sliders, saved poses, sequences, a 3D model that follows the real robot and a live centre-of-mass marker against the foot support.
-In the video it stands up from the tucked pose **by itself**, then sits back down. **First step of the Feetech software path works**; the hardware plan holds.
-
-The above is the 09-18 test. Earlier on 09-28, the failed ID 21 servo was replaced with the former mouth servo (ID 34), with centre calibration confirmed at 2048. The operator later assigned the mouth ID 29, whose firmware/model fields were detected during a scan. This test covers 14 joints; mouth ID 29 is excluded at the operator's request and remains unverified. The old “all 15 online” result is not the current acceptance result. Feetech-protocol [`imu_to_dxl` firmware 0.2.0](hardware/imu_to_dxl/firmware/) is available; physical bus testing is still pending.
-
-**[Web servo console](tools/servo-web/)**　·　
-**[Debug log](调试记录.md)** (zero pose, joint direction, stance pitfalls)　·　
-[Pitfalls](踩坑记录.md#工具) (URT-2: USB first, then servo power)　·　
+**[The three new boards](hardware/新版/)**　·
+[Original bus IMU board and firmware](hardware/imu_to_dxl/)　·
+**[Debug log](调试记录.md)**　·
+[Pitfalls](踩坑记录.md)　·
 [Feetech adaptation architecture](software/飞特适配架构.md) (zh)
 
 </td>
@@ -162,35 +151,33 @@ horns were remodelled and reprinted. The editable SolidWorks drawings have an FT
 <tr>
 <td width="50%" valign="top">
 
-### 💻 Software · Studio web console + replica image (2026-10-20)
+### 💻 Software · Studio web console + replica image — please try it (2026-10)
 
 <p align="center"><a href="software/studio/"><img src="assets/studio-overview.png" alt="Microduck Studio overview: 3D duck, battery, servos, IMU, gamepad, board temperature and the getting-started checklist" width="420"></a></p>
 
-**Microduck Studio: a web console that runs on the duck, written by us.** Open `http://<duck IP>:8000/` in a browser on a computer or phone to watch the robot, tune servos, pair a gamepad and make it walk — no SSH, no commands (the interface is in Chinese):
+**It works well now.** On the evening of 10-21 a newly built duck was flashed with the replica image, joined from a phone over its hotspot, given the home WiFi in the web page, and taken through the getting-started checklist: servo zero → stand it up in commissioning mode for the standing IMU check → write into the main program → pair a Bluetooth pad → test the e-stop → stand up and walk with the stick. All in the browser, not one command typed.
 
-- **Overview**: a 3D duck that follows the real one; battery, servos, IMU, gamepad and board temperature at a glance; one-click relax at the top right (or the space bar);
-- **Getting-started checklist**: servo zero → IMU mount → write into the main program → pair a gamepad → test the e-stop → stand up and take a few steps, telling you what to do next at each step;
-- **Servos**: scan all 15, drag sliders, centre-calibrate one or all, direction, P / D / torque limit;
-- **IMU**: a rough pass with the duck held in both hands, then a fine pass once it can stand, to work out how the IMU is mounted;
-- **Write into the main program**: zeros, directions and the IMU mount go into the main program's calibration in one go, so the duck walks from the gamepad at boot without opening the page;
-- **WiFi** (replica image only): when the duck finds no WiFi it opens its own hotspot; join it from a phone and enter your home WiFi at the top of the overview;
-- **Gamepad**: Bluetooth pairing (through the official pairing path), an on-screen gamepad, e-stop test;
-- **Remote**: stand up, walk, sit down, skills and moves;
-- **Logs**: categorised and levelled; export a diagnostics bundle in one click to ask for help.
+**Microduck Studio** is a web console that runs on the duck, written by us; open it in a browser on a phone or computer (the interface is in Chinese):
 
-**Replica image (pre-release, real-duck test in progress)**: one card with everything — our fork of the main program, the walking and skill models, Studio, and a first boot that names the duck, finds the IMU and opens a hotspot for WiFi setup. Flash → boot → join the duck's `Microduck-xxxx` hotspot from a phone → enter your home WiFi in Studio → follow the checklist, no SSH at any point. The 10-21 build fixes what a fresh card turned up on a real duck: every checklist step can be skipped, skipping the IMU step still gets you into motion mode, the robot can stand in commissioning mode for the standing IMU check, Studio opens with Clash running, the page follows the duck to its new address after WiFi setup, and Studio's More page turns on SSH with a password you choose or a public key you register; the bus IMU may also be this repository's own imu_to_dxl board. The full run on our second duck is not finished yet, so it is out as a pre-release: **[download (Releases)](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261021b)** · [flashing and first use](software/image/烧录和第一次使用.md) (Chinese). The image is free, for personal non-commercial builds only, and is not distributed with any paid product (the models in it are under their author's personal non-commercial licence).
+- **Overview and checklist**: a 3D duck that follows the real one; battery, servos, IMU and pad at a glance; each step tells you what to do, and you can mark a step done or skip it;
+- **Servos, IMU**: sliders, centre calibration, directions; standing IMU calibration;
+- **Pad and remote**: Bluetooth pairing, an on-screen pad, e-stop test; stand up, walk, skills;
+- **WiFi, SSH**: the duck opens its own hotspot when it finds no WiFi; the More page turns on SSH with a password you choose, so you can log in and fix things without reflashing;
+- **Logs**: export a diagnostics bundle in one click.
 
-**What has been tested**: Studio runs as a boot service on our second duck; gamepad pairing and the e-stop were tested on it. "Write into the main program", WiFi setup and the replica image have not been tested on a real duck yet; we are on it. Not done yet: editing the walking feel from the page.
+**We would like more people to use it and tell us how it goes.** If you have a Feetech HD-1910 duck, flash a card and try it: where you got stuck, what was unclear, what was awkward. Open an [issue](https://github.com/fanhao375/microduck-replica/issues) or post in the WeChat group, attach the diagnostics bundle from the More page, and say which step you were on.
 
-The main program is our fork [fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy): an IMU module (BNO085 / LSM6DSV16X) goes straight onto the board's I²C with four wires — no bus IMU board to build — and integrating the gyro fixed the attitude jumps while walking. Studio is tested on it.
+**Not working yet**: put a Thunderobot G50 Pro in X (Xbox) mode — in S (Switch) mode it pairs but the buttons never arrive; the bus IMU board has not been on a robot; the walking feel cannot be tuned from the page yet.
 
+The image is free, for personal non-commercial builds only, and is not distributed with any paid product (the models in it are under their author's personal non-commercial licence).
+
+**[Download the image](https://github.com/fanhao375/microduck-replica/releases/latest)**　·
+**[Flashing and first use](software/image/烧录和第一次使用.md)** (Chinese)　·
 **[Studio](software/studio/)** (Chinese)　·
-**[Replica image](software/image/)** (Chinese)　·
+[How the image is built](software/image/) (Chinese)　·
 [Software overview](software/) (Chinese)　·
-**[Installing it on the duck](software/studio/README.md#装到鸭子上)**　·
-[Bench mode: tune servos with no main board](software/studio/README.md#台架模式主控没烧用飞特调试板在电脑上调舵机)　·
-[IMU module wiring and install](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-trunk-imu-i2c/IMU-MODULE.md)　·
-[The older web console, servo-web](tools/servo-web/)　·
+[Main program fork](https://github.com/fanhao375/Microduck-kissqy)　·
+[IMU module wiring](https://github.com/fanhao375/Microduck-kissqy/blob/hd1910-v167-trunk-imu-i2c/IMU-MODULE.md)　·
 [Feetech official docs](docs/飞特资料/)
 
 </td>
