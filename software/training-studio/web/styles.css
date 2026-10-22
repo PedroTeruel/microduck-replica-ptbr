@@ -1,5 +1,79 @@
 @charset "UTF-8";
 
+/* Action goals share the training drawer and the Studio panel language. */
+.action-lab { margin-top: 24px; padding: 24px; }
+.action-lab-heading, .action-lab-body { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.action-lab-heading { align-items: flex-start; }
+.action-lab .eyebrow { display: block; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
+.action-lab-heading h2 { font-size: 22px; }
+.action-lab-heading p, .action-lab-goal p { margin-top: 6px; color: var(--muted); font-size: 13px; }
+.action-lab-body { margin-top: 24px; }
+.action-lab-goal { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.action-lab-goal > div { min-width: 0; }
+.action-lab-goal .small-copy { display: block; margin-top: 6px; }
+.action-glyph { display: grid; place-items: center; flex-shrink: 0; width: 64px; height: 64px; border-radius: 16px; background: var(--page); color: var(--ink); }
+.action-lab-steps { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 24px 0 0; padding: 18px 0 0; list-style: none; border-top: 1px solid var(--line); }
+.action-lab-steps li { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.action-lab-steps b { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--page); color: var(--ink); font-weight: 500; }
+.action-lab-note { margin-top: 12px; color: var(--muted); font-size: 12px; }
+.action-lab-badges { display: flex; align-items: flex-end; flex-direction: column; gap: 8px; }
+.skill-form { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
+.skill-experimental { margin-bottom: 16px; }
+.skill-side-options, .skill-number-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.skill-side { position: relative; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.skill-side.chosen { border-color: var(--blue); background: var(--blue-soft); box-shadow: inset 0 0 0 1px var(--blue); }
+.skill-side:has(input:focus-visible) { outline: 2px solid var(--blue); outline-offset: 2px; }
+.skill-side input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.skill-side b { display: block; font-size: 14px; font-weight: 600; }
+.skill-side small { display: block; margin-top: 3px; color: var(--muted); }
+.skill-number-fields { margin-top: 18px; }
+.skill-number-fields .advanced-field > span { justify-content: space-between; }
+.skill-preview { margin: 20px 0 0; }
+.duck-stage.skill-stage { height: 280px; margin: 0; border-radius: 14px; }
+.skill-stage-caption { position: absolute; bottom: 16px; left: 16px; z-index: 3; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 65px); pointer-events: none; }
+.skill-stage-caption span { padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,.35); color: #FFF; font-size: 12px; }
+.skill-reset-view { position: absolute; bottom: 16px; right: 14px; z-index: 4; }
+.skill-preview figcaption { padding-top: 10px; font-size: 12px; line-height: 1.6; }
+.skill-preview figcaption b { display: block; color: var(--ink); font-weight: 500; }
+.skill-preview figcaption > span { display: block; margin-top: 4px; color: var(--muted); }
+.skill-phases { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 18px; color: var(--ink); font-size: 12px; }
+.skill-phases i { color: var(--muted); font-style: normal; }
+.skill-form > .text-button { margin-top: 8px; }
+.skill-saved-goal { margin: 18px 24px 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--page); }
+.skill-saved-goal .field-label { margin-bottom: 6px; font-size: 13px; }
+.skill-saved-goal p { font-size: 13px; line-height: 1.7; }
+.skill-saved-goal small { display: block; margin-top: 6px; color: var(--muted); }
+.evaluation-summary { margin: 0 24px 20px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.evaluation-summary > div { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.evaluation-summary > div > b { font-size: 14px; font-weight: 600; }
+.evaluation-summary p { margin-top: 10px; font-size: 13px; }
+.evaluation-summary p strong { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.evaluation-summary > small { display: block; margin-top: 8px; color: var(--muted); line-height: 1.7; }
+.evaluation-summary.is-demo { background: var(--warn-bg); border-color: var(--warn-edge); }
+.evaluation-trials { margin-top: 16px; border-top: 1px solid var(--border); }
+.evaluation-trials summary { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; color: var(--link); font-size: 13px; cursor: pointer; list-style: none; }
+.evaluation-trials summary::-webkit-details-marker { display: none; }
+.evaluation-trials[open] summary > .icon { transform: rotate(180deg); }
+.evaluation-trials ol { margin: 12px 0 0; padding: 0; list-style: none; }
+.evaluation-trials li { padding: 12px 0; border-top: 1px solid var(--line); }
+.evaluation-trials li:last-child { padding-bottom: 0; }
+.evaluation-trials li > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+.evaluation-trials li p { font-size: 12px; }
+.evaluation-trials li small { display: block; margin-top: 6px; color: var(--warn); }
+@media (max-width: 600px) {
+  .action-lab { padding: 18px; }
+  .action-lab-body { align-items: stretch; flex-direction: column; gap: 18px; }
+  .action-lab-heading { flex-direction: column; gap: 12px; }
+  .action-lab-badges { flex-direction: row; align-items: center; flex-wrap: wrap; }
+  .action-lab-heading h2 { font-size: 20px; }
+  .action-glyph { width: 48px; height: 56px; border-radius: 12px; }
+  .action-lab-steps { display: grid; gap: 12px; }
+  .duck-stage.skill-stage { height: 250px; }
+  .skill-stage .stage-label { top: 12px; left: 12px; font-size: 11px; }
+  .skill-saved-goal { margin: 16px 18px 0; }
+  .evaluation-summary { margin: 0 16px 16px; padding: 14px; }
+}
+
 /* Shared visual language with software/studio/web/styles.css. */
 :root {
   --page: #F2F2F7;

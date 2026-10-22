@@ -6,6 +6,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from .config import RECIPES
+
 
 def runtime_environment():
     """Use the same rendering backend for prerequisite probes and engine jobs."""
@@ -30,8 +32,9 @@ def inspect_environment(training_root, demo=False):
     uv = shutil.which("uv")
     add("uv", bool(uv) or demo, uv or "未找到 uv；本工具不自动安装依赖。")
     venv = root / ".venv" / "bin" / "python"
-    add("已安装的锁定环境", venv.is_file() or demo, "真实模式要求已按 uv.lock 准备 .venv；运行时 --frozen --no-sync --offline。")
+    add("已安装的锁定环境", demo or venv.is_file(), "真实模式要求已按 uv.lock 准备 .venv；运行时 --frozen --no-sync --offline。")
     gpu = None
+    dependency_versions = {}
     if not demo and linux and files_ok and uv and venv.is_file():
         environment = runtime_environment()
         probe = (
@@ -43,8 +46,15 @@ def inspect_environment(training_root, demo=False):
             " raise SystemExit(0)\n"
             "import importlib.metadata as m,torch,mjlab_microduck.tasks; "
             "from mjlab.tasks.registry import list_tasks; "
-            "from mjlab.rl.config import RslRlBaseRunnerCfg; "
+            "from mjlab.rl.config import RslRlBaseRunnerCfg\n"
+            "versions = {}\n"
+            "for name in ['mjlab','rsl-rl-lib','torch','mujoco-warp']:\n"
+            " try:\n"
+            "  versions[name] = m.version(name)\n"
+            " except m.PackageNotFoundError:\n"
+            "  pass\n"
             "print(json.dumps({'gl':True,'version':m.version('mjlab'),'cuda':torch.cuda.is_available(),"
+            "'dependency_versions':versions,"
             "'gpu':torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,"
             "'tasks':list_tasks(),'resume':all(k in RslRlBaseRunnerCfg.__dataclass_fields__ for k in ['resume','load_run','load_checkpoint'])}))"
         )
@@ -56,13 +66,16 @@ def inspect_environment(training_root, demo=False):
             data = json.loads(output.stdout.strip().splitlines()[-1]) if output.returncode == 0 else {}
             gl_detail = "图形后端导入通过。" if data.get("gl") else data.get("gl_error") or output.stderr[-1200:] or "图形后端未通过检查。"
             add("MuJoCo 图形后端", data.get("gl"), f"MUJOCO_GL={environment['MUJOCO_GL']}；{gl_detail}")
-            expected = {"Mjlab-Velocity-Flat-MicroDuck-HD1910", "Mjlab-Velocity-Rough-MicroDuck-HD1910"}
+            expected = {recipe["task_id"] for recipe in RECIPES}
             ok = data.get("version") == "1.3.0" and data.get("cuda") and data.get("resume") and expected.issubset(data.get("tasks", []))
             gpu = data.get("gpu")
+            dependency_versions = data.get("dependency_versions", {})
             add("CUDA 与 mjlab 1.3.0", ok, gpu or output.stderr[-1200:] or ("图形后端未通过，未继续检查 CUDA 与任务。" if data.get("gl_error") else "CUDA、任务注册或恢复接口未通过检查。"))
         except (OSError, subprocess.TimeoutExpired, ValueError, IndexError) as exc:
             add("CUDA 与 mjlab 1.3.0", False, str(exc))
     else:
         add("CUDA 与 mjlab 1.3.0", demo, "演示不需要 GPU。" if demo else "前置条件不足，未启动 GPU 探测。")
     return {"ready": all(c["ok"] for c in checks), "pause_supported": demo or linux,
-            "checks": checks, "gpu": gpu, "training_root": str(root)}
+            "checks": checks, "gpu": gpu, "training_root": str(root),
+            "dependency_versions": dependency_versions,
+            "dependency_versions_source": "installed Python distributions" if dependency_versions else "unavailable"}

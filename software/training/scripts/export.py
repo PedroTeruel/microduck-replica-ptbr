@@ -1,6 +1,7 @@
 """Script to play RL agent with RSL-RL."""
 
 import os
+import json
 import re
 import sys
 from dataclasses import asdict, dataclass
@@ -30,6 +31,7 @@ class ExportConfig:
     checkpoint: int | None = None      # Select checkpoint by iteration number (e.g. 3000)
     checkpoint_file: str | None = None
     motion_file: str | None = None
+    balance_config: str | None = None
     num_envs: int | None = None
     device: str | None = None
     video: bool = False
@@ -50,6 +52,18 @@ def run_export(task_id: str, cfg: ExportConfig):
 
     env_cfg = load_env_cfg(task_id, play=True)
     agent_cfg = load_rl_cfg(task_id)
+    balance_contract = None
+    from mjlab_microduck.balance_parameters import (
+        BALANCE_TASK_ID, apply_balance_parameters, balance_command_contract,
+    )
+    if task_id == BALANCE_TASK_ID:
+        if cfg.balance_config is None:
+            raise ValueError("Balance export requires --balance-config with the saved skill parameters")
+        saved_skill = json.loads(Path(cfg.balance_config).read_text(encoding="utf-8"))
+        applied_skill = apply_balance_parameters(env_cfg, saved_skill)
+        balance_contract = balance_command_contract(applied_skill)
+    elif cfg.balance_config is not None:
+        raise ValueError("--balance-config is only supported by the HD1910 balance task")
 
     DUMMY_MODE = cfg.agent in {"zero", "random"}
     TRAINED_MODE = not DUMMY_MODE
@@ -238,7 +252,12 @@ def run_export(task_id: str, cfg: ExportConfig):
     runner.export_policy_to_onnx(path, filename)
 
     metadata = get_base_metadata(runner.env.unwrapped, run_path=cfg.checkpoint_file)
+    if balance_contract is not None:
+        metadata["microduck_skill_contract"] = json.dumps(balance_contract, sort_keys=True)
     attach_metadata_to_onnx(onnx_path, metadata)
+    if balance_contract is not None:
+        Path(onnx_path + ".skill.json").write_text(
+            json.dumps(balance_contract, indent=2), encoding="utf-8")
 
     print(f"Written {onnx_path}")
 

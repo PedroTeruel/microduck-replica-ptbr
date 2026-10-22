@@ -7,6 +7,37 @@ export const CONFIG_FIELDS = [
 ];
 export const FALLBACK_DEFAULTS = {num_envs:2048,iterations:1000,save_interval:50,seed:42,learning_rate:0.001};
 export function defaultsFor(recipe) { return {...FALLBACK_DEFAULTS,...recipe?.defaults}; }
+export function metersToCm(value) { return value===''||value===null||value===undefined?'':Number((Number(value)*100).toFixed(6)); }
+export function cmToMeters(value) { return typeof value==='string'&&!value.trim()?'':Number((Number(value)/100).toFixed(8)); }
+export function normalizeSkill(recipe, value) {
+  if(!recipe?.skill_defaults)return null;
+  if(value!==undefined&&value!==null&&(typeof value!=='object'||Array.isArray(value)))throw new Error('请检查动作目标参数');
+  const fields=['support_side','lift_height_m','hold_seconds'];
+  if(Object.keys(value||{}).some(key=>!fields.includes(key)))throw new Error('动作目标包含不支持的参数');
+  const skill={...recipe.skill_defaults,...value},limits=recipe.skill_limits||{};
+  if(!(limits.support_side||['left','right']).includes(skill.support_side))throw new Error('请选择机器人自身的左脚或右脚作为支撑脚');
+  for(const key of ['lift_height_m','hold_seconds']) {
+    const raw=skill[key],n=Number(raw),limit=limits[key];
+    if(raw===null||typeof raw==='boolean'||(typeof raw==='string'&&!raw.trim())||!Number.isFinite(n)||!limit||n<limit.min||n>limit.max)throw new Error(key==='lift_height_m'?'请填写范围内的抬脚高度':'请填写范围内的保持时间');
+    skill[key]=n;
+  }
+  return skill;
+}
+export function skillSummary(skill) {
+  if(!skill)return '';
+  return `${skill.support_side==='right'?'右':'左'}脚支撑 · ${skill.support_side==='right'?'左':'右'}脚抬高 ${formatNumber(metersToCm(skill.lift_height_m),2)} cm · 保持 ${formatNumber(skill.hold_seconds,1)} 秒`;
+}
+export function recipeTitle(value, recipes=[]) {
+  const id=typeof value==='string'?value:value?.recipe_id||value?.id;
+  return recipes.find(r=>r.id===id)?.title||value?.title||value?.recipe_title||({'hd1910-flat':'HD1910 平地行走','hd1910-rough':'HD1910 起伏地形','hd1910-single-leg':'HD1910 单脚平衡'}[id])||id||'训练配方';
+}
+export function runDraft(run) {
+  return {recipe_id:run.recipe_id,config:run.kind==='smoke'?{seed:run.config.seed,learning_rate:run.config.learning_rate}:{...run.config},profile:run.profile,kind:run.kind==='smoke'&&run.status==='completed'?'train':'smoke',...(run.skill?{skill:{...run.skill}}:{})};
+}
+export function evaluationStats(result, demo=false) {
+  if(demo||!Number.isInteger(result?.trials)||result.trials<=0||!Number.isInteger(result?.successes)||result.successes<0||result.successes>result.trials)return null;
+  return {trials:result.trials,successes:result.successes,success_rate:result.successes/result.trials};
+}
 export function advancedChanges(config, defaults) {
   return CONFIG_FIELDS.filter(f => Number(config[f.key]) !== Number(defaults[f.key])).map(f=>({...f,value:Number(config[f.key]),original:Number(defaults[f.key])}));
 }
@@ -15,8 +46,9 @@ export function effectiveConfig(form, defaults) {
   return form.kind === 'smoke' ? {...config,num_envs:64,iterations:5,save_interval:1} : config;
 }
 function canonical(value) { return JSON.stringify(value, function(key, v) {return v && typeof v==='object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])) : v;}); }
-export function hasMatchingSmoke(runs,recipeId,mode,config,profile=null) {
-  return runs.some(r=>r.recipe_id===recipeId&&r.mode===mode&&r.kind==='smoke'&&r.status==='completed'&&Number(r.config?.seed)===Number(config.seed)&&Number(r.config?.learning_rate)===Number(config.learning_rate)&&canonical(r.profile??null)===canonical(profile));
+export function hasMatchingSmoke(runs,recipeId,mode,config,profile=null,skill=null) {
+  const goal=s=>s?canonical({...s,lift_height_m:Number(s.lift_height_m),hold_seconds:Number(s.hold_seconds)}):null;
+  return runs.some(r=>r.recipe_id===recipeId&&r.mode===mode&&r.kind==='smoke'&&r.status==='completed'&&Number(r.config?.seed)===Number(config.seed)&&Number(r.config?.learning_rate)===Number(config.learning_rate)&&canonical(r.profile??null)===canonical(profile)&&goal(r.skill)===goal(skill));
 }
 export function runActions(run, environment={}) {
   const status=run?.status, ready=['stopped','completed','failed','interrupted'].includes(status);

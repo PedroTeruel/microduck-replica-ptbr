@@ -6,6 +6,7 @@ from dataclasses import dataclass as _dataclass
 import numpy as np
 import torch
 from typing import TYPE_CHECKING, Optional
+from typing import Literal as _Literal
 import mujoco
 
 from mjlab.envs.manager_based_rl_env import ManagerBasedRlEnv
@@ -7186,3 +7187,240 @@ def roulade_lateral_velocity_penalty(
     """Body-frame lateral (y) linear velocity² — keeps the roll straight."""
     asset: Entity = env.scene[asset_cfg.name]
     return torch.nan_to_num(asset.data.root_link_lin_vel_b[:, 1].pow(2), nan=0.0)
+
+
+# Single-leg balance: task-space goals, never a hand-authored joint pose.
+from mjlab_microduck.balance_parameters import (
+    MAX_TILT_RAD as _BALANCE_MAX_TILT,
+    validate_balance_parameters as _validate_balance,
+)
+
+
+class BalanceCommand(CommandTerm):
+    """One init → lift → hold → return cycle, reset independently per world.
+
+    The twist slot is [support sign, scheduled sole clearance, phase / 3].
+    It retains the 61D family shape but needs its own deployment scheduler.
+    """
+
+    def __init__(self, cfg, env):
+        super().__init__(cfg, env)
+        self.skill = _validate_balance({name: getattr(cfg, name) for name in
+                                       ("support_side", "lift_height_m", "hold_seconds")})
+        self.elapsed_s = torch.zeros(self.num_envs, device=self.device)
+        self.phase = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        self._command = torch.zeros(self.num_envs, 3, device=self.device)
+        self.support_index = 0 if cfg.support_side == "left" else 1
+        self.swing_index = 1 - self.support_index
+        self.cycle_seconds = self.skill["hold_seconds"] + 3.5
+        self._geometry = None
+        self._update_command()
+
+    @property
+    def command(self):
+        return self._command
+
+    def reset(self, env_ids):
+        if env_ids is None or isinstance(env_ids, slice):
+            env_ids = torch.arange(self.num_envs, device=self.device)[env_ids or slice(None)]
+        self.elapsed_s[env_ids] = 0.
+        self.phase[env_ids] = 0
+        self._update_command()
+        return {}
+
+    def compute(self, dt):
+        # Auto-reset runs compute(dt) after a fresh world has been reset. That
+        # world must still receive phase zero, not skip its first control frame.
+        self.elapsed_s += (self._env.episode_length_buf > 0).float() * dt
+        self._update_command()
+
+    def _resample_command(self, env_ids):
+        pass
+
+    def _update_metrics(self):
+        pass
+
+    def _update_command(self):
+        t = self.elapsed_s
+        end_hold = 2. + self.skill["hold_seconds"]
+        self.phase[:] = torch.where(t < 1., 0, torch.where(t < 2., 1,
+                                  torch.where(t < end_hold, 2, 3)))
+        alpha = torch.minimum(torch.clamp(t - 1., 0., 1.),
+                              torch.clamp(end_hold + 1. - t, 0., 1.))
+        self._command[:, 0] = 1. if self.support_index == 0 else -1.
+        self._command[:, 1] = alpha * self.skill["lift_height_m"]
+        self._command[:, 2] = self.phase.float() / 3.
+
+
+@_dataclass(kw_only=True)
+class BalanceCommandCfg(CommandTermCfg):
+    support_side: _Literal["left", "right"] = "left"
+    lift_height_m: float = .01
+    hold_seconds: float = 3.
+    contract_version: str = "microduck.single_leg_balance.v1"
+
+    def build(self, env):
+        return BalanceCommand(self, env)
+
+
+def _balance_geometry(env, command):
+    """Cache actual sole vertices plus projected outline in each foot frame."""
+    if command._geometry is not None:
+        return command._geometry
+    from scipy.spatial import ConvexHull
+
+    robot = env.scene["robot"]
+    model = env.sim.mj_model
+    feet = []
+    for side in ("left", "right"):
+        gid = robot.find_geoms(f"{side}_foot_collision")[0][0]
+        sid = robot.find_sites(f"{side}_foot")[0][0]
+        global_g = int(robot.indexing.geom_ids[gid])
+        global_s = int(robot.indexing.site_ids[sid])
+        if model.geom_bodyid[global_g] != model.site_bodyid[global_s]:
+            raise ValueError("Balance foot site and sole must be on the same body")
+        mesh = model.geom_dataid[global_g]
+        start, count = model.mesh_vertadr[mesh], model.mesh_vertnum[mesh]
+        vertices = model.mesh_vert[start:start + count].astype(np.float64)
+        gr, sr = np.empty(9), np.empty(9)
+        mujoco.mju_quat2Mat(gr, model.geom_quat[global_g])
+        mujoco.mju_quat2Mat(sr, model.site_quat[global_s])
+        body_vertices = vertices @ gr.reshape(3, 3).T + model.geom_pos[global_g]
+        site_vertices = (body_vertices - model.site_pos[global_s]) @ sr.reshape(3, 3)
+        hull_xy = site_vertices[ConvexHull(site_vertices[:, :2]).vertices, :2]
+        outline = np.column_stack((hull_xy, np.zeros(len(hull_xy))))
+        feet.append((gid, sid, torch.tensor(vertices, dtype=torch.float32, device=env.device),
+                     torch.tensor(outline, dtype=torch.float32, device=env.device)))
+    command._geometry = feet
+    return feet
+
+
+def balance_measurements(env) -> dict[str, torch.Tensor]:
+    """Measured per-world diagnostics, callable on an unwrapped mjlab env.
+
+    Clearance uses the lowest transformed COLLISION mesh vertex above the flat
+    terrain. CoM is whole-robot subtree CoM, not the trunk body's own CoM.
+    com_margin_m describes the projected sole outline, NOT the true contact
+    polygon of a tilted foot; evaluation also requires sustained loaded contact.
+    No reward, termination flag or state is updated by this read-only helper.
+    """
+    command = env.command_manager.get_term("twist")
+    if not isinstance(command, BalanceCommand):
+        raise ValueError("Balance measurements require BalanceCommand")
+    robot = env.scene["robot"]
+    d = robot.data
+    com = env.sim.data.subtree_com[:, robot.indexing.root_body_id]
+    floor_z = env.scene.terrain.env_origins[:, 2]
+    geometry = _balance_geometry(env, command)
+    heights, centers, polygons = [], [], []
+    for gid, sid, vertices, outline in geometry:
+        world = vertices @ matrix_from_quat(d.geom_quat_w[:, gid]).transpose(-1, -2)
+        world = world + d.geom_pos_w[:, gid, None, :]
+        heights.append(world[:, :, 2].amin(dim=1) - floor_z)
+        polygon = outline @ matrix_from_quat(d.site_quat_w[:, sid]).transpose(-1, -2)
+        polygon = polygon[:, :, :2] + d.site_pos_w[:, sid, None, :2]
+        polygons.append(polygon)
+        centers.append((polygon.amin(dim=1) + polygon.amax(dim=1)) / 2.)
+    support, swing = command.support_index, command.swing_index
+    polygon = polygons[support]
+    edges = polygon.roll(-1, dims=1) - polygon
+    relative = com[:, None, :2] - polygon
+    cross = edges[:, :, 0] * relative[:, :, 1] - edges[:, :, 1] * relative[:, :, 0]
+    # Correct winding if the foot has flipped; tilt still rejects that state.
+    area = (polygon[:, :, 0] * polygon.roll(-1, dims=1)[:, :, 1]
+            - polygon[:, :, 1] * polygon.roll(-1, dims=1)[:, :, 0]).sum(dim=1)
+    margin = (cross * torch.sign(area)[:, None]
+              / torch.linalg.vector_norm(edges, dim=-1).clamp_min(1e-6)).amin(dim=1)
+    sensor = env.scene.sensors["feet_ground_contact"].data
+    if sensor.found is None or sensor.force is None:
+        raise ValueError("Balance needs foot contact found AND force fields")
+    forces = torch.linalg.vector_norm(sensor.force[:, :2], dim=-1)
+    contacts = (sensor.found[:, :2] > 0) & (forces >= .5)
+    finite = ~robot_state_is_nan(env, sensor_names=("feet_ground_contact", "nonfoot_ground_contact"))
+    finite &= torch.isfinite(com).all(dim=1)
+    for value in heights:
+        finite &= torch.isfinite(value)
+    end_hold = 2. + command.skill["hold_seconds"]
+    shift = torch.minimum(torch.clamp(command.elapsed_s, 0., 1.),
+                          torch.clamp(end_hold + 1. - command.elapsed_s, 0., 1.))
+    midpoint = (centers[0] + centers[1]) / 2.
+    target_com = midpoint + shift[:, None] * (centers[support] - midpoint)
+    result = {
+        "elapsed_s": command.elapsed_s.clone(), "phase": command.phase.clone(),
+        "target_clearance_m": command.command[:, 1].clone(),
+        "swing_clearance_m": heights[swing], "support_clearance_m": heights[support],
+        "support_contact": contacts[:, support], "swing_contact": sensor.found[:, swing] > 0,
+        "support_force_n": forces[:, support],
+        "nonfoot_contact": balance_nonfoot_contact(env),
+        "tilt_rad": torch.acos((-d.projected_gravity_b[:, 2]).clamp(-1., 1.)),
+        "root_speed_mps": torch.linalg.vector_norm(d.root_link_lin_vel_w, dim=-1),
+        "support_speed_mps": torch.linalg.vector_norm(d.site_lin_vel_w[:, geometry[support][1]], dim=-1),
+        "com_margin_m": margin,
+        "com_error_m": torch.linalg.vector_norm(com[:, :2] - target_com, dim=-1),
+        "finite": finite,
+    }
+    # Keep numerical failures visible via finite=False while preventing NaNs
+    # from entering the reward/observation normalizers.
+    for key, value in result.items():
+        if value.is_floating_point():
+            result["finite"] &= torch.isfinite(value)
+            result[key] = torch.nan_to_num(value, nan=0., posinf=0., neginf=0.)
+    return result
+
+
+def balance_height_reward(env):
+    m = balance_measurements(env)
+    std = torch.maximum(m["target_clearance_m"] * .5,
+                        torch.full_like(m["target_clearance_m"], .004))
+    tracking = torch.exp(-((m["swing_clearance_m"] - m["target_clearance_m"]) / std).square())
+    upright = torch.exp(-(m["tilt_rad"] / .5).square())
+    valid = m["support_contact"] & ~m["nonfoot_contact"] & m["finite"]
+    return tracking * upright * valid.float()
+
+
+def balance_height_cost(env):
+    """Positive cost; use a negative weight. Keeps a dense lift gradient."""
+    m = balance_measurements(env)
+    return ((m["swing_clearance_m"] - m["target_clearance_m"]).abs() / .02).clamp(max=5.)
+
+
+def balance_com_reward(env):
+    m = balance_measurements(env)
+    return torch.exp(-(m["com_error_m"] / .025).square()) * m["finite"].float()
+
+
+def balance_hold_reward(env):
+    m = balance_measurements(env)
+    supported = m["support_contact"] & ~m["swing_contact"] & m["finite"]
+    supported &= ~m["nonfoot_contact"]
+    supported &= m["tilt_rad"] <= _BALANCE_MAX_TILT
+    supported &= m["com_margin_m"] >= -.002
+    tracking = torch.exp(-((m["swing_clearance_m"] - m["target_clearance_m"]) / .004).square())
+    stillness = torch.exp(-(m["root_speed_mps"] / .08).square()
+                          - (m["support_speed_mps"] / .04).square())
+    return (m["phase"] == 2).float() * supported.float() * tracking * stillness
+
+
+def balance_return_reward(env):
+    m = balance_measurements(env)
+    down = (m["phase"] == 3) & (m["target_clearance_m"] <= 1e-6)
+    valid = down & m["support_contact"] & m["swing_contact"] & m["finite"] & ~m["nonfoot_contact"]
+    return valid.float() * torch.exp(-(m["root_speed_mps"] / .08).square()
+                                     - (m["tilt_rad"] / .5).square())
+
+
+def balance_support_slip_cost(env):
+    m = balance_measurements(env)
+    return m["support_speed_mps"].square() * m["support_contact"].float()
+
+
+def balance_cycle_complete(env):
+    command = env.command_manager.get_term("twist")
+    return command.elapsed_s >= command.cycle_seconds - 1e-5
+
+
+def balance_nonfoot_contact(env):
+    found = env.scene.sensors["nonfoot_ground_contact"].data.found
+    if found is None:
+        raise ValueError("Balance requires the non-foot ground contact sensor")
+    return (found.reshape(env.num_envs, -1) > 0).any(dim=1)
