@@ -52,4 +52,4 @@ Files: `dev/browser-check.mjs`, `README.md`, `NOTICE.md`, `.gitignore`, `start-d
 - [x] Align the duck mark, shell, chart colors and mobile navigation without altering training actions.
 - [x] Apply the central Studio palette, typography, cards, buttons and gray CAD stage throughout the stylesheet.
 - [x] Run Node/browser checks and independently review desktop, narrow-screen and drawer screenshots.
-- [ ] Integrate the reviewed style change into `studio-dev` and refresh the local preview.
+- [x] Integrate the reviewed style change into `studio-dev` and refresh the local preview.
