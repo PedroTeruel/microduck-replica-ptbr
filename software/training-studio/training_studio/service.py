@@ -22,6 +22,7 @@ from .config import (RECIPES, RECIPE_BY_ID, StudioError, recipe_config,
                      skill_command_contract, validate_profile, validate_skill)
 from .environment import inspect_environment, runtime_environment
 from .resources import ResourceMonitor
+from .pretrained import pretrained_models
 
 
 ACTIVE = {"starting", "running", "paused", "stopping"}
@@ -150,6 +151,7 @@ class StudioService:
     def state(self):
         with self._condition:
             return {"mode": self.mode, "environment": self.environment(), "recipes": copy.deepcopy(RECIPES),
+                    "pretrained_models": pretrained_models(),
                     "runs": [self._public(r) for r in sorted(self._runs.values(), key=lambda r: r["created_at"], reverse=True)],
                     "active_run_id": self._active}
 

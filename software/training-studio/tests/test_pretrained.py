@@ -1,10 +1,27 @@
 import unittest
+import tempfile
+from pathlib import Path
 from urllib.parse import urlsplit
+from unittest.mock import patch
 
 from training_studio.pretrained import pretrained_models
 
 
 class PretrainedCatalogTests(unittest.TestCase):
+    def test_state_includes_inventory_without_creating_or_installing_models(self):
+        from training_studio.service import StudioService
+        with tempfile.TemporaryDirectory() as folder:
+            with patch('training_studio.service.inspect_environment', return_value={'ready': True}):
+                service = StudioService(Path(folder) / 'state', Path(folder) / 'engine', demo=True)
+            try:
+                state = service.state()
+                self.assertEqual(len(state['pretrained_models']), 20)
+                self.assertEqual(state['runs'], [])
+                self.assertIsNone(state['active_run_id'])
+                self.assertFalse((Path(folder) / 'engine').exists())
+            finally:
+                service.shutdown()
+
     def test_public_catalog_keeps_sources_hardware_and_capabilities_distinct(self):
         models = pretrained_models()
         self.assertEqual(len(models), 20)
