@@ -120,6 +120,12 @@ def main():
         skill = validate_balance_parameters(json.loads(args.balance_config.read_text(encoding="utf-8")))
         apply_balance_parameters(cfg, skill)
         cfg.auto_reset = False
+        # The inherited 3 m walking camera makes this 30 cm robot too small to
+        # inspect foot clearance. Follow its trunk from a close three-quarter view.
+        cfg.viewer.distance = .7
+        cfg.viewer.lookat = (0., 0., .05)
+        cfg.viewer.elevation = -15.
+        cfg.viewer.azimuth = 135.
     agent_cfg = load_rl_cfg(args.task_id)
     env = ManagerBasedRlEnv(cfg=cfg, device="cuda:0", render_mode="rgb_array")
     try:
@@ -139,6 +145,10 @@ def main():
                                           measure=balance_measurements, summarize=aggregate_balance_trial,
                                           seed=args.seed)
                 summary.update(command_contract=balance_command_contract(skill),
+                               evaluation_camera={"distance_m": cfg.viewer.distance,
+                                                  "lookat_offset_m": list(cfg.viewer.lookat),
+                                                  "elevation_deg": cfg.viewer.elevation,
+                                                  "azimuth_deg": cfg.viewer.azimuth},
                                note="Eight seeded complete-cycle attempts; success requires hold and return. Simulation only, not hardware validation.")
             else:
                 summary = bounded_rollout(env, policy, args.steps)
