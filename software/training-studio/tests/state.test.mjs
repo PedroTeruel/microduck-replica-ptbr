@@ -75,3 +75,58 @@ test('process controls send no checkpoint payload; stopped resume targets the se
   assert.deepEqual(payload({status:'stopped'},'resume',cp),{checkpoint_id:'cp-5'});
   assert.deepEqual(payload({status:'completed'},'evaluate',cp),{checkpoint_id:'cp-5'});
 });
+
+const balanceRecipe = {id:'hd1910-single-leg',title:'HD1910 单脚平衡',skill_defaults:{support_side:'left',lift_height_m:.01,hold_seconds:3},skill_limits:{support_side:['left','right'],lift_height_m:{min:.005,max:.02,step:.005},hold_seconds:{min:1,max:5,step:1}}};
+test('balance goal normalizes numeric input and uses recipe defaults without mutating them', () => {
+  const normalize=feature('normalizeSkill');
+  assert.deepEqual(normalize(balanceRecipe),balanceRecipe.skill_defaults);
+  assert.deepEqual(normalize(balanceRecipe,{support_side:'right',lift_height_m:'0.015',hold_seconds:'4'}),{support_side:'right',lift_height_m:.015,hold_seconds:4});
+  assert.equal(balanceRecipe.skill_defaults.support_side,'left');
+  assert.equal(normalize({id:'hd1910-flat'}),null);
+});
+test('balance goal rejects blank, nonfinite, unsupported and out-of-range values', () => {
+  const normalize=feature('normalizeSkill');
+  for(const value of ['',true,NaN,Infinity,.03]) assert.throws(()=>normalize(balanceRecipe,{lift_height_m:value}));
+  assert.throws(()=>normalize(balanceRecipe,{support_side:'both'}));
+  assert.throws(()=>normalize(balanceRecipe,{hold_seconds:0}));
+  assert.throws(()=>normalize(balanceRecipe,{unknown:1}));
+});
+test('centimeter display and meter payload retain conservative half-centimeter steps', () => {
+  assert.equal(feature('metersToCm')(.005),.5);
+  assert.equal(feature('metersToCm')(.015),1.5);
+  assert.equal(feature('cmToMeters')('1.5'),.015);
+  assert.equal(feature('cmToMeters')(''),'');
+});
+test('a completed balance smoke qualifies only for exactly the same goal', () => {
+  const ready=feature('hasMatchingSmoke'),skill=balanceRecipe.skill_defaults;
+  const smoke={recipe_id:balanceRecipe.id,mode:'real',kind:'smoke',status:'completed',config:defaults,skill};
+  assert.equal(ready([smoke],balanceRecipe.id,'real',defaults,null,{...skill,lift_height_m:'0.01'}),true);
+  for(const change of [{support_side:'right'},{lift_height_m:.015},{hold_seconds:4}]) assert.equal(ready([smoke],balanceRecipe.id,'real',defaults,null,{...skill,...change}),false);
+  assert.equal(ready([{...smoke,skill:undefined}],balanceRecipe.id,'real',defaults,null,skill),false);
+  assert.equal(ready([smoke],balanceRecipe.id,'real',defaults,null,null),false);
+});
+test('balance summaries distinguish support and lifted feet and identify the right recipe', () => {
+  assert.match(feature('skillSummary')(balanceRecipe.skill_defaults),/左脚支撑.*右脚抬高 1 cm.*保持 3 秒/);
+  assert.match(feature('skillSummary')({...balanceRecipe.skill_defaults,support_side:'right'}),/右脚支撑.*左脚抬高/);
+  assert.equal(feature('recipeTitle')({recipe_id:balanceRecipe.id},[balanceRecipe]),balanceRecipe.title);
+  assert.equal(feature('recipeTitle')({recipe_id:balanceRecipe.id}),'HD1910 单脚平衡');
+});
+test('copy and smoke-to-training preserve the archived action goal independently', () => {
+  const run={recipe_id:balanceRecipe.id,kind:'smoke',status:'completed',config:defaults,skill:{...balanceRecipe.skill_defaults},profile:{schema:'microduck-studio-duck-profile/v1'}};
+  const draft=feature('runDraft')(run);
+  assert.equal(draft.kind,'train');
+  assert.deepEqual(draft.skill,run.skill);
+  draft.skill.support_side='right';
+  assert.equal(run.skill.support_side,'left');
+  assert.deepEqual(draft.config,{seed:42,learning_rate:.001});
+  assert.equal(Object.hasOwn(feature('runDraft')({...run,recipe_id:'hd1910-flat',skill:undefined}),'skill'),false);
+});
+test('evaluation evidence never treats missing or demonstration counts as physical success', () => {
+  const stats=feature('evaluationStats');
+  assert.equal(stats({trials:3,successes:null,success_rate:null}),null);
+  assert.equal(stats({trials:null,successes:0}),null);
+  assert.equal(stats({trials:3,successes:4}),null);
+  assert.equal(stats({trials:3,successes:1},true),null);
+  assert.deepEqual(stats({trials:3,successes:0,success_rate:0}),{trials:3,successes:0,success_rate:0});
+  assert.deepEqual(stats({trials:4,successes:1,success_rate:.25}),{trials:4,successes:1,success_rate:.25});
+});
