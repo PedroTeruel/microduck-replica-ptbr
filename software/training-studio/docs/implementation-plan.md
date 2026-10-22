@@ -44,4 +44,12 @@ Files: `dev/browser-check.mjs`, `README.md`, `NOTICE.md`, `.gitignore`, `start-d
 - [x] Browser acceptance at 1440×1000 and 390×844: create smoke run, complete it, create formal demo run, pause/verify/resume/stop, resume from checkpoint, compare, export records, reopen/refresh and check state persistence. Capture screenshots and reject page errors/overflow.
 - [x] Independently review spec compliance, fix gaps, then review code quality and rerun affected checks.
 - [x] Document exact demo and real startup commands, Linux-only real pause, retained VRAM/cloud billing, latest-checkpoint semantics, profile limitations, licensing and GPU verification limits.
-- [ ] Commit only this new directory. Integrate locally into the user's `studio-dev` checkout after validation, retaining unrelated untracked docs. Open the running local preview in Codex.
+- [x] Commit only this new directory. Integrate locally into the user's `studio-dev` checkout after validation, retaining unrelated untracked docs. Open the running local preview in Codex.
+
+## Task 4 — Match the existing central Studio
+
+- [x] Inspect the actual Studio stylesheet, navigation and running page; record the approved direction in `design.md`.
+- [x] Align the duck mark, shell, chart colors and mobile navigation without altering training actions.
+- [x] Apply the central Studio palette, typography, cards, buttons and gray CAD stage throughout the stylesheet.
+- [x] Run Node/browser checks and independently review desktop, narrow-screen and drawer screenshots.
+- [ ] Integrate the reviewed style change into `studio-dev` and refresh the local preview.

@@ -37,7 +37,7 @@ try{
   await page.goto(base);
   await page.getByLabel('访问令牌',{exact:true}).fill(token);
   await page.getByRole('button',{name:'连接训练台',exact:true}).click();
-  await page.getByRole('heading',{name:'让小鸭子，学会下一步.'}).waitFor();
+  await page.getByRole('heading',{name:'训练工作台',exact:true}).waitFor();
   await page.getByRole('button',{name:'播放动作示意',exact:true}).waitFor();
   await until(()=>page.getByRole('button',{name:'播放动作示意',exact:true}).isEnabled(),'CAD assets loaded');
   await page.screenshot({path:join(out,'01-workspace-desktop.png'),fullPage:true,animations:'disabled'});
@@ -118,14 +118,14 @@ try{
   await page.getByRole('heading',{name:'平地步态 · 训练 A',exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.screenshot({path:join(out,'06-training-mobile.png'),fullPage:true,animations:'disabled'});
-  await page.getByRole('button',{name:'打开导航',exact:true}).click();
+  await page.getByRole('navigation',{name:'手机导航'}).waitFor();
   await page.getByRole('button',{name:'训练工作台',exact:true}).click();
   await page.getByRole('button',{name:'新建训练',exact:true}).click();
   await page.getByRole('dialog',{name:'开始一次新训练'}).waitFor();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.screenshot({path:join(out,'07-new-experiment-mobile.png'),fullPage:false,animations:'disabled'});
   await page.getByRole('button',{name:'关闭新建训练'}).click();
-  records.push('comparison, experiment search, models, environment refresh, mobile run and drawer');
+  records.push('comparison, experiment search, models, environment refresh, mobile bottom navigation, run and drawer');
   await page.setViewportSize({width:1440,height:1000});
   await page.getByRole('button',{name:'新建训练',exact:true}).click();
   await page.getByLabel('实验名称',{exact:true}).fill('参数变更 · 重新试跑');

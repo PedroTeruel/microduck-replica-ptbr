@@ -17,7 +17,7 @@ export function NewRun({state,initial={},onClose,onCreate}) {
   const submit=async e=>{e.preventDefault();setError('');setBusy(true);try{await onCreate({name:name.trim(),recipe_id:recipeId,kind:kind==='train'&&!smokePassed?'smoke':kind,config:effectiveConfig({kind:kind==='train'&&!smokePassed?'smoke':kind,config},defaults),...(profile?{profile}:{})});}catch(ex){setError(ex.message);setBusy(false);}};
   const summary=profile?profileSummary(profile):null;
   return html`<div class="drawer-backdrop" onClick=${e=>{if(e.target===e.currentTarget&&!busy)onClose();}}><section ref=${dialog} class="new-drawer" role="dialog" aria-modal="true" aria-labelledby="new-title" tabindex="-1">
-    <header class="drawer-header"><div><span class="eyebrow">NEW EXPERIMENT</span><h2 id="new-title">开始一次新训练</h2><p>选好配方，剩下的交给小鸭子。</p></div><button class="icon-button" aria-label="关闭新建训练" onClick=${onClose} disabled=${busy}><${Icon} name="close"/></button></header>
+    <header class="drawer-header"><div><h2 id="new-title">开始一次新训练</h2><p>选好配方，剩下的交给小鸭子。</p></div><button class="icon-button" aria-label="关闭新建训练" onClick=${onClose} disabled=${busy}><${Icon} name="close"/></button></header>
     <form onSubmit=${submit} class="new-form"><div class="drawer-content">
       ${state.mode==='demo'&&html`<div class="notice amber"><${Icon} name="info"/><span>当前为演示环境。流程和控制可以体验，指标与动作均为示意。</span></div>`}
       <div class="form-section"><label class="field-label" for="run-name">实验名称</label><input id="run-name" name="name" value=${name} onInput=${e=>setName(e.target.value)} maxlength="80" required placeholder="给这一次尝试起个名字"/></div>

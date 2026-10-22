@@ -47,3 +47,11 @@ Recipe fields: `id,title,description,task_id,defaults:{num_envs,iterations,save_
 ## Acceptance
 
 Automated tests exercise invalid config and transitions, process pause/resume/stop, checkpoint association and resume, persistence, smoke gating, artifact containment, JSON/HTTP errors, and authentication. Browser tests create a demonstration run, collapse modified advanced settings, pause/resume, inspect history/checkpoints, compare runs and export records. Desktop/mobile render checks inspect page errors and overflow. GPU-dependent code is clearly separated; do not claim GPU validation on this Windows machine.
+
+## Studio visual alignment (2026-10-22)
+
+The user requested the training UI match the existing central Studio. Use the central app's actual `software/studio/web/styles.css` and navigation, rather than introducing a second visual identity. The training service stays independent.
+
+Use the same 26 px black/white/yellow duck mark, 216 px light sidebar, 56 px top bar, gray `#F2F2F7` canvas, white 16 px cards, `#1D1D1F` text, black pill primary buttons and gray radial 20 px CAD stage. Use the same Chinese system font stack, 28 px page titles and readable 12–15 px labels/body. Blue indicates interaction and primary chart series; orange distinguishes the comparison series with adequate contrast on white. Green, amber and red continue to communicate actual statuses. Remove decorative English slogans, beta labels and avatars. At 700 px and below, expose all four routes in a fixed bottom tab bar with space reserved in page content. Keep demo labeling, advanced controls, process actions and checkpoint semantics unchanged.
+
+Acceptance compares live central Studio and training screenshots on desktop and phone, then repeats real demo browser flows, responsive navigation, modal focus handling, no horizontal overflow, and console/network checks.

@@ -12,22 +12,23 @@ export function Stat({label,value,unit,icon,sub}) {return html`<div class="stat"
 let chartId=0;
 export function Chart({series=[],metric='reward',title='平均奖励',compact=false}) {
   const id=useRef(`gradient-${++chartId}`).current;
-  const [hover,setHover]=useState(null);
-  const data=series.map((s,i)=>({...s,color:s.color||['#168265','#d39c2f'][i%2],points:metricPoints(s.metrics,metric)}));
-  const all=data.flatMap(s=>s.points),w=640,h=compact?156:208,pad={l:48,r:16,t:18,b:32};
+  const [hover,setHover]=useState(null),[width,setWidth]=useState(640),box=useRef(null);
+  const data=series.map((s,i)=>({...s,color:s.color||['#0071E3','#B25000'][i%2],points:metricPoints(s.metrics,metric)}));
+  const all=data.flatMap(s=>s.points),w=width,h=compact?156:208,pad={l:48,r:16,t:18,b:32};
+  useEffect(()=>{const el=box.current;if(!el)return;const resize=()=>setWidth(Math.max(240,Math.round(el.getBoundingClientRect().width)));resize();const observer=new ResizeObserver(resize);observer.observe(el);return()=>observer.disconnect();},[all.length>0]);
   if(!all.length)return html`<div class="chart-empty"><${Icon} name="chart" size=${24}/><span>等待训练指标</span><small>收到实际日志后，曲线会出现在这里</small></div>`;
   const xmin=Math.min(...all.map(p=>p.x)),xmax=Math.max(xmin+1,...all.map(p=>p.x));
   let ymin=Math.min(...all.map(p=>p.y)),ymax=Math.max(...all.map(p=>p.y));
   const spread=Math.max((ymax-ymin)*.15,Math.abs(ymax)*.03,0.1);ymin-=spread;ymax+=spread;
   const X=x=>pad.l+(x-xmin)/(xmax-xmin)*(w-pad.l-pad.r),Y=y=>h-pad.b-(y-ymin)/(ymax-ymin)*(h-pad.t-pad.b);
   const nearest=hover===null?null:data.map(s=>({...s,point:s.points.reduce((best,p)=>!best||Math.abs(p.x-hover)<Math.abs(best.x-hover)?p:best,null)}));
-  return html`<div class="chart" aria-label=${title}>
+  return html`<div class="chart" ref=${box} aria-label=${title}>
     <svg viewBox=${`0 0 ${w} ${h}`} role="img" aria-label=${title} onPointerLeave=${()=>setHover(null)} onPointerMove=${e=>{const b=e.currentTarget.getBoundingClientRect();setHover(xmin+((e.clientX-b.left)/b.width*w-pad.l)/(w-pad.l-pad.r)*(xmax-xmin));}}>
-      <defs><linearGradient id=${id} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#168265" stop-opacity=".18"/><stop offset="100%" stop-color="#168265" stop-opacity="0"/></linearGradient></defs>
-      ${[0,1,2,3].map(n=>{const y=pad.t+n/3*(h-pad.t-pad.b);return html`<g><line x1=${pad.l} x2=${w-pad.r} y1=${y} y2=${y} stroke="#e9edea" stroke-dasharray="3 5"/><text x=${pad.l-10} y=${y+4} text-anchor="end" class="chart-axis">${formatNumber(ymax-n/3*(ymax-ymin),metric==='fps'?0:1)}</text></g>`;})}
+      <defs><linearGradient id=${id} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0071E3" stop-opacity=".18"/><stop offset="100%" stop-color="#0071E3" stop-opacity="0"/></linearGradient></defs>
+      ${[0,1,2,3].map(n=>{const y=pad.t+n/3*(h-pad.t-pad.b);return html`<g><line x1=${pad.l} x2=${w-pad.r} y1=${y} y2=${y} stroke="#E5E5EA" stroke-dasharray="3 5"/><text x=${pad.l-10} y=${y+4} text-anchor="end" class="chart-axis">${formatNumber(ymax-n/3*(ymax-ymin),metric==='fps'?0:1)}</text></g>`;})}
       ${[0,.25,.5,.75,1].map(n=>html`<text x=${pad.l+n*(w-pad.l-pad.r)} y=${h-7} text-anchor="middle" class="chart-axis">${formatNumber(xmin+n*(xmax-xmin),0)}</text>`)}
       ${data.map((s,i)=>{const p=s.points.map((p,j)=>`${j?'L':'M'}${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ');return html`<g>${i===0&&s.points.length>1&&html`<path d=${`${p} L${X(s.points.at(-1).x)},${h-pad.b} L${X(s.points[0].x)},${h-pad.b} Z`} fill=${`url(#${id})`}/>`}<path d=${p} fill="none" stroke=${s.color} stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${s.points.length===1&&html`<circle cx=${X(s.points[0].x)} cy=${Y(s.points[0].y)} r="3" fill=${s.color}/>`}</g>`;})}
-      ${nearest?.[0]?.point&&html`<line x1=${X(nearest[0].point.x)} x2=${X(nearest[0].point.x)} y1=${pad.t} y2=${h-pad.b} stroke="#789489" stroke-dasharray="3 3"/>`}
+      ${nearest?.[0]?.point&&html`<line x1=${X(nearest[0].point.x)} x2=${X(nearest[0].point.x)} y1=${pad.t} y2=${h-pad.b} stroke="#6E6E73" stroke-dasharray="3 3"/>`}
     </svg>
     ${nearest&&html`<div class="chart-tooltip">${nearest.filter(s=>s.point).map(s=>html`<span><i style=${`background:${s.color}`}/>${s.name||title} · 第 ${s.point.x} 轮：<b>${formatNumber(s.point.y,2)}</b></span>`)}</div>`}
   </div>`;
@@ -50,13 +51,12 @@ export function DuckStage({demo=false,checkpoint=null}) {
   useEffect(()=>{if(!play||!demo||checkpoint?.video_url){duck.current?.setJoints(new Array(15).fill(0));return;}let raf,last=0;const animate=t=>{if(t-last>45){last=t;const s=Math.sin(t*.004),r=Math.max(0,s),l=Math.max(0,-s);duck.current?.setJoints([0,.01*s,.12*s,.18*l,-.12*s-.18*l,.03*Math.sin(t*.002),0,.04*s,0,0,0,-.01*s,.12*s,-.18*r,-.12*s+.18*r]);}raf=requestAnimationFrame(animate);};raf=requestAnimationFrame(animate);return()=>cancelAnimationFrame(raf);},[play,demo,checkpoint?.video_url]);
   const url=checkpoint?.video_url;
   return html`<div class=${'duck-stage '+(url?'has-video':'')}>
-    <div class="stage-grid"/>
     <canvas ref=${canvas} style=${url?'visibility:hidden':''} aria-label="Microduck CAD 模型，可拖动旋转视角"/>
     ${url&&html`<${ArtifactMedia} url=${url}/>`}
     ${!url&&!ready&&!error&&html`<div class="stage-loading"><span class="spinner"/>正在加载小鸭子…</div>`}
     ${!url&&error&&html`<div class="stage-loading">3D 预览暂不可用<small>${error}</small></div>`}
     <span class="stage-label"><span class="status-dot"/>${url?(demo?'演示回放 · 非模型推理':'检查点评估回放'):(play?'动作示意 · 非模型推理':'CAD 模型预览')}</span>
-    ${!url&&html`<span class="stage-coordinate">Z ↑<br/>X ↗　Y ↖</span><div class="stage-tools">${demo&&html`<button class="btn small white" onClick=${()=>setPlay(v=>!v)} disabled=${!ready}><${Icon} name=${play?'pause':'play'} size=${14}/>${play?'暂停示意':'播放动作示意'}</button>`}<button class="icon-button white" aria-label="重置模型视角" onClick=${()=>duck.current?.resetView()}><${Icon} name="refresh" size=${16}/></button></div>`}
+    ${!url&&html`<div class="stage-tools">${demo&&html`<button class="btn small white" onClick=${()=>setPlay(v=>!v)} disabled=${!ready}><${Icon} name=${play?'pause':'play'} size=${14}/>${play?'暂停示意':'播放动作示意'}</button>`}<button class="icon-button white" aria-label="重置模型视角" onClick=${()=>duck.current?.resetView()}><${Icon} name="refresh" size=${16}/></button></div>`}
   </div>`;
 }
 
