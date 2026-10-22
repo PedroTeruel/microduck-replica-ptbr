@@ -10,8 +10,8 @@ imu.rs / bus.rs）写，跟 tools/imu200/imu200.py 同一套：
 - 前 12 字节连续 25 帧完全相同 → 主控报 orientation is frozen
 - 保留字节（byte 14）必须是 0；状态位 BIT1/BIT2 是板子自己报的故障
 
-板子不应答时连续 5 次暂缓读取，每 2 秒单独 PING 一下 200；舵机始终使用独立的 Feetech
-请求读取，因此 IMU 掉线不会连带丢舵机状态。
+板子连续 5 次不应答时暂缓读取，每 2 秒单独 PING 一下 200。飞特模式仍使用含 IMU 和舵机
+的同步读；DXL2 模式将 IMU 与舵机分开读取，舵机始终使用 Feetech 请求。
 """
 import math
 import struct

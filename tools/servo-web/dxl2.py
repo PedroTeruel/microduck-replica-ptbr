@@ -93,11 +93,13 @@ class Dxl2Bus:
         ser = self.bus.ser
         parser = StatusParser()
         replies = {}
-        deadline = time.monotonic() + self.timeout
         with self.bus._io:
             ser.reset_input_buffer()
             if ser.write(tx) != len(tx):
                 raise OSError("DXL2 串口数据未完整发送")
+            # Give the device a full response window after the shared port is
+            # acquired and transmission finishes; other commands may hold it.
+            deadline = time.monotonic() + self.timeout
             while time.monotonic() < deadline:
                 chunk = ser.read(min(max(getattr(ser, "in_waiting", 0), 1), 2048))
                 if not chunk:

@@ -106,7 +106,7 @@ python server.py --fake --imu-bus           # 没硬件：假总线上挂一块�
 - 兼容原版 DXL 2.0 协议的 `imu_to_dxl` 板：网页可切换协议，或用 `--imu-bus-protocol dxl2`；默认仍为飞特协议。DXL2 读取 ID 200、地址 124、长度 12。
 - 只有网页连着的时候才轮询（跟舵机状态同一个循环）；校准期间停。台架上只接小板、扫描没扫到舵机也照样读 200。
 - 真总线按目标 50 Hz 读时，120 Hz 固件通常在两次读取间刷新约 2–3 次；实际周期拉长时，BIT3（「读得太慢」）仍可能出现。0.15.3 及以前按 10 Hz 读，两次间约刷新 12 次。调试台仍不把 BIT3 单独作为报警，原始状态位保留在帧里（`status_bits`）。
-- 固件是 0.1.0（Dynamixel 协议）的板子不会应答，先按 [`firmware/`](../../hardware/imu_to_dxl/firmware/) 烧 0.2.0。
+- 固件是 0.1.0（Dynamixel 2.0）的板子在默认飞特模式下不会应答：保留原固件时切换到 DXL2 兼容模式即可；也可按 [`firmware/`](../../hardware/imu_to_dxl/firmware/) 烧 0.2.0，使用默认飞特模式。DXL2 模式把 IMU 与飞特舵机分成两个串口事务，飞特模式仍沿用上面的同步读。
 
 ### 没有 J-Link：`--imu-swd`（ST-Link / DAPLink，经 pyOCD）
 
@@ -140,7 +140,7 @@ python server.py --port COM5 --imu-swd                      # 舵机串口 + 真
 ```bash
 pip install -r requirements-test.txt
 python selftest.py
-python -m pytest test_feetech_sync.py test_imu_bridge.py test_imu_server.py test_imu_swd.py test_imu_bus.py test_sim.py test_servo_report.py
+python -m pytest test_feetech_sync.py test_imu_bridge.py test_imu_server.py test_imu_swd.py test_imu_bus.py test_dxl2.py test_sim.py test_servo_report.py
 node --test test_imu_attitude.cjs
 ```
 
