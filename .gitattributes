@@ -42,3 +42,4 @@ software/image/overlay/**        text eol=lf
 software/image/calib/**          text eol=lf
 software/image/tests/fixtures/** text eol=lf
 software/studio/deploy/**        text eol=lf
+software/studio/run.py           text eol=lf
