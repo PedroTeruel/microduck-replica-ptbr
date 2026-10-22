@@ -156,9 +156,9 @@ HUB 和 IMU 板的脚序对得上，同向线直连。
 
 镜像免费，只供个人非商业复刻，不随收费产品分发（里面的模型是作者的个人非商业许可）。
 
-**[20261023 新镜像（预发布）](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023)**：模型管理、传感器状态和 IMU 重新标定；软件测试与交付包核验已过，新增功能待实机验收。摄像头默认仍为测试画面，按硬件自动启停摄像头/ToF 服务尚未实现。
+**[20261023 新版镜像](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023)**：模型管理、传感器状态和 IMU 重新标定；软件测试与交付包核验已过，新增功能待实机验收。摄像头默认仍为测试画面，按硬件自动启停摄像头/ToF 服务尚未实现。
 
-**[下载 20261023 预发布镜像](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023)**　·
+**[下载最新镜像](https://github.com/fanhao375/microduck-replica/releases/latest)**　·
 [上一版 20261021b](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261021b)　·
 **[烧录和第一次使用](software/image/烧录和第一次使用.md)**　·
 **[Studio 说明](software/studio/)**　·
@@ -236,7 +236,7 @@ HUB 和 IMU 板的脚序对得上，同向线直连。
 
 ## 最近更新
 
-**2026-10-23 · 复刻镜像 20261023（预发布，待实机验收）**：新增模型导入、命名、切换、手柄键绑定和恢复默认；摄像头/ToF 独立页面；总览与手柄页七项设备状态；已保存的 IMU 安装四元数可重新标定，支持中断恢复和取消，保留舵机零位、方向及限位。配套 helper 升到 0.7.0。新包已通过离线文件系统、安装文件哈希、身份清理和许可检查；摄像头默认测试源，真实视频和 ToF 测距仍待硬件验收。[下载和校验值](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023) · [构建验收记录](docs/superpowers/verification/2026-10-23-image-release.md)。
+**2026-10-23 · 复刻镜像 20261023（新版发布）**：新增模型导入、命名、切换、手柄键绑定和恢复默认；摄像头/ToF 独立页面；总览与手柄页七项设备状态；已保存的 IMU 安装四元数可重新标定，支持中断恢复和取消，保留舵机零位、方向及限位。配套 helper 升到 0.7.0。新包已通过离线文件系统、安装文件哈希、身份清理和许可检查；摄像头默认测试源，真实视频和 ToF 测距仍待硬件验收。[下载和校验值](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023) · [构建验收记录](docs/superpowers/verification/2026-10-23-image-release.md)。
 
 **2026-10-21 晚 · 第三只鸭子用复刻镜像从头走通**：新组装的鸭子烧 [20261021b](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261021b)，手机连鸭子的热点、在网页上填家里 WiFi，然后照上手清单：舵机零位（逐颗校的）→ IMU 页「站姿使能」让它在标定模式下站住、站着校 IMU → 写进主程序切到运动模式 → 配蓝牙手柄 → 短按 Select 测急停 → 站起来、推摇杆走，全程在网页上，没敲命令。中间查一个手柄问题时，用「更多」页自己定的密码 SSH 登进去看了日志，SSH 开关也算在真机上用过了。还没通的：雷神 G50 Pro 拨 **S 档（Switch Pro）配上了、主程序却收不到按键**，拨 **X 档（Xbox）一下就连上**，先用 X 档；舵机页「一键校准」这次没用；总线上的自制 IMU 板还没上机。[烧录和第一次使用](software/image/烧录和第一次使用.md) · [踩坑记录](踩坑记录.md)。
 

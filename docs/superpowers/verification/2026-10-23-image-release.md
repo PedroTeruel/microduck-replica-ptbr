@@ -8,7 +8,7 @@ User explicitly requested a new image and update/push. Built locally in Ubuntu-2
 - Size: **712183896 bytes**
 - SHA256: **2532dbffa46f087ccbc9dcb6fbe76663713ddf4bcf2510212809d5c8908dabab**
 - Local distribution: `F:/chengshenzhilu/Robot/Microduck/复刻镜像-20261023`
-- Release: [20261023 prerelease](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023)
+- Release: [20261023 release](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023)
 - Six canonical assets: image, checksum, manifest, licenses, third-party components and model notes.
 
 ## Pinned inputs and source
@@ -33,8 +33,10 @@ User explicitly requested a new image and update/push. Built locally in Ubuntu-2
 
 ## Acceptance limits
 
-Publish as a prerelease. This exact new image has not completed a fresh-card physical setup/standing/walking test. Camera source is `test`; the base contains a ToF service unit, which does not establish working hardware. Hardware-based automatic camera/ToF service startup remains unfinished. Existing20261021b physical results do not validate this image's new features.
+Published as a regular release and marked Latest at the user’s explicit request. This exact new image has not completed a fresh-card physical setup/standing/walking test. Camera source is `test`; the base contains a ToF service unit, which does not establish working hardware. Hardware-based automatic camera/ToF service startup remains unfinished. Existing20261021b physical results do not validate this image's new features.
 
-Published as a public prerelease at the link above. GitHub reports all six assets `uploaded`; every remote asset size and SHA256 digest matches the local distribution. Release tag targets exact build source03136c9. Public-text review found no publishing blocker. Existing20261021b assets and release remain intact.
+Published as a regular public release at the link above. GitHub reports all six assets `uploaded`; every remote asset size and SHA256 digest matches the local distribution. Release tag targets exact build source03136c9. Public-text review found no publishing blocker. Existing20261021b assets and release remain intact.
 
 Unauthenticated HEAD requests to the release page and image download both return200; image Content-Length is712183896. Public master and local studio-dev include release documentationd34919a. This task's two clean implementation/release worktrees were removed; concurrent training checkouts and private untracked Studio notes were preserved.
+
+Promotion verification: GitHub reports draft=false, prerelease=false, and the latest-release API resolves to microduck-replica-image-20261023. All six asset IDs, sizes and digests are unchanged. The old20261021b page links to the new latest version.
