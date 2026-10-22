@@ -1,10 +1,10 @@
 import {html,useState,useEffect,useRef} from '/shared/vendor/preact-htm.module.js';
 import {Icon,Badge} from './ui.js';
-import {metersToCm,cmToMeters,formatNumber,skillSummary,evaluationStats} from './state.js';
+import {metersToCm,cmToMeters,formatNumber,skillSummary,evaluationStats,recipeTitle} from './state.js';
 
-export function ActionLabEntry({recipe,onNew}) {
-  if(!recipe)return null;
-  return html`<section class="panel action-lab" aria-labelledby="action-lab-title"><div class="action-lab-heading"><div><span class="eyebrow">小鸭子的下一项本领</span><h2 id="action-lab-title">动作实验室</h2><p>从单脚平衡开始，用三个参数设置一次练习。</p></div><div class="action-lab-badges"><${Badge}>无需写代码<//><${Badge} tone="amber">实验性 · 尚未实机验证<//></div></div><div class="action-lab-body"><div class="action-lab-goal"><span class="action-glyph"><${Icon} name="balance" size=${34}/></span><div><h3>单脚平衡</h3><p>${skillSummary(recipe.skill_defaults)}</p><span class="muted small-copy">可以选择另一只支撑脚，也可以调整高度和时间。</span></div></div><button class="btn primary" onClick=${()=>onNew({recipe_id:recipe.id})}>设置动作<${Icon} name="arrow" size=${16}/></button></div><ol class="action-lab-steps"><li><b>1</b><span>设置目标，查看示意</span></li><li><b>2</b><span>短试跑通过后正式训练</span></li><li><b>3</b><span>评估检查点，观看真实回放</span></li></ol><p class="action-lab-note">短试跑只检查训练链路；动作是否学会，要看检查点评估结果。</p></section>`;
+export function ActionLabEntry({recipes=[],onBrowse}) {
+  const examples=recipes.slice(0,3).map(recipe=>recipeTitle(recipe)).join(' · ');
+  return html`<section class="panel action-lab" aria-labelledby="action-lab-title"><div class="action-lab-heading"><div><span class="eyebrow">小鸭子的下一项本领</span><h2 id="action-lab-title">动作实验室</h2><p>浏览已经写好的配方，选择你想练习的动作。</p></div><div class="action-lab-badges"><${Badge}>无需写代码<//><${Badge}>${recipes.length} 个可用配方<//></div></div><div class="action-lab-body"><div class="action-lab-goal"><span class="action-glyph"><${Icon} name="balance" size=${34}/></span><div><h3>从一个练习目标开始</h3><p>${examples||'查看当前训练服务提供的配方'}</p><span class="muted small-copy">先看目标预览与动作说明，再设置自己的实验。</span></div></div><button class="btn primary" onClick=${onBrowse}>浏览动作配方<${Icon} name="arrow" size=${16}/></button></div><ol class="action-lab-steps"><li><b>1</b><span>浏览配方，理解目标</span></li><li><b>2</b><span>设置参数，短试跑后训练</span></li><li><b>3</b><span>评估检查点，观察实际结果</span></li></ol><p class="action-lab-note">预览帮助理解动作；是否学会，要看训练后的检查点评估结果。</p></section>`;
 }
 
 export function SkillTargetPreview({skill}) {

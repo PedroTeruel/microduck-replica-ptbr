@@ -31,6 +31,24 @@ export function recipeTitle(value, recipes=[]) {
   const id=typeof value==='string'?value:value?.recipe_id||value?.id;
   return recipes.find(r=>r.id===id)?.title||value?.title||value?.recipe_title||({'hd1910-flat':'HD1910 平地行走','hd1910-rough':'HD1910 起伏地形','hd1910-single-leg':'HD1910 单脚平衡'}[id])||id||'训练配方';
 }
+export function recipeCatalog(recipe={}) {
+  const meta=recipe.catalog||{},balance=!!recipe.skill_defaults;
+  const fallbackPreview=balance?'balance_target':recipe.id==='hd1910-flat'?'robot_model':'text';
+  let preview=['robot_model','text','balance_target'].includes(meta.preview_kind)?meta.preview_kind:fallbackPreview;
+  if(preview==='balance_target'&&!balance)preview='text';
+  const strings=value=>Array.isArray(value)?value.filter(s=>typeof s==='string'&&s.trim()).map(s=>s.trim()):[];
+  const instructions=strings(meta.instructions);
+  const verified=meta.verification_state==='pipeline';
+  return {category:typeof meta.category==='string'&&meta.category.trim()?meta.category.trim():balance?'平衡':['hd1910-flat','hd1910-rough'].includes(recipe.id)?'行走':'其他',
+    tags:strings(meta.tags),preview_kind:preview,source_label:meta.source_label||'项目内置',
+    verification_state:verified?'pipeline':'unverified',verification_label:meta.verification_label||(verified?'已完成短试跑':'验证记录未提供'),
+    instructions:instructions.length?instructions:['选择配方并设置练习参数。','完成短试跑后开始正式训练。','保存检查点，运行评估并查看回放。']};
+}
+export function recipeCategories(recipes=[]) { return ['全部',...new Set(recipes.map(recipe=>recipeCatalog(recipe).category))]; }
+export function filterRecipes(recipes=[],{query='',category='全部'}={}) {
+  const terms=String(query).trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  return recipes.filter(recipe=>{const catalog=recipeCatalog(recipe),text=[recipeTitle(recipe),recipe.description||'',catalog.category,...catalog.tags].join(' ').toLocaleLowerCase();return (category==='全部'||catalog.category===category)&&terms.every(term=>text.includes(term));});
+}
 export function runDraft(run) {
   return {recipe_id:run.recipe_id,config:run.kind==='smoke'?{seed:run.config.seed,learning_rate:run.config.learning_rate}:{...run.config},profile:run.profile,kind:run.kind==='smoke'&&run.status==='completed'?'train':'smoke',...(run.skill?{skill:{...run.skill}}:{})};
 }

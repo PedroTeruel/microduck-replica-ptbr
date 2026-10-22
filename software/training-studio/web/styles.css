@@ -1,5 +1,74 @@
 @charset "UTF-8";
 
+/* The recipe catalog loads a single 3D preview only inside its detail drawer. */
+.catalog-intro { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr); gap: 28px; align-items: center; padding: 24px; }
+.catalog-intro .eyebrow { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; }
+.catalog-intro h2 { font-size: 22px; }
+.catalog-intro p { max-width: 620px; margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.catalog-intro ol { display: grid; gap: 14px; margin: 0; padding: 0 0 0 24px; border-left: 1px solid var(--border); list-style: none; }
+.catalog-intro li { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.catalog-intro li b { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--page); font-size: 12px; font-weight: 500; }
+.catalog-toolbar { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 28px 0 18px; }
+.catalog-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.catalog-filters button { min-height: 38px; padding: 7px 18px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--muted); font-size: 13px; }
+.catalog-filters button:hover { background: #E9E9EE; }
+.catalog-filters button.active { border-color: var(--board-edge); background: var(--board); color: var(--ink); font-weight: 600; }
+.catalog-search { display: grid; gap: 6px; width: min(100%, 320px); }
+.catalog-search > span { color: var(--muted); font-size: 12px; }
+.catalog-search input { font-size: 13px; }
+.catalog-results { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 12px; color: var(--muted); font-size: 12px; }
+.catalog-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.catalog-card { display: flex; flex-direction: column; }
+.catalog-cover { position: relative; display: grid; place-items: center; flex-shrink: 0; height: 166px; background: #ECEEF1; color: #50545D; }
+.catalog-cover::after { content: ""; position: absolute; left: 20px; right: 20px; bottom: 44px; height: 1px; background: currentColor; opacity: .14; }
+.catalog-cover.terrain { background: #F2EEE4; color: #786440; }
+.catalog-cover.balance { background: #E9F0ED; color: #4B6A5C; }
+.catalog-cover > .icon { margin-bottom: 6px; }
+.catalog-cover-category { position: absolute; top: 16px; left: 20px; font-size: 12px; }
+.catalog-cover-caption { position: absolute; bottom: 14px; left: 20px; right: 20px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.catalog-card-body { display: flex; flex: 1; flex-direction: column; padding: 20px; }
+.catalog-card-source { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; color: var(--muted); font-size: 12px; }
+.catalog-card h2 { font-size: 18px; }
+.catalog-description { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.catalog-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.catalog-tags > span { padding: 3px 8px; border-radius: 6px; background: var(--page); color: var(--muted); font-size: 11px; }
+.catalog-goal { margin-top: 14px; font-size: 12px; line-height: 1.8; }
+.catalog-verification { margin: 14px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.catalog-experimental { margin-top: 8px; color: var(--warn); font-size: 12px; }
+.catalog-card-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding-top: 20px; margin-top: auto; }
+.catalog-card-actions .btn { min-width: 0; padding: 7px 8px; font-size: 13px; }
+.catalog-footnote { margin-top: 20px; color: var(--muted); font-size: 12px; line-height: 1.8; }
+.recipe-preview-eyebrow { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; }
+.recipe-preview-evidence { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.recipe-preview-drawer .skill-preview { margin-top: 0; }
+.recipe-model-preview .duck-stage { height: 310px; margin: 0; }
+.recipe-model-preview > p { margin-top: 10px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.recipe-text-preview { display: flex; align-items: flex-start; flex-direction: column; gap: 14px; padding: 24px; border-radius: 14px; background: #F2EEE4; color: #68583B; }
+.recipe-text-preview > b { font-size: 18px; font-weight: 600; }
+.recipe-text-preview > p { color: var(--ink); font-size: 14px; line-height: 1.9; }
+.recipe-text-preview > small { font-size: 12px; }
+.recipe-detail-section { margin-top: 24px; }
+.recipe-detail-section h3 { margin-bottom: 10px; font-size: 15px; }
+.recipe-detail-section p { margin-top: 8px; font-size: 13px; line-height: 1.8; }
+.recipe-instructions { display: grid; gap: 10px; margin: 14px 0 0; padding-left: 22px; font-size: 13px; line-height: 1.8; }
+.recipe-instructions li { padding-left: 4px; }
+.recipe-instructions li::marker { color: var(--muted); }
+@media (max-width: 1150px) {
+  .catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .catalog-intro { grid-template-columns: minmax(0, 1.4fr) minmax(200px, 1fr); gap: 20px; }
+}
+@media (max-width: 700px) {
+  .catalog-grid { grid-template-columns: minmax(0, 1fr); }
+  .catalog-intro { grid-template-columns: minmax(0, 1fr); padding: 20px; }
+  .catalog-intro h2 { font-size: 20px; }
+  .catalog-intro ol { padding: 18px 0 0; border-left: 0; border-top: 1px solid var(--border); }
+  .catalog-toolbar { align-items: stretch; flex-direction: column; margin-top: 24px; }
+  .catalog-search { width: 100%; }
+  .catalog-cover { height: 150px; }
+  .catalog-card-body { padding: 18px; }
+  .recipe-model-preview .duck-stage { height: 270px; }
+}
+
 /* Action goals share the training drawer and the Studio panel language. */
 .action-lab { margin-top: 24px; padding: 24px; }
 .action-lab-heading, .action-lab-body { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
@@ -630,7 +699,7 @@ main { flex: 1; width: 100%; min-width: 0; padding: 24px; margin: 0 auto; }
   .toast { left: 50%; bottom: calc(var(--tabbar-height) + 12px); min-width: 235px; max-width: calc(100% - 24px); font-size: 13px; }
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
-    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
     height: var(--tabbar-height); padding: 6px 8px max(22px, env(safe-area-inset-bottom, 0px));
     background: rgba(255, 255, 255, .94); box-shadow: inset 0 1px 0 var(--board-edge); backdrop-filter: blur(12px);
   }
