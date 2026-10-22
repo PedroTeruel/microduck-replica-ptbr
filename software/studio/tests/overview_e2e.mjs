@@ -462,7 +462,7 @@ if (PHASE === 'done') {
   await waitFor(`!/实体手柄连着/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '实体手柄断开', 10000);
   await sleep(500);
 
-  // ================= 电脑 1100 宽：仪表带 3 + 2 =================
+  // ================= 电脑 1100 宽：仪表带 4 + 3 =================
   await open('#/', 1100, 900, false);
   out.d1100 = await js(`(() => { const c = [...document.querySelectorAll('.band > *')].map((e) => Math.round(e.getBoundingClientRect().top));
     return { tops: c, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }; })()`);

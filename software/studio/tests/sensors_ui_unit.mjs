@@ -58,6 +58,63 @@ function clock() {
     }, get count() { return pending.size; } };
 }
 
+test('status cards distinguish hardware data, simulation and camera service evidence', () => {
+  assert.equal(typeof ui.cameraBandStatus, 'function');
+  assert.equal(typeof ui.tofBandStatus, 'function');
+  assert.equal(ui.cameraBandStatus({ source: 'camera' }).state, 'unknown');
+  assert.equal(ui.cameraBandStatus({ source: 'camera', service_state: 'online' }).word, '服务在线');
+  assert.equal(ui.cameraBandStatus({ source: 'test', service_state: 'online' }).word, '测试画面');
+  assert.equal(ui.cameraBandStatus({ source: 'test', service_state: 'offline' }).state, 'offline');
+  assert.equal(ui.tofBandStatus(frame()).word, '在线');
+  assert.equal(ui.tofBandStatus({ ...frame(), simulated: true }).word, '模拟数据');
+  assert.equal(ui.tofBandStatus({ ...frame(), state: 'unavailable', connected: true }).state, 'offline');
+  assert.equal(ui.tofBandStatus({ state: 'waiting', connected: true }).word, '等待数据');
+  assert.equal(ui.tofBandStatus({ ...frame(), age_ms: 5000 }).state, 'unknown');
+  assert.equal(ui.tofBandStatus({ ...frame(), status: [5] }).state, 'error');
+});
+
+test('band reader checks once per ten seconds and cancels both independent requests', async () => {
+  assert.equal(typeof ui.createSensorBandReader, 'function');
+  const c = clock(), values = [], calls = [];
+  const reader = ui.createSensorBandReader({ ...c, onValue: v => values.push(v), request: async (kind, signal) => {
+    calls.push({ kind, signal });
+    return { ok: true, data: kind === 'camera' ? { source: 'test', service_state: 'online' } : frame() };
+  } });
+  reader.start(); await tick();
+  assert.equal(calls.length, 2);
+  assert.equal(values.at(-1).camera.word, '测试画面');
+  assert.equal(values.at(-1).tof.word, '在线');
+  c.advance(9999); await tick(); assert.equal(calls.length, 2);
+  c.advance(1); await tick(); assert.equal(calls.length, 4);
+  reader.stop(); assert.equal(c.count, 0);
+  c.advance(20000); await tick(); assert.equal(calls.length, 4);
+  const finishes = [], signals = [];
+  const pendingReader = ui.createSensorBandReader({ ...c, onValue: v => values.push(v), request: (kind, signal) => {
+    signals.push(signal); return new Promise(resolve => finishes.push(resolve));
+  } });
+  pendingReader.start(); await tick(); const before = values.length;
+  pendingReader.stop(); assert.equal(signals.every(s => s.aborted), true);
+  for (const finish of finishes) finish({ ok: true, data: frame() });
+  await tick(); assert.equal(values.length, before); assert.equal(c.count, 0);
+});
+
+test('band expires old success during a hanging refresh and never accepts stale HTTP data', async () => {
+  assert.equal(typeof ui.createSensorBandReader, 'function');
+  const c = clock(), values = []; let calls = 0;
+  const reader = ui.createSensorBandReader({ ...c, onValue: v => values.push(v), request: async kind => {
+    if (++calls > 2) return new Promise(() => {});
+    return { ok: true, data: kind === 'camera' ? { source: 'camera', service_state: 'online' } : frame() };
+  } });
+  reader.start(); await tick(); c.advance(10000); await tick(); c.advance(10000); await tick();
+  assert.equal(values.at(-1).camera.state, 'unknown');
+  assert.equal(values.at(-1).tof.state, 'unknown'); reader.stop();
+  const finishes = [];
+  const slow = ui.createSensorBandReader({ ...c, onValue: v => values.push(v), request: () => new Promise(r => finishes.push(r)) });
+  slow.start(); await tick(); c.advance(3100);
+  for (const finish of finishes) finish({ ok: true, data: frame() });
+  await tick(); assert.notEqual(values.at(-1).tof.state, 'online'); slow.stop();
+});
+
 test('visible polling aborts and ignores pending responses when stopped', async () => {
   assert.equal(typeof ui.createTofReader, 'function');
   const c = clock(), states = []; let resolve, signal;

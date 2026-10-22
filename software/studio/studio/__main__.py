@@ -37,6 +37,7 @@ def parse(argv=None):
     ap.add_argument("--robotd", default=None, help="默认 unix:/run/robotd.sock；台架模式不连")
     ap.add_argument("--configd", default=None, help="默认 unix:/run/configd.sock；台架模式不连")
     ap.add_argument("--tof", default="unix:/run/tofd/tof.sock", help="ToF 只读服务地址；none 表示不连接")
+    ap.add_argument("--camera-socket", default="unix:/run/mediad/media.sock", help="摄像头服务只读探测地址；none 表示不连接")
     ap.add_argument("--camera-signaling-port", type=camera_port, default=8443, help="本机 mediad 的视频信令端口（默认 8443）")
     ap.add_argument("--bench", action="store_true",
                     help="台架模式：主控没烧、只用飞特调试板 / USB 转 TTL 插在电脑上调舵机。不连主程序，自动打开浏览器进舵机页，在页面上选 COM 口")
@@ -153,7 +154,7 @@ def main(argv=None):
         models = Models(rd, log, state_dir, tune=tune, root=a.dev_duck_root or "/")
     from .sensors import Sensors
     sensors = Sensors(log=log, root=a.dev_duck_root or "/", tof_addr=a.tof,
-                      camera_signaling_port=a.camera_signaling_port)
+                      camera_signaling_port=a.camera_signaling_port, camera_addr=a.camera_socket)
     app = build_app(auth=auth, robotd=rd, log=log, web_dir=a.web_dir, duck=duck, names=names, state_dir=state_dir,
                     dev_autologin=a.dev_autologin, servo=servo, imu=imu, pad=pad, onboard=onboard, battery=battery,
                     tune=tune, net=net, commit=commit, models=models, sensors=sensors)

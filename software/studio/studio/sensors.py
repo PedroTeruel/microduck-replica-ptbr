@@ -1,7 +1,7 @@
-"""Read-only camera configuration and independent, short-lived ToF subscriptions.
+"""Read-only camera service health/configuration and short-lived ToF subscriptions.
 
-Camera configuration is not proof that a camera is present. The browser verifies
-the video through mediad. ToF never uses a robotd control connection.
+Neither configuration nor mediad's hello proves that a camera is present. The
+browser verifies video separately. Neither read uses a robotd control connection.
 """
 import asyncio
 import json
@@ -13,6 +13,8 @@ from .rpc import encode, parse_addr
 
 TOF_TIMEOUT_S = 1.0
 TOF_LINE_LIMIT = 64 * 1024
+CAMERA_TIMEOUT_S = 0.8
+CAMERA_LINE_LIMIT = 64 * 1024
 
 
 def _view(state, connected=False, sensor=None, reason=None, hz=None):
@@ -75,39 +77,91 @@ def _reject_constant(value):
     raise ValueError(f"ToF JSON 含有非有限数值 {value}")
 
 
-async def _message(reader):
+async def _message(reader, service="ToF", line_limit=TOF_LINE_LIMIT):
     try:
         raw = await reader.readline()
     except (ValueError, asyncio.LimitOverrunError):
-        raise ValueError("ToF 消息超过 64 KiB") from None
+        raise ValueError(f"{service} 消息超过 64 KiB") from None
     if not raw:
-        raise ConnectionError("ToF 服务连接已断开")
-    if len(raw) > TOF_LINE_LIMIT:
-        raise ValueError("ToF 消息超过 64 KiB")
+        raise ConnectionError(f"{service} 服务连接已断开")
+    if len(raw) > line_limit:
+        raise ValueError(f"{service} 消息超过 64 KiB")
     if not raw.endswith(b"\n"):
-        raise ValueError("ToF 消息没有完整结束")
+        raise ValueError(f"{service} 消息没有完整结束")
     try:
         message = json.loads(raw, parse_constant=_reject_constant)
     except (ValueError, UnicodeError, RecursionError):
-        raise ValueError("ToF 服务返回了无效 JSON") from None
+        raise ValueError(f"{service} 服务返回了无效 JSON") from None
     if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
-        raise ValueError("ToF 服务返回的消息格式不正确")
+        raise ValueError(f"{service} 服务返回的消息格式不正确")
     return message
 
 
 class Sensors:
-    def __init__(self, log=None, root="/", tof_addr="unix:/run/tofd/tof.sock", camera_signaling_port=8443):
+    def __init__(self, log=None, root="/", tof_addr="unix:/run/tofd/tof.sock", camera_signaling_port=8443,
+                 camera_addr="unix:/run/mediad/media.sock"):
         self.log = log
         self.root = Path(root)
         if tof_addr != "none":
             parse_addr(tof_addr)
         self.tof_addr = tof_addr
         self.camera_signaling_port = camera_signaling_port
+        if camera_addr != "none":
+            parse_addr(camera_addr)
+        self.camera_addr = camera_addr
         self._tof_task = None
         self._tof_waiters = {}
 
     async def camera(self):
-        return await asyncio.to_thread(self._camera_config)
+        result = await asyncio.to_thread(self._camera_config)
+        state, reason = await self._camera_service()
+        result.update(service_state=state, service_reason=reason)
+        return result
+
+    async def _camera_service(self):
+        if self.camera_addr == "none":
+            return "unknown", "未配置摄像头服务探测"
+        writer = None
+        try:
+            # One fresh read-only hello; do not request a capture or start video.
+            async with asyncio.timeout(CAMERA_TIMEOUT_S):
+                kind, *address = parse_addr(self.camera_addr)
+                if kind == "unix":
+                    open_unix = getattr(asyncio, "open_unix_connection", None)
+                    if not callable(open_unix):
+                        return "unknown", "本机不支持 Unix socket，开发时请配置 tcp: 地址"
+                    reader, writer = await open_unix(address[0], limit=CAMERA_LINE_LIMIT)
+                else:
+                    reader, writer = await asyncio.open_connection(*address, limit=CAMERA_LINE_LIMIT)
+                writer.write(encode(1, "hello", {}))
+                await writer.drain()
+                response = await _message(reader, "摄像头", CAMERA_LINE_LIMIT)
+                if type(response.get("id")) is not int or response["id"] != 1 or "method" in response:
+                    raise ValueError("摄像头服务 hello 回复格式不正确")
+                if "error" in response:
+                    error = response["error"]
+                    message = error.get("message") if isinstance(error, dict) else "hello 失败"
+                    raise ValueError(f"摄像头服务拒绝 hello：{str(message)[:2048]}")
+                result = response.get("result")
+                api_version = result.get("api_version") if isinstance(result, dict) else None
+                if type(api_version) is not int or api_version <= 0:
+                    raise ValueError("摄像头服务 hello 没有有效的 API 版本")
+                return "online", None
+        except NotImplementedError:
+            return "unknown", "本机不支持 Unix socket，开发时请配置 tcp: 地址"
+        except TimeoutError:
+            return "offline", "摄像头服务没有及时回应"
+        except (ConnectionError, OSError):
+            return "offline", "摄像头服务未在线或连接已断开"
+        except ValueError as exc:
+            return "offline", f"摄像头服务回复无效：{exc}"
+        finally:
+            if writer is not None:
+                writer.close()
+                try:
+                    await asyncio.wait_for(writer.wait_closed(), 0.1)
+                except (TimeoutError, ConnectionError, OSError):
+                    writer.transport.abort()
 
     def _camera_config(self):
         result = {"source": "unknown", "source_label": "来源未知（等待视频确认）",

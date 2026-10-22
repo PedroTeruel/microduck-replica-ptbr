@@ -130,17 +130,17 @@ class OverviewE2E(unittest.TestCase):
 
     def test_overview_layout(self):
         d = self.out["desk"]
-        self.assertEqual(d["cells"], 5)                                  # 仪表带第五格：主板
+        self.assertEqual(d["cells"], 7)                                  # 增加摄像头与ToF，最后主板
         self.assertIn("°C", d["cpu"])
         self.assertEqual(d["rows"], 6)                                   # 清单 6 行（任务 11 加了「写进主程序」）
         self.assertFalse(d["padActive"])                                 # 首页顶上：手柄那一块不在屏幕上
         self.assertEqual(d["nav"], "总览")
         self.assertEqual(d["now"], "1 舵机零位")                         # 现在该做：第一个没完成的
         self.assertEqual(d["marks"][:3], ["●", "●", "✓"])
-        tops = self.out["d1100"]["tops"]                                 # 1100 宽：3 + 2
-        self.assertEqual(len(set(tops[:3])), 1)
-        self.assertGreater(tops[3], tops[0])
-        self.assertEqual(tops[3], tops[4])
+        tops = self.out["d1100"]["tops"]                                 # 1100 宽：4 + 3
+        self.assertEqual(len(set(tops[:4])), 1)
+        self.assertGreater(tops[4], tops[0])
+        self.assertEqual(len(set(tops[4:])), 1)
         for k in ("d1100", "phone", "phone_pad"):
             self.assertLessEqual(self.out[k]["sw"], self.out[k]["cw"], f"{k}：能左右滑")
 

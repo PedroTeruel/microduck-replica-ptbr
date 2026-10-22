@@ -82,6 +82,57 @@ class FakeTofd:
         await self.server.wait_closed()
 
 
+class FakeMediad:
+    """Local hello endpoint; record every request through client EOF."""
+
+    def __init__(self):
+        self.response = {"jsonrpc": "2.0", "id": 1,
+                         "result": {"api_version": 40, "daemon_version": "0.1.0", "revision": None}}
+        self.raw = None
+        self.requests = []
+        self.connections = 0
+        self.requested = asyncio.Event()
+        self.closed = asyncio.Event()
+        self.release = asyncio.Event()
+        self.release.set()
+        self.tasks = set()
+
+    async def start(self):
+        self.server = await asyncio.start_server(self.handle, "127.0.0.1", 0)
+        return f"tcp:127.0.0.1:{self.server.sockets[0].getsockname()[1]}"
+
+    async def handle(self, reader, writer):
+        task = asyncio.current_task()
+        self.tasks.add(task)
+        self.connections += 1
+        try:
+            self.requests.append(json.loads(await reader.readline()))
+            self.requested.set()
+            await self.release.wait()
+            raw = self.raw if self.raw is not None else (json.dumps(self.response) + "\n").encode()
+            writer.write(raw)
+            await writer.drain()
+            while line := await reader.readline():
+                self.requests.append(json.loads(line))
+            self.closed.set()
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            writer.close()
+            try:
+                await asyncio.wait_for(writer.wait_closed(), 0.2)
+            except (TimeoutError, ConnectionError, OSError):
+                writer.transport.abort()
+            self.tasks.discard(task)
+
+    async def stop(self):
+        self.server.close()
+        for task in list(self.tasks):
+            task.cancel()
+        await asyncio.gather(*self.tasks, return_exceptions=True)
+        await self.server.wait_closed()
+
+
 class SensorsTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -105,6 +156,175 @@ class SensorsTest(unittest.IsolatedAsyncioTestCase):
         addr = await fake.start()
         self.servers.append(fake)
         return fake, self.sensors(tof_addr=addr)
+
+    async def fake_camera(self):
+        fake = FakeMediad()
+        addr = await fake.start()
+        self.servers.append(fake)
+        return fake, self.sensors(camera_addr=addr)
+
+    async def test_camera_unavailable_unix_support_is_unknown(self):
+        with mock.patch.object(asyncio, "open_unix_connection", None, create=True):
+            result = await self.sensors().camera()
+        self.assertEqual(result.get("service_state"), "unknown")
+        self.assertIn("tcp:", result["service_reason"])
+
+    async def test_camera_hello_reports_service_online_without_verifying_camera(self):
+        self.config.write_text('[media]\nsource = "camera"\n', encoding="utf-8")
+        before = self.config.read_bytes()
+        fake, sensors = await self.fake_camera()
+        result = await sensors.camera()
+        self.assertEqual(result["service_state"], "online")
+        self.assertIsNone(result["service_reason"])
+        self.assertEqual(result["source"], "camera")
+        self.assertIs(result["source_verified"], False)
+        self.assertEqual(self.config.read_bytes(), before)
+        await asyncio.wait_for(fake.closed.wait(), 0.5)
+        self.assertEqual(fake.requests, [{"jsonrpc": "2.0", "id": 1, "method": "hello", "params": {}}])
+
+    async def test_camera_missing_config_still_checks_service_and_keeps_unknown_source(self):
+        fake, sensors = await self.fake_camera()
+        result = await sensors.camera()
+        self.assertEqual(result["service_state"], "online")
+        self.assertEqual(result["source"], "unknown")
+        self.assertFalse(result["source_verified"])
+        self.assertTrue(result["error"])
+        self.assertFalse(self.config.exists())
+        self.assertEqual(len(fake.requests), 1)
+
+    async def test_camera_each_status_read_uses_a_fresh_hello(self):
+        fake, sensors = await self.fake_camera()
+        self.assertEqual((await sensors.camera())["service_state"], "online")
+        fake.response = {"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "no hello"}}
+        result = await sensors.camera()
+        self.assertEqual(result["service_state"], "offline")
+        self.assertIn("no hello", result["service_reason"])
+        self.assertEqual(fake.connections, 2)
+
+    async def test_camera_requires_a_valid_positive_integer_hello_api_version(self):
+        responses = [
+            {"jsonrpc": "2.0", "id": 1, "result": result}
+            for result in ({}, [], None, {"api_version": 0}, {"api_version": -1},
+                           {"api_version": True}, {"api_version": 40.0}, {"api_version": "40"})
+        ] + [
+            {"jsonrpc": "2.0", "id": True, "result": {"api_version": 40}},
+            {"jsonrpc": "2.0", "id": "1", "result": {"api_version": 40}},
+            {"jsonrpc": "2.0", "id": 2, "result": {"api_version": 40}},
+            {"jsonrpc": "1.0", "id": 1, "result": {"api_version": 40}},
+            {"jsonrpc": "2.0", "id": 1, "method": "media.frame", "result": {"api_version": 40}},
+            {"jsonrpc": "2.0", "id": 1, "result": {"api_version": 40}, "error": {}},
+        ]
+        for response in responses:
+            with self.subTest(response=response):
+                fake, sensors = await self.fake_camera()
+                fake.response = response
+                result = await sensors.camera()
+                self.assertEqual(result["service_state"], "offline")
+                self.assertTrue(result["service_reason"])
+                self.assertFalse(result["source_verified"])
+                await asyncio.wait_for(fake.closed.wait(), 0.5)
+
+    async def test_camera_rejects_bad_json_nonfinite_values_and_oversized_lines(self):
+        for raw in (b"garbage\n", b"[1,2,3]\n", b"\xff\n", b"x" * (64 * 1024 + 1),
+                    b'{"jsonrpc":"2.0","id":1,"result":{"api_version":NaN}}\n',
+                    b'{"jsonrpc":"2.0","id":1,"result":{"api_version":40,"extra":Infinity}}\n'):
+            with self.subTest(raw=raw[:60]):
+                fake, sensors = await self.fake_camera()
+                fake.raw = raw
+                result = await sensors.camera()
+                self.assertEqual(result["service_state"], "offline")
+                self.assertTrue(result["service_reason"])
+                await asyncio.wait_for(fake.closed.wait(), 0.5)
+
+    async def test_camera_disabled_is_unknown_and_does_not_open_a_socket(self):
+        with mock.patch("studio.sensors.asyncio.open_connection", side_effect=AssertionError("disabled")), \
+                mock.patch.object(asyncio, "open_unix_connection", side_effect=AssertionError("disabled"), create=True):
+            result = await self.sensors(camera_addr="none").camera()
+        self.assertEqual(result["service_state"], "unknown")
+        self.assertIn("未配置", result["service_reason"])
+
+    async def test_camera_refused_or_missing_service_is_offline(self):
+        fake, sensors = await self.fake_camera()
+        await fake.stop()
+        self.servers.remove(fake)
+        result = await sensors.camera()
+        self.assertEqual(result["service_state"], "offline")
+        self.assertTrue(result["service_reason"])
+        with mock.patch.object(asyncio, "open_unix_connection", mock.AsyncMock(side_effect=FileNotFoundError), create=True):
+            result = await self.sensors().camera()
+        self.assertEqual(result["service_state"], "offline")
+
+    async def test_camera_total_deadline_and_cancellation_close_the_probe(self):
+        fake, sensors = await self.fake_camera()
+        fake.release.clear()
+        with mock.patch("studio.sensors.CAMERA_TIMEOUT_S", 0.05):
+            started = asyncio.get_running_loop().time()
+            result = await sensors.camera()
+            elapsed = asyncio.get_running_loop().time() - started
+        self.assertLess(elapsed, 0.25)
+        self.assertEqual(result["service_state"], "offline")
+        fake.release.set()
+        await asyncio.wait_for(fake.closed.wait(), 0.5)
+        fake.closed.clear()
+        fake.requested.clear()
+        fake.release.clear()
+        task = asyncio.create_task(sensors.camera())
+        await asyncio.wait_for(fake.requested.wait(), 0.5)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        fake.release.set()
+        await asyncio.wait_for(fake.closed.wait(), 0.5)
+        self.assertEqual([request["method"] for request in fake.requests], ["hello", "hello"])
+
+    async def test_camera_connection_establishment_is_inside_total_deadline(self):
+        async def never_connect(*args, **kwargs):
+            await asyncio.Event().wait()
+
+        with mock.patch("studio.sensors.asyncio.open_connection", never_connect), \
+                mock.patch("studio.sensors.CAMERA_TIMEOUT_S", 0.05):
+            result = await asyncio.wait_for(self.sensors(camera_addr="tcp:127.0.0.1:1").camera(), 0.25)
+        self.assertEqual(result["service_state"], "offline")
+
+    async def test_camera_healthy_probe_aborts_a_connection_that_cannot_close(self):
+        fake, sensors = await self.fake_camera()
+        real_open = asyncio.open_connection
+        closing_started = asyncio.Event()
+        writers = []
+
+        class SlowClose:
+            def __init__(self, writer):
+                self.writer = writer
+                self.transport = mock.Mock(wraps=writer.transport)
+
+            def __getattr__(self, name):
+                return getattr(self.writer, name)
+
+            async def wait_closed(self):
+                closing_started.set()
+                await asyncio.Event().wait()
+
+        async def slow_close(*args, **kwargs):
+            reader, writer = await real_open(*args, **kwargs)
+            writers.append(SlowClose(writer))
+            return reader, writers[-1]
+
+        with mock.patch("studio.sensors.asyncio.open_connection", slow_close):
+            result = await asyncio.wait_for(sensors.camera(), 0.5)
+        self.assertEqual(result["service_state"], "online")
+        self.assertTrue(closing_started.is_set())
+        writers[0].transport.abort.assert_called_once_with()
+        await asyncio.wait_for(fake.closed.wait(), 0.5)
+
+    async def test_camera_socket_runtime_without_unix_support_is_unknown(self):
+        with mock.patch.object(asyncio, "open_unix_connection", mock.AsyncMock(side_effect=NotImplementedError), create=True):
+            result = await self.sensors().camera()
+        self.assertEqual(result["service_state"], "unknown")
+        self.assertIn("tcp:", result["service_reason"])
+
+    async def test_camera_invalid_address_fails_at_construction(self):
+        with self.assertRaises(ValueError):
+            self.sensors(camera_addr="http://127.0.0.1/")
 
     async def test_camera_source_is_configuration_and_never_verified_hardware(self):
         self.config.write_text('[media]\nsource = "test"\n', encoding="utf-8")

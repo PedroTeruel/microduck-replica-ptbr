@@ -12,7 +12,8 @@ from tests.test_models_http import request_raw
 
 class SensorStub:
     async def camera(self):
-        return {'source': 'test', 'source_verified': False, 'signaling_port': 8443}
+        return {'source': 'test', 'source_verified': False, 'signaling_port': 8443,
+                'service_state': 'online', 'service_reason': None}
 
     async def tof(self):
         return {'state': 'unavailable', 'connected': False, 'reason': '未接 ToF'}
@@ -65,10 +66,23 @@ class SensorHttp(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(response['cache-control'], 'no-store')
         self.assertFalse(result['data']['source_verified'])
+        self.assertEqual(result['data']['service_state'], 'online')
+        self.assertIsNone(result['data']['service_reason'])
         status, response, result = await self.call('GET', '/api/tof', headers=headers)
         self.assertEqual(status, 200)
         self.assertEqual(result['data']['state'], 'unavailable')
         self.assertEqual(response['cache-control'], 'no-store')
+
+    async def test_camera_status_fields_use_normal_readonly_http_response(self):
+        from studio.sensors import Sensors
+        backend = Sensors(root=self.tmp.name, camera_addr='none')
+        self.sensors.camera = backend.camera
+        status, response, result = await self.call('GET', '/api/camera', headers=await self.login())
+        self.assertEqual(status, 200)
+        self.assertEqual(response['cache-control'], 'no-store')
+        self.assertEqual(result['data']['service_state'], 'unknown')
+        self.assertTrue(result['data']['service_reason'])
+        self.assertFalse(result['data']['source_verified'])
 
     async def test_no_password_uses_normal_open_access(self):
         self.auth.clear_password()
@@ -105,6 +119,12 @@ class SensorHttp(unittest.IsolatedAsyncioTestCase):
 
 
 class SensorCli(unittest.TestCase):
+    def test_camera_socket_defaults_to_local_mediad_and_can_be_disabled_or_overridden(self):
+        from studio.__main__ import parse
+        self.assertEqual(getattr(parse([]), 'camera_socket', None), 'unix:/run/mediad/media.sock')
+        self.assertEqual(parse(['--camera-socket', 'none']).camera_socket, 'none')
+        self.assertEqual(parse(['--camera-socket', 'tcp:127.0.0.1:17443']).camera_socket, 'tcp:127.0.0.1:17443')
+
     def test_camera_port_bounds_and_explicit_tof_disable(self):
         from studio.__main__ import parse
         options = parse(['--tof','none','--camera-signaling-port','65535'])

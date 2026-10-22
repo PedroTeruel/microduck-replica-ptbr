@@ -108,7 +108,37 @@ try {
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `(${installVideoFixture.toString()})();` });
   await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false });
-  await send('Page.navigate', { url: `${arg('url')}#/camera` });
+  await send('Page.navigate', { url: `${arg('url')}#/` });
+  await wait(`document.querySelector('.band-camera')?.dataset.state==='test' && document.querySelector('.band-tof')?.dataset.state==='simulated'`, 'seven sensor status cards');
+  const labels = await js(`[...document.querySelectorAll('.band > *')].map(e=>e.querySelector('.label')?.textContent.trim())`);
+  assert(JSON.stringify(labels)===JSON.stringify(['电池','舵机','IMU','摄像头','ToF','手柄','主板']), `status card order: ${JSON.stringify(labels)}`);
+  assert(await js('__sensorFixture.sockets.length===0'), 'status checks must not start a WebRTC video session');
+  await js(`document.querySelector('.band').scrollIntoView({block:'center'})`); await shot('band-desktop');
+  for (const width of [390,320]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+    await js(`document.querySelector('.band').scrollIntoView({block:'start'})`); await sleep(100);
+    assert(await js(`document.documentElement.scrollWidth<=innerWidth+1 && [...document.querySelectorAll('.band > *')].every(e=>e.scrollWidth<=e.clientWidth+1)`), `status cards fit ${width}px`);
+    await shot(`band-mobile-${width}`);
+  }
+  const refreshBand = async () => {
+    await js(`window.__sensorHidden=true;document.dispatchEvent(new Event('visibilitychange'))`); await sleep(100);
+    await js(`window.__sensorHidden=false;document.dispatchEvent(new Event('visibilitychange'))`);
+  };
+  writeFileSync(arg('control'), JSON.stringify({ mode:'missing',camera:'offline' })); await refreshBand();
+  await wait(`document.querySelector('.band-camera')?.dataset.state==='offline' && document.querySelector('.band-tof')?.dataset.state==='offline'`, 'offline sensors in band');
+  writeFileSync(arg('control'), JSON.stringify({ mode:'ready-real' }));
+  writeFileSync(arg('camera-config'), '[media]\nsource="camera"\n'); await refreshBand();
+  await wait(`document.querySelector('.band-camera')?.dataset.state==='online' && document.querySelector('.band-tof')?.dataset.state==='online'`, 'service and valid ToF online');
+  assert(await js(`document.querySelector('.band-camera .word').innerText==='服务在线'`), 'camera must not claim physical hardware verification');
+  await js(`window.__sensorHidden=true;document.dispatchEvent(new Event('visibilitychange'))`);
+  await sleep(250); const beforeHidden = countReads();
+  await sleep(10300); assert(countReads()===beforeHidden,'hidden status cards do not poll');
+  writeFileSync(arg('control'), JSON.stringify({ mode:'ready' }));
+  writeFileSync(arg('camera-config'), '[media]\nsource="test"\n');
+  await js(`window.__sensorHidden=false;document.dispatchEvent(new Event('visibilitychange'))`);
+  await wait(`document.querySelector('.band-camera')?.dataset.state==='test'`, 'band resumed');
+  await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false });
+  await click('.band-camera');
   await wait(`document.querySelector('.camera-status')?.dataset.state==='playing'`, 'native video playback');
   assert(await js(`document.querySelector('.camera-video').videoWidth===640`), 'actual video geometry should be used');
   assert(await js(`/测试|模拟/.test(document.querySelector('.camera-source').innerText)`), 'test video must be identified');

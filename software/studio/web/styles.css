@@ -145,8 +145,8 @@ button:disabled { cursor: default; }
 .stage .age { position: absolute; right: 24px; bottom: 20px; padding: 4px 12px; border-radius: 999px; background: var(--stage-btn2-bg); color: var(--stage-btn2-fg); font-size: 13px; }
 
 /* ---- 仪表带、待办 ---- */
-/* 五格（第五格主板温度：总览重排 §1.1）：宽屏一行；≤ 1280 px 排成 3 + 2（电池格那根 120 px 的条加数字放不下：审查 O8）；手机两列、第五格占满 */
-.band { margin-top: 16px; min-height: 104px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+/* 七格：宽屏一行，普通桌面4+3，手机两列、最后主板占满一行。 */
+.band { margin-top: 16px; min-height: 104px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .band > * { display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 12px 24px; color: var(--text); text-decoration: none; }
 .band > * + * { box-shadow: inset 1px 0 0 #E5E5EA; }
 .band .label { font-size: 13px; line-height: 18px; color: var(--text-2); }
@@ -158,16 +158,18 @@ button:disabled { cursor: default; }
 .band .band-cpu.bad .big, .band .band-cpu.bad .small { color: var(--danger); }
 .band .band-cpu.warn .small { color: var(--warn); }
 .band .band-cpu .small { display: flex; align-items: center; gap: 6px; }
+.band .band-sensor[data-state="online"] .word { color: var(--ok); }
+.band .band-sensor[data-state="error"] .word { color: var(--warn); }
 /* 仪表带吸在顶栏（和舵机提示条）下面（用户 10-19：往下滑电池、舵机、IMU、手柄、主板一直看得到）。手机上它两三行高，不吸 */
 @media (min-width: 701px) {
   .overview > .band { position: sticky; top: calc(56px + var(--bar-h, 0px)); z-index: 28;
     box-shadow: inset 0 0 0 1px var(--board-edge), 0 4px 12px rgba(0, 0, 0, 0.06); }
 }
-@media (min-width: 701px) and (max-width: 1280px) {
-  .band { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .band > * { grid-column: span 2; }
-  .band > :nth-child(n+4) { grid-column: span 3; box-shadow: inset 0 1px 0 #E5E5EA; }
-  .band > :nth-child(5) { box-shadow: inset 1px 0 0 #E5E5EA, inset 0 1px 0 #E5E5EA; }
+@media (min-width: 701px) and (max-width: 1800px) {
+  .band { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .band > * { grid-column: span 3; padding: 12px 18px; }
+  .band > :nth-child(n+5) { grid-column: span 4; box-shadow: inset 1px 0 0 #E5E5EA, inset 0 1px 0 #E5E5EA; }
+  .band > :nth-child(5) { box-shadow: inset 0 1px 0 #E5E5EA; }
 }
 /* 待办给一个最小高度（两条的高度）：温度来回跨 80 °C、断线重连时它出现 / 消失，别把下面的手柄区块推上推下（审查 O10） */
 .todo { margin-top: 16px; min-height: 84px; display: flex; align-items: center; gap: 12px; padding: 8px 24px; }
@@ -273,8 +275,8 @@ button:disabled { cursor: default; }
   .band > * + * { box-shadow: none; }
   .band > :nth-child(even) { box-shadow: inset 1px 0 0 #E5E5EA; }
   .band > :nth-child(n+3) { box-shadow: inset 0 1px 0 #E5E5EA; }
-  .band > :nth-child(4) { box-shadow: inset 1px 0 0 #E5E5EA, inset 0 1px 0 #E5E5EA; }
-  .band > :nth-child(5) { grid-column: 1 / -1; box-shadow: inset 0 1px 0 #E5E5EA; }   /* 第五格（主板）占满一行 */
+  .band > :nth-child(even):nth-child(n+3) { box-shadow: inset 1px 0 0 #E5E5EA, inset 0 1px 0 #E5E5EA; }
+  .band > :last-child { grid-column: 1 / -1; box-shadow: inset 0 1px 0 #E5E5EA; }
   .band .band-bar { width: 64px !important; margin-left: 8px !important; }
   .band .big { font-size: 28px; line-height: 32px; }
   .todo.list { padding: 12px 18px; }

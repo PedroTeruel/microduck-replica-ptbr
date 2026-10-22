@@ -15,7 +15,7 @@ import { TuneSection, ModelSettings } from './tune.js';
 import { WifiCard, WifiSettings, DuckAddresses } from './wifi.js';
 import { TwoStep } from './confirm.js';
 import { ModelsPage } from './models.js';
-import { CameraPage, TofPage } from './sensors.js';
+import { CameraPage, TofPage, SensorBandCells } from './sensors.js';
 
 const STALE_GRAY_MS = 1000;   // 超过 1 秒没新数据：数值变灰
 const STALE_ALARM_MS = 3000;  // 超过 3 秒：横幅；卸力按钮仍可按（只要跟 Studio 的连接在）
@@ -416,7 +416,7 @@ function useStickyHeight(name) {
   }, [name]);
 }
 
-function Band({ st, pd, gray, onSame }) {
+function Band({ st, pd, gray, onSame, sensorsActive }) {
   const bandRef = useStickyHeight('--band-h');
   const b = st?.battery || {}, s = st?.servos || {}, imu = st?.imu || {};
   const imuWord = { ok: '正常', unverified: '方向没确认', frozen: '读数冻住了', missing: '没读到' }[imu.status] || '—';
@@ -436,6 +436,7 @@ function Band({ st, pd, gray, onSame }) {
       <span class="word">${imuKind ? html`<${Badge} kind=${imuKind} />` : null}${imuWord}</span>
       <span class="small">${{ unverified: '先只站着', ok: '方向已确认' }[imu.status] || '去校准'}</span>
     </a>
+    <${SensorBandCells} api=${api} active=${sensorsActive} />
     <a href="#/pad" onClick=${(e) => onSame(e, '#/pad')}>
       <span class="label">手柄</span>
       <span class="word">${pad.word}</span>
@@ -673,7 +674,7 @@ function Todo({ st, live }) {
 }
 
 // 总览：（开着热点时最上面是「连 WiFi」）→ 舞台 → 仪表带（5 格）→ 上手清单 → 待办 → 往下一刷就是手柄（总览重排 §1）
-function Overview({ st, live, age, duck, pd, onSame, tune }) {
+function Overview({ st, live, age, duck, pd, onSame, tune, sensorsActive }) {
   // 主机名这类英文名后面空一格再接中文：「duck-c51b 站好了」
   const short = duck?.short || '鸭子';
   const name = /[A-Za-z0-9]$/.test(short) ? short + ' ' : short;
@@ -681,7 +682,7 @@ function Overview({ st, live, age, duck, pd, onSame, tune }) {
     ${st?.net?.known && st.net.mode === 'hotspot'
       ? html`<${WifiCard} net=${st.net} link=${link} secure=${st?.auth?.has_password} />` : null}
     <${Stage} st=${st} live=${live} age=${age} name=${name} />
-    <${Band} st=${st} pd=${pd} gray=${age > STALE_GRAY_MS} onSame=${onSame} />
+    <${Band} st=${st} pd=${pd} gray=${age > STALE_GRAY_MS} onSame=${onSame} sensorsActive=${sensorsActive} />
     <${Onboard} st=${st} live=${live} />
     <${Todo} st=${st} live=${live} />
     <${PadPage} st=${st} pad=${pd} link=${link} live=${live} />
@@ -1078,7 +1079,7 @@ function Main({ duck }) {
   // 总览一直挂着、只是藏起来：3D 鸭子不随切页面销毁重建（three.js 每建一次留一份内部对象，
   // 浏览器能同时开的 WebGL 上下文也有限）。手柄那一块也在总览里（#/pad 是它的锚点），一直挂着：
   // 「在不在手柄区」看 padActivity，不看挂没挂上（审查 O1）
-  const overview = html`<div hidden=${!OVERVIEW(route)}><${Overview} st=${st} live=${live} age=${age} duck=${duck} pd=${pd} onSame=${onSame} tune=${tune} /></div>`;
+  const overview = html`<div hidden=${!OVERVIEW(route)}><${Overview} st=${st} live=${live} age=${age} duck=${duck} pd=${pd} onSame=${onSame} tune=${tune} sensorsActive=${OVERVIEW(route)} /></div>`;
   let page = null;
   if (OVERVIEW(route)) page = null;
   else if (route === '/logs') page = html`<${LogsPage} />`;

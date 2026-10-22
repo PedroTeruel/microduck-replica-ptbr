@@ -85,6 +85,81 @@ function useVisible() {
   return visible;
 }
 
+const uncheckedBand = (reason = '点开查看详情') => ({ state: 'unknown', word: '未检查', small: reason });
+const checkingBand = () => ({ state: 'checking', word: '检测中', small: '只读取状态' });
+
+export function cameraBandStatus(data) {
+  if (data?.service_state === 'offline') return { state: 'offline', word: '未连接', small: '视频服务未响应' };
+  if (data?.service_state !== 'online') return uncheckedBand();
+  if (data.source === 'test') return { state: 'test', word: '测试画面', small: '视频服务在线' };
+  return { state: 'online', word: '服务在线', small: data.source === 'camera' ? '点开确认画面' : '画面来源待确认' };
+}
+
+export function tofBandStatus(data) {
+  const view = tofSnapshot(data);
+  if (view.state === 'ready') return view.simulated ? { state: 'simulated', word: '模拟数据', small: '点开查看距离图' }
+    : { state: 'online', word: '在线', small: '点开查看距离图' };
+  if (view.state === 'unavailable') return { state: 'offline', word: '未连接', small: '传感器或服务不可用' };
+  if (view.state === 'waiting') return { state: 'waiting', word: '等待数据', small: '服务已响应' };
+  if (view.state === 'stale') return uncheckedBand('上次读数已过期');
+  return { state: 'error', word: '读取失败', small: '点开查看详情' };
+}
+
+/** Low-frequency presence checks only. No video pipeline or service-start requests. */
+export function createSensorBandReader({ request, onValue, intervalMs = 10000, staleMs = 20000,
+  now = () => performance.now(), setTimeout = globalThis.setTimeout, clearTimeout = globalThis.clearTimeout }) {
+  let generation = 0, active = false, timer = null;
+  const controllers = new Set(), expiry = new Map();
+  let values = { camera: checkingBand(), tof: checkingBand() };
+  const emit = (kind, value) => { values = { ...values, [kind]: value }; onValue(values); };
+  const stop = () => {
+    active = false; generation++; clearTimeout(timer);
+    for (const timeout of expiry.values()) clearTimeout(timeout);
+    expiry.clear(); for (const controller of controllers) controller.abort(); controllers.clear();
+  };
+  const readOne = async (kind, current) => {
+    const controller = new AbortController(), started = now(); controllers.add(controller);
+    let value;
+    try {
+      const result = await request(kind, controller.signal);
+      if (!active || current !== generation) return;
+      if (!result?.ok) throw Error('读取失败');
+      const elapsed = Math.max(0, now() - started), data = result.data;
+      value = kind === 'camera' ? (elapsed >= staleMs ? uncheckedBand('检查结果已过期') : cameraBandStatus(data))
+        : tofBandStatus(finite(data?.age_ms) && data.age_ms >= 0 ? { ...data, age_ms: data.age_ms + elapsed } : data);
+    } catch {
+      if (!active || current !== generation) return;
+      value = { state: 'error', word: '读取失败', small: '点开查看详情' };
+    } finally { controllers.delete(controller); }
+    if (!active || current !== generation) return;
+    clearTimeout(expiry.get(kind)); emit(kind, value);
+    expiry.set(kind, setTimeout(() => {
+      if (active && current === generation) emit(kind, uncheckedBand('状态已过期，等待检查'));
+    }, staleMs));
+  };
+  const read = async current => {
+    await Promise.allSettled(['camera', 'tof'].map(kind => readOne(kind, current)));
+    if (active && current === generation) timer = setTimeout(() => read(current), intervalMs);
+  };
+  return { start() {
+    stop(); active = true; values = { camera: checkingBand(), tof: checkingBand() }; onValue(values); read(generation);
+  }, stop };
+}
+
+export function SensorBandCells({ api, active }) {
+  const visible = useVisible();
+  const [values, setValues] = useState({ camera: checkingBand(), tof: checkingBand() });
+  useEffect(() => {
+    if (!active || !visible) { setValues({ camera: uncheckedBand(), tof: uncheckedBand() }); return; }
+    const reader = createSensorBandReader({ request: (kind, signal) => api(`/api/${kind}`, undefined, 3500, signal), onValue: setValues });
+    reader.start(); return () => reader.stop();
+  }, [api, active, visible]);
+  return ['camera', 'tof'].map(kind => html`<a key=${kind} href=${`#/${kind}`} class=${`band-sensor band-${kind}`} data-state=${values[kind].state}>
+    <span class="label">${kind === 'camera' ? '摄像头' : 'ToF'}</span>
+    <span class="word">${values[kind].word}</span><span class="small">${values[kind].small}</span>
+  </a>`);
+}
+
 const CAMERA_STATES = { loading: '读取连接信息…', connecting: '正在连接摄像头…', signaling: '信令已连接，等待视频来源…',
   negotiating: '正在协商视频连接…', receiving: '视频轨道已接收，等待第一帧…', playing: '正在播放', stopped: '预览已停止', hidden: '页面隐藏，预览已暂停', error: '预览失败' };
 
