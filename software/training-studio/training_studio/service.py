@@ -19,7 +19,7 @@ from urllib.parse import quote
 
 from .commands import ANSI, EXPERIMENT, build_train_argv, parse_metric
 from .config import RECIPES, RECIPE_BY_ID, StudioError, validate_config, validate_profile
-from .environment import inspect_environment
+from .environment import inspect_environment, runtime_environment
 
 
 ACTIVE = {"starting", "running", "paused", "stopping"}
@@ -270,7 +270,7 @@ class StudioService:
                 child = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
                                          bufsize=1, start_new_session=os.name != "nt",
-                                         env={**os.environ, "PYTHONUNBUFFERED": "1", "MUJOCO_GL": "egl"})
+                                         env=runtime_environment())
             except OSError as exc:
                 run.update(status="failed", phase="启动失败", error=str(exc))
                 self._active = None
@@ -666,7 +666,7 @@ class StudioService:
                 raise RuntimeError("服务正在关闭")
             child = subprocess.Popen(argv, cwd=self.training_root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      text=True, encoding="utf-8", errors="replace", start_new_session=os.name != "nt",
-                                     env={**os.environ, "PYTHONUNBUFFERED": "1", "MUJOCO_GL": "egl"})
+                                     env=runtime_environment())
             self._children[run["id"]] = child
             self._start_leader_watcher(run["id"], child)
         try:

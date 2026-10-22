@@ -15,7 +15,7 @@ DEFAULTS = {"num_envs": 2048, "iterations": 1000, "save_interval": 50,
 RECIPES = [
     {"id": "hd1910-flat", "title": "HD1910 平地行走", "description": "练习在平地站稳、向前行走和转向。先短试跑，确认环境能正常运行。",
      "task_id": "Mjlab-Velocity-Flat-MicroDuck-HD1910", "defaults": dict(DEFAULTS),
-     "hardware": "Linux + NVIDIA CUDA 显卡；HD1910 舵机模型", "validation": "尚未在 GPU 上验证；5 轮短试跑只检查流程，不代表已经学会走路。"},
+     "hardware": "Linux + NVIDIA CUDA 显卡；HD1910 舵机模型", "validation": "已通过 WSL / RTX 5060 Ti 的 64 环境、5 轮短试跑；只验证流程，不代表已经学会走路。"},
     {"id": "hd1910-rough", "title": "HD1910 起伏地形", "description": "练习在有起伏的地面保持平衡和行走。先完成同一配置的短试跑。",
      "task_id": "Mjlab-Velocity-Rough-MicroDuck-HD1910", "defaults": dict(DEFAULTS),
      "hardware": "Linux + NVIDIA CUDA 显卡；HD1910 舵机模型", "validation": "尚未在 GPU 上验证；训练后请先看回放，再决定是否用于机器人。"},

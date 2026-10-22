@@ -21,7 +21,7 @@ Windows 也可以双击 `start-demo.cmd`；Linux/macOS 可执行 `sh start-demo.
 
 ## 实际训练
 
-在已准备好的 Linux NVIDIA GPU 云电脑上，使用本仓库的训练工程及其锁定依赖。真实模式检查 mjlab 1.3.0、CUDA 和 HD1910 任务注册；不自动安装包、不申请云电脑，也不处理充值。
+在已准备好的 Linux NVIDIA GPU 电脑或 Windows WSL2 中，使用本仓库的训练工程及其锁定依赖。真实模式检查 MuJoCo 图形后端、mjlab 1.3.0、CUDA 和 HD1910 任务注册；不自动安装包、不申请云电脑，也不处理充值。本机操作见 [本机短试跑](docs/local-smoke.md)。
 
 ```sh
 cd software/training
@@ -65,7 +65,7 @@ ssh -N -L 8093:127.0.0.1:8093 用户名@云电脑地址
 
 服务记录默认在 `state/runs/<id>/`，引擎原始日志和 PT 检查点仍在 `../training/logs/rsl_rl/`。备份或迁移时保留这两处；界面记录引用引擎检查点的原路径。导出的 ZIP 可单独保存，但本版没有“上传 ZIP 恢复训练”入口。
 
-网页与演示子进程已在 Windows 上验收，服务测试也在 WSL Linux 上运行。GPU 训练、视频渲染与 ONNX 推理仍需在目标云电脑验收；本地测试不等于一次实际 GPU 训练通过。
+HD1910 平地任务已在 WSL2 / RTX 5060 Ti 上完成真实 64 环境、5 轮训练、PT 保存、250 步视频评估及 ONNX 导出，并独立核对 PT/ONNX 推理一致性。详见 [验收记录](docs/verification.md)。起伏地形、长训练、目标云电脑和真机部署仍需分别验收；短试跑不证明动作已经训练成熟。
 
 ## 开发验证
 

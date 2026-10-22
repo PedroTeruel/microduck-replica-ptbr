@@ -1,9 +1,18 @@
 """Read-only prerequisite probes; never installs or synchronizes dependencies."""
 import json
+import os
 import platform
 import shutil
 import subprocess
 from pathlib import Path
+
+
+def runtime_environment():
+    """Use the same rendering backend for prerequisite probes and engine jobs."""
+    environment = os.environ.copy()
+    environment.setdefault("MUJOCO_GL", "egl")
+    environment["PYTHONUNBUFFERED"] = "1"
+    return environment
 
 
 def inspect_environment(training_root, demo=False):
@@ -24,22 +33,33 @@ def inspect_environment(training_root, demo=False):
     add("已安装的锁定环境", venv.is_file() or demo, "真实模式要求已按 uv.lock 准备 .venv；运行时 --frozen --no-sync --offline。")
     gpu = None
     if not demo and linux and files_ok and uv and venv.is_file():
+        environment = runtime_environment()
         probe = (
-            "import json,importlib.metadata as m,torch,mjlab_microduck.tasks; "
+            "import json\n"
+            "try:\n"
+            " from mujoco import GLContext\n"
+            "except Exception as exc:\n"
+            " print(json.dumps({'gl_error':type(exc).__name__+': '+str(exc)}))\n"
+            " raise SystemExit(0)\n"
+            "import importlib.metadata as m,torch,mjlab_microduck.tasks; "
             "from mjlab.tasks.registry import list_tasks; "
             "from mjlab.rl.config import RslRlBaseRunnerCfg; "
-            "print(json.dumps({'version':m.version('mjlab'),'cuda':torch.cuda.is_available(),"
+            "print(json.dumps({'gl':True,'version':m.version('mjlab'),'cuda':torch.cuda.is_available(),"
             "'gpu':torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,"
             "'tasks':list_tasks(),'resume':all(k in RslRlBaseRunnerCfg.__dataclass_fields__ for k in ['resume','load_run','load_checkpoint'])}))"
         )
         try:
+            # Registering all frozen task configs took 24 s on a working WSL GPU
+            # environment; allow cold imports without treating them as failure.
             output = subprocess.run([uv, "run", "--frozen", "--no-sync", "--offline", "python", "-c", probe],
-                                    cwd=root, text=True, capture_output=True, timeout=20, check=False)
+                                    cwd=root, env=environment, text=True, capture_output=True, timeout=60, check=False)
             data = json.loads(output.stdout.strip().splitlines()[-1]) if output.returncode == 0 else {}
+            gl_detail = "图形后端导入通过。" if data.get("gl") else data.get("gl_error") or output.stderr[-1200:] or "图形后端未通过检查。"
+            add("MuJoCo 图形后端", data.get("gl"), f"MUJOCO_GL={environment['MUJOCO_GL']}；{gl_detail}")
             expected = {"Mjlab-Velocity-Flat-MicroDuck-HD1910", "Mjlab-Velocity-Rough-MicroDuck-HD1910"}
             ok = data.get("version") == "1.3.0" and data.get("cuda") and data.get("resume") and expected.issubset(data.get("tasks", []))
             gpu = data.get("gpu")
-            add("CUDA 与 mjlab 1.3.0", ok, gpu or output.stderr[-1200:] or "CUDA、任务注册或恢复接口未通过检查。")
+            add("CUDA 与 mjlab 1.3.0", ok, gpu or output.stderr[-1200:] or ("图形后端未通过，未继续检查 CUDA 与任务。" if data.get("gl_error") else "CUDA、任务注册或恢复接口未通过检查。"))
         except (OSError, subprocess.TimeoutExpired, ValueError, IndexError) as exc:
             add("CUDA 与 mjlab 1.3.0", False, str(exc))
     else:
