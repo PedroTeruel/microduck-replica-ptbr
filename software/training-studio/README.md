@@ -42,6 +42,8 @@ ssh -N -L 8093:127.0.0.1:8093 用户名@云电脑地址
 
 ## 一次完整练习
 
+想训练单脚站、跳跃或自己的动作，先读 [自定义动作训练指南](web/custom-actions.md)。运行训练台后，也可从侧栏或新建训练窗口打开这份说明；它介绍官方做法、当前支持范围、单脚站示例和新增任务的开发步骤。
+
 1. 在「计算环境」确认检测通过；安装依赖后可重新检测。
 2. 新建实验，先选 **HD1910 平地行走**。首次执行固定 **64 个环境、5 轮**的短试跑，检查加载、仿真步进和保存链路。短试跑不是训练成果。
 3. 试跑成功后进入正式训练。可展开并行环境数、训练轮数、保存间隔、种子、学习率；收起后仍显示改动摘要。修改学习率、随机种子或导入档案后，需要重新完成匹配设置的短试跑；环境数和轮数可为正式训练放大。
@@ -81,6 +83,8 @@ node dev/browser-check.mjs
 ```
 
 验收输出默认写入系统临时目录，可用 `BROWSER_CHECK_OUTPUT` 指定目录。测试不会连接云平台、GPU 或机器人。设计与 API 约定见 [design.md](docs/design.md)，实现验收清单见 [implementation-plan.md](docs/implementation-plan.md)，本次测试与审核结果见 [verification.md](docs/verification.md)。
+
+动作指南以 `web/custom-actions.md` 为源文件。修改后，在安装了 Python-Markdown 的文档编辑环境运行 `python dev/build-guide.py`，同步提交生成的 `web/guide.html`。网页直接使用已生成文件；运行训练台无需安装 Markdown 或执行构建。
 
 ## 署名
 

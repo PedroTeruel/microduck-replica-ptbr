@@ -1,0 +1,55 @@
+.guide-page { line-height: 1.85; }
+.guide-top { max-width: 1200px; margin: auto; padding: 22px 32px; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.guide-top .brand { padding: 0; }
+.guide-layout { max-width: 1200px; margin: 10px auto 0; padding: 0 32px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 36px; align-items: start; }
+.guide-index { position: sticky; top: 28px; padding: 16px 0; font-size: 13px; }
+.guide-index nav > b { display: block; padding: 0 10px 12px; color: var(--ink); }
+.guide-index .toc ul { list-style: none; margin: 0; padding: 0; }
+.guide-index .toc > ul > li > a { display: none; }
+.guide-index .toc ul ul ul { display: none; }
+.guide-index .toc a { display: block; padding: 8px 10px; border-radius: 8px; color: var(--muted); line-height: 1.6; }
+.guide-index .toc a:hover { background: var(--board); color: var(--ink); text-decoration: none; }
+.guide-source { display: inline-block; margin: 20px 10px; font-size: 12px; }
+.guide-content { min-width: 0; padding: 42px 46px; background: var(--board); border: 1px solid var(--board-edge); border-radius: var(--radius); overflow-wrap: anywhere; }
+.guide-kicker { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .08em; margin-bottom: 12px; }
+.guide-content h1 { font-size: 30px; margin: 0 0 20px; }
+.guide-content h2 { font-size: 22px; margin: 40px 0 18px; padding-top: 26px; border-top: 1px solid var(--border); scroll-margin-top: 24px; }
+.guide-content h3 { margin: 26px 0 10px; scroll-margin-top: 24px; }
+.guide-content p, .guide-content ul, .guide-content ol { margin: 12px 0; }
+.guide-content ul, .guide-content ol { padding-left: 22px; }
+.guide-content li { margin: 7px 0; }
+.guide-content strong { font-weight: 600; }
+.guide-content blockquote { margin: 20px 0; padding: 12px 20px; border-left: 3px solid var(--blue); background: var(--blue-soft); border-radius: 0 10px 10px 0; }
+.guide-content blockquote p { margin: 5px 0; }
+.guide-content code { font: 12px/1.65 Consolas, monospace; background: var(--page); padding: 2px 4px; border-radius: 4px; }
+.guide-content pre { padding: 18px; background: var(--page); border: 1px solid var(--border); border-radius: 10px; }
+.guide-content pre code { padding: 0; background: none; white-space: pre-wrap; overflow-wrap: anywhere; }
+.guide-content table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; table-layout: fixed; }
+.guide-content th, .guide-content td { text-align: left; vertical-align: top; padding: 12px; border-bottom: 1px solid var(--border); }
+.guide-content th { background: var(--page); font-weight: 600; }
+.guide-bottom { max-width: 1200px; padding: 28px 32px 44px 288px; margin: auto; color: var(--muted); font-size: 12px; }
+.skip-guide { position: absolute; top: -60px; left: 16px; padding: 8px 16px; background: var(--board); z-index: 10; }
+.skip-guide:focus { top: 8px; }
+@media (max-width: 900px) {
+  .guide-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .guide-index { position: static; padding: 0; }
+  .guide-index .toc > ul > li > ul { display: flex; flex-wrap: wrap; gap: 4px; }
+  .guide-index .toc a { padding: 5px 10px; background: #fff; }
+  .guide-source { margin: 10px; }
+  .guide-bottom { padding-left: 32px; }
+}
+@media (max-width: 600px) {
+  .guide-top { padding: 18px 16px; }
+  .guide-layout { padding: 0 12px; }
+  .guide-content { padding: 24px 18px; }
+  .guide-content h1 { font-size: 25px; }
+  .guide-content h2 { font-size: 20px; }
+  .guide-content th, .guide-content td { padding: 8px 6px; font-size: 12px; }
+  .guide-bottom { padding: 24px 18px 32px; }
+}
+@media print {
+  .guide-top, .guide-index, .guide-bottom, .skip-guide { display: none; }
+  .guide-layout { display: block; max-width: none; margin: 0; padding: 0; }
+  .guide-content { padding: 0; border: 0; }
+  .guide-content h2, .guide-content h3 { break-after: avoid; }
+}
