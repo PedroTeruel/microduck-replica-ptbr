@@ -130,3 +130,34 @@ test('evaluation evidence never treats missing or demonstration counts as physic
   assert.deepEqual(stats({trials:3,successes:0,success_rate:0}),{trials:3,successes:0,success_rate:0});
   assert.deepEqual(stats({trials:4,successes:1,success_rate:.25}),{trials:4,successes:1,success_rate:.25});
 });
+const catalogRecipes=[
+  {id:'hd1910-flat',title:'HD1910 平地行走',description:'练习向前走和转向',catalog:{category:'行走',tags:['基础步态','平地'],preview_kind:'robot_model',source_label:'项目内置',verification_state:'pipeline',verification_label:'已完成短试跑',instructions:['选择参数','短试跑','评估检查点']}},
+  {id:'hd1910-rough',title:'HD1910 起伏地形',description:'适应坡面和不平整地面',catalog:{category:'行走',tags:['地形适应'],preview_kind:'text',verification_state:'unverified',verification_label:'待 GPU 验证'}},
+  {...balanceRecipe,catalog:{category:'平衡',tags:['单脚','左右可选'],preview_kind:'balance_target',verification_state:'pipeline',verification_label:'已完成短试跑'}}
+];
+test('recipe catalog search combines category with case-insensitive title, description and tags', () => {
+  const filter=feature('filterRecipes');
+  assert.deepEqual(filter(catalogRecipes,{query:' hd1910   地形 ',category:'行走'}).map(r=>r.id),['hd1910-rough']);
+  assert.deepEqual(filter(catalogRecipes,{query:'左右可选'}).map(r=>r.id),['hd1910-single-leg']);
+  assert.deepEqual(filter(catalogRecipes,{query:'坡面'}).map(r=>r.id),['hd1910-rough']);
+  assert.deepEqual(filter(catalogRecipes,{query:'单脚',category:'行走'}),[]);
+  assert.deepEqual(filter(catalogRecipes,{query:'   ',category:'全部'}),catalogRecipes);
+});
+test('catalog categories follow available recipes and never add unavailable actions', () => {
+  assert.deepEqual(feature('recipeCategories')(catalogRecipes),['全部','行走','平衡']);
+  assert.deepEqual(feature('recipeCategories')([]),['全部']);
+  const filtered=feature('filterRecipes')(catalogRecipes,{category:'平衡'});
+  assert.equal(filtered[0],catalogRecipes[2]);
+  assert.equal(catalogRecipes.length,3);
+});
+test('old recipe metadata falls back to available previews without inventing verification', () => {
+  const catalog=feature('recipeCatalog');
+  assert.equal(catalog({id:'hd1910-flat'}).preview_kind,'robot_model');
+  assert.equal(catalog({id:'hd1910-rough'}).preview_kind,'text');
+  assert.equal(catalog(balanceRecipe).preview_kind,'balance_target');
+  assert.equal(catalog(balanceRecipe).verification_state,'unverified');
+  assert.equal(catalog(balanceRecipe).verification_label,'验证记录未提供');
+  assert.equal(catalog(catalogRecipes[0]).verification_label,'已完成短试跑');
+  assert.equal(catalog({id:'future',catalog:{preview_kind:'unknown',tags:null,instructions:null}}).preview_kind,'text');
+  assert.equal(catalog({id:'future'}).instructions.length,3);
+});
