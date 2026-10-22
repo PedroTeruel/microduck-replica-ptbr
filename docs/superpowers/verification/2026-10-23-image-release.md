@@ -36,3 +36,5 @@ User explicitly requested a new image and update/push. Built locally in Ubuntu-2
 Publish as a prerelease. This exact new image has not completed a fresh-card physical setup/standing/walking test. Camera source is `test`; the base contains a ToF service unit, which does not establish working hardware. Hardware-based automatic camera/ToF service startup remains unfinished. Existing20261021b physical results do not validate this image's new features.
 
 Published as a public prerelease at the link above. GitHub reports all six assets `uploaded`; every remote asset size and SHA256 digest matches the local distribution. Release tag targets exact build source03136c9. Public-text review found no publishing blocker. Existing20261021b assets and release remain intact.
+
+Unauthenticated HEAD requests to the release page and image download both return200; image Content-Length is712183896. Public master and local studio-dev include release documentationd34919a. This task's two clean implementation/release worktrees were removed; concurrent training checkouts and private untracked Studio notes were preserved.

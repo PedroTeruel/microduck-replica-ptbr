@@ -12,4 +12,4 @@
 - [x] Test the delivered xz, decompress it independently, run read-only filesystem checks/mount inspection; verify installed Studio/helper/sudoers, runtime/model hashes, commissioning config, removed identities and credentials, licenses and no private notes/tests/dev caches.
 - [x] Save distributable image/checksum/manifest/license/model notes under a new local `复刻镜像-20261023` folder. Record software/offline acceptance separately from pending physical board acceptance.
 - [x] Push source without force; create new release tag only after validation. Publish a prerelease with the6 canonical assets and license notice, and verify uploaded sizes/digests/links. Preserve existing releases and their assets.
-- [ ] Integrate release records back to studio-dev and clean only this task's clean worktrees. Report actual image path, release link, checksum and pending hardware acceptance.
+- [x] Integrate release records back to studio-dev and clean only this task's clean worktrees. Report actual image path, release link, checksum and pending hardware acceptance.
