@@ -105,6 +105,9 @@ def main():
     configure_torch_backends()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     cfg = load_env_cfg(args.task_id, play=True)
+    # Actuators sample voltage/resistance when the environment is constructed.
+    # Seeding only the later trial resets cannot reproduce that initial physics.
+    cfg.seed = args.seed
     cfg.scene.num_envs = 1
     cfg.viewer.width, cfg.viewer.height = 960, 540
     skill = None
@@ -141,7 +144,7 @@ def main():
                 summary = bounded_rollout(env, policy, args.steps)
                 summary["note"] = "Single bounded rollout; this is not hardware validation."
         summary.update(task_id=args.task_id, checkpoint=args.checkpoint_file.name, demo=False,
-                       evaluation_seed=summary.get("seed", args.seed))
+                       evaluation_seed=summary.get("seed", args.seed), startup_seed=args.seed)
         (args.output_dir / "evaluation.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         print(json.dumps(summary), flush=True)
     finally:
