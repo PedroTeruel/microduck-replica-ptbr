@@ -20,14 +20,15 @@ const CDP = arg('cdp');
 const FAKE = Number(arg('fake-port'));
 const PHASE = arg('phase', 'factory');
 const SHOTS = arg('shots', '');
+const CONTROL = arg('control-file', '');
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => process.stderr.write(`[commit-e2e] ${a.join(' ')}` + '\n');
 
 // 测试控制口：给假 robotd / 假 configd 发 fake.set（同一个假对象）
-const fakeSet = (params) => new Promise((resolve, reject) => {
+const fakeRpc = (method, params) => new Promise((resolve, reject) => {
   const s = createConnection({ host: '127.0.0.1', port: FAKE }, () => {
-    s.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'fake.set', params }) + '\n');
+    s.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) + '\n');
   });
   let buf = '', done = false;
   const timer = setTimeout(() => { if (!done) { done = true; s.destroy(); reject(new Error('fake.set 超时')); } }, 5000);
@@ -44,6 +45,7 @@ const fakeSet = (params) => new Promise((resolve, reject) => {
   });
   s.on('error', (e) => { if (!done) { done = true; clearTimeout(timer); reject(e); } });
 });
+const fakeSet = (params) => fakeRpc('fake.set', params);
 
 const page = await (await fetch(`http://127.0.0.1:${CDP}/json/new?about:blank`, { method: 'PUT' })).json();
 const ws = new WebSocket(page.webSocketDebuggerUrl);
@@ -246,10 +248,95 @@ if (PHASE === 'mark') {
   await shot('commit-mark-servo-done.png');
 }
 
+if (PHASE === 'imu-redo') {
+  await js(`location.hash = '#/imu'`);
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === '重新标定方向' && !b.disabled)`,
+    '已保存的 IMU 仍有重新标定方向入口', 10000);
+  out.entryVisible = true;
+  out.original = await fakeRpc('robot.busCommand', { action: 'calibration-status' });
+  await recordSends();
+  await clickExact('.imu-coarse button', '重新标定方向');
+  out.beforeConfirm = await js(`(window.__sent || []).filter((m) => m.name === 'imu.op')`);
+  await waitFor(`!!document.querySelector('.imu-coarse .two-step-ask')`, '重新标定需第二次确认', 5000);
+  await sleep(900);
+  await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
+  await waitFor(`/重标定未结束/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
+    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采静止') && !b.disabled)`, '回到标定模式原粗校流程', 15000);
+  out.active = await stance();
+  await shot('imu-redo-active.png');
+  // Refreshing must recover the persistent session instead of hiding the verified mount.
+  await send('Page.reload');
+  await waitFor(`/重标定未结束/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
+    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采静止') && !b.disabled)`, '刷新仍可继续原粗校', 15000);
+  await recordSends();
+  await fakeSet({ imu_pose: 'upright' });
+  await clickHas('.imu-coarse button', '采静止');
+  await waitFor(`/静止采到/.test(document.querySelector('.imu-coarse')?.innerText || '')`, '重新采到静止', 15000);
+  await fakeSet({ imu_pose: 'nose_down' });
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采前倾') && !b.disabled)`, '前倾采集按钮就绪');
+  if (!await clickHas('.imu-coarse button', '采前倾')) throw new Error('前倾采集未发出');
+  await waitFor(`!!document.querySelector('.imu-coarse input[type=checkbox]')`, '重新算出安装方向', 20000);
+  out.verifyInstruction = await js(`document.querySelector('.imu-coarse')?.innerText`);
+  await js(`[...document.querySelectorAll('.imu-coarse input[type=checkbox]')].forEach((x) => { if (!x.checked) x.click(); })`);
+  await fakeSet({ imu_pose: 'upright', imu_verify_plan: 'ok' });
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === '交给主程序验证' && !b.disabled)`, '验证按钮就绪');
+  if (!await clickHas('.imu-coarse button', '交给主程序验证')) throw new Error('验证未发出');
+  await waitFor(`/运动模式/.test(document.querySelector('.topbar')?.innerText || document.querySelector('header')?.innerText || '') &&
+    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === '重新标定方向' && !b.disabled)`, '新方向验证通过且恢复运动模式', 45000);
+  out.after = await fakeRpc('robot.busCommand', { action: 'calibration-status' });
+  out.afterStance = await stance();
+  out.motionCommands = await js(`(window.__sent || []).filter((m) => m.name === 'pad.op' || m.name === 'init' || (m.name === 'imu.op' && m.args.op === 'hold'))`);
+  await shot('imu-redo-complete.png');
+  // A second revalidation can be cancelled and must restore exactly that saved calibration.
+  await clickExact('.imu-coarse button', '重新标定方向');
+  await sleep(900);
+  await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
+  await waitFor(`/重标定未结束/.test(document.querySelector('.imu-coarse')?.innerText || '')`, '可以再次开始重标定', 15000);
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === '取消并恢复原参数' && !b.disabled)`, '取消按钮就绪');
+  if (!await clickExact('.imu-coarse button', '取消并恢复原参数')) throw new Error('取消未发出');
+  await sleep(900);
+  await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
+  await waitFor(`/运动模式/.test(document.querySelector('.topbar')?.innerText || '') &&
+    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === '重新标定方向' && !b.disabled)`, '取消后恢复原模式', 15000);
+  out.cancelled = await fakeRpc('robot.busCommand', { action: 'calibration-status' });
+  out.recoveredPhases = [];
+  for (const phase of ['entering', 'finishing', 'cancelling']) {
+    await clickExact('.imu-coarse button', '重新标定方向');
+    await sleep(900);
+    await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
+    await waitFor(`/重标定未结束/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
+      !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采静止') && !b.disabled)`, '重标定已进入');
+    writeFileSync(CONTROL, JSON.stringify({ outcome: 'ok', redo_phase: phase }));
+    await send('Page.reload');
+    await waitFor(`/重标定未结束/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
+      !document.querySelector('.imu-coarse-steps') &&
+      !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === '取消并恢复原参数' && !b.disabled)`, `中断的 ${phase} 会话可取消`, 6000);
+    await clickExact('.imu-coarse button', '取消并恢复原参数');
+    await sleep(900);
+    await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
+    await waitFor(`/运动模式/.test(document.querySelector('.topbar')?.innerText || '') &&
+      !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === '重新标定方向' && !b.disabled)`, '恢复原运动模式');
+    out.recoveredPhases.push(phase);
+    writeFileSync(CONTROL, JSON.stringify({ outcome: 'ok' }));
+  }
+  // Already verified commissioning deployments also retain a direct revalidation entry.
+  await fakeSet({ mode: 'commissioning', imu_pose: 'upright' });
+  await waitFor(`/标定模式/.test(document.querySelector('.topbar')?.innerText || '') &&
+    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === '重新标定方向' && !b.disabled)`, '已验证标定模式仍可重做', 15000);
+  await recordSends();
+  await clickExact('.imu-coarse button', '重新标定方向');
+  await sleep(900);
+  await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采静止'))`, '直接重开原粗校', 5000);
+  out.commissioningCommands = await js(`(window.__sent || []).filter((m) => m.name === 'imu.op')`);
+}
+
 if (PHASE === 'imu') {
   log('IMU 页：粗校');
   await js(`location.hash = '#/imu'`);
   await waitFor(`!!document.querySelector('.imu-coarse')`, 'IMU 粗校卡片', 20000);
+  await js(`document.querySelector('.imu-stance .imu-relax').click()`);
+  await sleep(500);
   out.start = await js(`document.querySelector('.imu-coarse')?.innerText.replace(/\\s+/g, ' ').slice(0, 500)`);
   if (!await clickHas('.imu-coarse button', '采静止')) throw new Error('找不到「采静止」');
   await waitFor(`/静止采到/.test(document.querySelector('.imu-coarse')?.innerText || '')`, '静止采好', 20000);
@@ -260,6 +347,7 @@ if (PHASE === 'imu') {
     '粗校算出方向、等确认', 25000);
   await js(`[...document.querySelectorAll('.imu-coarse input[type=checkbox]')].forEach((x) => { if (!x.checked) x.click(); })`);
   await fakeSet({ imu_verify_plan: 'ok' });        // 开发用剧本：主程序先看到摆正，再看到往前低头
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === '交给主程序验证' && !b.disabled)`, '原粗校验证按钮就绪');
   if (!await clickHas('.imu-coarse button', '交给主程序验证')) throw new Error('找不到「交给主程序验证」');
   // 验证成功后主程序里 verified 变成 true，粗校卡会收起：看 IMU 页顶部状态变成「方向已确认」。
   await waitFor(`/方向已确认/.test(document.querySelector('.sv-metrics')?.innerText || '')`,

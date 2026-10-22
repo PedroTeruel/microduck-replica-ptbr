@@ -61,6 +61,7 @@ import math
 import os
 import re
 import secrets
+import shlex
 import shutil
 import signal
 import stat
@@ -69,9 +70,10 @@ import sys
 import time
 import tomllib
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 VERBS = ("bus-take", "bus-give-back", "bus-abort", "pad-pair", "pad-forget",
-         "wifi-hotspot-down", "wifi-hotspot-up", "calib-read", "calib-commit", "ssh-status", "ssh-password")
+         "wifi-hotspot-down", "wifi-hotspot-up", "calib-read", "calib-commit", "ssh-status", "ssh-password",
+         "imu-recalibrate")
 
 EXIT_OK, EXIT_ARGS, EXIT_STATE, EXIT_BUSY, EXIT_FAIL, EXIT_RETAKE = 0, 2, 3, 4, 5, 6
 
@@ -102,6 +104,10 @@ CALIB_SAVED = "/etc/robot/feetech-ft5/hd1910-calibration.saved.toml"
 CALIB_PREVIOUS = "/etc/robot/feetech-ft5/hd1910-calibration.previous.toml"
 CALIB_BACKUP_DIR = OPLOG_DIR + "/calib-backups"
 COMMISSIONING_DROPIN = "/etc/systemd/system/robotd.service.d/zzzz-zz-microduck-commissioning.conf"
+IMU_REDO_DIR = OPLOG_DIR + "/imu-recalibrate"
+IMU_REDO_MANIFEST = IMU_REDO_DIR + "/manifest.json"
+IMU_REDO_DROPIN = "/etc/systemd/system/robotd.service.d/zzzzzz-studio-imu-recalibrate.conf"
+IMU_REDO_SCHEMA = "microduck-imu-recalibrate/1"
 CALIB_RESTART_WAIT = 40.0
 CALIB_MOTION_WAIT = 30.0
 CALIB_STATUS_INTERVAL = 0.5
@@ -408,7 +414,7 @@ def _stderr_lines(err):
 
 def append_oplog(ctx, row):
     try:
-        ensure_dir(ctx, OPLOG_DIR, 0o700)
+        ensure_dir(ctx, OPLOG_DIR, 0o755)
         flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
         fd = os.open(ctx.p(OPLOG), flags, 0o600)
         try:
@@ -459,7 +465,10 @@ class Op:
 
     def finish(self, code, result, reason=None, detail=None, record=True):
         level = "info" if code == EXIT_OK else ("warn" if code in (EXIT_STATE, EXIT_BUSY, EXIT_RETAKE) else "error")
-        self.emit("done", level, reason or result, {"exit": code, "result": result, **(detail or {})})
+        done = {"exit": code, "result": result, **(detail or {})}
+        if self.verb == "imu-recalibrate":
+            done["reason"] = reason
+        self.emit("done", level, reason or result, done)
         if record:                       # 探测用的坏动词（bus-nope）照样回 done，但不覆盖 last-result / oplog
             row = {"verb": self.verb, "version": VERSION, "result": result, "exit": code, "reason": reason,
                    "detail": detail, "by": self.by, "ms": self.ms(), "mono_ms": int(self.ctx.now() * 1000),
@@ -1677,6 +1686,7 @@ def verb_calib_commit(op, args, raw):
         return detach(op, raw, "calib-commit")
     # 先拿锁再查旗：跟 bus-take / bus-give-back 共用 helper.lock
     op.take_lock("写标定")
+    imu_redo_conflict(op)
     if flag_present(op.ctx):
         raise Stop(EXIT_STATE, "bus_held", "舵机页正占着总线：先在舵机页点「交还主程序」再写")
     op.emit("bus", "info", "舵机页没占着总线，可以写")
@@ -1774,6 +1784,409 @@ def verb_calib_commit(op, args, raw):
 
 
 # ---------------------------------------------------------------------------
+# Repeat initial IMU calibration. This transaction never builds a joint calibration.
+
+def imu_redo_file(op, path):
+    """Only root-owned regular files; never follow a caller's symlink."""
+    st = os.lstat(op.ctx.p(path))
+    if not stat.S_ISREG(st.st_mode) or (op.ctx.check_owner and (st.st_uid != 0 or st.st_mode & 0o022)):
+        raise Stop(EXIT_STATE, "imu_session_tampered", f"IMU 会话文件不安全：{path}")
+    with open(op.ctx.p(path), "rb") as stream:
+        return stream.read()
+
+
+def imu_redo_arguments(description):
+    # systemctl's ExecStart has one record, with an explicitly direct robotd executable.
+    match = re.fullmatch(r"\{\s*path=([^;{}]+?)\s*;\s*argv\[\]=([^{}]*?)\s*;\s*(?:ignore_errors=[^{}]*?)?\}",
+                         description.strip(), re.S)
+    if not match:
+        raise Stop(EXIT_STATE, "unsupported_exec", "读不清主程序唯一的实际启动命令：未修改服务")
+    if re.search(r"\\(?:x[0-9a-fA-F]{2}|[0-7]{3}|[nrt])|[$%]", match.group(2)):
+        raise Stop(EXIT_STATE, "unsupported_exec", "启动参数含无法确定的转义 / 环境展开：未修改服务")
+    try:
+        argv = shlex.split(match.group(2))
+    except ValueError as err:
+        raise Stop(EXIT_STATE, "unsupported_exec", "主程序启动参数有歧义：未修改服务") from err
+    path = match.group(1).strip()
+    if (not argv or argv[0] != path or not path.startswith("/") or path.rsplit("/", 1)[-1] != "robotd"
+            or any(any(c in a for c in "\n\r\0") for a in argv)):
+        raise Stop(EXIT_STATE, "unsupported_exec", "主程序使用包装命令或不明确的参数：未修改服务")
+    return argv
+
+
+def imu_redo_quote(argument):
+    return '"' + argument.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%').replace('$', '$$') + '"'
+
+
+def imu_redo_override(manifest):
+    return ("# Owned by microduck-helper imu-recalibrate: " + manifest["session_id"] +
+            "\n[Service]\nExecStart=\nExecStart=" +
+            " ".join(imu_redo_quote(a) for a in manifest["exec_args"] + ["--commissioning"]) + "\n").encode()
+
+
+def imu_redo_load(op):
+    if not exists(op.ctx, IMU_REDO_MANIFEST):
+        return None
+    try:
+        # Check each enclosing persistent directory, including when this is a resumed session.
+        for path in (OPLOG_DIR, IMU_REDO_DIR):
+            st = os.lstat(op.ctx.p(path))
+            if not stat.S_ISDIR(st.st_mode) or (op.ctx.check_owner and (st.st_uid != 0 or st.st_mode & 0o022)):
+                raise ValueError("会话目录不安全")
+        m = json.loads(imu_redo_file(op, IMU_REDO_MANIFEST))
+        if (m.get("schema") != IMU_REDO_SCHEMA or type(m.get("active")) is not bool
+                or not re.fullmatch(r"[0-9a-f]{32}", m.get("session_id", ""))
+                or m.get("source") not in IMU_SOURCES or not isinstance(m.get("exec_args"), list)
+                or not all(isinstance(a, str) for a in m["exec_args"])
+                or not m["exec_args"] or "--commissioning" in m["exec_args"]):
+            raise ValueError("manifest 格式不对")
+        expected_paths = (CALIB, CALIB_SAVED)
+        if (not isinstance(m.get("files"), list) or len(m["files"]) != 2
+                or tuple(row.get("path") for row in m["files"]) != expected_paths
+                or tuple(row.get("name") for row in m["files"]) != ("main.toml", "saved.toml")):
+            raise ValueError("备份清单格式不对")
+        if m.get("override_sha256") != _sha256(imu_redo_override(m)):
+            raise ValueError("模式文件摘要不对")
+        if m["active"]:
+            directory = IMU_REDO_DIR + "/" + m["session_id"]
+            st = os.lstat(op.ctx.p(directory))
+            if not stat.S_ISDIR(st.st_mode) or (op.ctx.check_owner and (st.st_uid != 0 or st.st_mode & 0o022)):
+                raise ValueError("备份目录不安全")
+            for row in m["files"]:
+                if row.get("existed") and _sha256(imu_redo_file(op, directory + "/" + row["name"])) != row.get("sha256"):
+                    raise ValueError("备份摘要不对")
+            raw = imu_redo_file(op, directory + "/calibration.json")
+            if _sha256(raw) != m.get("calibration_sha256"):
+                raise ValueError("标定快照摘要不对")
+        return m
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as err:
+        raise Stop(EXIT_STATE, "imu_session_tampered", f"IMU 会话读不回来或已改变：{err}；保留现场") from err
+
+
+def imu_redo_conflict(op):
+    m = imu_redo_load(op)
+    if (m and m["active"]) or exists(op.ctx, IMU_REDO_DROPIN):
+        raise Stop(EXIT_STATE, "imu_recalibrate_active", "初次 IMU 校准正在重做：先完成或取消，再操作舵机 / 写整份标定")
+
+
+def imu_redo_save(op, manifest, phase, **fields):
+    manifest.update(phase=phase, **fields)
+    write_atomic(op.ctx, IMU_REDO_MANIFEST, (json.dumps(manifest, ensure_ascii=False, indent=1) + "\n").encode(), 0o644)
+
+
+def imu_redo_source(bus, status):
+    native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
+    sample = (bus.get("last_sample") or {}).get("imu") or {}
+    source = native.get("imu_source") or sample.get("source") or status.get("imu_source")
+    if source not in IMU_SOURCES or status.get("imu_source") != source:
+        raise Stop(EXIT_STATE, "imu_source_changed", "当前 IMU 来源读回不一致：停止重做")
+    return source
+
+
+def imu_redo_same(a, b):
+    if isinstance(a, dict) and isinstance(b, dict):
+        return set(a) == set(b) and all(imu_redo_same(a[k], b[k]) for k in a)
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(imu_redo_same(x, y) for x, y in zip(a, b))
+    if isinstance(a, bool) or isinstance(b, bool):
+        return a is b
+    if isinstance(a, (float, int)) and isinstance(b, (float, int)):
+        return _num_same(a, b)
+    return a == b
+
+
+def imu_redo_gate(op, mode, source=None):
+    """Require two fresh, confirmed off snapshots; unknown is not torque-off."""
+    for i in range(2):
+        if i:
+            op.ctx.sleep(GATE_GAP)
+        bus, err = robotd_bus_status(op)
+        if bus is None:
+            raise Stop(EXIT_STATE, "refused", f"主程序状态读不回：{err}")
+        native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
+        hd = native.get("hd1910") if isinstance(native.get("hd1910"), dict) else {}
+        safe = bus.get("mode") == mode and bus.get("torque_off_pending") is not True and not bus.get("home_recovery")
+        if mode == "motion":
+            safe = (safe and bus.get("phase") == "control" and bus.get("policy_enabled") is False
+                    and native.get("torque_state_confirmed") is False
+                    and hd.get("restore_pending") is False and hd.get("temporary_gains_applied") is False)
+        else:
+            safe = (safe and bus.get("phase") in COMMISSIONING_UP and bus.get("torque_state") == "off"
+                    and not bus.get("motion") and not (bus.get("hold") or {}).get("active")
+                    and bus.get("policy_motion_enabled") is not True)
+        if not safe:
+            raise Stop(EXIT_STATE, "refused", "先扶稳鸭子并卸力，等主程序明确确认全部失能、临时增益恢复，再重做初次 IMU 校准")
+        if source is not None:
+            status, err = calibration_status(op)
+            if status is None or imu_redo_source(bus, status) != source:
+                raise Stop(EXIT_STATE, "imu_source_changed", "IMU 来源已改变或读不回，停止重做")
+    return bus
+
+
+def imu_redo_readback(op, expected, source, quat=None):
+    bus, err = robotd_bus_status(op)
+    status, cs_err = calibration_status(op)
+    if bus is None or status is None or imu_redo_source(bus, status) != source:
+        raise Stop(EXIT_STATE, "readback_mismatch", f"当前 IMU 来源读不回：{err or cs_err or source}")
+    cal = status.get("calibration")
+    if not imu_redo_same(normalized_calibration(expected), normalized_calibration(cal or {})):
+        raise Stop(EXIT_STATE, "readback_mismatch", "主程序标定读回与文件逐项不一致：保留会话")
+    if quat is not None:
+        mount = ({"quat": cal.get("imu_mount_quat"), "verified": cal.get("imu_mount_verified")}
+                 if source == "bus" else (cal.get("imu_mounts") or {}).get(source) or {})
+        top = status.get("imu_mount")
+        if mount.get("verified") is not True or not imu_redo_same(mount.get("quat"), quat):
+            raise Stop(EXIT_STATE, "readback_mismatch", "新 IMU 方向 / verified 没有逐项读回")
+        if isinstance(top, dict) and (top.get("verified") is not True or not imu_redo_same(top.get("quat"), quat)):
+            raise Stop(EXIT_STATE, "readback_mismatch", "主程序当前生效的 IMU 方向不一致")
+    return status
+
+
+def imu_redo_owned(op, m, allow_missing=False):
+    if not exists(op.ctx, IMU_REDO_DROPIN):
+        if allow_missing:
+            # A killed helper may have unlinked its override either before or
+            # after daemon-reload. Both loaded commands are pinned known forms;
+            # neither tells us which mode the still-running process is using.
+            loaded = imu_redo_arguments(exec_start(op))
+            if loaded not in (m["exec_args"], m["exec_args"] + ["--commissioning"]):
+                raise Stop(EXIT_STATE, "imu_session_tampered", "会话中断后主程序生效的启动参数已改变：保留现场")
+            return
+        raise Stop(EXIT_STATE, "imu_session_tampered", "IMU 会话自己的模式文件不见了：保留现场")
+    if imu_redo_file(op, IMU_REDO_DROPIN) != imu_redo_override(m):
+        raise Stop(EXIT_STATE, "imu_session_tampered", "IMU 会话模式文件已改变，不删除别人的内容")
+    loaded = imu_redo_arguments(exec_start(op))
+    if (loaded != m["exec_args"] + ["--commissioning"]
+            and not (allow_missing and loaded == m["exec_args"])):
+        raise Stop(EXIT_STATE, "imu_session_tampered", "主程序生效的启动参数已改变：保留现场")
+
+
+def imu_redo_restart(op, mode, expected, source):
+    if not restart_robotd(op) or not wait_robotd(op)[0]:
+        raise Stop(EXIT_FAIL, "restart_failed", "主程序重启失败，会话保留，可重试或取消")
+    deadline = op.ctx.now() + CALIB_MOTION_WAIT
+    while True:
+        bus, _ = robotd_bus_status(op)
+        if bus and bus.get("mode") == mode and bus.get("phase") == ("control" if mode == "motion" else "ready"):
+            break
+        if op.ctx.now() >= deadline:
+            raise Stop(EXIT_FAIL, "restart_failed", "主程序还没回到预期模式，会话保留")
+        op.ctx.sleep(CALIB_STATUS_INTERVAL)
+    # Motion startup may need a bounded relax to confirm the torque readback.
+    if mode == "motion" and (bus.get("native") or {}).get("torque_state_confirmed") is not False:
+        op.ctx.rpc("robot.relax", {}, 3.0)
+    imu_redo_gate(op, mode, source)
+    return imu_redo_readback(op, expected, source)
+
+
+def imu_redo_restore_original(op, m):
+    errors = []
+    directory = IMU_REDO_DIR + "/" + m["session_id"]
+    for row in m["files"]:
+        if not _restore_one(op, directory, row, errors):
+            raise Stop(EXIT_FAIL, "rollback_failed", "; ".join(errors))
+    imu_redo_owned(op, m, allow_missing=True)
+    remove(op.ctx, IMU_REDO_DROPIN)
+    if op.ctx.run(["systemctl", "daemon-reload"])[0] != 0 or imu_redo_arguments(exec_start(op)) != m["exec_args"]:
+        raise Stop(EXIT_FAIL, "rollback_failed", "原来的启动参数没恢复，会话保留")
+    expected = _load_toml(op, CALIB)
+    status = imu_redo_restart(op, "motion", expected, m["source"])
+    pads_restore(op, m["controllers"])
+    imu_redo_save(op, m, "cancelled", active=False)
+    return status
+
+
+def check_imu_redo_args(args):
+    action = args.get("action")
+    keys = {"enter": ("by", "action", "confirmed"), "status": ("by", "action"),
+            "cancel": ("by", "action", "confirmed", "session_id"),
+            "finish": ("by", "action", "session_id", "source", "quat")}
+    if action not in keys:
+        raise Stop(EXIT_ARGS, "bad_args", "imu-recalibrate 只认 enter / status / finish / cancel")
+    check_keys(args, keys[action], "imu-recalibrate 的参数")
+    by = check_by(args)
+    if action in ("enter", "cancel") and args.get("confirmed") is not True:
+        raise Stop(EXIT_ARGS, "bad_args", "先明确确认扶稳并卸力，再进入或取消")
+    if action in ("finish", "cancel") and not re.fullmatch(r"[0-9a-f]{32}", str(args.get("session_id", ""))):
+        raise Stop(EXIT_ARGS, "bad_args", "session_id 不正确")
+    if action == "finish":
+        try:
+            q = normalize_quat(args.get("quat"))
+        except CalibError as err:
+            raise Stop(EXIT_ARGS, "bad_args", str(err)) from err
+        if args.get("source") not in IMU_SOURCES or not imu_redo_same(q, args["quat"]):
+            raise Stop(EXIT_ARGS, "bad_args", "source / normalized quat 不正确")
+    return by, action
+
+
+def verb_imu_recalibrate(op, args, raw):
+    op.by, action = check_imu_redo_args(args)
+    if action != "status" and op.ctx.env.get(DETACH_ENV) != "1":
+        return detach(op, raw, "imu-recalibrate")
+    op.take_lock("IMU 校准")
+    m = imu_redo_load(op)
+    if action == "status":
+        return op.finish(EXIT_OK, "imu_status", "读到初次 IMU 校准会话", m or {"active": False, "phase": "idle"}, record=False)
+    if flag_present(op.ctx):
+        raise Stop(EXIT_STATE, "bus_held", "舵机页占着总线：先交还主程序")
+    if action == "enter":
+        if (m and m["active"]) or exists(op.ctx, IMU_REDO_DROPIN):
+            raise Stop(EXIT_STATE, "imu_recalibrate_active", "初次 IMU 校准会话已经开着：继续或取消")
+        if exists(op.ctx, COMMISSIONING_DROPIN):
+            raise Stop(EXIT_STATE, "refused", "出厂标定模式直接做粗校，无需重做会话")
+        argv = imu_redo_arguments(exec_start(op))
+        if "--commissioning" in argv:
+            raise Stop(EXIT_STATE, "foreign_commissioning", "主程序已经在外来的标定模式")
+        bus = imu_redo_gate(op, "motion")
+        data, _ = read_calibration(op)
+        status, err = calibration_status(op)
+        if status is None:
+            raise Stop(EXIT_STATE, "readback_mismatch", f"原始标定读不回：{err}")
+        source = imu_redo_source(bus, status)
+        imu_redo_readback(op, data, source)
+        # Save service states before stopping, and save every backup before touching ExecStart.
+        controllers = {"padd": is_active(op, "padd"), "gamesir": is_active(op, GAMESIR)}
+        ensure_dir(op.ctx, OPLOG_DIR, 0o755)
+        ensure_dir(op.ctx, IMU_REDO_DIR, 0o755)
+        session = secrets.token_hex(16)
+        directory = IMU_REDO_DIR + "/" + session
+        ensure_dir(op.ctx, directory, 0o700)
+        files = []
+        for path, name in ((CALIB, "main.toml"), (CALIB_SAVED, "saved.toml")):
+            meta, contents = file_meta(op.ctx, path)
+            meta.update(path=path, name=name)
+            if contents is not None:
+                imu_redo_file(op, path)
+                write_atomic(op.ctx, directory + "/" + name, contents, 0o600)
+            files.append(meta)
+        baseline = (json.dumps(data, sort_keys=True) + "\n").encode()
+        write_atomic(op.ctx, directory + "/calibration.json", baseline, 0o600)
+        m = {"schema": IMU_REDO_SCHEMA, "active": True, "session_id": session, "source": source,
+             "exec_args": argv, "files": files, "controllers": controllers, "calibration_sha256": _sha256(baseline)}
+        m["override_sha256"] = _sha256(imu_redo_override(m))
+        imu_redo_save(op, m, "entering")
+        override_written = False
+        try:
+            pads_stop(op)
+            if is_active(op, "padd") or is_active(op, GAMESIR):
+                raise Stop(EXIT_STATE, "refused", "手柄服务没停下，未切换模式")
+            imu_redo_gate(op, "motion", source)
+            if imu_redo_arguments(exec_start(op)) != argv or _sha256(imu_redo_file(op, CALIB)) != files[0]["sha256"]:
+                raise Stop(EXIT_STATE, "readback_mismatch", "进入前主程序参数或标定文件已改变")
+            write_atomic(op.ctx, IMU_REDO_DROPIN, imu_redo_override(m), 0o644)
+            override_written = True
+            if op.ctx.run(["systemctl", "daemon-reload"])[0] != 0:
+                raise Stop(EXIT_FAIL, "restart_failed", "模式配置没有重新加载")
+            imu_redo_owned(op, m)
+            imu_redo_restart(op, "commissioning", data, source)
+            imu_redo_save(op, m, "commissioning")
+            return op.finish(EXIT_OK, "imu_entered", "已进入初次 IMU 校准：保持失能，按原来的静止 / 前倾粗校再验证", m)
+        except Exception as err:
+            try:
+                if override_written or exists(op.ctx, IMU_REDO_DROPIN):
+                    imu_redo_restore_original(op, m)
+                else:
+                    # A failed second gate has changed no robotd files or mode. Do not
+                    # restart a robot whose torque state just became unsafe/unknown.
+                    pads_restore(op, controllers)
+                    imu_redo_save(op, m, "cancelled", active=False)
+            except Exception as rb:
+                imu_redo_save(op, m, "recovery_required", reason=str(rb))
+                return op.finish(EXIT_FAIL, "rollback_failed", f"进入没完成，恢复也没完成：{rb}；保留会话", m)
+            if isinstance(err, Stop):
+                return op.finish(err.code, err.result, err.reason, m)
+            return op.finish(EXIT_FAIL, "enter_failed", f"进入失败，已恢复原来的文件和模式：{err}", m)
+    if not m or not m["active"] or args["session_id"] != m["session_id"]:
+        raise Stop(EXIT_STATE, "no_session", "这份初次 IMU 校准会话已改变或已结束")
+    imu_redo_owned(op, m, allow_missing=(m["phase"] in ("entering", "finishing", "cancelling", "recovery_required")))
+    # A reboot may have started pad services again while the persistent override
+    # kept robotd in commissioning. Stop them again before returning to motion.
+    pads_stop(op)
+    if is_active(op, "padd") or is_active(op, GAMESIR):
+        raise Stop(EXIT_STATE, "refused", "手柄服务没停下，会话保留")
+    if action == "cancel":
+        # Disk config, loaded ExecStart and the live process can differ after a
+        # killed transition. Choose the safety gate from a fresh live snapshot;
+        # imu_redo_owned independently checks the installed/effective command.
+        live, err = robotd_bus_status(op)
+        mode = (live or {}).get("mode")
+        if mode not in ("motion", "commissioning"):
+            raise Stop(EXIT_STATE, "refused", f"取消前主程序的当前模式读不回：{err or mode}；会话保留")
+        imu_redo_gate(op, mode, m["source"])
+        imu_redo_save(op, m, "cancelling")
+        try:
+            status = imu_redo_restore_original(op, m)
+            return op.finish(EXIT_OK, "imu_cancelled", "已取消重做，恢复原来的 IMU 标定和运动模式，保持失能", dict(m, calibration=status))
+        except Exception as err:
+            imu_redo_save(op, m, "recovery_required", reason=str(err))
+            return op.finish(EXIT_FAIL, "cancel_failed", f"取消未完成，会话和备份仍在：{err}", m)
+    source, quat = args["source"], args["quat"]
+    if source != m["source"]:
+        raise Stop(EXIT_STATE, "imu_source_changed", "当前来源与进入会话时不同")
+    imu_redo_gate(op, "commissioning", source)
+    current = _load_toml(op, CALIB)
+    if not imu_redo_same(normalized_calibration(current), normalized_calibration(_load_toml(op, CALIB_SAVED))):
+        raise Stop(EXIT_STATE, "readback_mismatch", "主标定与 saved 读回不一致")
+    imu_redo_readback(op, current, source, quat)
+    directory = IMU_REDO_DIR + "/" + m["session_id"]
+    baseline = json.loads(imu_redo_file(op, directory + "/calibration.json"))
+    import copy
+    def without_allowed(cal):
+        cal = copy.deepcopy(cal)
+        cal.pop("motion_enabled", None)
+        if source == "bus":
+            cal.pop("imu_mount_quat", None)
+            cal.pop("imu_mount_verified", None)
+        else:
+            mount = (cal.get("imu_mounts") or {}).get(source)
+            if isinstance(mount, dict):
+                mount.pop("quat", None)
+                mount.pop("verified", None)
+        return normalized_calibration(cal)
+    if not imu_redo_same(without_allowed(baseline), without_allowed(current)):
+        raise Stop(EXIT_STATE, "readback_mismatch", "除当前 IMU 方向和 motion_enabled 外，其他标定已改变：停止完成")
+    before = {path: file_meta(op.ctx, path) for path in (CALIB, CALIB_SAVED)}
+    text = before[CALIB][1].decode("utf-8")
+    replacement = "motion_enabled = " + _bool_text(baseline.get("motion_enabled"))
+    text, count = re.subn(r"(?m)^motion_enabled\s*=\s*(?:true|false)\s*(?:#[^\n]*)?$", replacement, text)
+    if count != 1:
+        raise Stop(EXIT_STATE, "bad_toml", "motion_enabled 没有唯一的顶层写法，不猜测修改")
+    expected = tomllib.loads(text)
+    restored = copy.deepcopy(current)
+    restored["motion_enabled"] = baseline["motion_enabled"]
+    if not imu_redo_same(expected, restored):
+        raise Stop(EXIT_STATE, "bad_toml", "恢复 motion_enabled 会改变其他字段，停止完成")
+    imu_redo_save(op, m, "finishing", expected_quat=quat)
+    try:
+        for path in (CALIB, CALIB_SAVED):
+            _write_preserving(op, path, text.encode(), before[path][0], 0o644)
+            if not imu_redo_same(_load_toml(op, path), expected):
+                raise Stop(EXIT_FAIL, "readback_mismatch", "安装后文件读回不一致")
+        imu_redo_owned(op, m)
+        remove(op.ctx, IMU_REDO_DROPIN)
+        if op.ctx.run(["systemctl", "daemon-reload"])[0] != 0 or imu_redo_arguments(exec_start(op)) != m["exec_args"]:
+            raise Stop(EXIT_FAIL, "restart_failed", "原来的启动参数没有恢复")
+        status = imu_redo_restart(op, "motion", expected, source)
+        imu_redo_readback(op, expected, source, quat)
+        pads_restore(op, m["controllers"])
+        imu_redo_save(op, m, "finished", active=False)
+        return op.finish(EXIT_OK, "imu_finished", "初次 IMU 校准已重新验证，原有舵机标定保持，已回运动模式并失能", dict(m, calibration=status))
+    except Exception as err:
+        # Keep the successfully verified commissioning state, never the original unverified candidate.
+        try:
+            for path, (meta, contents) in before.items():
+                _write_preserving(op, path, contents, meta, 0o644)
+            if exists(op.ctx, IMU_REDO_DROPIN) and imu_redo_file(op, IMU_REDO_DROPIN) != imu_redo_override(m):
+                raise Stop(EXIT_STATE, "imu_session_tampered", "模式文件已改变，未覆盖")
+            write_atomic(op.ctx, IMU_REDO_DROPIN, imu_redo_override(m), 0o644)
+            op.ctx.run(["systemctl", "daemon-reload"])
+            imu_redo_restart(op, "commissioning", current, source)
+            imu_redo_save(op, m, "finish_failed", reason=str(err))
+        except Exception as rb:
+            imu_redo_save(op, m, "recovery_required", reason=str(rb))
+        return op.finish(EXIT_FAIL, "finish_failed", f"完成没成功，已保留标定会话和验证后的方向，可重试或取消：{err}", m)
+
+
 # 动词
 
 def verb_take(op, args):
@@ -1783,6 +2196,7 @@ def verb_take(op, args):
     if not isinstance(allow_seated, bool):
         raise Stop(EXIT_ARGS, "bad_args", "allow_seated 要是 true / false")
     op.take_lock()
+    imu_redo_conflict(op)
     guard_installed(op)
     session_open = flag_present(op.ctx)
     if session_open:
@@ -2440,6 +2854,8 @@ def run(argv, ctx):
             return verb_calib_read(op, args)
         if verb == "calib-commit":
             return verb_calib_commit(op, args, raw)
+        if verb == "imu-recalibrate":
+            return verb_imu_recalibrate(op, args, raw)
         if verb == "ssh-status":
             return verb_ssh_status(op, args)
         if verb == "ssh-password":

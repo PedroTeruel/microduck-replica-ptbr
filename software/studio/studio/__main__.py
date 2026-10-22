@@ -126,7 +126,7 @@ def main(argv=None):
     servo = ServoSession(log, port=a.servo_port, sim=a.servo_sim, directions=load_directions(state_dir),
                          state_dir=state_dir)
     from .imu import ImuBackend
-    imu = ImuBackend(rd, log, state_dir)
+    imu = ImuBackend(rd, log, state_dir, root=a.dev_duck_root or "/")
     from .pad import default_pad
     # 台架模式（--bench）不连主程序，也就没有手柄页的后端
     pad = None if a.bench else default_pad(log, configd_addr=a.configd, robotd_addr=a.robotd, state_dir=state_dir)

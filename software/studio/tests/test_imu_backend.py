@@ -10,6 +10,7 @@ import math
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -96,6 +97,7 @@ class FakeRd:
 
 def commissioning_bus(source="bus", gravity=None, mode="commissioning"):
     return {"mode": mode, "phase": "ready" if mode == "commissioning" else "control",
+            "torque_state": "off", "torque_off_pending": None,
             "native": {"imu_source": source},
             "last_sample": {"servos": [{"id": i} for i in range(15)],
                             "imu": {"source": source, "ready": True, "valid": True,
@@ -276,6 +278,138 @@ class ImuBackendTest(unittest.TestCase):
                 with self.assertRaises(Refused) as cm:
                     asyncio.run(b.handle(args, "测试"))
                 self.assertIn("主程序已经在运动模式", str(cm.exception))
+
+    def test_verify_readback_failure_or_mismatch_is_not_success(self):
+        for corrupt in ("unreachable", "wrong-source", "wrong-quat", "unverified", "not-normalized", "contradictory-top"):
+            b = self.backend(bus=commissioning_bus(), calib=factory_calib())
+            q = [0.5]*4
+            b.last_result = {"ok": True, "mode": "coarse", "mount": q}
+            original = b.rd.cmd.call
+            async def broken(method, params, timeout):
+                if (params or {}).get("action") == "calibration-status":
+                    if corrupt == "unreachable":
+                        raise RpcError(method, -1, "readback missing")
+                    status = copy.deepcopy(b.rd.calib.value)
+                    if corrupt == "wrong-source":
+                        status["imu_source"] = "lsm6dsv16x"
+                    elif corrupt == "wrong-quat":
+                        status["calibration"]["imu_mount_quat"] = [1.,0.,0.,0.]
+                    elif corrupt == "not-normalized":
+                        status["calibration"]["imu_mount_quat"] = [1.]*4
+                    elif corrupt == "contradictory-top":
+                        status["imu_mount"] = {"quat": q, "verified": True}
+                        status["calibration"]["imu_mount_verified"] = False
+                    else:
+                        status["calibration"]["imu_mount_verified"] = False
+                    return status
+                return await original(method, params, timeout)
+            b.rd.cmd.call = broken
+            with self.subTest(corrupt=corrupt), self.assertRaises(Refused):
+                asyncio.run(b.handle({"op": "verify", "confirmed": True, "mount_wxyz": q}))
+            self.assertFalse((b.job or {}).get("done"))
+
+    def test_redo_view_resumes_persistent_session_and_blocks_hold(self):
+        from studio import helper
+        root = Path(self.tmp.name) / "duck"
+        directory = root / "var/lib/microduck-helper/imu-recalibrate"
+        directory.mkdir(parents=True)
+        manifest = {"schema": "microduck-imu-recalibrate/1", "active": True, "phase": "commissioning",
+                    "session_id": "a"*32, "source": "bus"}
+        (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        b = ImuBackend(FakeRd(bus=commissioning_bus(), calib=factory_calib()), self.log, self.tmp.name, root=str(root))
+        with mock.patch.object(helper, "_call", side_effect=AssertionError("view must not sudo")):
+            redo = b.view()["redo"]
+        self.assertTrue(redo["active"])
+        self.assertEqual(redo["session_id"], "a"*32)
+        self.assertEqual(redo["phase"], "commissioning")
+        with self.assertRaisesRegex(Refused, "重做"):
+            asyncio.run(b.handle({"op": "hold"}))
+
+    def test_factory_coarse_refuses_enabled_hold_and_pending_torque(self):
+        for key, value in (("torque_state", "all_enabled"), ("torque_state", None),
+                           ("torque_off_pending", True), ("hold", {"active": True})):
+            bus = commissioning_bus()
+            bus[key] = value
+            b = self.backend(bus=bus, calib=factory_calib())
+            with self.subTest(key=key), self.assertRaisesRegex(Refused, "卸力"):
+                asyncio.run(b.handle({"op": "coarse-capture", "phase": "still", "seconds": 0.5}))
+
+    def test_coarse_capture_rejects_source_change_mid_collection(self):
+        b = self.backend(bus=commissioning_bus(), calib=factory_calib())
+        calls = {"n": 0}
+        async def bus_once():
+            calls["n"] += 1
+            return commissioning_bus("bus" if calls["n"] == 1 else "lsm6dsv16x")
+        b._bus_once = bus_once
+        with self.assertRaisesRegex(Refused, "来源"):
+            asyncio.run(b.handle({"op": "coarse-capture", "phase": "still", "seconds": 0.5}))
+        self.assertIs((b.job or {}).get("failed"), True)
+
+    def test_coarse_capture_rpc_failure_ends_job_and_keeps_retry_available(self):
+        b = self.backend(bus=commissioning_bus(), calib=factory_calib())
+        async def fail():
+            raise RpcError("robot.busStatus", -1, "fresh status unavailable")
+        b._bus_once = fail
+        with self.assertRaises((RpcError, Refused)):
+            asyncio.run(b.handle({"op": "coarse-capture", "phase": "still", "seconds": 0.5}))
+        self.assertIs((b.job or {}).get("failed"), True)
+
+    def test_redo_start_requires_confirmation_and_runs_helper_off_event_loop(self):
+        from studio import helper
+        import threading
+        bus = commissioning_bus(mode="motion")
+        b = self.backend(bus=bus, calib=factory_calib())
+        with mock.patch.object(helper, "available", return_value=True), mock.patch.object(helper, "imu_recalibrate") as redo:
+            with self.assertRaises(Refused):
+                asyncio.run(b.handle({"op": "redo-start", "confirmed": False}))
+            redo.assert_not_called()
+            seen = []
+            def enter(*a, **kw):
+                seen.append(threading.current_thread())
+                b.rd.bus.set(commissioning_bus())
+                return True, "imu_entered", {"active": True, "phase": "commissioning", "session_id": "a"*32, "source": "bus"}
+            redo.side_effect = enter
+            res = asyncio.run(b.handle({"op": "redo-start", "confirmed": True}, "test"))
+        self.assertTrue(res["ok"])
+        self.assertIsNot(seen[0], threading.current_thread())
+        self.assertEqual(redo.call_args.args[:2], ("test", "enter"))
+
+    def test_redo_old_helper_and_denied_sudo_explain_required_install_update(self):
+        from studio import helper
+        for result in ("bad_verb", "denied", "sudo: a password is required"):
+            b = self.backend(bus=commissioning_bus(mode="motion"), calib=factory_calib())
+            with mock.patch.object(helper, "available", return_value=True), \
+                 mock.patch.object(helper, "imu_recalibrate", return_value=(False, result, None)):
+                with self.assertRaisesRegex(Refused, "新版.*小助手.*sudoers"):
+                    asyncio.run(b.handle({"op": "redo-start", "confirmed": True}))
+
+    def test_source_mode_or_session_change_clears_stale_solve(self):
+        b = self.backend(bus=commissioning_bus(), calib=factory_calib())
+        b.view()
+        b.last_result = {"ok": True, "mode": "coarse", "mount": [1.,0.,0.,0.]}
+        b.rd.bus.value["native"]["imu_source"] = "lsm6dsv16x"
+        b.view()
+        self.assertIsNone(b.last_result)
+
+    def test_redo_verification_finishes_with_expected_session_source_and_quaternion(self):
+        from studio import helper
+        b = self.backend(bus=commissioning_bus(), calib=factory_calib())
+        session = {"active": True, "phase": "commissioning", "session_id": "b"*32, "source": "bus"}
+        q = [0.5]*4
+        b.last_result = {"ok": True, "mode": "coarse", "mount": q}
+        def finish(by, action, **kw):
+            self.assertEqual(action, "finish")
+            self.assertEqual(kw["source"], "bus")
+            self.assertEqual(kw["quat"], q)
+            self.assertEqual(kw["session_id"], "b"*32)
+            session["active"] = False
+            b.rd.bus.set(commissioning_bus(mode="motion"))
+            return True, "imu_finished", {}
+        with mock.patch.object(helper, "imu_redo_state", side_effect=lambda **_: dict(session)), \
+             mock.patch.object(helper, "imu_recalibrate", side_effect=finish) as call:
+            res = asyncio.run(b.handle({"op": "verify", "confirmed": True, "mount_wxyz": q}, "test"))
+        self.assertTrue(res["ok"])
+        self.assertEqual(call.call_count, 1)
 
 
 if __name__ == "__main__":

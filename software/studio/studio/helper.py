@@ -2,7 +2,8 @@
 
 Studio 不是 root。sudoers 只放行 microduck-helper 这一个全路径，所以这里用 `sudo -n`
 调它、stdin 传一个 JSON，别的权限一点没有。小助手认 bus-take / bus-give-back /
-bus-abort / pad-pair / pad-forget / wifi-hotspot-down / wifi-hotspot-up / calib-read / calib-commit 九个动词，参数逐个校验，
+bus-abort / pad-pair / pad-forget / wifi-hotspot-down / wifi-hotspot-up / calib-read / calib-commit /
+ssh-status / ssh-password / imu-recalibrate 固定动词，参数逐个校验，
 robotd 的状态它自己去读，不信网页传来的（deploy/INSTALL.md）。
 
 - bus-take：停 robotd、立旗（robotd 起不来）、确认串口空出来 → Studio 打开总线。不卸力。
@@ -27,6 +28,8 @@ robotd_active 检查去报错），bus_give_back 当没做（交还以后主程�
 import json
 import os
 import queue
+import re
+import stat
 import subprocess
 import sys
 import threading
@@ -35,6 +38,7 @@ import time
 HELPER = "/usr/local/sbin/microduck-helper"
 FLAG = "/run/microduck-helper/bus-held"       # 接管期间立着：robotd 的 drop-in 看到它就不肯起来
 LAST_RESULT = "/run/microduck-helper/last-result.json"
+IMU_REDO_MANIFEST = "/var/lib/microduck-helper/imu-recalibrate/manifest.json"
 
 _avail = None
 
@@ -212,6 +216,42 @@ def calib_read(by=None, timeout=10):
     return _call("calib-read", payload, timeout)
 
 
+def imu_recalibrate(by, action, *, confirmed=None, session_id=None, source=None, quat=None, timeout=180):
+    """Fixed root verb; commands, services and file paths are never accepted."""
+    payload = {"by": by, "action": action}
+    for name, value in (("confirmed", confirmed), ("session_id", session_id), ("source", source), ("quat", quat)):
+        if value is not None:
+            payload[name] = value
+    return _call("imu-recalibrate", payload, timeout)
+
+
+def imu_redo_state(*, root="/"):
+    """Read the persistent root-owned public manifest. No sudo in the 10 Hz view loop."""
+    empty = {"active": False, "phase": "idle", "session_id": None, "source": None}
+    path = os.path.join(root, IMU_REDO_MANIFEST.lstrip("/"))
+    try:
+        for target in (os.path.dirname(os.path.dirname(os.path.dirname(path))), os.path.dirname(os.path.dirname(path)),
+                       os.path.dirname(path), path):
+            st = os.lstat(target)
+            if stat.S_ISLNK(st.st_mode) or (root == "/" and (st.st_uid != 0 or st.st_mode & 0o022)):
+                raise ValueError("会话文件或目录的属主 / 权限不安全")
+        if not stat.S_ISREG(st.st_mode) or st.st_size > 65536:
+            raise ValueError("会话文件格式不正确")
+        with open(path, encoding="utf-8") as stream:
+            m = json.load(stream)
+        if (m.get("schema") != "microduck-imu-recalibrate/1" or type(m.get("active")) is not bool
+                or not re.fullmatch(r"[0-9a-f]{32}", m.get("session_id", ""))
+                or m.get("source") not in ("bus", "bno08x", "lsm6dsv16x")):
+            raise ValueError("会话文件内容不正确")
+        if not m["active"]:
+            return empty
+        return {key: m.get(key) for key in ("active", "phase", "session_id", "source", "reason", "expected_quat")}
+    except FileNotFoundError:
+        return empty
+    except (OSError, ValueError, TypeError, AttributeError) as err:
+        return {**empty, "active": True, "phase": "recovery_required", "reason": f"初次 IMU 校准会话读不回：{err}"}
+
+
 def ssh_status(timeout=10):
     """SSH 密码登录开没开、ssh 在不在跑、radxa 登记了几把钥匙（ssh-status，只读）。回 (ok, result, detail)。"""
     return _call("ssh-status", {}, timeout)
@@ -324,6 +364,11 @@ _COMMON = {
 
 def friendly(result, detail, verb):
     """把 result 换成人话（result 的值见 deploy/INSTALL.md §1）。detail 里的小助手原话一并带上。"""
+    if verb == "imu-recalibrate":
+        if result in ("bad_verb", "denied", "not_root") or "sudo" in str(result).lower():
+            return "重做初次 IMU 校准需要新版 root 小助手（0.7.0 起）和 sudoers：请更新 deploy/install.sh"
+        return ((detail or {}).get("reason") or (detail or {}).get("msg") or
+                f"初次 IMU 校准切换没完成：{result}；会话可继续或取消")
     if verb in ("pad-pair", "pad-forget"):
         table = _PAD_WHY
     elif verb in ("wifi-hotspot-down", "wifi-hotspot-up"):

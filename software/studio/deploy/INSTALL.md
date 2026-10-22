@@ -1,6 +1,20 @@
 # Studio 的 root 小助手：舵机总线交接、写标定、手柄配对（安装、卸载、上机核对）
 
 写给人看，也写给以后接手的 AI 看：每一步都写了为什么。
+
+## 重做初次 IMU 校准（imu-recalibrate）
+
+新版小助手增加固定动词 `imu-recalibrate`，stdin 只接受 `enter/status/finish/cancel` 四种 action，不能指定命令、路径或服务。运动模式下已有 `verified=true` 和已保存四元数也可以重新验证：先扶稳、卸力，`enter` 两次读取新状态，要求 `motion/control`、`policy_enabled=false`、无起身、原生扭矩明确为 false、无卸力待确认、HD1910 临时增益已恢复。手柄服务先停，随后再次检查门槛；任何不明确的状态都拒绝。
+
+- 进入：`{"by":"Studio","action":"enter","confirmed":true}`。保留实际生效的直接 robotd 启动参数，只增加 `--commissioning`；包装命令或有歧义的 ExecStart 拒绝。不会使用或删除出厂 `zzzz-zz-microduck-commissioning.conf`。
+- 状态：`{"by":"Studio","action":"status"}`。会话有 `active/phase/session_id/source`；网页读取公开只读 manifest，不在每次推状态时调用 sudo。
+- 完成：`{"by":"Studio","action":"finish","session_id":"…","source":"bus","quat":[1,0,0,0]}`。只在原来的 `verify-imu` 通过，且当前来源、verified、归一化四元数及标定文件逐项读回一致之后调用。原 verifier 会把 `motion_enabled` 设为 false；助手只恢复进入前的这个值，其他字段除当前芯片的安装方向 / verified 都必须保持一致。不会重建整份标定，也不会把非 2048 零位、方向、限位、另一颗 IMU 或未知设置覆盖成默认值。若主程序未保留这些字段，拒绝完成，保留会话供取消恢复。
+- 取消：`{"by":"Studio","action":"cancel","confirmed":true,"session_id":"…"}`。主标定和 saved 各自恢复原始备份，恢复原来的模式与手柄服务状态；不算新校准成功。
+
+会话先持久化到 `/var/lib/microduck-helper/imu-recalibrate/manifest.json`（root:root 0644），每次独立的 `<session_id>/` 备份目录 0700，主标定、saved 和解析后的原始标定分别备份并校验 SHA256。父目录 0755，操作记录仍为 0600。会话使用自己的持久模式文件 `/etc/systemd/system/robotd.service.d/zzzzzz-studio-imu-recalibrate.conf`，有会话 ID 和内容摘要，只允许删除本会话原样的文件；重启 Studio / 刷新网页会恢复会话，断电后持久模式文件仍保留。开始阶段失败恢复原状态；完成阶段失败恢复已验证的安全标定模式，可重新做原验证或取消。只有运动模式、完整标定读回一致且已失能时才恢复手柄服务。
+
+`imu-recalibrate` 和总线 / 标定操作共用 `helper.lock`。会话活动时 `bus-take`、普通 `calib-commit` 拒绝；网页卸力仍可用。卸载（含 `--purge`）遇到未结束或读不回的会话会拒绝，先完成或取消，避免删除恢复备份。该流程保留原来的静止 3 秒 / 前倾 3 秒粗校及直立后低头的 runtime 验证；出厂标定模式直接使用原流程。
+
 方案出处：scratchpad `console/handover-plan.md`（v2 定稿）§2.2、§4.2、§5；规矩照 `console/studio-ops-plan.md` §7。
 
 ## 1. 它是干什么的
@@ -9,7 +23,7 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
 
 - 停、起 robotd 要 root，Studio 不是 root。
 - 所以只给 Studio 一把「只能开这一扇门的钥匙」：sudoers 只放行 `/usr/local/sbin/microduck-helper` 这一个文件。
-- 它只认十一个动词，参数逐个校验，robotd 是什么状态它自己去读，不信网页传来的（0.5.0 起：新增 `calib-read`，`calib-commit` 按 fork 的真实启动方式认标定 / 运动模式；0.5.2：`bus-give-back` 把标定模式的实时快照也算成「主程序起来了」；0.6.0：新增 `ssh-status` / `ssh-password`，「更多」页的 SSH 开关）。
+- 它只认十二个固定动词，参数逐个校验，robotd 是什么状态它自己去读，不信网页传来的（0.5.0 起：新增 `calib-read`，`calib-commit` 按 fork 的真实启动方式认标定 / 运动模式；0.5.2：`bus-give-back` 把标定模式的实时快照也算成「主程序起来了」；0.6.0：新增 `ssh-status` / `ssh-password`，「更多」页的 SSH 开关；0.7.0：新增 `imu-recalibrate`，持久保存重做初次 IMU 校准会话）。
 
 **标定模式的 busStatus**（fork `robotd/src/main.rs` 的 `robot.busStatus`、`feetech_commissioning.rs` 的 `Status`）：robotd 一起来先写一份启动报告 `{"build","mode":"commissioning","phase":"configuring_bus","port"}`，phase 还是启动阶段就一直回它；第一次读成功以后才回实时快照（phase `ready` / `moving` / `read_error` / `stop_unconfirmed` / `power_pending`，带 `last_sample`）。旧版 fork 从来不清启动报告——从舵机页交还时小助手会等满 30 秒判 `soft_failed`（`detail.still_starting = true`，话写「一直报启动中」，不说成「起不来」）。要新版 fork（20261020 之后的镜像）。
 
@@ -79,12 +93,12 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
 | sudoers | `/etc/sudoers.d/microduck-studio`（0440） | 只放行一个全路径。装之前 `visudo -cf` |
 | 旗 | `/run/microduck-helper/bus-held`（目录 0755、文件 0644） | 在内存盘里：断电、重启就没了，robotd 照常开机自启。不放在 Studio 的目录里，是因为 Studio 单元以后要是用 `RuntimeDirectory`，systemd 会在 Studio 重启时删掉那个目录。**Studio 的单元不许用 `RuntimeDirectory=microduck-helper`** |
 | 中止请求 | `/run/microduck-helper/abort` | bus-abort 写，正在跑的 bus-give-back 看到就停 |
-| 小助手自己的锁 | `/run/microduck-helper/helper.lock`（flock） | bus-take、bus-give-back、calib-commit、pad-pair、pad-forget 一次只跑一个（写标定 / 重启主程序时舵机页不能接管总线，一次也只允许一个配对）。**bus-abort 不拿**：卸力不能被正在跑的交还挡住，它的几步都可以重复做 |
+| 小助手自己的锁 | `/run/microduck-helper/helper.lock`（flock） | bus-take、bus-give-back、calib-commit、imu-recalibrate、pad-pair、pad-forget 一次只跑一个（写标定 / 重启主程序时舵机页不能接管总线，一次也只允许一个配对）。**bus-abort 不拿**：卸力不能被正在跑的交还挡住，它的几步都可以重复做 |
 | 热点锁 | `/run/microduck-helper/wifi.lock`（flock） | `wifi-hotspot-down` / `wifi-hotspot-up` 一次只跑一个；跟舵机总线的 `helper.lock` 分开，互不挡 |
 | 官方 robotctl | `/usr/local/bin/robotctl`（写死在 `deploy/microduck-helper` 里） | 只有 `pad-pair` / `pad-forget` 调它。不存在就回 `no_robotctl`（退出 5），不会去别的路径找 |
 | 管理锁 | `/run/microduck-service-management.lock`，由临时单元 `microduck-bus-hold` 一直拿着（`flock -n … sleep infinity`） | 板上的 `service.sh` 拿不到这把锁就不动 robotd |
 | 交接标记 | `/run/microduck-handover/handover.json`（目录 0700、文件 0600，同目录临时文件 + fsync + rename） | 只有 root 读写；robotd 读完就删 |
-| 操作记录 | `/var/lib/microduck-helper/oplog.jsonl`（目录 0700、文件 0600） | 一次一行：谁、什么时候、结果 |
+| 操作记录 | `/var/lib/microduck-helper/oplog.jsonl`（父目录 0755、日志文件 0600；私有备份子目录 0700） | 一次一行：谁、什么时候、结果。父目录允许 Studio 读取公开的 IMU 会话状态，日志和备份仍只允许 root 读取 |
 | 标定备份 | `/var/lib/microduck-helper/calib-backups/<4 位序号>-<UTC>/`（目录 0700、文件 0600，只留最新 10 组） | 每组有写之前的 `.toml`、`.saved.toml`（各备各的）、commissioning drop-in（有就备）和 `manifest.json`（原属主、权限、sha256）。序号按已有目录最大值 +1，不靠墙钟排序；回滚照 manifest 各自换回去 |
 
 **标记格式**（fork 的 robotd 照这个读）：

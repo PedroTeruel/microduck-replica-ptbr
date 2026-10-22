@@ -33,7 +33,7 @@ FIXTURE = HERE / "fixtures" / "now-20261018.jsonl"
 STUCK_CALIB = "motion requires all 15 calibrated joints, measured limits and verified IMU mounting for the lsm6dsv16x IMU"
 
 BOOT = r'''
-import json, os, socket, sys, time
+import copy, json, os, socket, sys, time
 sys.path[:0] = [ROOT, os.path.join(ROOT, "deps"), os.path.join(ROOT, "dev")]
 from studio import helper
 from studio import commit as C
@@ -48,10 +48,10 @@ helper.ssh_status = lambda timeout=10: (True, "ssh_status", {"exit": 0, "result"
                                                             "ssh_active": True, "keys": 0, "user": "radxa"})
 
 
-def fake_set(obj):
+def fake_rpc(method, obj):
     port = int(os.environ["E2E_FAKE_PORT"])
     with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
-        s.sendall((json.dumps({"jsonrpc": "2.0", "id": 1, "method": "fake.set", "params": obj}) + "\n").encode())
+        s.sendall((json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": obj}) + "\n").encode())
         buf = b""
         while b"\n" not in buf:
             part = s.recv(4096)
@@ -59,6 +59,55 @@ def fake_set(obj):
                 break
             buf += part
     return json.loads(buf.split(b"\n", 1)[0])
+
+
+def fake_set(obj):
+    return fake_rpc("fake.set", obj)
+
+
+# Only replaces the systemd/filesystem boundary. Real ImuBackend capture, solver,
+# runtime verify and exact calibration readback still run against fake robotd.
+redo_state = {"active": False, "phase": "idle", "session_id": None, "source": None}
+redo_backup = None
+
+
+def fake_imu_state(*, root="/"):
+    state = copy.deepcopy(redo_state)
+    try:
+        with open(os.environ["E2E_OUTCOME_FILE"], encoding="utf-8") as f:
+            phase = json.load(f).get("redo_phase")
+        if state["active"] and phase in ("entering", "finishing", "cancelling"):
+            state["phase"] = phase
+    except (OSError, ValueError):
+        pass
+    return state
+
+
+def fake_imu_recalibrate(by, action, *, confirmed=None, session_id=None, source=None, quat=None, timeout=180):
+    global redo_state, redo_backup
+    if action == "enter":
+        redo_backup = fake_rpc("robot.busCommand", {"action": "calibration-status"})["result"]
+        redo_state = {"active": True, "phase": "commissioning", "session_id": "e2e-imu-session",
+                      "source": redo_backup.get("imu_source") or "bus"}
+        fake_set({"mode": "commissioning", "imu_pose": "upright"})
+        fake_rpc("robot.relax", {})
+        time.sleep(0.25)
+        return True, "entered", dict(redo_state, note="已回到标定模式，双手托住开始采集")
+    if action == "status":
+        return True, "status", dict(redo_state)
+    if action not in ("finish", "cancel") or not redo_state["active"]:
+        return False, "no_session", {"msg": "没有重标定会话"}
+    current = fake_rpc("robot.busCommand", {"action": "calibration-status"})["result"]
+    restored = copy.deepcopy(current if action == "finish" else redo_backup)
+    restored["calibration"]["motion_enabled"] = redo_backup["calibration"]["motion_enabled"]
+    fake_set({"calib_commit": {"calibration": restored, "outcome": "ok"}, "posture": "limp", "imu_pose": "upright"})
+    redo_state = {"active": False, "phase": "idle", "session_id": None, "source": None}
+    return True, "finished" if action == "finish" else "cancelled", dict(redo_state,
+        mode="motion", readback_ok=True, note="新方向已保存，已恢复运动模式并保持卸力" if action == "finish" else "已恢复原方向和运动模式")
+
+
+helper.imu_redo_state = fake_imu_state
+helper.imu_recalibrate = fake_imu_recalibrate
 
 
 def outcome():
@@ -169,7 +218,8 @@ class CommitE2E(unittest.TestCase):
 
     def node(self, phase):
         args = [NODE, str(HERE / "commit_e2e.mjs"), "--url", f"http://127.0.0.1:{self.p_web}/",
-                "--cdp", str(self.p_cdp), "--fake-port", str(self.p_cfg), "--phase", phase]
+                "--cdp", str(self.p_cdp), "--fake-port", str(self.p_cfg), "--phase", phase,
+                "--control-file", str(self.outcome_file)]
         if os.environ.get("COMMIT_SHOTS"):
             args += ["--shots", os.environ["COMMIT_SHOTS"]]
         r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", timeout=220, cwd=ROOT)
@@ -300,6 +350,24 @@ class CommitE2E(unittest.TestCase):
         self.assertTrue(any("标定没通过主程序的检查" in m for m in failed["failed"]["msgs"]), failed["failed"])
         self.assertEqual((failed.get("wsCommit") or {}).get("job", {}).get("phase"), "failed", failed.get("wsCommit"))
         self.outcome_file.write_text(json.dumps({"outcome": "ok"}), encoding="utf-8")
+
+    def test_03c_verified_imu_can_be_recalibrated(self):
+        """保存过方向后仍可重新粗校；进入前需第二次确认，取消能恢复原运动模式。"""
+        self.fake_set({"mode": "motion", "calib": "seed", "posture": "limp", "imu_pose": "upright"})
+        result = self.node("imu-redo")
+        self.assertTrue(result["entryVisible"], result)
+        self.assertEqual(result["beforeConfirm"], [], result)
+        self.assertTrue(result["active"]["stand"]["disabled"], result)
+        self.assertFalse(result["active"]["relax"]["disabled"], result)
+        self.assertIn("点击验证前，先把实物回正", result["verifyInstruction"])
+        self.assertEqual(result["original"]["calibration"]["joints"], result["after"]["calibration"]["joints"])
+        self.assertTrue(any(j["zero_raw"] != 2048 for j in result["after"]["calibration"]["joints"]))
+        self.assertEqual(result["after"], result["cancelled"])
+        self.assertIn("软着", result["afterStance"]["now"])
+        self.assertEqual(result["motionCommands"], [])
+        self.assertEqual(result["commissioningCommands"], [])
+        self.assertEqual(result["recoveredPhases"], ["entering", "finishing", "cancelling"])
+        self.assertEqual(result["errors"], [], result)
 
 
 if __name__ == "__main__":

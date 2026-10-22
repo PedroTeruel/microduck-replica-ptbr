@@ -90,7 +90,7 @@ py -3.13 -I run.py --bench
 
 1. 拷贝：把 `software/studio` 整个目录拷到鸭子的 `/home/radxa/studio-dev`（`scp -r`、U 盘解压包都行）。
 2. 自检：在鸭子上运行 `python3 -I run.py --selfcheck`（只读：打印版本，对 robotd / configd / padd 各问一次）。
-3. 装 root 小助手：`cd deploy && sudo sh install.sh radxa`。0.6.0 的小助手负责舵机总线交接、手柄配对、热点开关、`calib-read` / `calib-commit`（把标定写进主程序、切运动模式），以及 `ssh-status` / `ssh-password`（「更多」页的 SSH 开关）；关热点前会写 `/run/microduck/studio-connecting.json`，让 netcheck 在连接期间别插手。从舵机页交还时，标定模式的实时快照也算主程序起来了（0.5.1 只认运动模式的 `control`，标定模式下每次都等满 30 秒判「起不来」）。步骤、卸载和上机核对见 `deploy/INSTALL.md`。
+3. 装 root 小助手：`cd deploy && sudo sh install.sh radxa`。0.7.0 的小助手负责舵机总线交接、手柄配对、热点开关、`calib-read` / `calib-commit`（把标定写进主程序、切运动模式）、`ssh-status` / `ssh-password`（「更多」页的 SSH 开关），以及 `imu-recalibrate`（重新校验已保存的 IMU 安装方向）；关热点前会写 `/run/microduck/studio-connecting.json`，让 netcheck 在连接期间别插手。从舵机页交还时，标定模式的实时快照也算主程序起来了（0.5.1 只认运动模式的 `control`，标定模式下每次都等满 30 秒判「起不来」）。步骤、卸载和上机核对见 `deploy/INSTALL.md`。
 4. 开机服务：照 `deploy/microduck-studio.service` 文件头的命令装：
 
    ```bash
@@ -108,6 +108,10 @@ py -3.13 -I run.py --bench
 手柄配对的主路是 root 小助手调官方 `/usr/local/bin/robotctl pad pair --json`：`/var/lib/robot/weird-ble` 板上它会先停 `btd`、给蓝牙适配器断电再开，配完把 `btd` 起回来。没装或旧版小助手时退回 configd → bluetoothctl；这块板这样可能配不上，向导会提示重装小助手，或者在鸭子上运行 `sudo robotctl pad pair`。
 
 出厂镜像让 robotd 跑标定模式：`/etc/systemd/system/robotd.service.d/zzzz-zz-microduck-commissioning.conf` 里 `ExecStart` 带 `--commissioning`。这样 `calibration-status` 和 `busStatus.last_sample` 马上能读，IMU 页粗校、舵机页中位都能做。上手清单第 3 步写成功后，小助手删掉这个文件、`daemon-reload`、重启 robotd，主程序回到运动模式。`systemctl show robotd -p ExecStart` 里有 `--commissioning`、但那个文件不在时，小助手拒绝自动切（`foreign_commissioning`），去日志页导出诊断包。
+
+IMU 页的「IMU 安装方向」始终保留入口：已经保存并验证过的安装四元数，也能点「重新标定方向」。先扶住鸭子并卸力，二次确认后，运动模式通过新版 root 小助手暂时回到标定模式；已经在标定模式的直接重新采集。沿用原来的静止 3 秒、整个躯干前倾 15–30° 采 3 秒、计算方向和主程序验证。**点击「交给主程序验证」前，先把实物回正并停住**，再按提示前倾。粗校阶段保持卸力，站着精校流程不变。
+
+重标定会话保留原始标定和启动配置，刷新网页或重启 Studio 后可继续，也可「取消并恢复原参数」。验证通过后逐项读回当前芯片和新方向，只恢复原来的运动许可及运行模式，舵机零位（包括非 2048 的零位）、方向、限位、其他 IMU 和未知配置均保留；恢复成功仍保持卸力。失败会保留恢复入口，不会把未读回的方向报成完成。此流程需要同时更新 Studio、root 小助手和 sudoers；不会调用上手清单第 3 步来重写舵机标定。
 
 **标定模式的状态要新版 fork**：fork robotd 一起来先写一份启动报告（`{"mode":"commissioning","phase":"configuring_bus",...}`），`robot.busStatus` 只要它的 phase 还是启动阶段就一直回它；第一次读成功以后才回标定模式的实时快照（phase 是 `ready` / `moving` / `read_error` / `stop_unconfirmed` / `power_pending`，带 `last_sample`）。旧版 fork 的标定模式从来不清启动报告，Studio 会永远看到「启动中」、拿不到 `last_sample`（10-20 真机验收就是这样）；fork 已经改成第一次读成功以后清掉，用 20261020 之后的镜像（或重装那份 robotd）。Studio 这边：实时快照的这几个 phase 都算「主程序起来了」（`read_error` 是起来了、只是读舵机出错，照原样写主程序的原话）；连续报启动阶段超过 30 秒（从这次连上算），总览头图改成「主程序一直报『启动中』」、给「去日志页」，顶栏、待办、上手清单头上也不再说「通常 10 秒」。
 

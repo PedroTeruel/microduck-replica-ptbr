@@ -25,6 +25,13 @@ def _patch_run(stdout, stderr="", rc=0):
 
 
 class FriendlyTest(unittest.TestCase):
+    def test_imu_redo_fixed_verb_payload(self):
+        out = '{"step":"done","detail":{"exit":0,"result":"imu_entered"}}\n'
+        with _patch_run(out), mock.patch.object(helper.subprocess, "run", return_value=_proc(out)) as run:
+            self.assertTrue(helper.imu_recalibrate("test", "enter", confirmed=True)[0])
+        self.assertEqual(run.call_args.args[0], ["sudo", "-n", helper.HELPER, "imu-recalibrate"])
+        self.assertEqual(json.loads(run.call_args.kwargs["input"]), {"by": "test", "action": "enter", "confirmed": True})
+
     def test_take(self):
         self.assertIn("主程序停了", helper.friendly("taken", None, "bus-take"))
 
