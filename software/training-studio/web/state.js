@@ -94,3 +94,29 @@ export function statusText(run) { return STATUS[run?.status]||run?.status||'等�
 export function formatNumber(value, digits=1) { return Number.isFinite(Number(value))&&value!==null&&value!==undefined?Number(value).toLocaleString('zh-CN',{maximumFractionDigits:digits}):'—'; }
 export function elapsed(seconds=0) { const n=Math.max(0,Math.floor(seconds||0)); return n>=3600?`${Math.floor(n/3600)}小时 ${Math.floor(n%3600/60)}分`:n>=60?`${Math.floor(n/60)}分 ${n%60}秒`:`${n}秒`; }
 export function dateText(value) { if(!value)return '—';const d=new Date(typeof value==='number'&&value<1e12?value*1000:value);return Number.isNaN(d.valueOf())?'—':new Intl.DateTimeFormat('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d); }
+export function resourceNumber(value,digits=1,suffix='') { return typeof value==='number'&&Number.isFinite(value)&&value>=0?`${formatNumber(value,digits)}${suffix}`:'—'; }
+export function resourceMemory(used,total,unit='bytes') {
+  const divisor=unit==='mib'?1024:1024**3;
+  const gib=value=>typeof value==='number'?value/divisor:null;
+  return `${resourceNumber(gib(used),1)} / ${resourceNumber(gib(total),1)} GiB`;
+}
+export function resourceStatus(snapshot,error='',now=Date.now()) {
+  if(!snapshot)return {label:error?'暂不可读取':'正在采集',tone:error?'amber':'neutral',stale:!!error};
+  const age=now-Date.parse(snapshot.sampled_at),stale=!!error||snapshot.stale===true||(Number.isFinite(age)&&age>10000);
+  if(stale)return {label:'更新中断 · 上次采样',tone:'amber',stale:true};
+  if(snapshot.status==='pending')return {label:'正在采集',tone:'neutral',stale:false};
+  if(snapshot.status==='unavailable')return {label:'暂不可读取',tone:'amber',stale:false};
+  if(snapshot.status==='partial')return {label:'部分指标可用',tone:'neutral',stale:false};
+  return {label:'实时更新',tone:'green',stale:false};
+}
+export function safeExternalUrl(value) {
+  if(typeof value!=='string'||!/^https:\/\//i.test(value))return null;
+  try { const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password?url.href:null; } catch { return null; }
+}
+export function filterPretrained(models=[],{query='',category='全部',source='all'}={}) {
+  const terms=String(query).trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  return models.filter(model=>{
+    const text=[model.title,model.description,model.category,model.servos,model.source_label,model.author,model.version,...(model.tags||[])].filter(value=>typeof value==='string').join(' ').toLocaleLowerCase();
+    return (category==='全部'||category===model.category)&&(source==='all'||source===model.source_kind)&&terms.every(term=>text.includes(term));
+  });
+}

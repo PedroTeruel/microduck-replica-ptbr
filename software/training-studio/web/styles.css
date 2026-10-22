@@ -1,5 +1,74 @@
 @charset "UTF-8";
 
+/* Existing recipes and published policy sources remain separate entry points. */
+.catalog-tabs { width: fit-content; max-width: 100%; margin-bottom: 22px; }
+.catalog-tabs button { display: flex; align-items: center; gap: 8px; }
+.catalog-tabs button span { color: var(--muted); font-size: 11px; }
+.pretrained-toolbar { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 18px; margin: 26px 0 14px; }
+.pretrained-categories { margin-bottom: 18px; }
+.pretrained-card .catalog-cover { height: 136px; }
+.pretrained-card-action { padding-top: 20px; margin-top: auto; }
+.pretrained-card h2 { overflow-wrap: anywhere; }
+.pretrained-summary { display: flex; align-items: flex-start; gap: 16px; padding: 20px; border-radius: 12px; background: var(--page); }
+.pretrained-summary > .icon { flex-shrink: 0; }
+.pretrained-summary p { font-size: 14px; line-height: 1.8; }
+.model-facts { margin: 0; font-size: 12px; }
+.model-facts > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.model-facts dt { color: var(--muted); }
+.model-facts dd { margin: 0; line-height: 1.7; overflow-wrap: anywhere; }
+.model-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }
+.pretrained-footer { flex-direction: column; align-items: stretch; gap: 12px; }
+.pretrained-footer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pretrained-footer-actions .btn { flex: 1; }
+.pretrained-drawer .recipe-detail-section .btn { font-size: 12px; }
+
+/* Resource readings come from the execution host, independently of run metrics. */
+.resource-panel { margin-bottom: 24px; }
+.resource-panel .panel-head { align-items: flex-start; }
+.resource-panel .panel-head p { margin-top: 5px; }
+.resource-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 0 24px 20px; }
+.resource-device { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.resource-device-heading { display: flex; gap: 11px; align-items: flex-start; }
+.resource-device-heading > .icon { margin-top: 3px; flex-shrink: 0; color: var(--muted); }
+.resource-device-heading > div { min-width: 0; }
+.resource-device-heading span { color: var(--muted); font-size: 11px; }
+.resource-device-heading h3 { margin-top: 4px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.resource-readings { display: grid; grid-template-columns: .8fr .8fr 1.3fr; gap: 14px; margin: 20px 0 0; }
+.resource-reading { min-width: 0; }
+.resource-reading dt { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.resource-reading dd { margin: 5px 0 0; font-size: 17px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.resource-reading small, .resource-reason { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+.resource-reason { margin-top: 20px; }
+.resource-meter { height: 4px; margin-top: 18px; overflow: hidden; border-radius: 3px; background: var(--page); }
+.resource-meter span { display: block; height: 100%; background: #677D72; border-radius: inherit; transition: width .2s; }
+.resource-panel.is-stale .resource-meter span { background: var(--muted); }
+.resource-footer { border-top: 1px solid var(--line); padding: 16px 24px 20px; }
+.resource-run-stats { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 12px; }
+.resource-run-stats > span { color: var(--muted); }
+.resource-run-stats b { margin-left: 6px; color: var(--ink); font-weight: 500; }
+.resource-footer > p { margin-top: 12px; color: var(--muted); font-size: 11px; line-height: 1.8; }
+.resource-sample-time { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; color: var(--muted); font-size: 11px; }
+.resource-errors { margin-top: 10px; color: var(--muted); font-size: 11px; line-height: 1.8; }
+.resource-errors summary { cursor: pointer; }
+.resource-errors ul { margin: 6px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
+@media (max-width: 1100px) {
+  .resource-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .pretrained-toolbar { flex-direction: column; align-items: stretch; }
+  .catalog-tabs { width: 100%; }
+  .catalog-tabs button { flex: 1; justify-content: center; }
+  .resource-grid { padding: 0 16px 16px; gap: 12px; }
+  .resource-device { padding: 14px; }
+  .resource-readings { gap: 10px; grid-template-columns: 1fr 1fr; }
+  .resource-reading:last-child { grid-column: 1 / -1; }
+  .resource-reading dd { font-size: 17px; }
+  .resource-footer { padding: 14px 20px 18px; }
+  .resource-run-stats { display: grid; gap: 8px; }
+  .resource-panel .panel-head { gap: 10px; flex-wrap: wrap; }
+  .model-facts > div { grid-template-columns: 72px minmax(0, 1fr); gap: 10px; }
+}
+
 /* The recipe catalog loads a single 3D preview only inside its detail drawer. */
 .catalog-intro { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr); gap: 28px; align-items: center; padding: 24px; }
 .catalog-intro .eyebrow { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; }

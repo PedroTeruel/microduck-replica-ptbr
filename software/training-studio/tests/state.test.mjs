@@ -161,3 +161,32 @@ test('old recipe metadata falls back to available previews without inventing ver
   assert.equal(catalog({id:'future',catalog:{preview_kind:'unknown',tags:null,instructions:null}}).preview_kind,'text');
   assert.equal(catalog({id:'future'}).instructions.length,3);
 });
+
+test('resource numbers distinguish missing measurements from a real zero', () => {
+  const number=feature('resourceNumber');
+  for(const value of [null,undefined,'',false,NaN,Infinity,-1]) assert.equal(number(value,1,'%'),'—');
+  assert.equal(number(0,1,'%'),'0%');
+  assert.equal(number(38.26,1,' °C'),'38.3 °C');
+  assert.equal(feature('resourceMemory')(1024**3,8*1024**3),'1 / 8 GiB');
+  assert.equal(feature('resourceMemory')(null,8*1024**3),'— / 8 GiB');
+});
+test('resource freshness keeps a failed or old sample from looking live', () => {
+  const status=feature('resourceStatus'),now=Date.parse('2026-10-23T00:00:20Z');
+  assert.equal(status(null,'',now).label,'正在采集');
+  assert.equal(status({status:'ready',sampled_at:'2026-10-23T00:00:19Z'},'',now).label,'实时更新');
+  assert.equal(status({status:'partial',sampled_at:'2026-10-23T00:00:19Z'},'',now).label,'部分指标可用');
+  assert.equal(status({status:'ready',sampled_at:'2026-10-23T00:00:00Z'},'',now).stale,true);
+  assert.equal(status({status:'ready',sampled_at:'2026-10-23T00:00:19Z'},'网络断开',now).stale,true);
+});
+test('pretrained links allow only absolute HTTPS without embedded credentials', () => {
+  const safe=feature('safeExternalUrl');
+  assert.equal(safe('https://huggingface.co/pollen/model/tree/v8'),'https://huggingface.co/pollen/model/tree/v8');
+  for(const url of ['javascript:alert(1)','data:text/html,x','//example.com','http://example.com','https://user:pass@example.com',null]) assert.equal(safe(url),null);
+});
+test('pretrained search combines actual source and category without making recipes', () => {
+  const models=[{id:'official-walk',title:'行走',category:'行走',source_kind:'official',source_label:'Pollen Robotics 官方',servos:'XL330',version:'V8',tags:['恢复']},{id:'kiss-walk',title:'行走',category:'行走',source_kind:'community',source_label:'kissqy 社区',servos:'HD1910',version:'V167',tags:['恢复']},{id:'kiss-spin',title:'原地旋转',category:'滑轮',source_kind:'community',servos:'HD1910',tags:[]}];
+  assert.deepEqual(feature('filterPretrained')(models,{query:'v8 xl330',source:'official'}).map(m=>m.id),['official-walk']);
+  assert.deepEqual(feature('filterPretrained')(models,{query:'恢复',category:'行走',source:'community'}).map(m=>m.id),['kiss-walk']);
+  assert.deepEqual(feature('filterPretrained')(models,{query:'unknown'}),[]);
+  assert.equal(models.length,3);
+});
