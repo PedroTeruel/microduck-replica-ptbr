@@ -134,14 +134,17 @@ def main(argv=None):
     net = Net(a.configd, a.net_state, state_dir, log, dev_mode=bool(a.dev_autologin), port=int(port))
     # 总览下面「运行和调参」、设置页的模型（调参方案 T1–T3，只读）。台架模式不连主程序，就不开
     tune = None
+    models = None
     if not a.bench:
         from .tune import Tune
         if a.dev_duck_root and not a.robotd.startswith("tcp:"):
             raise SystemExit("--dev-duck-root 只能在电脑上配假 robotd（--robotd tcp:…）用")
         tune = Tune(rd, log, state_dir, root=a.dev_duck_root or "/", duck=duck)
+        from .models import Models
+        models = Models(rd, log, state_dir, tune=tune, root=a.dev_duck_root or "/")
     app = build_app(auth=auth, robotd=rd, log=log, web_dir=a.web_dir, duck=duck, names=names, state_dir=state_dir,
                     dev_autologin=a.dev_autologin, servo=servo, imu=imu, pad=pad, onboard=onboard, battery=battery,
-                    tune=tune, net=net, commit=commit)
+                    tune=tune, net=net, commit=commit, models=models)
     log.info(f"网页地址：http://{host if host not in ('0.0.0.0', '') else '<鸭子 IP>'}:{port}/", cat="系统", dedup=False)
     if a.bench:
         import threading

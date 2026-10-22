@@ -14,6 +14,7 @@ import { BatterySettings } from './settings-battery.js';
 import { TuneSection, ModelSettings } from './tune.js';
 import { WifiCard, WifiSettings, DuckAddresses } from './wifi.js';
 import { TwoStep } from './confirm.js';
+import { ModelsPage } from './models.js';
 
 const STALE_GRAY_MS = 1000;   // 超过 1 秒没新数据：数值变灰
 const STALE_ALARM_MS = 3000;  // 超过 3 秒：横幅；卸力按钮仍可按（只要跟 Studio 的连接在）
@@ -30,6 +31,7 @@ class Link {
     this.lastAt = 0;
     this.backoff = 1000;
     this._hb = null;
+    this.padCapture = false;
     document.addEventListener('visibilitychange', () => this.heartbeat());
   }
 
@@ -99,8 +101,11 @@ class Link {
   // #/pad 现在是总览上的锚点，地址是它不代表看得到（往上滑回舞台，地址栏还是 #/pad）
   heartbeat() {
     this.send({ t: 'hb', seq: ++this.seq, visible: document.visibilityState === 'visible', route: location.hash.replace(/^#/, '') || '/',
-      pad_visible: padActivity.active });
+      pad_visible: padActivity.active || this.padCapture });
   }
+
+  // 模型改键只读旁路：请求快照，不改变 padActivity，也不接管网页遥控。
+  setPadCapture(active) { this.padCapture = Boolean(active); this.heartbeat(); }
 
   cmd(name, args = {}, timeoutMs = 15000) {
     const id = `c${++this.seq}`;
@@ -950,18 +955,19 @@ function Nav({ route, padInView, onSame }) {
     ${a('#/pad', '/pad', '手柄')}
     ${a('#/servos', '/servos', '舵机')}
     ${a('#/imu', '/imu', 'IMU')}
+    ${a('#/models', '/models', '模型')}
     ${a('#/logs', '/logs', '日志')}
     <span class="spacer"></span>
     ${a('#/settings', '/settings', '设置')}
   </nav>`;
 }
 
-// 底栏留 5 个（手柄最常用，一点就到：方案 §1.2）；顺序跟侧栏一样：总览、手柄、舵机、IMU（用户 10-19）
+// 模型管理在手机底栏也能直接打开；顺序跟侧栏一致。
 function TabBar({ route, padInView, onSame }) {
   const cur = navCur(route, padInView);
   const a = (href, r, text) => html`<a href=${href} aria-current=${cur(r)} onClick=${(e) => onSame(e, href)}>${text}</a>`;
   return html`<nav class="tabbar" aria-label="主导航">
-    ${a('#/', '/', '总览')}${a('#/pad', '/pad', '手柄')}${a('#/servos', '/servos', '舵机')}${a('#/imu', '/imu', 'IMU')}${a('#/settings', '/settings', '更多')}
+    ${a('#/', '/', '总览')}${a('#/pad', '/pad', '手柄')}${a('#/servos', '/servos', '舵机')}${a('#/imu', '/imu', 'IMU')}${a('#/models', '/models', '模型')}${a('#/settings', '/settings', '更多')}
   </nav>`;
 }
 
@@ -1070,6 +1076,7 @@ function Main({ duck }) {
   else if (route === '/logs') page = html`<${LogsPage} />`;
   else if (route === '/servos') page = html`<${ServoPage} sv=${sv} link=${link} leaveGuards=${leaveGuards} />`;
   else if (route === '/settings') page = html`<${Settings} st=${st} tune=${tune} />`;
+  else if (route === '/models') page = html`<${ModelsPage} api=${api} csrf=${csrf} link=${link} live=${live} />`;
   else if (route === '/imu') page = html`<${ImuPage} st=${st} imu=${imu} link=${link} live=${live} age=${age} pd=${pd} />`;
   else page = html`<${Later} what="这一页" />`;
 

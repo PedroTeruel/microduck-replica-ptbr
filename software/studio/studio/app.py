@@ -27,6 +27,7 @@ import os
 import platform
 import subprocess
 import sys
+import tempfile
 import time
 import zipfile
 from pathlib import Path
@@ -46,6 +47,8 @@ from .state import summarize
 from .pad import Refused as PadRefused, robot_view  # 手柄页
 
 VERSION = "0.1.0-dev"
+MODEL_UPLOAD_LIMIT = 64 * 1024 * 1024
+MODEL_OP_LIMIT = 32768
 STATE_HZ = 10
 COMMANDS = {"relax", "servo.open", "servo.close", "servo.op", "servo.ports", "imu.op", "calib.op", "pad.op", "onboard.op", "battery.op", "tune.op", "net.op"}
 HB_QUIET_S = 5.0         # 页面这么久没发心跳：当作看不见（停推状态、可能退订）
@@ -135,7 +138,7 @@ def _bus_give_back(by, servo=None):
 
 
 def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev_autologin=False, servo=None, imu=None, pad=None,
-              onboard=None, battery=None, tune=None, net=None, commit=None, ssh_home=None):
+              onboard=None, battery=None, tune=None, net=None, commit=None, ssh_home=None, models=None):
     guard = OriginGuard(names=names)
     if imu is not None and commit is not None:
         imu.commit = commit                          # 标定模式「站姿使能」：跟写进主程序同一套方向
@@ -152,6 +155,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
     clients = {}           # websocket -> {"visible": bool, "by": str, "hb_at": monotonic}
     login_gate = asyncio.Semaphore(1)
     servo_gate = asyncio.Lock()         # 开 / 关舵机总线一次一个
+    model_upload_gate = asyncio.Lock()
     # 舵机会话的标记（审查 D1）：没给 state 目录（测试）就不写
     marker = Path(state_dir) / SERVO_MARKER if state_dir and servo is not None else None   # 登录一个一个来：退避不会被并发绕过，scrypt 也不会同时吃掉几份 16 MB
 
@@ -399,6 +403,107 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         name = f"duck-profile-{time.strftime('%Y%m%d-%H%M%S')}.json"
         return Response(data, media_type="application/json",
                         headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    def model_response(payload, status=200):
+        return JSONResponse(payload, status_code=status, headers={"Cache-Control": "no-store"})
+
+    def model_access(request, *, write=False):
+        _, sess = session_of(request)
+        if not sess:
+            return model_response({"ok": False, "error": "先登录才能管理模型"}, 401)
+        if write and (not origin_ok(request) or request.headers.get("x-csrf") != sess["csrf"]):
+            return model_response({"ok": False, "error": "请求校验失败，刷新页面再试"}, 403)
+        if models is None:
+            return model_response({"ok": False, "error": "当前模式没有开启模型管理"}, 503)
+        return None
+
+    async def model_result(operation):
+        try:
+            return model_response({"ok": True, "data": await operation()})
+        except ValueError as e:
+            return model_response({"ok": False, "error": str(e), "code": getattr(e, "code", "invalid")},
+                                  getattr(e, "status", 400))
+        except Exception as e:  # 不把上传内容写进日志
+            log.error("模型管理操作失败", cat="模型", raw=f"{type(e).__name__}: {e}", exc=True)
+            return model_response({"ok": False, "error": "模型管理暂时出错，请查看日志后重试"}, 500)
+
+    async def limited_body(request, limit):
+        length = request.headers.get("content-length")
+        if length is not None:
+            try:
+                if int(length) < 0:
+                    raise ValueError()
+                if int(length) > limit:
+                    raise OverflowError()
+            except ValueError:
+                raise ValueError("请求大小不正确") from None
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > limit:
+                raise OverflowError()
+            data.extend(chunk)
+        return data
+
+    async def api_models(request):
+        refused = model_access(request)
+        if refused is not None:
+            return refused
+        return await model_result(models.view)
+
+    async def api_model_op(request):
+        refused = model_access(request, write=True)
+        if refused is not None:
+            return refused
+        try:
+            body = json.loads(await limited_body(request, MODEL_OP_LIMIT))
+            if not isinstance(body, dict):
+                raise ValueError()
+        except OverflowError:
+            return model_response({"ok": False, "error": "操作请求过大"}, 413)
+        except (ValueError, UnicodeError, RecursionError):
+            return model_response({"ok": False, "error": "操作请求格式不正确"}, 400)
+        return await model_result(lambda: models.handle(body, by=_client_desc(request)))
+
+    async def api_model_import(request):
+        refused = model_access(request, write=True)
+        if refused is not None:
+            return refused
+        # 原文件名仅用于判定格式。暂存文件采用系统随机名，永不拼接用户路径。
+        filename = request.query_params.get("filename", "")
+        if not filename or len(filename) > 200 or any(c in filename for c in ("/", "\\", ":", "\x00")):
+            return model_response({"ok": False, "error": "请选择模型部署包文件"}, 400)
+        suffix = next((s for s in (".tar.gz", ".tgz", ".zip") if filename.lower().endswith(s)), None)
+        if suffix is None:
+            return model_response({"ok": False, "error": "请选择 ZIP、tar.gz 或 tgz 模型部署包"}, 400)
+        name = request.query_params.get("name", "")
+        if len(name) > 80:
+            return model_response({"ok": False, "error": "模型名称最多 80 个字符"}, 400)
+        async with model_upload_gate:
+            temporary = None
+            try:
+                length = request.headers.get("content-length")
+                if length is not None and int(length) > MODEL_UPLOAD_LIMIT:
+                    raise OverflowError()
+                upload_dir = Path(state_dir or auth.dir) / "model-uploads"
+                await asyncio.to_thread(upload_dir.mkdir, parents=True, exist_ok=True)
+                fd, temporary = tempfile.mkstemp(suffix=suffix, dir=upload_dir)
+                total = 0
+                with os.fdopen(fd, "wb") as output:
+                    async for chunk in request.stream():
+                        total += len(chunk)
+                        if total > MODEL_UPLOAD_LIMIT:
+                            raise OverflowError()
+                        await asyncio.to_thread(output.write, chunk)
+                if not total:
+                    raise ValueError("模型部署包是空的")
+                return await model_result(lambda: models.import_package(Path(temporary), name=name))
+            except OverflowError:
+                return model_response({"ok": False, "error": "模型部署包不能超过 64 MiB"}, 413)
+            except ValueError as e:
+                return model_response({"ok": False, "error": str(e) or "请求格式不正确"}, 400)
+            finally:
+                if temporary is not None:
+                    await asyncio.to_thread(Path(temporary).unlink, missing_ok=True)
 
     async def meshes(request):
         """3D 模型 2.8 MB：预先压好的 .gz 直接给（不在板子上现压），浏览器缓存一天。"""
@@ -1313,6 +1418,9 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         Route("/api/logs", api_logs),
         Route("/api/diag", api_diag),
         Route("/api/profile", api_profile),
+        Route("/api/models", api_models),
+        Route("/api/models/op", api_model_op, methods=["POST"]),
+        Route("/api/models/import", api_model_import, methods=["POST"]),
         Route("/model/meshes.bin", meshes),
         WebSocketRoute("/ws", ws_endpoint),
         Mount("/", AppStatic(directory=str(web_dir), html=True)),

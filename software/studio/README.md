@@ -26,6 +26,8 @@ studio/
   robotd.py         连接：轮询 / 实时状态流 / 命令 / configd 各一条常驻；卸力每次新开一条（robotd 重启后不会撞上死连接）
   estop.py          卸力状态机：ready → pending → confirmed / unavailable；只认「卸力回执之后才发出的」回读
   state.py          把原始数据汇总成推给页面的状态（姿势、电量、舵机、IMU、手柄、待办、配网）
+  models.py         模型库、默认恢复、实际切换回读、手柄改键
+  model_package.py  模型部署包解析与 robotd 无硬件预检
   net.py            配网：读 netcheck 的 net.json、configd 的 net.status / scan / connect / forget、开关热点
   app.py            网页服务：静态文件、登录、日志、诊断包、WebSocket
 web/                页面（Preact + htm，three.js 画 3D 鸭子；全部本地文件，不走 CDN；wifi.js 是连 WiFi 卡片和设置；
@@ -228,7 +230,7 @@ python3 -I run_tests.py                # 鸭子
 - **写进主程序**：上手清单第 3 步把舵机零位、方向、IMU 方向一次写进 robotd 的标定。出厂镜像是标定模式；写成功后小助手删掉 commissioning drop-in、重启主程序切运动模式。成功不只看重启：还要 `mode=motion`、`phase=control`，并且 `calibration-status` 读回逐项一致；不成就把文件和模式换回去。Studio 重启后会读 `last-result.json` 把上次结果放回第 3 步卡片。
 - **手柄**：配对（走官方 `robotctl pad pair`）、网页手柄、测急停。
 - **遥控**：站起来 / 开始走 / 坐下、技能、动作和组合动作。
-- **调手感、模型**：只看。
+- **调手感**：只看。**模型管理**：导入部署包、改名、选择模型、恢复内置、设置动作键和删除导入模型；具体格式见 [模型导入说明](MODEL_IMPORT.md)。
 - **日志**：日志页和诊断包；手机底栏从「更多」也能进日志、导出诊断包。
 - **连 WiFi**：鸭子开热点时用手机选家里的 WiFi、填密码；切过去以后页面自己找鸭子的新地址、找到就跳过去；设置里能看当前网络、换网、忘掉已保存的网络。
 - **登录密码**：在「更多 → 登录密码」设置、修改或清掉；热点模式又没密码时，总览的连 WiFi 卡片会提示先设密码。

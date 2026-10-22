@@ -229,10 +229,10 @@ function ModelsCard({ models }) {
   const what = (s) => (s.name ? `${s.name}${s.rounds ? ` · ${s.rounds} 轮` : ''}` : s.path ? '读不到模型说明' : '没装');
   const rolOn = rollers.filter((r) => r.installed);
   return html`<section class="board card" aria-label="模型">
-    <h3>模型 <a href="#/settings" style="font-size:12px;font-weight:400;color:var(--blue);text-decoration:none">管理…</a></h3>
+    <h3>模型 <a href="#/models" aria-label="模型管理" style="font-size:12px;font-weight:400;color:var(--blue);text-decoration:none">管理…</a></h3>
     <div class="tbl">
       ${slots.map((s) => html`<span class="k">${s.label}</span>
-        <span>${s.error ? html`<span class="tn-tag err">没加载</span>` : s.active ? html`<span class="tn-tag on">在用</span>`
+        <span>${s.error ? html`<span class="tn-tag err">没加载</span>` : s.active ? html`<span class="tn-tag on">正在执行</span>`
           : s.loaded ? html`<span class="tn-tag on">已加载</span>` : html`<span class="tn-tag">${s.path ? '没加载' : '没装'}</span>`}</span>
         <span class="d">${what(s)}${s.sha12 ? html` · <span title="文件指纹（sha256 前 12 位）">${s.sha12}</span>` : null}
           ${s.error ? html`<br /><span class="bad">${s.error}</span>` : null}
@@ -303,7 +303,8 @@ export function ModelSettings({ tune, link }) {
   const slots = tune?.models?.slots || [];
   const rollers = tune?.models?.rollers || [];
   return html`<div class="board mmod" aria-label="模型">
-    <h2>模型</h2>
+    <h2>模型与机器档案</h2>
+    <a href="#/models" style="font-size:13px;color:var(--blue)">打开模型管理，导入模型或设置按键 →</a>
     ${slots.map((s) => html`<div class=${'slot' + (s.error ? ' err' : '')}>
       <div><span class="nm">${s.label}</span>${s.active ? ' · 在用' : s.loaded ? ' · 已加载' : ' · 没装'}${s.rounds ? ` · ${s.rounds} 轮` : ''}</div>
       <div class="meta">${s.name ? s.name : '—'}${s.task ? ` · ${s.task}` : ''}${s.sha12 ? ` · ${s.sha12}` : ''}${s.commit ? ` · ${s.commit}` : ''}</div>
