@@ -40,7 +40,7 @@
 - [x] Exercise valid import → rename → select → conflict/replace → unbind/default → restore → delete, plus failed install/switch.
 - [x] Update README/installation docs with exact package files and supported bindings.
 - [x] Review path boundaries, mutation ordering, runtime readback and UI completeness; fix findings and rerun affected checks.
-- [ ] Integrate the verified changes back into studio-dev while preserving its untracked UI records; report deployment status accurately.
+- [x] Integrate the verified changes back into studio-dev while preserving its untracked UI records; report deployment status accurately.
 
 ## Verification evidence
 
@@ -49,3 +49,5 @@
 - Headless Edge exercised real archive/HTTP/library with explicitly injected test runtime and inference validator; desktop and 390px layouts fit. Physical capture subscribes read-only, waits for stable safe bindings, and restores the snapshot lease on exit.
 - Independent review closed actual export-joint layout, disabled-slot recovery, persisted references, JSON limits, refresh ordering and first-key timing findings. No outstanding P1/P2.
 - Real board preflight/deployment remains unverified: SSH identity check reported a changed host key; no bypass, board file update or motion was performed.
+
+Local integration: cherry-picked the verified feature into `studio-dev` (`b10ff34`), preserved the existing untracked `software/studio/docs/` UI records, and reran all 68 focused tests successfully in the destination checkout. Studio source is identical to the fully tested feature checkout.
