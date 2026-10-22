@@ -171,12 +171,26 @@ test('resource numbers distinguish missing measurements from a real zero', () =>
   assert.equal(feature('resourceMemory')(null,8*1024**3),'— / 8 GiB');
 });
 test('resource freshness keeps a failed or old sample from looking live', () => {
-  const status=feature('resourceStatus'),now=Date.parse('2026-10-23T00:00:20Z');
-  assert.equal(status(null,'',now).label,'正在采集');
-  assert.equal(status({status:'ready',sampled_at:'2026-10-23T00:00:19Z'},'',now).label,'实时更新');
-  assert.equal(status({status:'partial',sampled_at:'2026-10-23T00:00:19Z'},'',now).label,'部分指标可用');
-  assert.equal(status({status:'ready',sampled_at:'2026-10-23T00:00:00Z'},'',now).stale,true);
-  assert.equal(status({status:'ready',sampled_at:'2026-10-23T00:00:19Z'},'网络断开',now).stale,true);
+  const status=feature('resourceStatus'),fresh={status:'ready',age_seconds:1,stale:false};
+  assert.equal(status(null).label,'正在采集');
+  assert.equal(status({status:'pending',age_seconds:null}).label,'正在采集');
+  assert.equal(status(fresh).label,'实时更新');
+  assert.equal(status({...fresh,status:'partial'}).label,'部分指标可用');
+  assert.equal(status({...fresh,age_seconds:20}).stale,true);
+  assert.equal(status({...fresh,stale:true}).stale,true);
+  assert.equal(status(fresh,'网络断开').stale,true);
+  assert.equal(status({status:'unavailable',age_seconds:null}).label,'暂不可读取');
+  assert.equal(status({status:'ready',age_seconds:null}).label,'采样时间未知');
+});
+test('resource freshness ignores remote wall clock offsets and ages after browser suspension', () => {
+  const status=feature('resourceStatus');
+  for(const sampled_at of ['2000-01-01T00:00:00Z','2099-12-31T00:00:00Z']) {
+    const fresh={status:'ready',age_seconds:1,stale:false,sampled_at};
+    assert.equal(status(fresh).label,'实时更新');
+    assert.equal(status(fresh,'',2).label,'实时更新');
+    assert.equal(status(fresh,'',11).stale,true);
+    assert.equal(status({...fresh,age_seconds:9},'',2).stale,true);
+  }
 });
 test('pretrained links allow only absolute HTTPS without embedded credentials', () => {
   const safe=feature('safeExternalUrl');

@@ -100,12 +100,16 @@ export function resourceMemory(used,total,unit='bytes') {
   const gib=value=>typeof value==='number'?value/divisor:null;
   return `${resourceNumber(gib(used),1)} / ${resourceNumber(gib(total),1)} GiB`;
 }
-export function resourceStatus(snapshot,error='',now=Date.now()) {
+export function resourceStatus(snapshot,error='',secondsSinceReceipt=0) {
   if(!snapshot)return {label:error?'暂不可读取':'正在采集',tone:error?'amber':'neutral',stale:!!error};
-  const age=now-Date.parse(snapshot.sampled_at),stale=!!error||snapshot.stale===true||(Number.isFinite(age)&&age>10000);
+  // Remote sampled_at is display-only: the execution host may have a different clock.
+  const validAge=typeof snapshot.age_seconds==='number'&&Number.isFinite(snapshot.age_seconds)&&snapshot.age_seconds>=0;
+  const localAge=Number.isFinite(secondsSinceReceipt)?Math.max(0,secondsSinceReceipt):0;
+  const stale=!!error||snapshot.stale===true||(validAge&&snapshot.age_seconds+localAge>10);
   if(stale)return {label:'更新中断 · 上次采样',tone:'amber',stale:true};
   if(snapshot.status==='pending')return {label:'正在采集',tone:'neutral',stale:false};
   if(snapshot.status==='unavailable')return {label:'暂不可读取',tone:'amber',stale:false};
+  if(!validAge)return {label:'采样时间未知',tone:'amber',stale:true};
   if(snapshot.status==='partial')return {label:'部分指标可用',tone:'neutral',stale:false};
   return {label:'实时更新',tone:'green',stale:false};
 }
