@@ -1,0 +1,6 @@
+{
+  "name": "microduck-training-studio",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test tests/state.test.mjs" }
+}

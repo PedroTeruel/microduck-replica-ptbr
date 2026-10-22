@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+state/
+.pytest_cache/
+node_modules/
+package-lock.json
+browser-check-output/
