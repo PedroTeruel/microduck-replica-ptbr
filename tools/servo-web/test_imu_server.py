@@ -20,7 +20,7 @@ import server
 
 
 def stub_service():
-    service = Mock()
+    service = Mock(spec=imu_bridge.BridgeService)
     service.demo = True
     service.get_status.return_value = {
         "type": "imu", "mode": "demo", "status": "live", "live": True,
@@ -54,6 +54,22 @@ class ServerEnvironment(unittest.TestCase):
 
 
 class WebSocketTests(ServerEnvironment):
+    def test_bus_protocol_switch_is_broadcast_to_both_clients(self):
+        from imu_bus import BusImuService
+        service = BusImuService()
+        with patch.object(server, "IMU_SERVICE", service):
+            with TestClient(server.app) as client:
+                with client.websocket_connect("/ws") as first, client.websocket_connect("/ws") as second:
+                    self.assertEqual(first.receive_json()["imu_protocol"], "feetech")
+                    self.assertEqual(second.receive_json()["imu_protocol"], "feetech")
+                    first.send_json({"op": "imu_protocol", "protocol": "dxl2"})
+                    self.assertEqual(self.collect(first, {"imu_config"})["imu_config"]["protocol"], "dxl2")
+                    self.assertEqual(self.collect(second, {"imu_config"})["imu_config"]["protocol"], "dxl2")
+                    first.send_json({"op": "imu_protocol", "protocol": "unsupported"})
+                    error = self.collect(first, {"error"})["error"]
+                    self.assertIn("dxl2", error["msg"])
+                    self.assertEqual(service.protocol, "dxl2")
+
     def test_existing_socket_delivers_servo_and_real_demo_bridge_frames(self):
         service = imu_bridge.BridgeService(demo=True)
         with patch.object(server, "IMU_SERVICE", service):
