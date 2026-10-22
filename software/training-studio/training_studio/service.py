@@ -21,6 +21,7 @@ from .commands import ANSI, EXPERIMENT, build_train_argv, experiment_for, parse_
 from .config import (RECIPES, RECIPE_BY_ID, StudioError, recipe_config,
                      skill_command_contract, validate_profile, validate_skill)
 from .environment import inspect_environment, runtime_environment
+from .resources import ResourceMonitor
 
 
 ACTIVE = {"starting", "running", "paused", "stopping"}
@@ -83,6 +84,7 @@ class StudioService:
         self._leader_watchers = {}
         self._active = None
         self._closing = False
+        self._resource_monitor = ResourceMonitor(mode=self.mode)
         self._environment = inspect_environment(self.training_root, demo)
         (self.state_dir / "runs").mkdir(parents=True, exist_ok=True)
         for path in (self.state_dir / "runs").glob("*/run.json"):
@@ -133,6 +135,10 @@ class StudioService:
 
     def environment(self):
         return copy.deepcopy(self._environment)
+
+    def resources(self):
+        # Independent cached sampler: never holds the training/operation lock.
+        return self._resource_monitor.snapshot()
 
     def refresh_environment(self):
         # Diagnostics may start a bounded read-only uv probe. Keep it outside the job lock.
@@ -886,6 +892,7 @@ class StudioService:
         with self._condition:
             self._closing = True
             children = list(self._children.items())
+        self._resource_monitor.close()
         for run_id, child in children:
             with self._condition:
                 run = self._runs[run_id]

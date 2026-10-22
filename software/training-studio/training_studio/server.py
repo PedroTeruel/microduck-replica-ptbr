@@ -179,6 +179,8 @@ def create_server(service, host="127.0.0.1", port=8093, *, web_root=None, shared
                     return self._json(200, service.state())
                 if path == "/api/environment":
                     return self._json(200, service.refresh_environment())
+                if path == "/api/resources":
+                    return self._json(200, service.resources())
                 match = re.fullmatch(r"/api/runs/([a-f0-9]{12})", path)
                 if match:
                     return self._json(200, service.get_run(match[1]))
