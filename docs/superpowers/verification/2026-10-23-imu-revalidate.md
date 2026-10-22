@@ -12,7 +12,7 @@ The saved/verified installation quaternion no longer hides the original coarse c
 
 The helper tests distinguish the override on disk, the command loaded by systemd, and the live process mode. They exercise interrupted writes/removals before and after daemon-reload, foreign startup arguments, failure rollback, readback mismatches, source changes, and backup ownership/tamper checks. Browser tests replace only the privileged filesystem/service boundary; no real services run.
 
-Full Studio regression: **1009 tests passed, 4 skipped, in 590.143 seconds**. The suite started before the last narrowly scoped helper interruption fix; the final 165-test focused run above separately verified that fix. Destination integration results are recorded below when complete.
+Full Studio regression: **1009 tests passed, 4 skipped, in 590.143 seconds**. The suite started before the last narrowly scoped helper interruption fix; the final 165-test focused run above separately verified that fix. Feature `0c0de63` integrated into `studio-dev` without changing concurrent training work or private untracked Studio notes. Destination focused verification: **165 tests passed in5.366seconds**.
 
 ## Board acceptance still required
 
