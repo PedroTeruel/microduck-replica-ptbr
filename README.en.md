@@ -159,8 +159,10 @@ horns were remodelled and reprinted. The editable SolidWorks drawings have an FT
 
 **Microduck Studio** is a web console that runs on the duck, written by us; open it in a browser on a phone or computer (the interface is in Chinese):
 
-- **Overview and checklist**: a 3D duck that follows the real one; battery, servos, IMU and pad at a glance; each step tells you what to do, and you can mark a step done or skip it;
-- **Servos, IMU**: sliders, centre calibration, directions; standing IMU calibration;
+- **Overview and checklist**: a 3D duck that follows the real one; battery, servos, IMU, camera, ToF, pad and mainboard status at a glance; each step tells you what to do, and you can mark a step done or skip it;
+- **Servos, IMU**: sliders, centre calibration, directions; standing IMU calibration and repeatable calibration of saved installation quaternions;
+- **Model management**: import models trained on a computer, name/select them, bind pad buttons, delete imported models or restore defaults;
+- **Camera, ToF**: separate video and 8×8 depth pages with explicit test-source, disconnected, error and stale states;
 - **Pad and remote**: Bluetooth pairing, an on-screen pad, e-stop test; stand up, walk, skills;
 - **WiFi, SSH**: the duck opens its own hotspot when it finds no WiFi; the More page turns on SSH with a password you choose, so you can log in and fix things without reflashing;
 - **Logs**: export a diagnostics bundle in one click.
@@ -171,7 +173,10 @@ horns were remodelled and reprinted. The editable SolidWorks drawings have an FT
 
 The image is free, for personal non-commercial builds only, and is not distributed with any paid product (the models in it are under their author's personal non-commercial licence).
 
-**[Download the image](https://github.com/fanhao375/microduck-replica/releases/latest)**　·
+**[20261023 prerelease](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023)** adds model management, sensor status and repeatable IMU direction calibration. Software tests and deliverable inspection passed; physical board acceptance is pending. Camera input still defaults to a test source; hardware-based automatic camera/ToF service startup is not implemented.
+
+**[Download the 20261023 prerelease](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023)**　·
+[Previous 20261021b image](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261021b)　·
 **[Flashing and first use](software/image/烧录和第一次使用.md)** (Chinese)　·
 **[Studio](software/studio/)** (Chinese)　·
 [How the image is built](software/image/) (Chinese)　·
