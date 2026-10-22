@@ -26,12 +26,15 @@ class RuntimeEnvironmentTests(unittest.TestCase):
             "mujoco.py": "import os\nif os.environ.get('STUDIO_TEST_MISSING_GL') == '1':\n raise ImportError('libEGL.so.1: cannot open shared object file')\nclass GLContext: pass\n",
             "mjlab/__init__.py": "",
             "mjlab/tasks/__init__.py": "",
-            "mjlab/tasks/registry.py": "def list_tasks(): return ['Mjlab-Velocity-Flat-MicroDuck-HD1910', 'Mjlab-Velocity-Rough-MicroDuck-HD1910']\n",
+            "mjlab/tasks/registry.py": "def list_tasks(): return ['Mjlab-Velocity-Flat-MicroDuck-HD1910', 'Mjlab-Velocity-Rough-MicroDuck-HD1910', 'Mjlab-Balance-Flat-MicroDuck-HD1910']\n",
             "mjlab/rl/__init__.py": "",
             "mjlab/rl/config.py": "class RslRlBaseRunnerCfg:\n __dataclass_fields__ = dict.fromkeys(['resume', 'load_run', 'load_checkpoint'])\n",
             "mjlab_microduck/__init__.py": "",
             "mjlab_microduck/tasks.py": "",
             "mjlab-1.3.0.dist-info/METADATA": "Metadata-Version: 2.1\nName: mjlab\nVersion: 1.3.0\n",
+            "torch-2.10.0.dist-info/METADATA": "Metadata-Version: 2.1\nName: torch\nVersion: 2.10.0+cu128\n",
+            "rsl_rl_lib-5.0.1.dist-info/METADATA": "Metadata-Version: 2.1\nName: rsl-rl-lib\nVersion: 5.0.1\n",
+            "mujoco_warp-3.3.7.dist-info/METADATA": "Metadata-Version: 2.1\nName: mujoco-warp\nVersion: 3.3.7\n",
         }
         for name, content in fixtures.items():
             self.write(self.modules / name, content)
@@ -66,6 +69,25 @@ class RuntimeEnvironmentTests(unittest.TestCase):
         self.assertIn("MUJOCO_GL=egl", failed_details)
         self.assertIn("libEGL.so.1", failed_details)
 
+    def test_missing_balance_task_blocks_ready(self):
+        self.write(self.modules / "mjlab/tasks/registry.py", "def list_tasks(): return ['Mjlab-Velocity-Flat-MicroDuck-HD1910', 'Mjlab-Velocity-Rough-MicroDuck-HD1910']\n")
+        with patch.dict(os.environ, {"PYTHONPATH": str(self.modules)}), \
+             patch("training_studio.environment.platform.system", return_value="Linux"), \
+             patch("training_studio.environment.shutil.which", return_value="test-uv"), \
+             patch("training_studio.environment.subprocess.run", side_effect=self.probe_transport):
+            os.environ.pop("STUDIO_TEST_MISSING_GL", None)
+            result = inspect_environment(self.engine)
+        self.assertFalse(result["ready"])
+
+    def test_demo_does_not_stat_wsl_virtual_environment(self):
+        original = Path.is_file
+        def is_file(path):
+            if ".venv" in path.parts:
+                raise OSError(1920, "Windows cannot access WSL virtual environment link")
+            return original(path)
+        with patch.object(Path, "is_file", is_file):
+            self.assertTrue(inspect_environment(self.engine, demo=True)["ready"])
+
     def test_probe_training_and_evaluation_share_default_and_explicit_backend(self):
         for explicit, expected in ((None, "egl"), ("osmesa", "osmesa")):
             with self.subTest(explicit=explicit), patch.dict(os.environ, {"PYTHONPATH": str(self.modules)}):
@@ -80,6 +102,9 @@ class RuntimeEnvironmentTests(unittest.TestCase):
                     service = StudioService(self.root / expected, self.engine)
                 try:
                     self.assertTrue(service.environment()["ready"])
+                    expected_versions = {"mjlab": "1.3.0", "torch": "2.10.0+cu128", "rsl-rl-lib": "5.0.1", "mujoco-warp": "3.3.7"}
+                    self.assertEqual(service.environment().get("dependency_versions"), expected_versions)
+                    self.assertEqual(service._engine_source()["dependency_versions"], expected_versions)
                     capture = "import os; print('selected_gl=' + os.environ.get('MUJOCO_GL', 'unset'), flush=True)"
                     argv = [sys.executable, "-u", "-c", capture]
                     with patch("training_studio.service.build_train_argv", return_value=argv), \

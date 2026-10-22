@@ -12,15 +12,78 @@ class StudioError(Exception):
 
 DEFAULTS = {"num_envs": 2048, "iterations": 1000, "save_interval": 50,
             "seed": 42, "learning_rate": 0.001}
+BALANCE_RECIPE = "hd1910-single-leg"
+SKILL_DEFAULTS = {"support_side": "left", "lift_height_m": 0.01, "hold_seconds": 3.0}
+SKILL_LIMITS = {"support_side": ["left", "right"],
+                "lift_height_m": {"min": 0.005, "max": 0.02, "step": 0.005},
+                "hold_seconds": {"min": 1, "max": 5, "step": 1}}
 RECIPES = [
     {"id": "hd1910-flat", "title": "HD1910 平地行走", "description": "练习在平地站稳、向前行走和转向。先短试跑，确认环境能正常运行。",
-     "task_id": "Mjlab-Velocity-Flat-MicroDuck-HD1910", "defaults": dict(DEFAULTS),
+     "task_id": "Mjlab-Velocity-Flat-MicroDuck-HD1910", "experiment_name": "microduck_hd1910_velocity", "defaults": dict(DEFAULTS),
      "hardware": "Linux + NVIDIA CUDA 显卡；HD1910 舵机模型", "validation": "已通过 WSL / RTX 5060 Ti 的 64 环境、5 轮短试跑；只验证流程，不代表已经学会走路。"},
     {"id": "hd1910-rough", "title": "HD1910 起伏地形", "description": "练习在有起伏的地面保持平衡和行走。先完成同一配置的短试跑。",
-     "task_id": "Mjlab-Velocity-Rough-MicroDuck-HD1910", "defaults": dict(DEFAULTS),
+     "task_id": "Mjlab-Velocity-Rough-MicroDuck-HD1910", "experiment_name": "microduck_hd1910_velocity", "defaults": dict(DEFAULTS),
      "hardware": "Linux + NVIDIA CUDA 显卡；HD1910 舵机模型", "validation": "尚未在 GPU 上验证；训练后请先看回放，再决定是否用于机器人。"},
+    {"id": BALANCE_RECIPE, "title": "HD1910 单脚平衡", "description": "选择支撑脚、另一只脚抬高多少和保持多久，训练完整的抬脚、保持和落脚动作。",
+     "task_id": "Mjlab-Balance-Flat-MicroDuck-HD1910", "experiment_name": "microduck_hd1910_balance",
+     "defaults": dict(DEFAULTS, num_envs=256, save_interval=25),
+     "skill_defaults": dict(SKILL_DEFAULTS), "skill_limits": copy.deepcopy(SKILL_LIMITS),
+     "hardware": "Linux + NVIDIA CUDA 显卡；HD1910 舵机模型",
+     "validation": "动作效果以所选检查点的完整周期物理评估为准；短试跑完成只证明训练流程。"},
 ]
 RECIPE_BY_ID = {r["id"]: r for r in RECIPES}
+
+
+def validate_skill(recipe_id, value):
+    if not isinstance(recipe_id, str) or recipe_id not in RECIPE_BY_ID:
+        raise StudioError("未知训练配方")
+    if recipe_id != BALANCE_RECIPE:
+        if value is not None:
+            raise StudioError("行走配方不接受单脚平衡参数")
+        return None
+    if value is None:
+        value = {}
+    if not isinstance(value, dict) or set(value) - set(SKILL_DEFAULTS):
+        raise StudioError("动作参数包含未知字段，或不是 JSON 对象")
+    result = dict(SKILL_DEFAULTS, **value)
+    if result["support_side"] not in ("left", "right"):
+        raise StudioError("support_side 必须是 left 或 right")
+    for name in ("lift_height_m", "hold_seconds"):
+        number, limits = result[name], SKILL_LIMITS[name]
+        if type(number) not in (int, float) or not limits["min"] <= number <= limits["max"] or not math.isfinite(number):
+            raise StudioError(f"{name} 必须是 {limits['min']}–{limits['max']} 的有限数字")
+        result[name] = float(number)
+    return result
+
+
+def skill_command_contract(skill):
+    """Portable copy of engine balance_parameters contract; parity is tested.
+
+    The Studio runtime need not have the engine's Python package installed.
+    Update the version together with the engine when command semantics change.
+    """
+    skill = validate_skill(BALANCE_RECIPE, skill)
+    return {
+        "version": "microduck.single_leg_balance.v1",
+        "actor_observation_size": 61, "action_size": 14, "control_hz": 50,
+        "twist_slots": ["support_sign (+1 left, -1 right)",
+                        "scheduled swing sole clearance (metres)",
+                        "phase / 3 (0 init, 1 lift, 2 hold, 3 return)"],
+        "phase_seconds": {"init": 1.0, "lift": 1.0,
+                          "hold": skill["hold_seconds"], "return": 1.5},
+        "return_includes_settle_seconds": .5,
+        "cycle_seconds": skill["hold_seconds"] + 3.5,
+        "head_body_commands": "Near-zero pose command padding; deployment uses zeros.",
+        "runtime_adapter_required": True,
+        "runtime_note": "A matching phase scheduler is required; this is not a velocity policy.",
+        "hardware_validated": False, "skill": skill,
+    }
+
+
+def recipe_config(recipe_id, value, kind):
+    if not isinstance(value, dict):
+        raise StudioError("配置必须是 JSON 对象")
+    return validate_config(dict(RECIPE_BY_ID[recipe_id]["defaults"], **value), kind)
 
 
 def validate_config(config, kind):

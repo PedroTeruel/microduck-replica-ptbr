@@ -56,7 +56,7 @@ class ValidationTests(unittest.TestCase):
                 validate_profile({"schema": "microduck-studio-duck-profile/v1", **p})
 
     def test_real_command_uses_frozen_numeric_flags_and_exact_checkpoint(self):
-        run = {"id": "abc123", "task_id": "Mjlab-Velocity-Flat-MicroDuck-HD1910",
+        run = {"id": "abc123", "recipe_id": "hd1910-flat", "task_id": "Mjlab-Velocity-Flat-MicroDuck-HD1910",
                "config": validate_config({}, "smoke")}
         argv = build_train_argv(run, Path("/engine"), Path("/engine/logs/rsl_rl/microduck_hd1910_velocity/2026_studio_source/model_4.pt"))
         self.assertEqual(argv[:4], ["uv", "run", "--frozen", "--no-sync"])
@@ -67,7 +67,7 @@ class ValidationTests(unittest.TestCase):
         self.assertNotIn("--hf-jobs", argv)
 
     def test_command_builder_itself_rejects_injected_numeric_values(self):
-        run = {"id": "abc123", "task_id": "Mjlab-Velocity-Flat-MicroDuck-HD1910",
+        run = {"id": "abc123", "recipe_id": "hd1910-flat", "task_id": "Mjlab-Velocity-Flat-MicroDuck-HD1910",
                "kind": "train", "config": {**validate_config({}, "train"), "iterations": "5 --hf-jobs"}}
         with self.assertRaises(StudioError):
             build_train_argv(run, Path("/engine"))

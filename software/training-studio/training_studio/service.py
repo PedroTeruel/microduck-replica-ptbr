@@ -17,8 +17,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from .commands import ANSI, EXPERIMENT, build_train_argv, parse_metric
-from .config import RECIPES, RECIPE_BY_ID, StudioError, validate_config, validate_profile
+from .commands import ANSI, EXPERIMENT, build_train_argv, experiment_for, parse_metric
+from .config import (RECIPES, RECIPE_BY_ID, StudioError, recipe_config,
+                     skill_command_contract, validate_profile, validate_skill)
 from .environment import inspect_environment, runtime_environment
 
 
@@ -29,7 +30,7 @@ MAX_METRICS = 2000
 CHECKPOINT_STABLE_SECONDS = 1.0
 
 
-def smoke_family(recipe_id, mode, config, profile):
+def smoke_family(recipe_id, mode, config, profile, skill=None):
     """Full archived profile equality; only parallelism/length/save cadence are excluded."""
     def normalize(value):
         if isinstance(value, dict):
@@ -40,7 +41,8 @@ def smoke_family(recipe_id, mode, config, profile):
             return int(value)
         return value
     return json.loads(json.dumps({"recipe_id": recipe_id, "mode": mode, "seed": config["seed"],
-                                  "learning_rate": config["learning_rate"], "profile": normalize(profile)},
+                                  "learning_rate": config["learning_rate"], "profile": normalize(profile),
+                                  "skill": validate_skill(recipe_id, skill)},
                                  sort_keys=True, ensure_ascii=False, allow_nan=False))
 
 
@@ -216,15 +218,16 @@ class StudioService:
             raise StudioError("已有任务占用训练资源；暂停任务仍占用资源。", 409)
 
     def create_run(self, payload, *, parent=None, checkpoint=None):
-        if not isinstance(payload, dict) or set(payload) - {"name", "recipe_id", "kind", "config", "profile"}:
+        if not isinstance(payload, dict) or set(payload) - {"name", "recipe_id", "kind", "config", "profile", "skill"}:
             raise StudioError("任务请求包含未知字段或格式无效")
         recipe_id = payload.get("recipe_id", "hd1910-flat")
         if not isinstance(recipe_id, str) or recipe_id not in RECIPE_BY_ID:
             raise StudioError("未知训练配方")
         recipe = RECIPE_BY_ID[recipe_id]
         kind = payload.get("kind", "smoke")
-        config = validate_config(payload.get("config", {}), kind)
+        config = recipe_config(recipe_id, payload.get("config", {}), kind)
         profile = validate_profile(payload.get("profile"))
+        skill = validate_skill(recipe_id, payload.get("skill"))
         name = payload.get("name") or (recipe["title"] + (" · 冒烟测试" if kind == "smoke" else " · 训练"))
         if not isinstance(name, str) or not name.strip() or len(name) > 100 or any(ord(c) < 32 for c in name):
             raise StudioError("任务名称最多 100 字，不能包含控制字符")
@@ -232,20 +235,24 @@ class StudioService:
             self._ensure_available()
             if not self._environment["ready"]:
                 raise StudioError("真实训练环境未就绪", 409, self.environment())
-            family = smoke_family(recipe_id, self.mode, config, profile)
+            family = smoke_family(recipe_id, self.mode, config, profile, skill)
             if kind == "train" and not any(r["kind"] == "smoke" and r["status"] == "completed" and
-                                            json.dumps(smoke_family(r["recipe_id"], r["mode"], r["config"], r.get("profile")), sort_keys=True) == json.dumps(family, sort_keys=True)
+                                            json.dumps(smoke_family(r["recipe_id"], r["mode"], r["config"], r.get("profile"), r.get("skill")), sort_keys=True) == json.dumps(family, sort_keys=True)
                                             for r in self._runs.values()):
-                raise StudioError("请先用同一配方、随机种子、学习率和鸭子档案完成 64 环境、5 轮短试跑。", 409)
+                raise StudioError("请先用同一配方、动作目标、随机种子、学习率和鸭子档案完成 64 环境、5 轮短试跑。", 409)
             run_id = uuid.uuid4().hex[:12]
             start_iteration = checkpoint["iteration"] if checkpoint else 0
             run = {"id": run_id, "name": name.strip(), "recipe_id": recipe_id, "task_id": recipe["task_id"],
                    "kind": kind, "mode": self.mode, "status": "starting", "phase": "启动子进程",
                    "created_at": now(), "updated_at": now(), "config": config,
+                   "experiment_name": recipe["experiment_name"], "skill": skill,
                    "progress": {"iteration": start_iteration, "total": start_iteration + config["iterations"], "elapsed_seconds": 0},
                    "metrics": [], "checkpoints": [], "logs": [], "artifacts": []}
             run["smoke_family"] = family
             run["engine_source"] = self._engine_source()
+            if skill is not None:
+                run["command_contract"] = skill_command_contract(skill)
+                self._skill_file(run)
             if parent:
                 run["parent_id"] = parent["id"]
                 run["resume_checkpoint_id"] = checkpoint["id"]
@@ -289,6 +296,17 @@ class StudioService:
         if started:
             run["progress"]["elapsed_seconds"] = round(time.monotonic() - started[0], 2)
 
+    def _skill_file(self, run):
+        """Revalidate saved targets before any evaluator/exporter sees them."""
+        skill = validate_skill(run["recipe_id"], run.get("skill"))
+        if skill is None:
+            return None
+        path = self._run_dir(run["id"]) / "skill.json"
+        atomic_json(path, skill)
+        if "skill.json" not in run["artifacts"]:
+            run["artifacts"].append("skill.json")
+        return path
+
     def _demo_event(self, run, event):
         kind = event.get("event")
         if kind == "ready":
@@ -309,7 +327,8 @@ class StudioService:
             iteration = event["iteration"]
             filename = f"checkpoints/demo_{iteration}.json"
             record = {"demo": True, "warning": "合成演示记录，不是策略权重，无法部署。",
-                      "task_id": run["task_id"], "iteration": iteration, "config": run["config"]}
+                      "task_id": run["task_id"], "iteration": iteration, "config": run["config"],
+                      "skill": run.get("skill")}
             atomic_json(self._run_dir(run["id"]) / filename, record)
             run["artifacts"].append(filename)
             run["checkpoints"].append({"id": f"demo-{iteration}", "iteration": iteration,
@@ -330,7 +349,7 @@ class StudioService:
             if not path.is_absolute():
                 path = self.training_root / path
             path = path.resolve()
-            log_root = (self.training_root / "logs" / "rsl_rl" / EXPERIMENT).resolve()
+            log_root = (self.training_root / "logs" / "rsl_rl" / experiment_for(run)).resolve()
             if path.parent == log_root and path.name.endswith("_studio_" + run["id"]):
                 run["engine_log_dir"] = str(path)
         data = parse_metric(line)
@@ -346,7 +365,7 @@ class StudioService:
         if self.mode != "real" or not run.get("engine_log_dir"):
             return
         folder = Path(run["engine_log_dir"]).resolve()
-        root = (self.training_root / "logs" / "rsl_rl" / EXPERIMENT).resolve()
+        root = (self.training_root / "logs" / "rsl_rl" / experiment_for(run)).resolve()
         if folder.parent != root or not folder.name.endswith("_studio_" + run["id"]):
             return
         known = {c["id"] for c in run["checkpoints"]}
@@ -505,6 +524,8 @@ class StudioService:
             return self._public(run)
 
     def _checkpoint(self, run, payload):
+        experiment = experiment_for(run)
+        validate_skill(run["recipe_id"], run.get("skill"))
         if not isinstance(payload, dict) or set(payload) - {"checkpoint_id"}:
             raise StudioError("请提供有效的 checkpoint_id")
         selected = payload.get("checkpoint_id")
@@ -516,8 +537,8 @@ class StudioService:
         else:
             path = Path(checkpoint.get("engine_path", "")).resolve()
             folder = Path(run.get("engine_log_dir", "")).resolve()
-            expected = (self.training_root / "logs" / "rsl_rl" / EXPERIMENT).resolve()
-            if folder.parent != expected or path.parent != folder or not path.is_file() or not re.fullmatch(r"model_\d+\.pt", path.name) or not self._complete_checkpoint(path):
+            expected = (self.training_root / "logs" / "rsl_rl" / experiment).resolve()
+            if folder.parent != expected or not folder.name.endswith("_studio_" + run["id"]) or path.parent != folder or not path.is_file() or not re.fullmatch(r"model_\d+\.pt", path.name) or not self._complete_checkpoint(path):
                 raise StudioError("检查点文件已缺失或来源不正确", 409)
         return checkpoint
 
@@ -546,7 +567,7 @@ class StudioService:
                 raise StudioError("当前任务无法恢复", 409)
             checkpoint = self._checkpoint(run, payload)
             return self.create_run({"name": run["name"][:95] + " · 续训", "recipe_id": run["recipe_id"], "kind": run["kind"],
-                                    "config": run["config"], "profile": run.get("profile")}, parent=run, checkpoint=checkpoint)
+                                    "config": run["config"], "profile": run.get("profile"), "skill": run.get("skill")}, parent=run, checkpoint=checkpoint)
 
     def _terminate(self, child):
         with self._process_lock(child):
@@ -694,11 +715,17 @@ class StudioService:
         try:
             folder = self._run_dir(run_id)
             suffix = checkpoint["id"]
+            skill = validate_skill(run["recipe_id"], run.get("skill"))
+            skill_file = self._skill_file(run)
+            evaluation_summary = None
             provenance = {"mode": self.mode, "task_id": run["task_id"], "recipe_id": run["recipe_id"],
+                          "experiment_name": experiment_for(run), "skill": skill,
                           "run_id": run_id, "checkpoint": {k: v for k, v in checkpoint.items() if k != "engine_path"},
                           "config": run["config"], "profile": run.get("profile"), "profile_applied_to_physics": False,
                           "created_at": now(), "smoke_test_only": run["kind"] == "smoke",
                           "engine_source": run.get("engine_source", {"unavailable": True, "note": "旧任务未保存训练启动时的源信息。"})}
+            if skill is not None:
+                provenance["command_contract"] = run.get("command_contract") or skill_command_contract(skill)
             outputs = []
             if kind == "evaluate":
                 if self.mode == "demo":
@@ -707,12 +734,24 @@ class StudioService:
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540"><rect width="960" height="540" fill="#111c25"/><text x="48" y="95" fill="#ffcf63" font-family="sans-serif" font-size="32">DEMO · Synthetic workflow preview</text><text x="48" y="145" fill="white" font-family="sans-serif" font-size="20">No trained policy or physics rollout. Not robot performance.</text><g transform="translate(430,285)"><animateTransform attributeName="transform" type="translate" values="400,285;470,275;400,285" dur="2s" repeatCount="indefinite"/><rect x="0" y="0" width="100" height="60" rx="18" fill="#ffcf63"/><rect x="65" y="-48" width="65" height="60" rx="15" fill="#ffcf63"/><circle cx="109" cy="-24" r="6" fill="#172530"/><path d="M14 60l-12 55m70-55 20 55" stroke="#a9c8cf" stroke-width="14"/></g></svg>', encoding="utf-8")
                     outputs = [relative]
+                    if skill is not None:
+                        evaluation_summary = {"demo": True, "skill": skill,
+                                              "note": "演示预览：没有策略或物理评估，不提供动作成功率。"}
+                        summary_relative = f"evaluations/{suffix}/evaluation.json"
+                        atomic_json(folder / summary_relative, evaluation_summary)
+                        outputs.append(summary_relative)
                 else:
                     eval_folder = folder / "evaluations" / suffix
                     eval_folder.mkdir(parents=True, exist_ok=True)
                     argv = ["uv", "run", "--frozen", "--no-sync", "--offline", "python", str(Path(__file__).with_name("evaluate.py")),
-                            run["task_id"], "--checkpoint-file", checkpoint["engine_path"], "--output-dir", str(eval_folder), "--steps", "250"]
+                            run["task_id"], "--checkpoint-file", checkpoint["engine_path"], "--output-dir", str(eval_folder)]
+                    if skill_file:
+                        argv += ["--balance-config", str(skill_file), "--seed", str(run["config"]["seed"])]
+                    else:
+                        argv += ["--steps", "250"]
                     self._operation_child(run, argv)
+                    if skill is not None:
+                        evaluation_summary = self._balance_evaluation_summary(eval_folder / "evaluation.json", skill)
                     videos = sorted(eval_folder.glob("*.mp4"))
                     if not videos:
                         raise RuntimeError("评估没有生成实际视频，请查看渲染器日志。")
@@ -727,6 +766,8 @@ class StudioService:
                 if self.mode == "real":
                     argv = ["uv", "run", "--frozen", "--no-sync", "--offline", "python", "scripts/export.py", run["task_id"],
                             "--checkpoint-file", checkpoint["engine_path"], "--onnx-file", str(policy), "--num-envs", "1"]
+                    if skill_file:
+                        argv += ["--balance-config", str(skill_file)]
                     self._operation_child(run, argv)
                     if not policy.is_file() or policy.stat().st_size == 0:
                         raise RuntimeError("引擎未生成 ONNX 文件")
@@ -740,6 +781,9 @@ class StudioService:
                 with zipfile.ZipFile(folder / relative, "w", compression=zipfile.ZIP_DEFLATED) as archive:
                     archive.writestr("provenance.json", json.dumps(provenance, ensure_ascii=False, indent=2))
                     archive.writestr("config.json", json.dumps(run["config"], indent=2))
+                    if skill_file:
+                        archive.write(skill_file, "skill.json")
+                        archive.writestr("command-contract.json", json.dumps(provenance["command_contract"], ensure_ascii=False, indent=2))
                     for item in evidence:
                         archive.write(self.artifact_path(run_id, item), "evaluation/" + Path(item).name)
                     if run.get("profile") is not None:
@@ -762,6 +806,8 @@ class StudioService:
                         run["artifacts"].append(item)
                 selected = next(c for c in run["checkpoints"] if c["id"] == checkpoint["id"])
                 selected[property_name] = url
+                if evaluation_summary is not None:
+                    selected["evaluation_summary"] = evaluation_summary
                 run["operation"].update(status="completed", completed_at=now())
                 self._log(run, f"{'DEMO ' if self.mode == 'demo' else ''}{kind} 完成；检查点 {checkpoint['name']}")
         except Exception as exc:
@@ -776,6 +822,28 @@ class StudioService:
                 self._condition.notify_all()
 
     @staticmethod
+    def _balance_evaluation_summary(path, skill):
+        summary = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(summary, dict):
+            raise RuntimeError("单脚平衡评估摘要格式无效")
+        # Reject NaN/Infinity and incomplete evidence instead of displaying an
+        # invented physical result from a process that merely exited cleanly.
+        json.dumps(summary, allow_nan=False)
+        trials, successes = summary.get("trials"), summary.get("successes")
+        results = summary.get("trial_results")
+        if (summary.get("demo") is not False or summary.get("skill") != skill
+                or type(trials) is not int or trials != 8
+                or type(successes) is not int or not 0 <= successes <= trials
+                or type(summary.get("success_rate")) not in (int, float)
+                or summary["success_rate"] != successes / trials
+                or not isinstance(results, list) or len(results) != trials
+                or any(not isinstance(result, dict) or type(result.get("success")) is not bool for result in results)
+                or sum(result["success"] for result in results) != successes
+                or not isinstance(summary.get("note"), str)):
+            raise RuntimeError("单脚平衡评估摘要缺少匹配的完整周期证据")
+        return summary
+
+    @staticmethod
     def _sha256(path):
         result = hashlib.sha256()
         with path.open("rb") as source:
@@ -784,10 +852,15 @@ class StudioService:
         return result.hexdigest()
 
     def _engine_source(self):
-        result = {"training_root": str(self.training_root), "git_commit": None, "files_sha256": {}, "dependency_versions": {}}
+        result = {"training_root": str(self.training_root), "git_commit": None, "files_sha256": {},
+                  "dependency_versions": copy.deepcopy(self._environment.get("dependency_versions", {})),
+                  "dependency_versions_source": self._environment.get("dependency_versions_source", "unavailable"),
+                  "lock_dependency_versions": {}}
         for relative in ("pyproject.toml", "uv.lock", "scripts/export.py", "src/mjlab_microduck/train_cli.py",
                          "src/mjlab_microduck/tasks/__init__.py", "src/mjlab_microduck/tasks/microduck_hd1910_env_cfg.py",
-                         "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py"):
+                         "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
+                         "src/mjlab_microduck/balance_parameters.py", "src/mjlab_microduck/tasks/mdp.py",
+                         "src/mjlab_microduck/tasks/microduck_balance_env_cfg.py"):
             path = self.training_root / relative
             if path.is_file():
                 result["files_sha256"][relative] = self._sha256(path)
@@ -800,8 +873,11 @@ class StudioService:
         try:
             with (self.training_root / "uv.lock").open("rb") as source:
                 lock = tomllib.load(source)
-            result["dependency_versions"] = {p["name"]: p.get("version") for p in lock.get("package", [])
-                                               if p.get("name") in ("mjlab", "rsl-rl-lib", "torch", "mujoco-warp")}
+            for package in lock.get("package", []):
+                if package.get("name") in ("mjlab", "rsl-rl-lib", "torch", "mujoco-warp") and package.get("version"):
+                    versions = result["lock_dependency_versions"].setdefault(package["name"], [])
+                    if package["version"] not in versions:
+                        versions.append(package["version"])
         except (OSError, ValueError):
             pass
         return result

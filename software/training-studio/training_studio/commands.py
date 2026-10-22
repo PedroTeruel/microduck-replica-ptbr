@@ -3,25 +3,37 @@ import re
 import math
 from pathlib import Path
 
-from .config import RECIPE_BY_ID, StudioError, validate_config
+from .config import RECIPE_BY_ID, StudioError, recipe_config, validate_skill
 
 
 EXPERIMENT = "microduck_hd1910_velocity"
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
-def build_train_argv(run, training_root, checkpoint=None):
-    if run["task_id"] not in {r["task_id"] for r in RECIPE_BY_ID.values()}:
+def experiment_for(run):
+    recipe_id = run.get("recipe_id")
+    recipe = RECIPE_BY_ID.get(recipe_id) if isinstance(recipe_id, str) else None
+    if recipe is None or run.get("task_id") != recipe["task_id"]:
         raise StudioError("不支持的训练任务")
-    cfg = validate_config(run["config"], run.get("kind", "train"))
+    return recipe["experiment_name"]
+
+
+def build_train_argv(run, training_root, checkpoint=None):
+    experiment = experiment_for(run)
+    cfg = recipe_config(run["recipe_id"], run["config"], run.get("kind", "train"))
+    skill = validate_skill(run["recipe_id"], run.get("skill"))
     argv = ["uv", "run", "--frozen", "--no-sync", "--offline", "train", run["task_id"],
             "--env.scene.num-envs", str(cfg["num_envs"]), "--agent.max-iterations", str(cfg["iterations"]),
             "--agent.save-interval", str(cfg["save_interval"]), "--agent.seed", str(cfg["seed"]),
             "--agent.algorithm.learning-rate", str(cfg["learning_rate"]), "--agent.logger", "tensorboard",
             "--agent.run-name", "studio_" + run["id"]]
+    if skill is not None:
+        argv += ["--env.commands.twist.support-side", skill["support_side"],
+                 "--env.commands.twist.lift-height-m", str(skill["lift_height_m"]),
+                 "--env.commands.twist.hold-seconds", str(skill["hold_seconds"])]
     if checkpoint is not None:
         checkpoint = Path(checkpoint).resolve()
-        log_root = (Path(training_root) / "logs" / "rsl_rl" / EXPERIMENT).resolve()
+        log_root = (Path(training_root) / "logs" / "rsl_rl" / experiment).resolve()
         if checkpoint.parent.parent != log_root or not re.fullmatch(r"model_\d+\.pt", checkpoint.name):
             raise StudioError("检查点不属于当前引擎实验目录")
         argv += ["--agent.resume", "True", "--agent.load-run", "^" + re.escape(checkpoint.parent.name) + "$",
