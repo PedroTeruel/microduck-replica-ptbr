@@ -138,7 +138,7 @@ def _bus_give_back(by, servo=None):
 
 
 def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev_autologin=False, servo=None, imu=None, pad=None,
-              onboard=None, battery=None, tune=None, net=None, commit=None, ssh_home=None, models=None):
+              onboard=None, battery=None, tune=None, net=None, commit=None, ssh_home=None, models=None, sensors=None):
     guard = OriginGuard(names=names)
     if imu is not None and commit is not None:
         imu.commit = commit                          # 标定模式「站姿使能」：跟写进主程序同一套方向
@@ -403,6 +403,28 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         name = f"duck-profile-{time.strftime('%Y%m%d-%H%M%S')}.json"
         return Response(data, media_type="application/json",
                         headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    async def sensor_read(request, kind):
+        headers = {"Cache-Control": "no-store"}
+        _, sess = session_of(request)
+        if not sess:
+            return JSONResponse({"ok": False, "error": "先登录才能查看传感器"}, status_code=401, headers=headers)
+        if sensors is None:
+            return JSONResponse({"ok": False, "error": "当前未开启传感器页面的后端"}, status_code=503, headers=headers)
+        try:
+            data = await getattr(sensors, kind)()
+            return JSONResponse({"ok": True, "data": data}, headers=headers)
+        except Exception as e:
+            label = "摄像头" if kind == "camera" else "ToF"
+            log.error(f"读取{label}状态失败", cat="传感器", raw=f"{type(e).__name__}: {e}", exc=True)
+            return JSONResponse({"ok": False, "error": f"暂时无法读取{label}状态，请稍后重试或查看日志"},
+                                status_code=503, headers=headers)
+
+    async def api_camera(request):
+        return await sensor_read(request, "camera")
+
+    async def api_tof(request):
+        return await sensor_read(request, "tof")
 
     def model_response(payload, status=200):
         return JSONResponse(payload, status_code=status, headers={"Cache-Control": "no-store"})
@@ -1418,6 +1440,8 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         Route("/api/logs", api_logs),
         Route("/api/diag", api_diag),
         Route("/api/profile", api_profile),
+        Route("/api/camera", api_camera),
+        Route("/api/tof", api_tof),
         Route("/api/models", api_models),
         Route("/api/models/op", api_model_op, methods=["POST"]),
         Route("/api/models/import", api_model_import, methods=["POST"]),

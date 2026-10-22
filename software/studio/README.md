@@ -28,6 +28,7 @@ studio/
   state.py          把原始数据汇总成推给页面的状态（姿势、电量、舵机、IMU、手柄、待办、配网）
   models.py         模型库、默认恢复、实际切换回读、手柄改键
   model_package.py  模型部署包解析与 robotd 无硬件预检
+  sensors.py        摄像头来源配置与 ToF 按需快照（独立于运动控制）
   net.py            配网：读 netcheck 的 net.json、configd 的 net.status / scan / connect / forget、开关热点
   app.py            网页服务：静态文件、登录、日志、诊断包、WebSocket
 web/                页面（Preact + htm，three.js 画 3D 鸭子；全部本地文件，不走 CDN；wifi.js 是连 WiFi 卡片和设置；
@@ -56,6 +57,19 @@ py -3.13 -I run.py --listen 127.0.0.1:18080 --robotd tcp:127.0.0.1:17001 --confi
 不给 `--net-state` 时读 `/run/microduck/net.json`；文件不在（电脑上、老镜像）就不显示 WiFi。不给 `--duck-label` 时，界面用主机名（鸭子上是 `duck-xxxx`）。
 
 Windows 的 Python 没有 Unix socket，所以地址写成 `tcp:主机:端口`；鸭子上是 `unix:/run/robotd.sock`（默认）。
+
+## 摄像头和 ToF
+
+左侧「手柄」之后是「摄像头」「ToF」两个独立页面，手机底栏也有入口。
+
+- **摄像头**：接现有 mediad 的局域网 WebRTC 视频（默认信令端口 8443），可以开始、停止和重新连接。页面等实际画面开始更新才显示播放；切走或进入后台会释放连接。只读取视频及画面元数据，不打开电脑/手机摄像头，不发送运动指令。画面按运行端报告的安装角度显示。
+- **来源标记**：镜像的 `[media] source="test"` 表示测试图案，能播放也不能代表真实摄像头接好了。配置为 camera 时也只显示「配置：摄像头」，配置文件不能证明当前运行状态；视频服务标为模拟设备时另行注明。当前版本会忽略旧的 `media.camera` 开关，Studio 不据此猜测真实来源。
+- **ToF**：通过 `/run/tofd/tof.sock` 的 `tof.stream` 获取 8×8 距离分区，显示有效格数、最近/最远有效毫米值及逐格原始状态。5/9 且距离为正才计入统计；无目标（255）和测量失败分别显示。服务未连接、未接传感器、等待首帧、格式错误和过期数据均有独立说明。fake/sim 数据会标注「模拟数据」。
+- 传感器读取独立于 robotd 的运动连接，只在相关页面可见时进行；没有自动避障、导航或后台录像功能，不更改系统服务和配置。
+
+高级安装可通过 `--tof unix:/run/tofd/tof.sock` 和 `--camera-signaling-port 8443` 指定本机服务；`--tof none` 明确不连接 ToF。开发测试可将 ToF 指向受控的 `tcp:127.0.0.1:端口`。网页不接受任意 socket 或视频服务器地址。摄像头信令使用打开 Studio 的主机名，远程仅转发 8000 端口的 SSH 隧道不会自动转发视频链路。
+
+本地 `tests/test_sensors_e2e.py` 使用明确标记的假 ToF 和浏览器 RTC 测试实现，验证真实网页播放、导航、错误及资源释放；这些软件测试不代替摄像头、编码器和 ToF 硬件验收。
 
 ## 台架模式：主控没烧，用飞特调试板在电脑上调舵机
 
