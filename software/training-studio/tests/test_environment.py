@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from training_studio.environment import inspect_environment
+from training_studio.config import RECIPES
 from training_studio.service import StudioService
 
 
@@ -18,6 +19,7 @@ class RuntimeEnvironmentTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.engine = self.root / "engine"
         self.modules = self.root / "modules"
+        self.registered_tasks = [recipe["task_id"] for recipe in RECIPES if recipe.get("launchable", True)]
         for name in ("pyproject.toml", "uv.lock", "scripts/export.py",
                      "src/mjlab_microduck/train_cli.py", ".venv/bin/python"):
             self.write(self.engine / name, "")
@@ -26,7 +28,7 @@ class RuntimeEnvironmentTests(unittest.TestCase):
             "mujoco.py": "import os\nif os.environ.get('STUDIO_TEST_MISSING_GL') == '1':\n raise ImportError('libEGL.so.1: cannot open shared object file')\nclass GLContext: pass\n",
             "mjlab/__init__.py": "",
             "mjlab/tasks/__init__.py": "",
-            "mjlab/tasks/registry.py": "def list_tasks(): return ['Mjlab-Velocity-Flat-MicroDuck-HD1910', 'Mjlab-Velocity-Rough-MicroDuck-HD1910', 'Mjlab-Balance-Flat-MicroDuck-HD1910']\n",
+            "mjlab/tasks/registry.py": f"def list_tasks(): return {self.registered_tasks!r}\n",
             "mjlab/rl/__init__.py": "",
             "mjlab/rl/config.py": "class RslRlBaseRunnerCfg:\n __dataclass_fields__ = dict.fromkeys(['resume', 'load_run', 'load_checkpoint'])\n",
             "mjlab_microduck/__init__.py": "",
@@ -70,7 +72,8 @@ class RuntimeEnvironmentTests(unittest.TestCase):
         self.assertIn("libEGL.so.1", failed_details)
 
     def test_missing_balance_task_blocks_ready(self):
-        self.write(self.modules / "mjlab/tasks/registry.py", "def list_tasks(): return ['Mjlab-Velocity-Flat-MicroDuck-HD1910', 'Mjlab-Velocity-Rough-MicroDuck-HD1910']\n")
+        tasks = [task for task in self.registered_tasks if task != "Mjlab-Balance-Flat-MicroDuck-HD1910"]
+        self.write(self.modules / "mjlab/tasks/registry.py", f"def list_tasks(): return {tasks!r}\n")
         with patch.dict(os.environ, {"PYTHONPATH": str(self.modules)}), \
              patch("training_studio.environment.platform.system", return_value="Linux"), \
              patch("training_studio.environment.shutil.which", return_value="test-uv"), \
@@ -78,6 +81,18 @@ class RuntimeEnvironmentTests(unittest.TestCase):
             os.environ.pop("STUDIO_TEST_MISSING_GL", None)
             result = inspect_environment(self.engine)
         self.assertFalse(result["ready"])
+
+    def test_requires_all_launchable_recipes_but_no_blocked_joint_tasks(self):
+        self.assertEqual(len(self.registered_tasks), 34)
+        with patch.dict(os.environ, {"PYTHONPATH": str(self.modules)}), \
+             patch("training_studio.environment.platform.system", return_value="Linux"), \
+             patch("training_studio.environment.shutil.which", return_value="test-uv"), \
+             patch("training_studio.environment.subprocess.run", side_effect=self.probe_transport):
+            os.environ.pop("STUDIO_TEST_MISSING_GL", None)
+            self.assertTrue(inspect_environment(self.engine)["ready"])
+            tasks = [task for task in self.registered_tasks if task != "Mjlab-SitStand-Flat-MicroDuck-Studio-HD1910"]
+            self.write(self.modules / "mjlab/tasks/registry.py", f"def list_tasks(): return {tasks!r}\n")
+            self.assertFalse(inspect_environment(self.engine)["ready"])
 
     def test_demo_does_not_stat_wsl_virtual_environment(self):
         original = Path.is_file

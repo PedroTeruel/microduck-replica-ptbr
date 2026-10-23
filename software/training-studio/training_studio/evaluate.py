@@ -6,8 +6,16 @@ number of frames, with VideoRecorder enabled. No viewer loop or policy export.
 import argparse
 import json
 import math
+import sys
 from dataclasses import asdict
 from pathlib import Path
+
+# The service runs this file by absolute path inside the engine's uv environment.
+# Add only this known package parent; never depend on the caller's current folder.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from training_studio.config import RECIPES
 
 
 def _scalar(value, operation="mean"):
@@ -75,15 +83,20 @@ def balance_rollout(env, raw_env, policy, *, skill, trial_steps, measure, summar
             "trial_results": results, "seed": seed}
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description="Bounded Microduck policy evaluation (CUDA)")
-    balance_task = "Mjlab-Balance-Flat-MicroDuck-HD1910"
-    parser.add_argument("task_id", choices=("Mjlab-Velocity-Flat-MicroDuck-HD1910", "Mjlab-Velocity-Rough-MicroDuck-HD1910", balance_task))
+    parser.add_argument("task_id", choices=tuple(recipe["task_id"] for recipe in RECIPES if recipe.get("launchable", True)))
     parser.add_argument("--checkpoint-file", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--steps", type=int, default=250)
     parser.add_argument("--balance-config", type=Path)
     parser.add_argument("--seed", type=int, default=42)
+    return parser
+
+
+def main():
+    parser = build_parser()
+    balance_task = "Mjlab-Balance-Flat-MicroDuck-HD1910"
     args = parser.parse_args()
     if not 1 <= args.steps <= 10000 or not args.checkpoint_file.is_file():
         parser.error("A real checkpoint and a step budget of 1–10000 are required")

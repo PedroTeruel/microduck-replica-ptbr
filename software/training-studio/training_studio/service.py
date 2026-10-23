@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from .commands import ANSI, EXPERIMENT, build_train_argv, experiment_for, parse_metric
-from .config import (RECIPES, RECIPE_BY_ID, StudioError, recipe_config,
+from .config import (RECIPES, StudioError, launchable_recipe, recipe_config,
                      skill_command_contract, validate_profile, validate_skill)
 from .environment import inspect_environment, runtime_environment
 from .resources import ResourceMonitor
@@ -229,9 +229,7 @@ class StudioService:
         if not isinstance(payload, dict) or set(payload) - {"name", "recipe_id", "kind", "config", "profile", "skill"}:
             raise StudioError("任务请求包含未知字段或格式无效")
         recipe_id = payload.get("recipe_id", "hd1910-flat")
-        if not isinstance(recipe_id, str) or recipe_id not in RECIPE_BY_ID:
-            raise StudioError("未知训练配方")
-        recipe = RECIPE_BY_ID[recipe_id]
+        recipe = launchable_recipe(recipe_id)
         kind = payload.get("kind", "smoke")
         config = recipe_config(recipe_id, payload.get("config", {}), kind)
         profile = validate_profile(payload.get("profile"))
@@ -752,9 +750,10 @@ class StudioService:
                     eval_folder = folder / "evaluations" / suffix
                     eval_folder.mkdir(parents=True, exist_ok=True)
                     argv = ["uv", "run", "--frozen", "--no-sync", "--offline", "python", str(Path(__file__).with_name("evaluate.py")),
-                            run["task_id"], "--checkpoint-file", checkpoint["engine_path"], "--output-dir", str(eval_folder)]
+                            run["task_id"], "--checkpoint-file", checkpoint["engine_path"], "--output-dir", str(eval_folder),
+                            "--seed", str(run["config"]["seed"])]
                     if skill_file:
-                        argv += ["--balance-config", str(skill_file), "--seed", str(run["config"]["seed"])]
+                        argv += ["--balance-config", str(skill_file)]
                     else:
                         argv += ["--steps", "250"]
                     self._operation_child(run, argv)
@@ -864,11 +863,13 @@ class StudioService:
                   "dependency_versions": copy.deepcopy(self._environment.get("dependency_versions", {})),
                   "dependency_versions_source": self._environment.get("dependency_versions_source", "unavailable"),
                   "lock_dependency_versions": {}}
-        for relative in ("pyproject.toml", "uv.lock", "scripts/export.py", "src/mjlab_microduck/train_cli.py",
-                         "src/mjlab_microduck/tasks/__init__.py", "src/mjlab_microduck/tasks/microduck_hd1910_env_cfg.py",
-                         "src/mjlab_microduck/tasks/microduck_velocity_env_cfg.py",
-                         "src/mjlab_microduck/balance_parameters.py", "src/mjlab_microduck/tasks/mdp.py",
-                         "src/mjlab_microduck/tasks/microduck_balance_env_cfg.py"):
+        relative_paths = {"pyproject.toml", "uv.lock", "scripts/export.py", "src/mjlab_microduck/train_cli.py",
+                          "src/mjlab_microduck/tasks/__init__.py", "src/mjlab_microduck/tasks/recipe_tasks.py",
+                          "src/mjlab_microduck/tasks/backlash.py", "src/mjlab_microduck/actuator/feetech_bam.py",
+                          "src/mjlab_microduck/balance_parameters.py", "src/mjlab_microduck/tasks/mdp.py"}
+        relative_paths.update(path.relative_to(self.training_root).as_posix() for path in
+                              (self.training_root / "src/mjlab_microduck/tasks").glob("microduck_*_env_cfg.py"))
+        for relative in sorted(relative_paths):
             path = self.training_root / relative
             if path.is_file():
                 result["files_sha256"][relative] = self._sha256(path)

@@ -3,6 +3,8 @@ import copy
 import json
 import math
 
+from .action_recipes import build_action_recipes
+
 
 class StudioError(Exception):
     def __init__(self, error, status=400, detail=None):
@@ -43,7 +45,18 @@ RECIPES = [
      "hardware": "Linux + NVIDIA CUDA 显卡；HD1910 舵机模型",
      "validation": "已完成左右两组真实 GPU 短试跑、评估和导出；当前 5 轮策略为 0/8 成功，尚未学会动作，也未经过真机验证。"},
 ]
+RECIPES.extend(build_action_recipes(DEFAULTS))
 RECIPE_BY_ID = {r["id"]: r for r in RECIPES}
+
+
+def launchable_recipe(recipe_id):
+    if not isinstance(recipe_id, str) or recipe_id not in RECIPE_BY_ID:
+        raise StudioError("未知训练配方")
+    recipe = RECIPE_BY_ID[recipe_id]
+    if not recipe.get("launchable", True):
+        raise StudioError(recipe["prerequisite_note"], 409,
+                          {"recipe_id": recipe_id, "teacher_recipe_ids": list(recipe["teacher_recipe_ids"])})
+    return recipe
 
 
 def validate_skill(recipe_id, value):

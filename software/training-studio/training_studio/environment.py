@@ -66,7 +66,7 @@ def inspect_environment(training_root, demo=False):
             data = json.loads(output.stdout.strip().splitlines()[-1]) if output.returncode == 0 else {}
             gl_detail = "图形后端导入通过。" if data.get("gl") else data.get("gl_error") or output.stderr[-1200:] or "图形后端未通过检查。"
             add("MuJoCo 图形后端", data.get("gl"), f"MUJOCO_GL={environment['MUJOCO_GL']}；{gl_detail}")
-            expected = {recipe["task_id"] for recipe in RECIPES}
+            expected = {recipe["task_id"] for recipe in RECIPES if recipe.get("launchable", True)}
             ok = data.get("version") == "1.3.0" and data.get("cuda") and data.get("resume") and expected.issubset(data.get("tasks", []))
             gpu = data.get("gpu")
             dependency_versions = data.get("dependency_versions", {})

@@ -3,7 +3,7 @@ import re
 import math
 from pathlib import Path
 
-from .config import RECIPE_BY_ID, StudioError, recipe_config, validate_skill
+from .config import StudioError, launchable_recipe, recipe_config, validate_skill
 
 
 EXPERIMENT = "microduck_hd1910_velocity"
@@ -12,8 +12,8 @@ ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 def experiment_for(run):
     recipe_id = run.get("recipe_id")
-    recipe = RECIPE_BY_ID.get(recipe_id) if isinstance(recipe_id, str) else None
-    if recipe is None or run.get("task_id") != recipe["task_id"]:
+    recipe = launchable_recipe(recipe_id)
+    if run.get("task_id") != recipe["task_id"]:
         raise StudioError("不支持的训练任务")
     return recipe["experiment_name"]
 
