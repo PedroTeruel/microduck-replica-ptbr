@@ -603,7 +603,7 @@ function StanceCard({ st, imu, pd, link, live }) {
       setBusy(true); setMsg(null);
       const r = await link.cmd('imu.op', { op: 'hold' }, 25000);
       setBusy(false);
-      setMsg(r.ok ? { ok: true, text: '站住了：扶着点它，现在可以做下面的「站着校准」；做完点「失能」或顶上「卸力」' }
+      setMsg(r.ok ? { ok: true, text: '站住了：双手扶住，现在可以做初次安装方向标定或「站着校准」；做完点「失能」或顶上「卸力」' }
         : { ok: false, text: r.reason || r.error || '没站起来' });
       return;
     }
@@ -797,19 +797,19 @@ function CoarseCard({ st, imu, link, live }) {
         disabled=${!open || busy || working}
         onConfirm=${() => run('redo-cancel')} busyLabel="正在恢复…" /></div>` : null}
     ${!showSteps && !redo.active ? html`<div class="imu-actions"><${TwoStep}
-      label="重新标定方向" ask=${commissioning ? '扶好并已卸力，确认重新采集？' : '扶好并已卸力，确认重启并进入标定模式？'}
+      label="重新标定方向" ask=${commissioning ? '扶好鸭子，确认重新采集？' : '扶好并已卸力，确认重启并进入标定模式？'}
       cls="btn-dark" disabled=${!!startWhy || busy} title=${startWhy} onConfirm=${start} busyLabel="正在进入标定模式…" /></div>
-      <p class="sv-small">重新标定前先点「失能（卸力）」并扶住鸭子。${commissioning
-        ? '沿用当前标定模式的原始采集和验证流程。'
-        : '进入和完成时会重启主程序，并备份原 IMU 方向。'}保留舵机零位、方向和限位；验证通过才采用新方向。</p>
+      <p class="sv-small">${commissioning
+        ? '双手扶稳，可卸力托住，也可站姿使能后等站稳，再重新采集。'
+        : '重新标定前先点「失能（卸力）」并扶住鸭子。进入和完成时会重启主程序，并备份原 IMU 方向。'}保留舵机零位、方向和限位；验证通过才采用新方向。</p>
       ${startWhy ? html`<p class="sv-warn">${startWhy}</p>` : null}` : null}
-    ${showSteps ? html`<${CoarseSteps} key=${context} link=${link} disabled=${!open || busy || working}
+    ${showSteps ? html`<${CoarseSteps} key=${context} link=${link} disabled=${!open || busy || working} unloadedOnly=${!!redo.active}
       onBegin=${() => setOpened(true)} onDone=${(text) => setMsg({ ok: true, text })} />` : null}
     ${msg ? html`<div class=${'banner ' + (msg.ok ? 'warn' : 'bad')} role="status"><span>${msg.text}</span></div>` : null}
   </section>`;
 }
 
-function CoarseSteps({ link, disabled, onBegin, onDone }) {
+function CoarseSteps({ link, disabled, unloadedOnly, onBegin, onDone }) {
   const [step, setStep] = useState('idle');       // idle / still / fwd / confirm / verifying / done / failed
   const [still, setStill] = useState(null);
   const [res, setRes] = useState(null);
@@ -865,11 +865,13 @@ function CoarseSteps({ link, disabled, onBegin, onDone }) {
   const allChecked = confirms.every((_, i) => checks[i]);
   const nowStep = step === 'idle' ? 'still' : step;
   return html`<div class="imu-coarse-steps">
-    <p class="sv-small">先点上面的「失能（卸力）」，双手托住鸭子。粗校在标定模式做：
-      双手托起鸭子摆正、别动，采 3 秒；再往前低头 15–30° 停住，采 3 秒；电脑算出方向，再交给主程序自己验一遍。</p>
+    <p class="sv-small">${unloadedOnly
+      ? '本次重标定会话要恢复原来的运行模式：保持失能（卸力），双手托住鸭子。'
+      : '粗校在标定模式做：可先点「站姿使能」，等站稳后双手扶住；也可失能（卸力）后双手托住。站姿使能只锁住关节，需要一直扶稳。'}
+      先把整个鸭子摆正、别动，采 3 秒；再让整个躯干前倾 15–30° 停住，采 3 秒；电脑算出方向，再交给主程序自己验一遍。</p>
     ${nowStep === 'still' ? html`<div class="imu-coarse-step">
-      <p class="imu-say"><b>① 双手托起鸭子，摆正，别动</b></p>
-      <p class="sv-small">双手托住躯干，让实物站直、脚朝下，保持不动。屏幕仍按旧方向显示，先以实物摆正为准。</p>
+      <p class="imu-say"><b>① 扶住鸭子，摆正，别动</b></p>
+      <p class="sv-small">双手扶住躯干，让实物站直、脚朝下，保持不动；已站姿使能的先等站稳。屏幕仍按旧方向显示，先以实物摆正为准。</p>
       <button class="btn-dark" disabled=${busy || disabled} onClick=${takeStill}>${busy ? '采集中…' : '采静止（3 秒）'}</button>
     </div>` : null}
     ${nowStep === 'fwd' ? html`<div class="imu-coarse-step">
@@ -882,7 +884,7 @@ function CoarseSteps({ link, disabled, onBegin, onDone }) {
     </div>` : null}
     ${nowStep === 'confirm' && res ? html`<div class="imu-coarse-step">
       <p class="sv-small">粗校算出来：${res.standard ? `${res.standard.text}${res.standard.off_deg > 0.5 ? `（再偏 ${fmt(res.standard.off_deg)}°）` : ''}` : '方向已算出'}。
-        托着做的，左右没验，站姿补偿也不准；能站以后再站着精校一次。</p>
+        这次只采静止和前倾，左右还没验；之后再做下面的「站着校准」精校一次。</p>
       ${(res.notes || []).map((n) => html`<p class="sv-small">· ${n}</p>`)}
       ${confirms.map((c, i) => html`<label class="imu-confirm"><input type="checkbox" checked=${!!checks[i]}
         onChange=${(e) => setChecks({ ...checks, [i]: e.target.checked })} /> ${c}</label>`)}

@@ -184,7 +184,7 @@ if (PHASE === 'stance0') {
 
 if (PHASE === 'stance') {
   // 运动模式：软着时「站姿使能」能点，发出去的跟遥控卡「站起来」一模一样；「失能」跟顶上「卸力」一样
-  await fakeSet({ posture: 'limp' });
+  await fakeSet({ mode: 'motion', calib: 'committed', posture: 'limp', restart: 0.4 });
   await sleep(3000);       // 刚卸力 2 秒内不接受让它动的指令（按钮会灰），手柄快照也 1 秒才刷新：等它过去
   await js(`location.hash = '#/imu'`);
   await waitFor(`!!document.querySelector('.imu-stance')`, 'IMU 页的站姿卡', 20000);
@@ -200,6 +200,8 @@ if (PHASE === 'stance') {
   // 假主程序不一定模拟「站起来」的过程：要验的是发出去的命令跟遥控卡「站起来」一样（那条路真机上是通的）
   await waitFor(`(window.__sent || []).some((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`, '点了站姿使能以后发出站起来', 5000);
   out.standSent = await sentStand();
+  await waitFor(`/现在：站着/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`,
+    '第一条站立命令实际完成，再重置遥控场景', 15000);
   out.standing = await stance();
   await fakeSet({ posture: 'limp' });
   await sleep(3000);       // 同上：刚变软 2 秒内后端不接受站起来（按钮靠 1 秒一次的手柄快照，可能还亮着），点了会被拒
@@ -331,17 +333,33 @@ if (PHASE === 'imu-redo') {
   out.commissioningCommands = await js(`(window.__sent || []).filter((m) => m.name === 'imu.op')`);
 }
 
-if (PHASE === 'imu') {
+if (PHASE === 'imu' || PHASE === 'imu-hold') {
   log('IMU 页：粗校');
+  if (PHASE === 'imu-hold') {
+    await fakeSet({ mode: 'commissioning', calib: 'factory', posture: 'commissioning', imu_pose: 'upright', restart: 0.4 });
+  }
   await js(`location.hash = '#/imu'`);
   await waitFor(`!!document.querySelector('.imu-coarse')`, 'IMU 粗校卡片', 20000);
+  if (PHASE === 'imu-hold') {
+    await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采静止') && !b.disabled)`,
+      '重新读取出厂方向标定状态', 20000);
+  }
   await js(`document.querySelector('.imu-stance .imu-relax').click()`);
   await sleep(500);
+  if (PHASE === 'imu-hold') {
+    await waitFor(`!!document.querySelector('.imu-stance .imu-stand') && !document.querySelector('.imu-stance .imu-stand').disabled`,
+      '初次标定允许站姿使能', 10000);
+    await js(`document.querySelector('.imu-stance .imu-stand').click()`);
+    await waitFor(`/标定模式（站着）/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`,
+      '站稳再做初次标定', 15000);
+    out.holdBefore = await fakeRpc('robot.busStatus', {});
+  }
   out.start = await js(`document.querySelector('.imu-coarse')?.innerText.replace(/\\s+/g, ' ').slice(0, 500)`);
   if (!await clickHas('.imu-coarse button', '采静止')) throw new Error('找不到「采静止」');
   await waitFor(`/静止采到/.test(document.querySelector('.imu-coarse')?.innerText || '')`, '静止采好', 20000);
   await fakeSet({ imu_pose: 'nose_down' });
-  await sleep(500);
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采前倾') && !b.disabled)`,
+    '静止采数结束，前倾采数按钮可用', 15000);
   if (!await clickHas('.imu-coarse button', '采前倾')) throw new Error('找不到「采前倾」');
   await waitFor(`!!document.querySelector('.imu-coarse input[type=checkbox]') || /交给主程序验证/.test(document.querySelector('.imu-coarse')?.innerText || '')`,
     '粗校算出方向、等确认', 25000);
@@ -354,7 +372,17 @@ if (PHASE === 'imu') {
     'verify-imu 成功', 40000);
   out.imu = await js(`[document.querySelector('.sv-metrics')?.innerText || '',
     document.querySelector('.imu-coarse')?.innerText || ''].filter(Boolean).join(' ／ ').replace(/\\s+/g, ' ').slice(0, 700)`);
-  await shot('commit-imu-verified.png');
+  if (PHASE === 'imu-hold') {
+    out.holdAfter = await fakeRpc('robot.busStatus', {});
+    await shot('commit-imu-hold-verified.png');
+    // Reset the fake fixture independently of which cards remain mounted after verification.
+    await fakeRpc('robot.relax', {});
+    for (let attempt = 0; attempt < 50; attempt++) {
+      out.cleaned = await fakeRpc('robot.busStatus', {});
+      if (out.cleaned.torque_state === 'off') break;
+      await sleep(100);
+    }
+  } else await shot('commit-imu-verified.png');
 }
 
 if (PHASE === 'servo') {

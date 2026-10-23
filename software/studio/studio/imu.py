@@ -121,9 +121,20 @@ class ImuBackend:
         redo = helper.imu_redo_state(root=self.root)
         native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
         hold = bus.get("hold") if isinstance(bus.get("hold"), dict) else {}
-        if (bus.get("torque_state") != "off" or native.get("torque_state_confirmed") is True
-                or bus.get("torque_off_pending") is True or hold.get("active") is True or bus.get("motion")):
-            raise Refused("先卸力再做初次 IMU 粗校：保持扶稳，不要站姿使能")
+        transitioning = (bus.get("torque_off_pending") not in (None, False)
+                         or bus.get("power_pending") or bus.get("motion") or bus.get("home_recovery")
+                         or bus.get("policy_enabled") is True or bus.get("policy_motion_enabled") is True)
+        error = hold.get("max_error_deg")
+        settled_hold = (not redo.get("active") and bus.get("mode") == "commissioning"
+                        and bus.get("phase") == "holding" and bus.get("torque_state") == "all_enabled"
+                        and hold.get("stage") == "holding" and native.get("torque_state_confirmed") is not False
+                        and isinstance(error, (int, float)) and not isinstance(error, bool)
+                        and math.isfinite(error) and 0 <= error <= 5)
+        relaxed = (bus.get("torque_state") == "off" and native.get("torque_state_confirmed") is not True
+                   and not hold)
+        if transitioning or not (relaxed or settled_hold):
+            raise Refused("初次 IMU 粗校需要已卸力，或标定模式的站姿使能已站稳（HOME 误差 ≤5°）；"
+                          "正在起身、运动或卸力未确认时不能采数。双手扶稳鸭子")
         if redo.get("active"):
             if redo.get("phase") not in ("commissioning", "finish_failed"):
                 raise Refused(redo.get("reason") or "重做初次 IMU 校准的模式切换未完成：先取消或恢复会话")
