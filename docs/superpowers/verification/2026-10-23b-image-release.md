@@ -22,3 +22,5 @@ Validation:
 - Windows distribution was copied from the verified output and rechecked; asset sizes and all six hashes are recorded outside Git.
 
 Physical acceptance is pending for this exact image. Commissioning HOME hold requires manual support. The camera remains a test source; actual camera/ToF operation and hardware-based automatic service startup are not established by this build. Prior-image hardware results do not validate the new image.
+
+Published as a regular Latest release: draft=false, prerelease=false, latest API resolves to 20261023b, tag resolves to the frozen 320540ed source. All six uploaded asset sizes and SHA256 digests match the local distribution. Public download HEAD follows a redirect to HTTP 200 with Content-Length 712074020. Prior20261023 and20261021b pages retain their assets/licensing and link to the latest release. Independent release review found no P1/P2 publication blocker.
