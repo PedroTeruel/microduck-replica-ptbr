@@ -7,7 +7,7 @@
 完整站着校完、结果 ok 的那一份记进 state 目录的 imu-pending.json（Studio 重启也不丢），最后由上手清单
 的「写进主程序」一次写进 robotd。出厂镜像跑标定模式：粗校从 busStatus.last_sample.imu 采静止和前倾，
 算完直接交给主程序的 verify-imu（摆正 ≤5°，20 秒内往前低头 15–30°），主程序自己写标定文件。
-识别芯片、换芯片仍不在 Studio 里做；提示用户用 SSH 跑 microduck-firstboot。
+总线板卡由主程序启动时自动识别；I²C 芯片检测仍用 microduck-firstboot。
 """
 import asyncio
 import json
@@ -20,7 +20,7 @@ from .robotd import fresh_calib
 from .rpc import RpcError, Timeout, Unreachable, call_once
 
 MAX_SAMPLES = 6000          # 一次 solve 最多收这么多读数（5 步 × 每步 ≤ 600 还有富余），防页面发个巨包
-ON_DUCK = ("识别芯片、换芯片不在网页里做：IMU 要在第一次开机前接好；之后才接的，要用 SSH 运行 "
+ON_DUCK = ("总线 ID 200 的 IMU 由主程序启动时自动识别。I²C IMU 要在第一次开机前接好；之后才接的，要用 SSH 运行 "
            "sudo microduck-firstboot --detect-imu-only --force")
 # 「核对过」的门槛（总览重排审查 O4）：站着完整校一次，算出来的跟主程序现在用的方向差 < 2°、站姿倾斜 ≤ 5°
 # （5° 是 imu_calib RULES 的 stand_confirm_deg：robotd 自己验方向时直立只放 5°）
@@ -29,6 +29,30 @@ CHECK_MAX_DIFF_DEG = 2.0
 
 class Refused(Exception):
     """这个操作现在不能做，原因直接给页面看。"""
+
+
+def bus_imu_of(bus):
+    """实际探测到的总线协议和板卡；运动模式在 native，标定模式在顶层。"""
+    bus = bus if isinstance(bus, dict) else {}
+    native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
+    info = native.get("imu_bus") or bus.get("imu_bus")
+    if not isinstance(info, dict) or info.get("protocol") not in ("feetech", "dxl2"):
+        return None
+    return {"protocol": info["protocol"], "board": info.get("board"),
+            "identity": list(info["identity"]) if isinstance(info.get("identity"), list) else None}
+
+
+def bus_protocol_mismatch(bus, calib, source="bus"):
+    info = bus_imu_of(bus) if source == "bus" else None
+    calib = calib if isinstance(calib, dict) else {}
+    cal = calib.get("calibration") if isinstance(calib.get("calibration"), dict) else calib
+    return bool(info and info["protocol"] != cal.get("imu_bus_protocol", "feetech"))
+
+
+def calibration_context(bus, source, redo):
+    info = bus_imu_of(bus) if source == "bus" else None
+    transport = (info["protocol"], info["board"], tuple(info["identity"] or [])) if info else None
+    return source, transport, bus.get("mode"), redo.get("session_id"), bool(redo.get("active"))
 
 
 def mount_of(bus, calib):
@@ -42,7 +66,10 @@ def mount_of(bus, calib):
     # 用的哪颗芯片：busStatus 的 native.imu_source；robotd 卡在等总线时 busStatus 里没有它，
     # 退到 calibration-status 顶上的 imu_source（模块芯片别被当成总线小板，IMU 子代理复核 #4）；
     # 两边都没有、但 busStatus 有 native → 总线小板（方案 6.5）
-    source = native.get("imu_source") or calib.get("imu_source") or ("bus" if native else None)
+    last_sample = bus.get("last_sample") if isinstance(bus.get("last_sample"), dict) else {}
+    sample = last_sample.get("imu") if isinstance(last_sample.get("imu"), dict) else {}
+    source = (native.get("imu_source") or sample.get("source") or calib.get("imu_source")
+              or ("bus" if native or bus_imu_of(bus) else None))
     top = calib.get("imu_mount") if isinstance(calib.get("imu_mount"), dict) else None
     mounts = cal.get("imu_mounts") if isinstance(cal.get("imu_mounts"), dict) else {}
     if top and top.get("quat") and calib.get("imu_source") in (None, source):
@@ -53,6 +80,8 @@ def mount_of(bus, calib):
         mount = {"quat": cal.get("imu_mount_quat"), "verified": cal.get("imu_mount_verified")}
     else:
         mount = None
+    if mount and bus_protocol_mismatch(bus, calib, source):
+        mount["verified"] = False
     return source, mount
 
 
@@ -75,11 +104,14 @@ class ImuBackend:
         bus = self.rd.bus.value if isinstance(self.rd.bus.value, dict) else {}
         native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
         # 标定状态只认这次 hello 之后读到的（总览重排审查 O5：robotd 重启后旧的「已确认」不能当真）
-        source, mount = mount_of(bus, fresh_calib(self.rd))
+        calib = fresh_calib(self.rd)
+        source, mount = mount_of(bus, calib)
         redo = self._redo_view(bus, source)
-        context = (source, bus.get("mode"), redo.get("session_id"), redo.get("active"))
+        context = calibration_context(bus, source, redo)
         if self._seen_context is not None and context != self._seen_context:
             self.last_result = None
+            if context[1] != self._seen_context[1] and self.job and (self.job.get("done") or self.job.get("failed")):
+                self.job = None
         self._seen_context = context
         ls = bus.get("last_sample") if isinstance(bus.get("last_sample"), dict) else {}
         s_imu = ls.get("imu") if isinstance(ls.get("imu"), dict) else {}
@@ -88,6 +120,8 @@ class ImuBackend:
             reader = {"state": ("streaming" if s_imu.get("ready") else "missing"), "errors": 0}
         return {
             "t": "imu", "mode": bus.get("mode"), "source": source, "chip_setting": None, "mount": mount,
+            "imu_bus": bus_imu_of(bus) if source == "bus" else None,
+            "mount_protocol_mismatch": bus_protocol_mismatch(bus, calib, source),
             "reader": reader, "age_ms": native.get("imu_age_ms", s_imu.get("age_ms")),
             "ready": native.get("imu_ready", s_imu.get("ready")),
             "valid": s_imu.get("valid"), "gravity": s_imu.get("gravity"),
@@ -247,10 +281,10 @@ class ImuBackend:
             self._coarse_guard(bus)
             source, _ = mount_of(bus, fresh_calib(self.rd))
             redo = helper.imu_redo_state(root=self.root)
-            context = (source, bus.get("mode"), redo.get("session_id"))
+            context = calibration_context(bus, source, redo)
             if capture_context is not None and context != capture_context:
                 self.last_result = None
-                raise Refused("粗校采数期间 IMU 来源 / 模式 / 会话改变：重新采数")
+                raise Refused("粗校采数期间 IMU 来源 / 总线板卡 / 模式 / 会话改变：重新采数")
             capture_context = context
             g, imu = self._sample_g(bus)
             if g is not None:
@@ -334,6 +368,10 @@ class ImuBackend:
         redo = self._coarse_guard(bus)
         self.view()  # invalidate a result from a different mode/source/session before consuming it
         source, _ = mount_of(bus, fresh_calib(self.rd))
+        context = calibration_context(bus, source, redo)
+        verified_bus = {"imu_bus": bus_imu_of(bus)}
+        if self._seen_context != context:
+            self.last_result = None
         mount = args.get("mount_wxyz") or args.get("mount")
         if args.get("confirmed") is not True or not isinstance(mount, list) or len(mount) != 4:
             raise Refused("要先对照模块实际装法勾选确认，再交给主程序验证")
@@ -356,7 +394,7 @@ class ImuBackend:
             raise Refused(msg) from e
         # A verifier reply alone is not success: read the exact active source and normalized mount back.
         try:
-            status = await self._verified_readback(source, mount)
+            status = await self._verified_readback(source, mount, transport=context[1])
             current_redo = helper.imu_redo_state(root=self.root)
             if redo.get("active"):
                 if not current_redo.get("active") or current_redo.get("session_id") != redo.get("session_id"):
@@ -366,9 +404,16 @@ class ImuBackend:
                     source=source, quat=self._normalized_quat(mount))
                 if not ok:
                     raise Refused(helper.friendly(result, detail, "imu-recalibrate"))
-                status = await self._verified_readback(source, mount, motion=True)
+                status = await self._verified_readback(source, mount, motion=True, transport=context[1])
             elif current_redo.get("active"):
                 raise Refused("IMU 验证期间出现另一份重做会话：未完成")
+            from .commit import clear_pending, load_pending, pending_matches
+            pending = load_pending(self.state_dir)
+            if pending and not pending_matches(pending, source, verified_bus):
+                try:
+                    clear_pending(self.state_dir)
+                except OSError as err:
+                    raise Refused("主程序已验证安装方向，但旧站姿校准结果没能清理：重新做站着校准后再写进主程序") from err
         except (RpcError, Timeout, Unreachable, Refused) as err:
             msg = str(err) if isinstance(err, Refused) else f"主程序验证回包后，标定没读回确认：{err}"
             self.job = {"kind": "coarse", "title": "IMU 标定还没读回确认", "failed": True, "msg": msg}
@@ -391,9 +436,11 @@ class ImuBackend:
             raise Refused("IMU 四元数读回无效")
         return [x/norm for x in quat]
 
-    async def _verified_readback(self, source, mount, motion=False):
+    async def _verified_readback(self, source, mount, motion=False, transport=None):
         status = await self._rpc_once("robot.busCommand", {"action": "calibration-status"}, 5.0, "重读标定状态")
         bus = await self._bus_once()
+        if calibration_context(bus, source, {})[1] != transport:
+            raise Refused("IMU 验证期间总线板卡已改变：重新采数再验证")
         if not isinstance(status, dict) or status.get("imu_source") != source:
             raise Refused("主程序当前 IMU 来源没有准确读回")
         got_source, got_mount = mount_of(bus, status)
@@ -435,6 +482,7 @@ class ImuBackend:
                 raise Refused("主程序已经在运动模式：站起来以后用站着校准")
             # 旧方向只认主程序那份（不收页面传的），页面传来的 rules / home_gravity 也不透传（审查 A3）
             view = self.view()
+            context = self._seen_context
             redo = helper.imu_redo_state(root=self.root)
             if redo.get("active") and mode != "coarse":
                 raise Refused("重做初次 IMU 校准期间用静止 / 前倾粗校，保持失能")
@@ -444,10 +492,10 @@ class ImuBackend:
             old_verified = bool((view["mount"] or {}).get("verified"))
             res = await asyncio.to_thread(lambda: imu_calib.solve(
                 samples, frame="body", old_mount=old, mode=mode, old_verified=old_verified))
-            now = self.view()
-            if (now["source"], now["mode"], (now.get("redo") or {}).get("session_id")) != (
-                    view["source"], view["mode"], (view.get("redo") or {}).get("session_id")):
-                raise Refused("采数后 IMU 来源 / 模式 / 会话已改变：重新采数再算")
+            self.view()
+            if self._seen_context != context:
+                self.last_result = None
+                raise Refused("采数后 IMU 来源 / 总线板卡 / 模式 / 会话已改变：重新采数再算")
             self.last_result = res
             detail = json.dumps({k: res.get(k) for k in ("mount", "quality", "confirm", "parts", "redo") if k in res},
                                 ensure_ascii=False)[:1500]
@@ -457,7 +505,8 @@ class ImuBackend:
                 if mode == "full":
                     try:
                         from .commit import save_pending
-                        save_pending(self.state_dir, view["source"], res.get("mount"), res.get("quality"), by)
+                        save_pending(self.state_dir, view["source"], res.get("mount"), res.get("quality"), by,
+                                     imu_bus=view.get("imu_bus"))
                     except Exception as e:  # noqa: BLE001 —— 存不下不影响这一次的结果给页面看
                         self.log.error("这次的 IMU 方向没记下来", cat="IMU", raw=f"{type(e).__name__}: {e}", exc=True,
                                        hint="重校的时候还会再记一次；一直不行就导出诊断包")

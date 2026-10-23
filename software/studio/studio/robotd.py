@@ -24,7 +24,7 @@ from .rpc import Conn, RpcError, Timeout, Unreachable, call_once, encode, open_c
 from .startup import StartupTrack, startup_loop
 
 API_VERSION = 40                     # duck-ipc-proto/src/lib.rs:437；不一致只记日志，不拒绝
-KNOWN_BUILDS = ("1fa8438-feetech-ft6-control.43",)
+KNOWN_BUILDS = ("1fa8438-feetech-ft6-control.43", "4734cbb-feetech-imu-auto-control.44")
 BACKOFF = (0.5, 1.0, 2.0, 5.0)
 STREAM_HZ = 10
 STREAM_LINGER_S = 10.0

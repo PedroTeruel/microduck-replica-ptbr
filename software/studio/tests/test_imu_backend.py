@@ -120,6 +120,10 @@ def factory_calib(source="bus"):
     return {"calibration": cal, "imu_source": source}
 
 
+def bus_transport(protocol="dxl2", board="imu_to_dxl", identity=None):
+    return {"protocol": protocol, "board": board, "identity": list(identity or [1, 2, 3])}
+
+
 class ImuBackendTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -148,6 +152,14 @@ class ImuBackendTest(unittest.TestCase):
         self.assertIsNone(v["mount"])
         self.assertIsNone(v["stand_calib_at"])
 
+    def test_view_ignores_malformed_commissioning_imu_sample(self):
+        for sample in ([], {"imu": []}, {"imu": "invalid"}):
+            bus = commissioning_bus()
+            bus.pop("native")
+            bus["last_sample"] = sample
+            with self.subTest(sample=sample):
+                self.assertEqual(self.backend(bus=bus, calib=factory_calib()).view()["source"], "bus")
+
     def test_view_bus_board_falls_back_to_top_level_mount(self):
         # 总线小板：busStatus 没有 imu_source → 当成 bus，方向用顶上的 imu_mount_quat
         bus = {"native": {"imu_age_ms": 5}}
@@ -162,6 +174,134 @@ class ImuBackendTest(unittest.TestCase):
         self.assertTrue(v["ready"])
         self.assertEqual(v["reader"]["state"], "streaming")
         self.assertEqual(v["gravity"], [0.0, 0.0, -1.0])
+
+    def test_view_reports_actual_bus_transport_in_both_modes(self):
+        for mode in ("commissioning", "motion"):
+            bus = commissioning_bus(mode=mode)
+            info = bus_transport()
+            if mode == "commissioning":
+                bus.pop("native")
+                bus["imu_bus"] = info
+            else:
+                bus["native"]["imu_bus"] = info
+            v = self.backend(bus=bus, calib=factory_calib()).view()
+            with self.subTest(mode=mode):
+                self.assertEqual(v["source"], "bus")
+                self.assertEqual(v.get("imu_bus"), info)
+                self.assertIsNone(v["age_ms"])
+
+    def test_bus_verified_mount_requires_matching_protocol_binding(self):
+        for actual, bound, expected in (("feetech", None, True), ("feetech", "feetech", True),
+                                        ("dxl2", None, False), ("dxl2", "feetech", False),
+                                        ("dxl2", "dxl2", True), ("feetech", "dxl2", False)):
+            bus, calib = commissioning_bus(), factory_calib()
+            bus["imu_bus"] = bus_transport(actual, "ft6" if actual == "feetech" else "sflp_124_12")
+            calib["calibration"]["imu_mount_verified"] = True
+            calib["imu_mount"] = {"quat": [1, 0, 0, 0], "verified": True}
+            if bound is not None:
+                calib["calibration"]["imu_bus_protocol"] = bound
+            with self.subTest(actual=actual, bound=bound):
+                v = self.backend(bus=bus, calib=calib).view()
+                self.assertIs(v["mount"]["verified"], expected)
+                self.assertEqual(v.get("mount_protocol_mismatch"), not expected)
+
+    def test_bus_transport_does_not_change_i2c_mount_binding(self):
+        bus, calib = commissioning_bus("lsm6dsv16x"), factory_calib("lsm6dsv16x")
+        bus["imu_bus"] = bus_transport()
+        calib["calibration"]["imu_mounts"]["lsm6dsv16x"]["verified"] = True
+        v = self.backend(bus=bus, calib=calib).view()
+        self.assertIs(v["mount"]["verified"], True)
+        self.assertIsNone(v.get("imu_bus"))
+
+    def test_bus_transport_identity_change_clears_cached_solve(self):
+        for changed in (bus_transport("feetech", "ft6"), bus_transport(board="sflp_124_12"),
+                        bus_transport(identity=[1, 2, 4])):
+            bus = commissioning_bus()
+            bus["imu_bus"] = bus_transport()
+            b = self.backend(bus=bus, calib=factory_calib())
+            b.view()
+            b.last_result = {"ok": True, "mode": "coarse", "mount": [1., 0., 0., 0.]}
+            b.job = {"kind": "coarse", "done": True, "title": "主程序验证通过"}
+            bus["imu_bus"] = changed
+            with self.subTest(changed=changed):
+                b.view()
+                self.assertIsNone(b.last_result)
+                self.assertIsNone(b.job)
+
+    def test_transport_change_during_solve_rejects_inflight_result(self):
+        bus = commissioning_bus()
+        bus["imu_bus"] = bus_transport()
+        b = self.backend(bus=bus, calib=factory_calib())
+        def changed(*args, **kw):
+            bus["imu_bus"]["identity"] = [9, 9, 9]
+            return {"ok": True, "mode": "coarse", "mount": [1., 0., 0., 0.]}
+        with mock.patch("studio.imu.imu_calib.solve", side_effect=changed), self.assertRaisesRegex(Refused, "改变"):
+            asyncio.run(b.handle({"op": "solve", "mode": "coarse", "samples": [{"g": [0, 0, -1]}]}))
+        self.assertIsNone(b.last_result)
+
+    def test_coarse_capture_rejects_transport_change_mid_collection(self):
+        b = self.backend(bus=commissioning_bus(), calib=factory_calib())
+        calls = {"n": 0}
+        async def bus_once():
+            calls["n"] += 1
+            bus = commissioning_bus()
+            bus["imu_bus"] = bus_transport(identity=[calls["n"]])
+            return bus
+        b._bus_once = bus_once
+        with self.assertRaisesRegex(Refused, "改变"):
+            asyncio.run(b.handle({"op": "coarse-capture", "phase": "still", "seconds": 0.5}))
+
+    def test_verify_rejects_transport_changed_during_runtime_verification(self):
+        bus = commissioning_bus()
+        bus["imu_bus"] = bus_transport()
+        b = self.backend(bus=bus, calib=factory_calib())
+        b.rd.calib.value["calibration"]["imu_bus_protocol"] = "dxl2"
+        b.view()
+        q = [0.5] * 4
+        b.last_result = {"ok": True, "mode": "coarse", "mount": q}
+        original = b.rd.verify
+        def changed(params):
+            result = original(params)
+            bus["imu_bus"]["identity"] = [8, 8, 8]
+            return result
+        b.rd.verify = changed
+        with self.assertRaisesRegex(Refused, "改变"):
+            asyncio.run(b.handle({"op": "verify", "confirmed": True, "mount_wxyz": q}))
+        self.assertFalse((b.job or {}).get("done"))
+
+    def test_dxl2_verify_accepts_new_runtime_protocol_binding(self):
+        from studio import commit
+        bus = commissioning_bus()
+        bus["imu_bus"] = bus_transport()
+        b = self.backend(bus=bus, calib=factory_calib())
+        b.view()
+        q = [0.5] * 4
+        b.last_result = {"ok": True, "mode": "coarse", "mount": q}
+        commit.save_pending(self.tmp.name, "bus", [1, 0, 0, 0])
+        original = b.rd.verify
+        def bound(params):
+            reply = original(params)
+            b.rd.calib.value["calibration"]["imu_bus_protocol"] = "dxl2"
+            return reply
+        b.rd.verify = bound
+        result = asyncio.run(b.handle({"op": "verify", "confirmed": True, "mount_wxyz": q}))
+        self.assertTrue(result["ok"])
+        self.assertIs(b.view()["mount"]["verified"], True)
+        self.assertIsNone(commit.load_pending(self.tmp.name))
+
+    def test_full_bus_solve_persists_transport_identity(self):
+        from tests.test_imu_calib import Duck
+        bus, calib = commissioning_bus(), factory_calib()
+        bus["imu_bus"] = bus_transport()
+        calib["calibration"].update(imu_bus_protocol="dxl2", imu_mount_verified=True)
+        b = self.backend(bus=bus, calib=calib)
+        old = b.view()["mount"]["quat"]
+        data = Duck(old, old_mount=old, noise_deg=0.1).run()
+        samples = [{"step": step, "g": s["g"]} for step, rows in data.items() for s in rows]
+        result = asyncio.run(b.handle({"op": "solve", "samples": samples}))
+        self.assertTrue(result["ok"], result)
+        pending = json.loads((Path(self.tmp.name) / "imu-pending.json").read_text(encoding="utf-8"))
+        self.assertEqual(pending["imu_bus"], bus["imu_bus"])
 
     def test_stand_calib_time_read_from_state_dir(self):
         (Path(self.tmp.name) / "imu-stand-calib.json").write_text('{"at": "2026-10-18 02:10"}', encoding="utf-8")

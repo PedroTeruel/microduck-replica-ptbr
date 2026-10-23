@@ -70,7 +70,7 @@ import sys
 import time
 import tomllib
 
-VERSION = "0.7.0"
+VERSION = "0.7.1"
 VERBS = ("bus-take", "bus-give-back", "bus-abort", "pad-pair", "pad-forget",
          "wifi-hotspot-down", "wifi-hotspot-up", "calib-read", "calib-commit", "ssh-status", "ssh-password",
          "imu-recalibrate")
@@ -690,7 +690,7 @@ LIMITS_DEG = {
 IMU_SOURCES = ("bus", "bno08x", "lsm6dsv16x")
 CHIP_CN = {"bus": "总线小板（ID 200）", "bno08x": "BNO085（I²C）", "lsm6dsv16x": "LSM6DSV16X（I²C）"}
 DEFAULT_BUS_QUAT = [math.sqrt(0.5), 0.0, math.sqrt(0.5), 0.0]     # fork imu.rs: SflpDecoder::DEFAULT_MOUNT
-TOP_KEYS = ("motion_enabled", "imu_mount_verified", "imu_mount_quat", "current_ma_per_count", "units_verified")
+TOP_KEYS = ("motion_enabled", "imu_mount_verified", "imu_mount_quat", "imu_bus_protocol", "current_ma_per_count", "units_verified")
 TAU = 2.0 * math.pi
 
 SERVO_CENTERED = "servo-centered.json"
@@ -801,6 +801,11 @@ def build_calibration(current, joints, imu):
     raw_bus = current.get("imu_mount_quat")
     if raw_bus is not None:
         out["imu_mount_quat"] = _quat(raw_bus, "imu_mount_quat")
+    if "imu_bus_protocol" in current:
+        protocol = current["imu_bus_protocol"]
+        if protocol not in ("feetech", "dxl2"):
+            raise CalibError("imu_bus_protocol 只能是 feetech 或 dxl2（由主程序验证后写入）")
+        out["imu_bus_protocol"] = protocol
 
     raw_mounts = current.get("imu_mounts")
     if isinstance(raw_mounts, dict):
@@ -843,6 +848,8 @@ def validate_calibration(cal, source=None):
         raise CalibError("motion_enabled 要是 true / false")
     if not isinstance(cal.get("imu_mount_verified"), bool):
         raise CalibError("imu_mount_verified 要是 true / false")
+    if "imu_bus_protocol" in cal and cal["imu_bus_protocol"] not in ("feetech", "dxl2"):
+        raise CalibError("imu_bus_protocol 只能是 feetech 或 dxl2")
     if not _is_num(cal.get("current_ma_per_count")):
         raise CalibError("current_ma_per_count 要是有限数")
     if not isinstance(cal.get("units_verified"), bool):
@@ -940,6 +947,10 @@ def render_calibration(cal):
         f"current_ma_per_count = {_num_text(cal.get('current_ma_per_count') or 0.0)}",
         f"units_verified = {_bool_text(cal.get('units_verified'))}",
     ]
+    if "imu_bus_protocol" in cal:
+        if cal["imu_bus_protocol"] not in ("feetech", "dxl2"):
+            raise CalibError("imu_bus_protocol 只能是 feetech 或 dxl2")
+        lines.append(f'imu_bus_protocol = "{cal["imu_bus_protocol"]}"')
     mounts = cal.get("imu_mounts") or {}
     for kind in ("bno08x", "lsm6dsv16x"):
         mount = mounts.get(kind)
@@ -1490,7 +1501,7 @@ def readback_mismatches(expected, calibration):
         if not _same_field(a, b):
             out.append(f"{label}：写 {a!r}，读回 {b!r}")
 
-    for key in ("motion_enabled", "imu_mount_verified"):
+    for key in ("motion_enabled", "imu_mount_verified", "imu_bus_protocol"):
         one(key, exp.get(key), got.get(key))
     one("imu_mount_quat", exp.get("imu_mount_quat"), got.get("imu_mount_quat"))
     ejs, gjs = exp.get("joints") if isinstance(exp.get("joints"), list) else [], got.get("joints") if isinstance(got.get("joints"), list) else []
@@ -1932,6 +1943,11 @@ def imu_redo_readback(op, expected, source, quat=None):
     if not imu_redo_same(normalized_calibration(expected), normalized_calibration(cal or {})):
         raise Stop(EXIT_STATE, "readback_mismatch", "主程序标定读回与文件逐项不一致：保留会话")
     if quat is not None:
+        native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
+        info = native.get("imu_bus") or bus.get("imu_bus")
+        if (source == "bus" and isinstance(info, dict)
+                and info.get("protocol") != cal.get("imu_bus_protocol", "feetech")):
+            raise Stop(EXIT_STATE, "readback_mismatch", "当前总线 IMU 协议与已验证的安装方向标定不匹配")
         mount = ({"quat": cal.get("imu_mount_quat"), "verified": cal.get("imu_mount_verified")}
                  if source == "bus" else (cal.get("imu_mounts") or {}).get(source) or {})
         top = status.get("imu_mount")
@@ -2137,6 +2153,7 @@ def verb_imu_recalibrate(op, args, raw):
         if source == "bus":
             cal.pop("imu_mount_quat", None)
             cal.pop("imu_mount_verified", None)
+            cal.pop("imu_bus_protocol", None)
         else:
             mount = (cal.get("imu_mounts") or {}).get(source)
             if isinstance(mount, dict):

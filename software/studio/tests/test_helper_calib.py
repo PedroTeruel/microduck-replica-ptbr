@@ -343,6 +343,20 @@ class CommitTest(Base):
         self.assertTrue(last["detail"]["rolled_back"])
         self.assertEqual(self.path.read_bytes(), self.old)
 
+    def test_bus_protocol_readback_mismatch_restores_bound_files(self):
+        self.limp_motion()
+        self.old = b'imu_bus_protocol = "dxl2"\n' + self.old
+        self.path.write_bytes(self.old)
+        saved = self.old + b"# separate saved\n"
+        self.saved.write_bytes(saved)
+        self.w.calib_mutate = lambda cal: cal.update(imu_bus_protocol="feetech")
+        code, _ = self.call(self.payload())
+        self.assertEqual(code, H.EXIT_FAIL, self.last())
+        self.assertEqual(self.last()["result"], "readback_mismatch")
+        self.assertTrue(any("imu_bus_protocol" in item for item in self.last()["detail"]["mismatches"]))
+        self.assertEqual(self.path.read_bytes(), self.old)
+        self.assertEqual(self.saved.read_bytes(), saved)
+
     def test_saved_write_error_restores_both_files(self):
         self.commissioning(True)
         self.w.restart_bus = {"mode": "motion", "phase": "control"}

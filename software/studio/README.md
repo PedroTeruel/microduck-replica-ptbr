@@ -90,7 +90,7 @@ py -3.13 -I run.py --bench
 
 1. 拷贝：把 `software/studio` 整个目录拷到鸭子的 `/home/radxa/studio-dev`（`scp -r`、U 盘解压包都行）。
 2. 自检：在鸭子上运行 `python3 -I run.py --selfcheck`（只读：打印版本，对 robotd / configd / padd 各问一次）。
-3. 装 root 小助手：`cd deploy && sudo sh install.sh radxa`。0.7.0 的小助手负责舵机总线交接、手柄配对、热点开关、`calib-read` / `calib-commit`（把标定写进主程序、切运动模式）、`ssh-status` / `ssh-password`（「更多」页的 SSH 开关），以及 `imu-recalibrate`（重新校验已保存的 IMU 安装方向）；关热点前会写 `/run/microduck/studio-connecting.json`，让 netcheck 在连接期间别插手。从舵机页交还时，标定模式的实时快照也算主程序起来了（0.5.1 只认运动模式的 `control`，标定模式下每次都等满 30 秒判「起不来」）。步骤、卸载和上机核对见 `deploy/INSTALL.md`。
+3. 装 root 小助手：`cd deploy && sudo sh install.sh radxa`。0.7.1 的小助手负责舵机总线交接、手柄配对、热点开关、`calib-read` / `calib-commit`（把标定写进主程序、切运动模式）、`ssh-status` / `ssh-password`（「更多」页的 SSH 开关），以及 `imu-recalibrate`（重新校验已保存的 IMU 安装方向）；关热点前会写 `/run/microduck/studio-connecting.json`，让 netcheck 在连接期间别插手。从舵机页交还时，标定模式的实时快照也算主程序起来了（0.5.1 只认运动模式的 `control`，标定模式下每次都等满 30 秒判「起不来」）。步骤、卸载和上机核对见 `deploy/INSTALL.md`。
 4. 开机服务：照 `deploy/microduck-studio.service` 文件头的命令装：
 
    ```bash
@@ -110,6 +110,10 @@ py -3.13 -I run.py --bench
 出厂镜像让 robotd 跑标定模式：`/etc/systemd/system/robotd.service.d/zzzz-zz-microduck-commissioning.conf` 里 `ExecStart` 带 `--commissioning`。这样 `calibration-status` 和 `busStatus.last_sample` 马上能读，IMU 页粗校、舵机页中位都能做。上手清单第 3 步写成功后，小助手删掉这个文件、`daemon-reload`、重启 robotd，主程序回到运动模式。`systemctl show robotd -p ExecStart` 里有 `--commissioning`、但那个文件不在时，小助手拒绝自动切（`foreign_commissioning`），去日志页导出诊断包。
 
 IMU 页的「IMU 安装方向」始终保留入口：已经保存并验证过的安装四元数，也能点「重新标定方向」。先扶住鸭子并卸力，二次确认后，运动模式通过新版 root 小助手暂时回到标定模式；已经在标定模式的直接重新采集。沿用原来的静止 3 秒、整个躯干前倾 15–30° 采 3 秒、计算方向和主程序验证。**点击「交给主程序验证」前，先把实物回正并停住**，再按提示前倾。小助手的重标定恢复会话保持卸力；出厂标定模式也支持下述站姿采数，站着精校流程不变。
+
+总线 ID 200 的 IMU 由主程序启动时自动识别，支持 FT6（Feetech）、IMU-to-DXL 和 SFLP 124/12（Dynamixel 2.0）；标定、运动模式的 IMU 页都显示实际协议和板卡。板卡名称表示识别到的寄存器布局，不证明厂商。需要手动指定时改主程序配置 `bus.imu_protocol = "auto" / "feetech" / "dxl2"`，网页没有运行中切换协议的按钮。I²C 的 BNO085、LSM6DSV16X 流程不变。
+
+总线安装方向的 `imu_bus_protocol` 由主程序验证成功后写入；旧标定没有这个字段时只兼容 Feetech。检测到的协议不匹配时，页面提示重新标定，跳过第 2 步也不能把旧方向当成已验证。主程序通过运动模式的失能状态保留重做入口。第 3 步与小助手 0.7.1 保留并读回该字段；重做完成可采用新绑定，取消恢复原文件。协议、板卡布局或原始身份字节改变，会作废当前采集、在途计算和旧的站姿校准结果。DXL2 板卡不提供采样序号、状态位、传感器读数年龄；主程序使用主机接收新鲜度和原始字节冻结检查，页面不填造这些诊断值。
 
 出厂标定模式做第一次安装方向标定，也可以先手动点「站姿使能」：等 HOME 保持站稳（误差 ≤5°），双手扶住整个躯干采静止和前倾，再回正交给主程序验证。允许已卸力或明确站稳两种状态；起身中、扭矩未知、运动中及卸力待确认仍拒绝。通过小助手从运动模式进入的重标定恢复会话仍要求全程卸力，避免恢复模式时重启主程序影响站姿。采数不会自动上力或发起运动。
 
@@ -218,6 +222,12 @@ Studio 默认没有密码，同一网络里谁都能打开。在「更多 → �
 ```bash
 py -3.13 -I run_tests.py               # 电脑
 python3 -I run_tests.py                # 鸭子
+```
+
+总线 IMU 集成的定向回归（含无头 Edge 页面；无 Edge / Node >=22 时浏览器项跳过）：
+
+```bash
+py -3.13 -I -c "import sys;sys.path[:0]=['deps','.','dev'];import unittest;unittest.main(module=None,argv=['x','tests.test_imu_backend','tests.test_commit','tests.test_helper_calib','tests.test_helper_imu_redo','tests.test_imu_bus_ui','tests.test_imu_wizard_e2e'])"
 ```
 
 覆盖：
