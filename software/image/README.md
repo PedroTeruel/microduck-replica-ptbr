@@ -73,6 +73,16 @@ scp radxa@<鸭子 IP>:/tmp/microduck-payload.tgz .
 `payload.json` 里 robotd 那一条的 sha256 跟着改；换完的 payload sha256 `26252fbc…`。
 以后的 robotd 都从提交编，对得上源码。
 
+20261023c 的 robotd 来自 [runtime fork 的 `hd1910-v167-imu-dxl2` 分支](https://github.com/fanhao375/Microduck-kissqy/tree/hd1910-v167-imu-dxl2)，
+提交 `0791fcd44f71c705dc8bb0fbcde405593b52d19b`，构建标识 `4734cbb-feetech-imu-auto-control.44`。
+使用 Rust 1.99.0、`cargo zigbuild --locked --release --target aarch64-unknown-linux-gnu.2.31 -p robotd --bin robotd`，
+`CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1`；robotd sha256 为
+`edf182edb7bf11aeeeedfdab98170ab2ec48a9ec18417f9b68c744b0a60c6d16`。
+只替换已核验 payload 里的 robotd，并在运行与保存配置中明确设置 `[bus] imu_protocol = "auto"`；
+其他 daemon、模型与 ONNX Runtime 保持原文件。每个文件的大小和哈希在重打包时重新验证，
+`payload.json` 保存源码提交、构建参数及来源说明入口；完整 payload 哈希以交付镜像清单为准。
+支持范围、旧版测试失败对照和真板验收边界见[本版记录](../../docs/HD1910-20261023-总线IMU自动识别.md)。
+
 ### 3. 构建机
 
 WSL 的 Ubuntu 22.04 或任意 Linux，要 root（loop 设备）：

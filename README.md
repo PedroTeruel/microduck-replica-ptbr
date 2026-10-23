@@ -156,10 +156,10 @@ HUB 和 IMU 板的脚序对得上，同向线直连。
 
 镜像免费，只供个人非商业复刻，不随收费产品分发（里面的模型是作者的个人非商业许可）。
 
-**[20261023b 新版镜像](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023b)**：初次 IMU 安装方向标定也允许在「站姿使能」并站稳后采数，保留模型管理、传感器状态和 IMU 重新标定。软件测试与交付包核验已过，新增功能待实机验收。摄像头默认仍为测试画面，按硬件自动启停摄像头/ToF 服务尚未实现。
+**[20261023c 新版镜像](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023c)**：主程序自动识别 FT6 / 兼容的 Feetech 总线 IMU，以及 124/12 SFLP 布局的 DXL 2.0 IMU；页面显示实际协议。保留初次站姿采数、IMU 重新标定、模型管理和传感器状态。更换 IMU 或装法后需重新校准。支持范围与验证记录见[本版说明](docs/HD1910-20261023-总线IMU自动识别.md)，新增兼容待真板验收。摄像头默认仍为测试画面，按硬件自动启停摄像头/ToF 服务尚未实现。
 
 **[下载最新镜像](https://github.com/fanhao375/microduck-replica/releases/latest)**　·
-[上一版 20261021b](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261021b)　·
+[上一版 20261023b](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023b)　·
 **[烧录和第一次使用](software/image/烧录和第一次使用.md)**　·
 **[Studio 说明](software/studio/)**　·
 [镜像怎么做的](software/image/)　·
