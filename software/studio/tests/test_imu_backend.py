@@ -120,7 +120,7 @@ def factory_calib(source="bus"):
     return {"calibration": cal, "imu_source": source}
 
 
-def bus_transport(protocol="dxl2", board="imu_to_dxl", identity=None):
+def bus_transport(protocol="dxl2", board="sflp_124_12", identity=None):
     return {"protocol": protocol, "board": board, "identity": list(identity or [1, 2, 3])}
 
 
@@ -214,10 +214,11 @@ class ImuBackendTest(unittest.TestCase):
         self.assertIsNone(v.get("imu_bus"))
 
     def test_bus_transport_identity_change_clears_cached_solve(self):
-        for changed in (bus_transport("feetech", "ft6"), bus_transport(board="sflp_124_12"),
-                        bus_transport(identity=[1, 2, 4])):
+        for original, changed in ((bus_transport(), bus_transport("feetech", "ft6")),
+                                  (bus_transport("feetech", "ft6"), bus_transport("feetech", "imu_to_dxl")),
+                                  (bus_transport(), bus_transport(identity=[1, 2, 4]))):
             bus = commissioning_bus()
-            bus["imu_bus"] = bus_transport()
+            bus["imu_bus"] = original
             b = self.backend(bus=bus, calib=factory_calib())
             b.view()
             b.last_result = {"ok": True, "mode": "coarse", "mount": [1., 0., 0., 0.]}

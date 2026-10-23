@@ -651,13 +651,13 @@ class SharedCodeTest(unittest.TestCase):
 class BusPendingTest(unittest.TestCase):
     def test_pending_bus_calibration_is_bound_to_transport_identity(self):
         with tempfile.TemporaryDirectory() as directory:
-            info = {"protocol": "dxl2", "board": "imu_to_dxl", "identity": [1, 2, 3]}
+            info = {"protocol": "feetech", "board": "imu_to_dxl", "identity": [1, 2, 3]}
             C.save_pending(directory, "bus", BUS_QUAT, imu_bus=info)
             pending = C.load_pending(directory)
             self.assertEqual(pending.get("imu_bus"), info)
             bus = {"imu_bus": info}
             self.assertTrue(C.pending_matches(pending, "bus", bus))
-            for delta in ({"identity": [4]}, {"board": "sflp_124_12"}, {"protocol": "feetech"}):
+            for delta in ({"identity": [4]}, {"board": "ft6"}, {"protocol": "dxl2", "board": "sflp_124_12"}):
                 with self.subTest(delta=delta):
                     self.assertFalse(C.pending_matches(pending, "bus", {"imu_bus": {**info, **delta}}))
 
@@ -670,7 +670,7 @@ class BusPendingTest(unittest.TestCase):
 
 class BusReadinessTest(Base):
     def test_changed_bus_identity_cannot_commit_persisted_standing_result(self):
-        info = {"protocol": "dxl2", "board": "imu_to_dxl", "identity": [1, 2, 3]}
+        info = {"protocol": "dxl2", "board": "sflp_124_12", "identity": [1, 2, 3]}
         self.calib["calibration"]["imu_bus_protocol"] = "dxl2"
         C.save_pending(self.dir, "bus", BUS_QUAT, imu_bus=info)
         self.svc.reload(force=True)
@@ -681,7 +681,7 @@ class BusReadinessTest(Base):
 
     def test_dxl2_requires_runtime_protocol_verification_even_if_step_skipped(self):
         self.calib["calibration"]["imu_mount_verified"] = True
-        self.rd.bus.value["imu_bus"] = {"protocol": "dxl2", "board": "imu_to_dxl", "identity": [1]}
+        self.rd.bus.value["imu_bus"] = {"protocol": "dxl2", "board": "sflp_124_12", "identity": [1]}
         self.svc.onboard = mock.Mock()
         self.svc.onboard.user_mark.return_value = "skip"
         item = self.item("imu")

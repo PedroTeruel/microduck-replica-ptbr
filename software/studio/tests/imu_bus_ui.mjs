@@ -54,16 +54,26 @@ try {
   await wait('document.querySelector(".imu-page")', 'IMU page');
   assert.match(await js('document.querySelector(".imu-side").innerText'), /FT6.*Feetech/);
   assert.doesNotMatch(await js('document.body.innerText'), /只认 FT6/);
-  for (const board of ['imu_to_dxl', 'sflp_124_12']) {
-    await js(`props.imu = {...props.imu, imu_bus: {protocol:'dxl2', board:${JSON.stringify(board)}, identity:[1,2,3]},
-      mount: {...props.imu.mount, verified:false}, mount_protocol_mismatch:true}; draw()`);
-    await wait(`document.body.innerText.includes(${JSON.stringify(board === 'imu_to_dxl' ? 'IMU-to-DXL' : 'SFLP 124/12')})`, `board label ${board}`);
+  assert.match(await js('document.body.innerText'), /支持 FT6、IMU-to-DXL（Feetech）；SFLP 124\/12（Dynamixel 2\.0）/);
+  for (const [protocol, board, label] of [['feetech', 'imu_to_dxl', 'IMU-to-DXL'], ['dxl2', 'sflp_124_12', 'SFLP 124/12']]) {
+    for (const mode of ['motion', 'commissioning']) {
+      await js(`props.st = {...props.st, mode:${JSON.stringify(mode)}};
+        props.imu = {...props.imu, mode:${JSON.stringify(mode)},
+        imu_bus: {protocol:${JSON.stringify(protocol)}, board:${JSON.stringify(board)}, identity:[1,2,3]},
+        mount: {...props.imu.mount, verified:${protocol === 'feetech'}}, mount_protocol_mismatch:${protocol === 'dxl2'}}; draw()`);
+      const protocolLabel = protocol === 'feetech' ? 'Feetech' : 'Dynamixel 2.0';
+      await wait(`document.querySelector('.sv-metrics').innerText.includes(${JSON.stringify(`${label} · ${protocolLabel}`)})`, `${mode} board label ${board}`);
+    }
     const text = await js('document.body.innerText');
-    assert.match(text, /Dynamixel.*2\.0/);
-    assert.match(text, /重新标定/);
-    assert.doesNotMatch(await js('document.querySelector(".sv-metrics").innerText'), /方向已确认/);
-    assert.match(text, /不提供.*序号.*状态.*年龄/);
-    assert.match(text, /主机.*新鲜度.*原始字节/);
+    if (protocol === 'dxl2') {
+      assert.match(text, /重新标定/);
+      assert.doesNotMatch(await js('document.querySelector(".sv-metrics").innerText'), /方向已确认/);
+      assert.match(text, /不提供.*序号.*状态.*年龄/);
+      assert.match(text, /主机.*新鲜度.*原始字节/);
+    } else {
+      assert.match(await js('document.querySelector(".sv-metrics").innerText'), /方向已确认/);
+      assert.doesNotMatch(text, /不提供采样序号/);
+    }
   }
   // A delayed capture belongs to the original board and must not advance its replacement.
   await js(`clickText('采静止（3 秒）')`);

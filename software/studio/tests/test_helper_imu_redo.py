@@ -343,7 +343,7 @@ class ImuRedoTest(Base):
         self.assertFalse(self.w.robot.torque)
 
     def test_dxl2_finish_accepts_verified_protocol_binding_and_cancel_preserves_original(self):
-        self.w.bus_mutate = lambda bus: bus.update(imu_bus={"protocol": "dxl2", "board": "imu_to_dxl", "identity": [1]})
+        self.w.bus_mutate = lambda bus: bus.update(imu_bus={"protocol": "dxl2", "board": "sflp_124_12", "identity": [1]})
         session = self.enter()
         self.verified()
         for path in (self.path, self.saved):
@@ -361,7 +361,7 @@ class ImuRedoTest(Base):
         self.assertEqual(self.path.read_bytes(), original)
 
     def test_dxl2_finish_rejects_missing_protocol_binding(self):
-        self.w.bus_mutate = lambda bus: bus.update(imu_bus={"protocol": "dxl2", "board": "imu_to_dxl", "identity": [1]})
+        self.w.bus_mutate = lambda bus: bus.update(imu_bus={"protocol": "dxl2", "board": "sflp_124_12", "identity": [1]})
         session = self.enter()
         self.verified()
         code, detail = self.call_redo("finish", session_id=session, source="bus", quat=[0.5]*4)

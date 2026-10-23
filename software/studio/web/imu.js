@@ -545,7 +545,7 @@ function StatusCard({ st, imu, live, age }) {
 function ChipCard({ imu }) {
   return html`<section class="board imu-card">
     <h3>芯片 <span class="sv-small">正在用：${chipLabel(imu)}</span></h3>
-    <p class="sv-small">舵机总线 ID 200 的小板由主程序启动时自动识别：支持 FT6（Feetech）、IMU-to-DXL 和 SFLP 124/12（Dynamixel 2.0）。换板或装法改变后，重新标定安装方向。</p>
+    <p class="sv-small">舵机总线 ID 200 的小板由主程序启动时自动识别：支持 FT6、IMU-to-DXL（Feetech）；SFLP 124/12（Dynamixel 2.0）。换板或装法改变后，重新标定安装方向。</p>
     <p class="sv-small">I²C 模块要在第一次开机前接好。之后才接的，用 SSH 在鸭子上运行</p>
     <p><code class="num">sudo microduck-firstboot --detect-imu-only --force</code></p>
     <p class="sv-small">它会重新检测 IMU 并补上启动配置；跑完重启一次主程序。</p>
