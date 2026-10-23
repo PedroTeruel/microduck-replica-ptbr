@@ -303,7 +303,10 @@ if (PHASE === 'done') {
   out.pad3d = await js(`(() => { const c = document.querySelector('.pd-3d canvas').getBoundingClientRect(); const s = document.querySelector('#pd-remote').getBoundingClientRect();
     const vis = Math.max(0, Math.min(c.bottom, innerHeight) - Math.max(c.top, 56));
     return { visFrac: +(vis / c.height).toFixed(2), left: c.right <= s.left, cRight: Math.round(c.right), sLeft: Math.round(s.left),
-      sticky: getComputedStyle(document.querySelector('.pd-3d')).position, touch: getComputedStyle(document.querySelector('.pd-3d canvas')).touchAction }; })()`);
+      sticky: getComputedStyle(document.querySelector('.pd-3d')).position,
+      stackSticky: getComputedStyle(document.querySelector('.pd-left')).position,
+      cameraBelow: document.querySelector('.inline-camera').getBoundingClientRect().top >= document.querySelector('.pd-3d').getBoundingClientRect().bottom,
+      touch: getComputedStyle(document.querySelector('.pd-3d canvas')).touchAction }; })()`);
   await shot('pad-3d-desktop.png');
   // 不在视口就不画：在视口时标脏会画，滚出去以后标脏不画（duck3d 的 frames 计数）
   const f3d = () => js(`document.querySelector('.pd-3d canvas').__duck3d.frames`);
@@ -590,6 +593,7 @@ if (PHASE === 'done') {
   await js(`document.getElementById('pd-remote').scrollIntoView({ block: 'center' })`);
   await sleep(600);
   out.servoBar.sticky = await js(`(() => { const r = document.querySelector('.servo-bar').getBoundingClientRect(); return { top: Math.round(r.top), visible: r.top >= 50 && r.bottom <= innerHeight }; })()`);
+  out.servoBar.visualFits = await js(`(() => { const el=document.querySelector('.pd-left'), s=getComputedStyle(el); return s.position==='static' || el.getBoundingClientRect().height+parseFloat(s.top)+16<=innerHeight; })()`);
   // 手机 390：滚到遥控卡，提示条还在顶栏下面；顶栏有「调舵机中」小徽章；遥控卡写「调舵机中：主程序停着……」
   await open('#/', 390, 844, true);
   await waitFor(`/颗保持着/.test(document.querySelector('.servo-bar')?.innerText || '')`, '手机上的提示条', 10000);
