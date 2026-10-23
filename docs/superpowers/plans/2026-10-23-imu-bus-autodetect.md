@@ -48,6 +48,6 @@ Files: replica `software/studio/studio/imu.py`, `web/imu.js`, `web/state.js` if 
 - [x] Obtain independent code review and fix concrete findings.
 - [x] Commit/push the tested runtime branch; build robotd for aarch64 from that exact source.
 - [x] Repack the verified previous payload replacing only robotd and updating its manifest digest/size/provenance. Validate every payload entry before image construction.
-- [ ] Freeze replica source, build a new image, run checksum/xz checks and independent decompression/read-only filesystem inspection of installed runtime/Studio/factory state.
-- [ ] Publish a regular Latest release with six canonical assets; verify remote sizes/digests and download response. Update download pointers without rewriting earlier image assets.
-- [ ] Merge the isolated replica work into local studio-dev while preserving unrelated unpublished training changes and private notes. Report tested scope and outstanding physical acceptance.
+- [x] Freeze replica source, build a new image, run checksum/xz checks and independent decompression/read-only filesystem inspection of installed runtime/Studio/factory state.
+- [x] Publish a regular Latest release with six canonical assets; verify remote sizes/digests and download response. Update download pointers without rewriting earlier image assets.
+- [x] Merge the isolated replica work into local studio-dev while preserving unrelated unpublished training changes and private notes. Report tested scope and outstanding physical acceptance.
