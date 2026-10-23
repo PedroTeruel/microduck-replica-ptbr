@@ -16,7 +16,7 @@
 //   端到端测试：tests/imu_wizard_e2e.mjs 喂读数给这里的向导，tests/test_imu_wizard_e2e.py 把采到的交给 Python 算。
 // - 后端（studio/imu.py）接 solve / coarse-capture / verify：出厂标定模式下用 busStatus.last_sample.imu
 //   采「静止 + 前倾」，算完交给主程序的 verify-imu（摆正 ≤5°，20 秒内往前低头 15–30°）写进标定文件。
-//   识别芯片、换芯片不在网页里做：开机前接好，之后才接的用 SSH 跑 microduck-firstboot。
+//   总线板卡由主程序启动时自动识别；I²C 芯片检测仍用 microduck-firstboot。
 import { html, useState, useEffect, useRef } from './vendor/preact-htm.module.js';
 import { Duck3D } from './duck3d.js';
 import { TwoStep } from './confirm.js';
@@ -54,14 +54,19 @@ const STEP = {
 };
 const DIRV = { fwd: [1, 0, 0], back: [-1, 0, 0], left: [0, 1, 0], right: [0, -1, 0] };   // 机身系（= 3D 场景的世界系）
 
-// 值跟 robotd 的 trunk_imu.source 一致（bus / bno08x / lsm6dsv16x）；auto = 后端先在两条 I²C 上找一遍再定
-const CHIPS = [
-  ['auto', '自动识别', '在 HAT 的 J5（i2c-3）和 40 针 27/28 脚（i2c-4）上找，正好找到一颗就用它'],
-  ['bus', '总线小板', '挂在舵机总线上，ID 200。注意：现在的主程序只认 FT6 固件的小板'],
-  ['bno08x', 'BNO085', 'I²C 模块，地址 0x4A / 0x4B；推荐 gyro 融合'],
-  ['lsm6dsv16x', 'LSM6DSV16X', 'I²C 模块，地址 0x6A / 0x6B'],
-];
 const CHIP_CN = { bus: '总线小板（ID 200）', bno08x: 'BNO085（I²C）', lsm6dsv16x: 'LSM6DSV16X（I²C）' };
+const BUS_BOARD_CN = { ft6: 'FT6', imu_to_dxl: 'IMU-to-DXL', sflp_124_12: 'SFLP 124/12' };
+const BUS_PROTOCOL_CN = { feetech: 'Feetech', dxl2: 'Dynamixel 2.0' };
+function chipLabel(imu) {
+  if (imu?.source !== 'bus') return CHIP_CN[imu?.source] || imu?.source || '—';
+  const info = imu.imu_bus;
+  return info ? `${BUS_BOARD_CN[info.board] || info.board || '总线小板'} · ${BUS_PROTOCOL_CN[info.protocol] || info.protocol}（ID 200）`
+    : CHIP_CN.bus;
+}
+function imuContext(mode, imu) {
+  return JSON.stringify([mode, imu?.source, imu?.source === 'bus' ? imu.imu_bus || null : null,
+    imu?.redo?.session_id || null, !!imu?.redo?.active]);
+}
 
 // ---------------- 小算术（跟 imu_calib.py 同一套） ----------------
 
@@ -489,6 +494,8 @@ function DirPad({ W }) {
 function statusOf(st, imu, live) {
   const s = st?.imu?.status;
   const v = imu?.mount?.verified;
+  if (imu?.mount_protocol_mismatch) return { word: '方向需重新标定', kind: 'warn',
+    hint: '当前总线协议与已存的安装方向不匹配：在下面重新标定，并交给主程序验证' };
   if (v === false) {
     return { word: '方向没确认', kind: 'warn',
       hint: st?.posture === 'starting' ? '主程序不让进运动模式（站不起来）：先粗校一次' : '装歪了走路会往前冲：先校准' };
@@ -522,12 +529,13 @@ function StatusCard({ st, imu, live, age }) {
     <div class="imu-kv">
       <span>方向</span><b class=${'imu-word ' + (S.kind || '')}>${S.kind === 'warn' || S.kind === 'bad' ? html`<span class=${'badge ' + S.kind}>${S.kind === 'bad' ? '×' : '!'}</span>` : S.kind === 'ok' ? '✓ ' : ''}${S.word}</b>
       <span></span><span class="sv-small">${S.hint}</span>
-      <span>芯片</span><b>${src ? CHIP_CN[src] || src : '—'}</b>
+      <span>芯片</span><b>${chipLabel(imu)}</b>
       <span>倾角</span><b class="num">${fmt(st?.tilt_deg)}°<small> 跟竖直比；主程序 ${guard?.tilt_tolerance_deg ?? 10}° 以内才让走</small></b>
       <span>站姿</span><b class="num">${st?.hold ? html`离 HOME 最多差 ${fmt(st.hold.max_error_deg)}°<small> 标定模式站姿使能${st.hold.stage === 'holding' ? '：站住了' : '：正在站起来'}</small>`
         : guard?.max_joint_error_deg != null ? html`离 HOME 最多差 ${fmt(guard.max_joint_error_deg)}°<small> ${guard.joint_tolerance_deg ?? 5}° 以内算站好</small>` : '—'}</b>
       <span>读数</span><b class=${'num' + (F.live ? '' : ' imu-dim')}>${F.text}${imu?.reader?.errors ? html`<small> 读错 ${imu.reader.errors} 次</small>` : null}</b>
     </div>
+    ${src === 'bus' && imu?.imu_bus?.protocol === 'dxl2' ? html`<p class="sv-small">这类板卡不提供采样序号、状态位和传感器读数年龄；主程序按主机接收新鲜度和原始字节是否冻结检查读数。</p>` : null}
     ${imu?.mount?.quat ? html`<details class="imu-details"><summary>安装方向（四元数 w, x, y, z）</summary>
       <code class="num">${imu.mount.quat.map((x) => fmt(x, 4)).join(', ')}</code>${imu.mount.verified ? ' · 已验证' : ' · 没验证'}
       <p class="sv-small">装法改了或上次没调对，可以在下面「IMU 安装方向」重新标定、重新验证。</p></details>` : null}
@@ -536,8 +544,9 @@ function StatusCard({ st, imu, live, age }) {
 
 function ChipCard({ imu }) {
   return html`<section class="board imu-card">
-    <h3>芯片 <span class="sv-small">正在用：${imu?.source ? CHIP_CN[imu.source] || imu.source : '不知道'}</span></h3>
-    <p class="sv-small">IMU 要在第一次开机前接好。之后才接的，网页里不识别、也不换芯片：用 SSH 在鸭子上运行</p>
+    <h3>芯片 <span class="sv-small">正在用：${chipLabel(imu)}</span></h3>
+    <p class="sv-small">舵机总线 ID 200 的小板由主程序启动时自动识别：支持 FT6、IMU-to-DXL（Feetech）；SFLP 124/12（Dynamixel 2.0）。换板或装法改变后，重新标定安装方向。</p>
+    <p class="sv-small">I²C 模块要在第一次开机前接好。之后才接的，用 SSH 在鸭子上运行</p>
     <p><code class="num">sudo microduck-firstboot --detect-imu-only --force</code></p>
     <p class="sv-small">它会重新检测 IMU 并补上启动配置；跑完重启一次主程序。</p>
   </section>`;
@@ -764,7 +773,7 @@ function CoarseCard({ st, imu, link, live }) {
   const [busy, setBusy] = useState(false);
   const mode = st?.mode || imu?.mode;
   const redo = imu?.redo || {};
-  const context = `${mode}:${imu?.source}:${redo.session_id || ''}`;
+  const context = imuContext(mode, imu);
   useEffect(() => { setOpened(false); setMsg(null); }, [context]);
   const open = link.status === 'open' && live !== false;
   const commissioning = mode === 'commissioning';
@@ -790,6 +799,7 @@ function CoarseCard({ st, imu, link, live }) {
   return html`<section class="board imu-card imu-coarse">
     <h3>IMU 安装方向 <span class="sv-small">${redo.active ? '重标定未结束' : verified ? '已保存，可重新校验' : '第一次标定'}</span></h3>
     <p class="sv-small">先采静止和前倾，计算安装方向（四元数），再由主程序验证。装法改了或上次没调对，都可以重新做。</p>
+    ${imu?.mount_protocol_mismatch ? html`<p class="sv-warn">总线协议与已存安装方向不匹配：需要重新标定；主程序验证通过后才确认这份方向。</p>` : null}
     ${redo.active ? html`<p class="sv-warn">${canCollect
       ? '本次重标定还没完成：双手托住鸭子，保持卸力。验证通过后会恢复原模式；也可以取消并恢复原参数。'
       : '正在切换或恢复标定会话，请等当前操作结束；如未能恢复，可以取消并恢复原参数。'}</p>
@@ -938,11 +948,11 @@ export function ImuPage({ st, imu, link, live, age, pd }) {
   const [muted, setMutedState] = useState(loadMute);
   const mutedRef = useRef(muted);
   const setMuted = (v) => { mutedRef.current = v; setMutedState(v); saveMute(v); };
+  const context = imuContext(st?.mode || imu?.mode, imu);
 
   useEffect(() => {
-    if (!imu?.redo?.active) return;
-    W.current = freshWizard(); setRes(null); redraw();
-  }, [imu?.redo?.session_id, imu?.redo?.active]);
+    W.current = freshWizard(); setRes(null); setMsg(null); redraw();
+  }, [context]);
 
   useEffect(() => {
     if (!feed(W.current, st, live)) return;
@@ -963,7 +973,7 @@ export function ImuPage({ st, imu, link, live, age, pd }) {
       redraw();
     });
     return () => { dead = true; };
-  }, [phase]);
+  }, [phase, context]);
 
   const act = {
     start: () => { audioUnlock(); startCollect(W.current, performance.now() / 1000); setRes(null); redraw(); },
@@ -990,7 +1000,7 @@ export function ImuPage({ st, imu, link, live, age, pd }) {
       <span class="sv-metrics num">
         <span>方向 <b>${S.word}</b></span>
         <span>倾角 <b>${fmt(st?.tilt_deg)}°</b>${F.live ? '' : `（${F.text}）`}</span>
-        <span>芯片 <b>${imu?.source ? CHIP_CN[imu.source] || imu.source : '—'}</b></span>
+        <span>芯片 <b>${chipLabel(imu)}</b></span>
       </span>
     </header>
     <div class="sv-sub">IMU 告诉策略「机身往哪边歪」。大家装的都不一样，装歪几度站着看不出来，一走就往前冲（一号鸭 10-12 装歪 8.5° 就是这样），所以要重新校一下。</div>

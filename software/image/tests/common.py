@@ -101,7 +101,8 @@ def run_shell(args, cwd=BASE, env_extra=None, umask=None, timeout=180):
     if env_extra:
         env.update(env_extra)
     if umask is not None:
-        cmd = [SH, "-c", f'umask {umask}; exec "$0" "$@"'] + args
+        # Git archives preserve these scripts as 0644; match the normal explicit-sh path.
+        cmd = [SH, "-c", f'umask {umask}; exec "$0" "$@"', SH] + args
     else:
         cmd = [SH] + args
     return subprocess.run(

@@ -342,6 +342,32 @@ class ImuRedoTest(Base):
         self.assertFalse(self.manifest()["active"])
         self.assertFalse(self.w.robot.torque)
 
+    def test_dxl2_finish_accepts_verified_protocol_binding_and_cancel_preserves_original(self):
+        self.w.bus_mutate = lambda bus: bus.update(imu_bus={"protocol": "dxl2", "board": "sflp_124_12", "identity": [1]})
+        session = self.enter()
+        self.verified()
+        for path in (self.path, self.saved):
+            path.write_text('imu_bus_protocol = "dxl2"\n' + path.read_text(encoding="utf-8"), encoding="utf-8")
+        code, detail = self.call_redo("finish", session_id=session, source="bus", quat=[0.5]*4)
+        self.assertEqual(code, H.EXIT_OK, detail)
+        import tomllib
+        self.assertEqual(tomllib.loads(self.path.read_text(encoding="utf-8"))["imu_bus_protocol"], "dxl2")
+        original = self.path.read_bytes()
+        self.old = original
+        session = self.enter()
+        self.verified([1., 0., 0., 0.])
+        code, detail = self.call_redo("cancel", session_id=session)
+        self.assertEqual(code, H.EXIT_OK, detail)
+        self.assertEqual(self.path.read_bytes(), original)
+
+    def test_dxl2_finish_rejects_missing_protocol_binding(self):
+        self.w.bus_mutate = lambda bus: bus.update(imu_bus={"protocol": "dxl2", "board": "sflp_124_12", "identity": [1]})
+        session = self.enter()
+        self.verified()
+        code, detail = self.call_redo("finish", session_id=session, source="bus", quat=[0.5]*4)
+        self.assertEqual(code, H.EXIT_STATE, detail)
+        self.assertTrue(self.manifest()["active"])
+
     def test_finish_refuses_unverified_mismatch_other_calibration_or_source(self):
         session = self.enter()
         self.verified()

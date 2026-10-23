@@ -621,6 +621,74 @@ class SharedCodeTest(unittest.TestCase):
             H.validate_calibration(a, source)
             C.validate_calibration(b, source)
 
+    def test_bus_protocol_binding_survives_step_three_serialization(self):
+        import tomllib
+        for module in (C, H):
+            for protocol in ("feetech", "dxl2"):
+                cur = current_calibration()
+                cur["imu_bus_protocol"] = protocol
+                with self.subTest(module=module.__name__, protocol=protocol):
+                    built = module.build_calibration(cur, joints_payload(), {"source": "bus", "quat": BUS_QUAT})
+                    self.assertEqual(built.get("imu_bus_protocol"), protocol)
+                    parsed = tomllib.loads(module.render_calibration(built))
+                    self.assertEqual(parsed.get("imu_bus_protocol"), protocol)
+                    module.validate_calibration(parsed, "bus")
+
+    def test_protocol_binding_rejects_auto_and_unknown_values(self):
+        for module in (C, H):
+            for protocol in ("auto", "other", 1, True, None):
+                cur = current_calibration()
+                cur["imu_bus_protocol"] = protocol
+                with self.subTest(module=module.__name__, protocol=protocol), self.assertRaises(module.CalibError):
+                    module.build_calibration(cur, joints_payload(), {"source": "bus", "quat": BUS_QUAT})
+
+    def test_legacy_serialization_does_not_invent_a_protocol_binding(self):
+        for module in (C, H):
+            built = module.build_calibration(current_calibration(), joints_payload(), {"source": "bus", "quat": BUS_QUAT})
+            self.assertNotIn("imu_bus_protocol", built)
+
+
+class BusPendingTest(unittest.TestCase):
+    def test_pending_bus_calibration_is_bound_to_transport_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            info = {"protocol": "feetech", "board": "imu_to_dxl", "identity": [1, 2, 3]}
+            C.save_pending(directory, "bus", BUS_QUAT, imu_bus=info)
+            pending = C.load_pending(directory)
+            self.assertEqual(pending.get("imu_bus"), info)
+            bus = {"imu_bus": info}
+            self.assertTrue(C.pending_matches(pending, "bus", bus))
+            for delta in ({"identity": [4]}, {"board": "ft6"}, {"protocol": "dxl2", "board": "sflp_124_12"}):
+                with self.subTest(delta=delta):
+                    self.assertFalse(C.pending_matches(pending, "bus", {"imu_bus": {**info, **delta}}))
+
+    def test_legacy_pending_is_accepted_only_for_legacy_or_feetech_bus(self):
+        pending = {"source": "bus", "quat": BUS_QUAT}
+        self.assertTrue(C.pending_matches(pending, "bus", {}))
+        self.assertTrue(C.pending_matches(pending, "bus", {"imu_bus": {"protocol": "feetech"}}))
+        self.assertFalse(C.pending_matches(pending, "bus", {"imu_bus": {"protocol": "dxl2"}}))
+
+
+class BusReadinessTest(Base):
+    def test_changed_bus_identity_cannot_commit_persisted_standing_result(self):
+        info = {"protocol": "dxl2", "board": "sflp_124_12", "identity": [1, 2, 3]}
+        self.calib["calibration"]["imu_bus_protocol"] = "dxl2"
+        C.save_pending(self.dir, "bus", BUS_QUAT, imu_bus=info)
+        self.svc.reload(force=True)
+        self.rd.bus.value["imu_bus"] = {**info, "identity": [9]}
+        self.assertFalse(self.item("imu")["ok"])
+        with self.assertRaisesRegex(C.Refused, "总线.*改变"):
+            self.svc._payload()
+
+    def test_dxl2_requires_runtime_protocol_verification_even_if_step_skipped(self):
+        self.calib["calibration"]["imu_mount_verified"] = True
+        self.rd.bus.value["imu_bus"] = {"protocol": "dxl2", "board": "sflp_124_12", "identity": [1]}
+        self.svc.onboard = mock.Mock()
+        self.svc.onboard.user_mark.return_value = "skip"
+        item = self.item("imu")
+        self.assertFalse(item["ok"])
+        self.assertIn("重新标定", item["text"])
+        self.assertFalse(item["default"])
+
 
 if __name__ == "__main__":
     unittest.main()

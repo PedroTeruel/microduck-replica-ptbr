@@ -16,7 +16,7 @@ Microduck 复刻镜像 —— 开源许可说明
    及各贡献者。官方仓库没有 NOTICE 文件。
 
 3. /opt/robot/feetech-ft5-r5/ 下的 robotd、padd、mediad：在官方 0.15.1 的基础上，
-   加了飞特 HD-1910 舵机总线、I²C IMU 模块、陀螺融合、UDP 手柄等改动后编译的版本，
+   加了飞特 HD-1910 舵机总线、I²C IMU 模块、总线 IMU 协议识别、陀螺融合、UDP 手柄等改动后编译的版本，
    仍按 Apache-2.0 分发。改动说明和对应的源码提交见 microduck-replica 仓库的
    software/image/README.md。同目录的 LICENSE 只覆盖这三个程序，不覆盖 models/ 和
    roller/ 下的模型。
