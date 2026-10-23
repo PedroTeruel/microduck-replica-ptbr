@@ -305,6 +305,17 @@ class CommitE2E(unittest.TestCase):
         imu = self.node("imu")
         self.assertIn("方向已确认", imu["imu"], imu)
 
+    def test_02b_imu_coarse_verify_while_holding(self):
+        result = self.node("imu-hold")
+        self.assertIn("方向已确认", result["imu"], result)
+        self.assertIn("可先点「站姿使能」", result["start"])
+        for label in ("holdBefore", "holdAfter"):
+            self.assertEqual(result[label]["torque_state"], "all_enabled", result[label])
+            self.assertEqual(result[label]["hold"]["stage"], "holding", result[label])
+            self.assertIs(result[label]["policy_motion_enabled"], False)
+        self.assertEqual(result["cleaned"]["torque_state"], "off")
+        self.assertEqual(result["errors"], [])
+
     def test_03_servo_center_then_commit(self):
         from studio import commit as C
         servo = self.node("servo")
