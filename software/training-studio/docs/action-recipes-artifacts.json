@@ -1,0 +1,116 @@
+[
+  {
+    "recipe_id": "hd1910-sitstand-flat-microduck",
+    "run_id": "ae9175d30b7d",
+    "task_id": "Mjlab-SitStand-Flat-MicroDuck-Studio-HD1910",
+    "onnx_checker": true,
+    "inference_samples": 32,
+    "input_dim": 61,
+    "output_dim": 14,
+    "pt_onnx_max_abs_error": 3.0994415283203125e-06,
+    "video_frames": 250,
+    "video_fps": 50.0,
+    "evaluation": {
+      "steps": 250,
+      "mean_reward": 0.09096839857287704,
+      "terminated_episodes": 0,
+      "note": "Single bounded rollout; this is not hardware validation.",
+      "evaluation_camera": {
+        "distance_m": 0.9,
+        "lookat_offset_m": [
+          0.0,
+          0.0,
+          0.05
+        ],
+        "elevation_deg": -15.0,
+        "azimuth_deg": 135.0
+      },
+      "task_id": "Mjlab-SitStand-Flat-MicroDuck-Studio-HD1910",
+      "checkpoint": "model_4.pt",
+      "demo": false,
+      "evaluation_seed": 42,
+      "startup_seed": 42
+    },
+    "sha256": {
+      "model_4.pt": "4d965598392d9a1e2f9c67bdb5eef91f5b20a5a6cbc98057d6972c2477ec6965",
+      "policy.onnx": "ea4bdc02dd8303baf39816d765e26626bf2de6352f5c6c76d5f8d56dc1b0d0b3",
+      "rl-video-step-0.mp4": "3ec695fb559cfa19794b31e67e04baa4f990582aada1cc76ff753a13c84e0717"
+    }
+  },
+  {
+    "recipe_id": "hd1910-ballkickleft-flat-backlash-microduck",
+    "run_id": "eae9b1e4daae",
+    "task_id": "Mjlab-BallKickLeft-Flat-Backlash-MicroDuck-Studio-HD1910",
+    "onnx_checker": true,
+    "inference_samples": 32,
+    "input_dim": 61,
+    "output_dim": 14,
+    "pt_onnx_max_abs_error": 3.3974647521972656e-06,
+    "video_frames": 250,
+    "video_fps": 50.0,
+    "evaluation": {
+      "steps": 250,
+      "mean_reward": 0.14130944106727839,
+      "terminated_episodes": 3,
+      "note": "Single bounded rollout; this is not hardware validation.",
+      "evaluation_camera": {
+        "distance_m": 0.9,
+        "lookat_offset_m": [
+          0.0,
+          0.0,
+          0.05
+        ],
+        "elevation_deg": -15.0,
+        "azimuth_deg": 135.0
+      },
+      "task_id": "Mjlab-BallKickLeft-Flat-Backlash-MicroDuck-Studio-HD1910",
+      "checkpoint": "model_4.pt",
+      "demo": false,
+      "evaluation_seed": 42,
+      "startup_seed": 42
+    },
+    "sha256": {
+      "model_4.pt": "53cf6b22fd2edd541342ce475d1a2becb177e8c1c2aade48ea79abf7d1453632",
+      "policy.onnx": "274e8ff8091ecdba42441600cd66c2d04c3fae2396868da1adb95118907169f1",
+      "rl-video-step-0.mp4": "057517ccf63613f5f74f8c154e9bc3640279b407a1ff3da9e8005ac97972ab0e"
+    }
+  },
+  {
+    "recipe_id": "hd1910-spin-flat-microduck",
+    "run_id": "fd28c0c47d18",
+    "task_id": "Mjlab-Spin-Flat-MicroDuck-Studio-HD1910",
+    "onnx_checker": true,
+    "inference_samples": 32,
+    "input_dim": 61,
+    "output_dim": 14,
+    "pt_onnx_max_abs_error": 3.814697265625e-06,
+    "video_frames": 250,
+    "video_fps": 50.0,
+    "evaluation": {
+      "steps": 250,
+      "mean_reward": 0.05817868146346882,
+      "terminated_episodes": 4,
+      "note": "Single bounded rollout; this is not hardware validation.",
+      "evaluation_camera": {
+        "distance_m": 0.9,
+        "lookat_offset_m": [
+          0.0,
+          0.0,
+          0.05
+        ],
+        "elevation_deg": -15.0,
+        "azimuth_deg": 135.0
+      },
+      "task_id": "Mjlab-Spin-Flat-MicroDuck-Studio-HD1910",
+      "checkpoint": "model_4.pt",
+      "demo": false,
+      "evaluation_seed": 42,
+      "startup_seed": 42
+    },
+    "sha256": {
+      "model_4.pt": "e8b3df6578ea1296a1eecd5e7dcded35ded26ee8e97560cd4c4306285f00fcb6",
+      "policy.onnx": "e68f142952abdedfea1b9808a32ed57f3334e0071ee4c01e9629c7f392fd8914",
+      "rl-video-step-0.mp4": "ccf728d3acb87956bae525a91a2291f7b3ccbf085354b43a65720c15b12200be"
+    }
+  }
+]

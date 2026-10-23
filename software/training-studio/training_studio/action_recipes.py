@@ -15,7 +15,7 @@ SOURCE_URL = ("https://github.com/kissqy/Microduck-kissqy/blob/" + SOURCE_REVISI
               "/microduck-hd1910/training-console/data/tasks.json")
 OFFICIAL_SOURCE_URL = ("https://github.com/pollen-robotics/microduck_rl/tree/" +
                        ENGINE_BASELINE_REVISION + "/src/mjlab_microduck/tasks")
-BUDGET_NOTE = ("默认预算沿用参考目录的 4096 环境 × 每轮 24 步；轮数是预算上限，不保证收敛。"
+BUDGET_NOTE = ("本机起步使用 512 个环境；参考目录预算以 4096 环境 × 每轮 24 步为基准，轮数不保证收敛。"
                "改变环境数会改变采样量和课程进度，不能按相同轮数视为等效训练；先运行 64 环境 × 5 轮短试跑。")
 PREREQUISITE_NOTE = ("需要同地形、同齿隙版本的行走和倒地起身 PT 教师检查点，并核对 HD1910 执行器、"
                      "61 维观测、14 维动作、归一化及指令语义兼容。还需完成教师加载与联合训练适配；"
@@ -80,9 +80,10 @@ def build_action_recipes(defaults):
                 "experiment_name": "microduck_hd1910_" + upstream_task.removeprefix("Mjlab-").removesuffix("-MicroDuck").lower().replace("-", "_"),
                 "launchable": launchable, "prerequisite_note": "" if launchable else PREREQUISITE_NOTE,
                 "teacher_recipe_ids": teachers,
-                "defaults": dict(defaults, num_envs=4096, iterations=iterations),
+                "defaults": dict(defaults, num_envs=512, iterations=iterations),
                 "hardware": "Linux + NVIDIA CUDA 显卡；HD1910 舵机 M6 模型；" + ("需要轮滑脚部硬件" if rollers else "普通脚部"),
-                "validation": "尚未完成本机 GPU 短试跑；仿真配方适配不代表动作已学会，也未经过真机验证。",
+                "validation": ("尚未完成本机 GPU 短试跑；仿真配方适配不代表动作已学会，也未经过真机验证。"
+                               if launchable else "联合训练尚未接通；需要兼容 PT 教师、教师加载和联合训练适配。"),
                 "catalog": {
                     "category": category, "tags": [terrain_label, "齿隙" if backlash else "无齿隙", "轮滑硬件" if rollers else "普通脚部"],
                     "preview_kind": "text", "source_label": "官方配方 · 本项目 HD1910 适配",
@@ -92,7 +93,7 @@ def build_action_recipes(defaults):
                     "terrain": terrain, "backlash": backlash, "requires_rollers": rollers,
                     "reference_envs": 4096, "reference_steps_per_iteration": 24,
                     "reference_iterations": iterations, "budget_note": BUDGET_NOTE,
-                    "verification_state": "unverified", "verification_label": "待 GPU 验证",
+                    "verification_state": "unverified", "verification_label": "待 GPU 验证" if launchable else "联合训练待接入",
                     "verification_evidence": [],
                     "instructions": [goal, "先完成本配方与相同种子、学习率、档案的短试跑。" if launchable else PREREQUISITE_NOTE,
                                      "检查点评估用于查看实际动作，短试跑只验证流程，不能证明收敛或真机性能。"],

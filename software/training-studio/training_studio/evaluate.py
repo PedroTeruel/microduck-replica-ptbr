@@ -123,6 +123,12 @@ def main():
     cfg.seed = args.seed
     cfg.scene.num_envs = 1
     cfg.viewer.width, cfg.viewer.height = 960, 540
+    if args.task_id.endswith("-Studio-HD1910"):
+        # The inherited 3 m locomotion camera hides this 25 cm robot's feet.
+        cfg.viewer.distance = .9
+        cfg.viewer.lookat = (0., 0., .05)
+        cfg.viewer.elevation = -15.
+        cfg.viewer.azimuth = 135.
     skill = None
     if args.balance_config is not None:
         from mjlab_microduck.balance_parameters import (
@@ -166,6 +172,11 @@ def main():
             else:
                 summary = bounded_rollout(env, policy, args.steps)
                 summary["note"] = "Single bounded rollout; this is not hardware validation."
+                if args.task_id.endswith("-Studio-HD1910"):
+                    summary["evaluation_camera"] = {"distance_m": cfg.viewer.distance,
+                                                    "lookat_offset_m": list(cfg.viewer.lookat),
+                                                    "elevation_deg": cfg.viewer.elevation,
+                                                    "azimuth_deg": cfg.viewer.azimuth}
         summary.update(task_id=args.task_id, checkpoint=args.checkpoint_file.name, demo=False,
                        evaluation_seed=summary.get("seed", args.seed), startup_seed=args.seed)
         (args.output_dir / "evaluation.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
