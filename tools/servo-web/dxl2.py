@@ -112,7 +112,11 @@ class Dxl2Bus:
                     replies[sid] = (error, payload)
                 if len(replies) == len(expected_ids):
                     break
-        if getattr(self.bus, "trace", None):
+        # Share Feetech's polling suppression, but retain failed transactions
+        # for diagnosis even when their instruction is normally quiet.
+        failed = len(replies) != len(expected_ids) or any(error for error, _ in replies.values())
+        trace_instruction = tx[7] not in getattr(self.bus, "trace_skip", ())
+        if getattr(self.bus, "trace", None) and (trace_instruction or failed):
             from feetech import hexs
             self.bus.trace(f"→ DXL2 {hexs(tx)}")
             for sid, (error, payload) in replies.items():
