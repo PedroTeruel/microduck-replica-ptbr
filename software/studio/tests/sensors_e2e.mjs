@@ -25,7 +25,9 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const wait = async (expression, what, timeout = 16000) => {
   const end = Date.now() + timeout;
   while (Date.now() < end) { if (await js(expression)) return; await sleep(100); }
-  throw Error(`Timeout: ${what}\n${await js('document.body.innerText.slice(0,4500)')}\nBrowser errors: ${JSON.stringify(errors)}\nFixture: ${JSON.stringify(await js(`window.__sensorFixture && {sockets:__sensorFixture.sockets.length,states:__sensorFixture.sockets.map(s=>s.readyState),signals:__sensorFixture.signals,rpc:__sensorFixture.rpc,pcs:__sensorFixture.pcs.length}`))}`);
+  await shot('timeout');
+  const layout = await js(`(() => { const p=document.querySelector('#pad-block'), c=document.querySelector('.inline-camera'); return {url:location.hash,scroll:scrollY,pad:p?.getBoundingClientRect().toJSON(),margin:p&&getComputedStyle(p).scrollMarginTop,card:c?.getBoundingClientRect().toJSON(),state:document.querySelector('.inline-camera-status')?.dataset.state}; })()`);
+  throw Error(`Timeout: ${what}\nLayout: ${JSON.stringify(layout)}\n${await js('document.body.innerText.slice(0,4500)')}\nBrowser errors: ${JSON.stringify(errors)}\nFixture: ${JSON.stringify(await js(`window.__sensorFixture && {sockets:__sensorFixture.sockets.length,states:__sensorFixture.sockets.map(s=>s.readyState),signals:__sensorFixture.signals,rpc:__sensorFixture.rpc,pcs:__sensorFixture.pcs.length}`))}`);
 };
 const click = async selector => {
   await wait(`document.querySelector(${JSON.stringify(selector)}) && !document.querySelector(${JSON.stringify(selector)}).disabled`, selector);
@@ -138,6 +140,71 @@ try {
   await js(`window.__sensorHidden=false;document.dispatchEvent(new Event('visibilitychange'))`);
   await wait(`document.querySelector('.band-camera')?.dataset.state==='test'`, 'band resumed');
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false });
+  // User's marked location: forward video immediately below the 3D posture card.
+  await wait(`document.querySelector('.pd-left .inline-camera')`, 'camera below posture');
+  await js(`document.querySelector('.inline-camera').scrollIntoView({block:'center'})`);
+  await wait(`document.querySelector('.inline-camera-status')?.dataset.state==='test'`, 'test source stays a placeholder');
+  assert(await js('__sensorFixture.sockets.length===0'), 'overview must not stream a test pattern automatically');
+  assert(await js(`(() => { const d=document.querySelector('.pd-3d').getBoundingClientRect(), c=document.querySelector('.inline-camera').getBoundingClientRect(), r=document.querySelector('.pd-live').getBoundingClientRect();
+    return c.top>=d.bottom && c.top-d.bottom<=20 && Math.abs(c.left-d.left)<2 && Math.abs(c.width-d.width)<2 && c.right<=r.left && c.bottom<=innerHeight-4; })()`), 'desktop camera and posture fit together in the left column');
+  await shot('inline-camera-test-desktop');
+  writeFileSync(arg('camera-config'), '[media]\nsource="camera"\n');
+  writeFileSync(arg('control'), JSON.stringify({ mode:'ready', camera:'offline' }));
+  await click('.inline-camera-retry');
+  await wait(`document.querySelector('.inline-camera-status')?.dataset.state==='offline'`, 'unavailable camera stays offline');
+  assert(await js('__sensorFixture.sockets.length===0'), 'offline service must not start RTC');
+  writeFileSync(arg('control'), JSON.stringify({ mode:'ready' }));
+  await wait(`document.querySelector('.inline-camera-status')?.dataset.state==='playing'`, 'inline camera recovers without a retry click', 16000);
+  assert(await js(`document.querySelector('.inline-camera-video').videoWidth===640 && /模拟/.test(document.querySelector('.inline-camera-source').innerText)`), 'actual frames and simulated producer evidence');
+  assert(await js(`(() => { const s=document.querySelector('.inline-camera .camera-screen').getBoundingClientRect(), v=document.querySelector('.inline-camera-video').getBoundingClientRect();
+    return Math.abs(v.width-s.width)<2 && Math.abs(v.height-s.height)<2 && getComputedStyle(document.querySelector('.inline-camera-video')).transform!=='none'; })()`), 'rotated video bounds fit compact screen');
+  await shot('inline-camera-live-desktop');
+  for (const [width,height] of [[1440,900],[1101,900],[1440,800],[1440,768]]) {
+    await send('Emulation.setDeviceMetricsOverride', { width,height,deviceScaleFactor:1,mobile:false });
+    await js(`document.querySelector('.inline-camera').scrollIntoView({block:'center'})`); await sleep(150);
+    const layout = await js(`(() => { const d=document.querySelector('.pd-3d').getBoundingClientRect(), c=document.querySelector('.inline-camera').getBoundingClientRect();
+      return {below:c.top>=d.bottom, bottom:c.bottom, sticky:getComputedStyle(document.querySelector('.pd-left')).position}; })()`);
+    assert(layout.below, `camera never overlaps posture at ${width}x${height}`);
+    if (height>840) assert(layout.sticky==='sticky' && layout.bottom<=height-4, `whole left stack fits ${width}x${height}: ${JSON.stringify(layout)}`);
+    else assert(layout.sticky==='static', 'short screens scroll rather than pin a clipped preview');
+  }
+  // A wrapped servo notice can consume much more height than the normal band.
+  await send('Emulation.setDeviceMetricsOverride', { width:1440,height:900,deviceScaleFactor:1,mobile:false });
+  await js(`document.querySelector('.sticky-bar').style.minHeight='300px'`);
+  await wait(`getComputedStyle(document.querySelector('.pd-left')).position==='static'`, 'oversized sticky stack falls back to scrolling');
+  await js(`document.querySelector('.sticky-bar').style.minHeight=''`);
+  await wait(`getComputedStyle(document.querySelector('.pd-left')).position==='sticky'`, 'fitting stack can pin again');
+  await send('Emulation.setDeviceMetricsOverride', { width:1440,height:1050,deviceScaleFactor:1,mobile:false });
+  await js('window.scrollTo(0,0)');
+  await wait(`__sensorFixture.sockets.every(s=>s.readyState===3) && __sensorFixture.tracks.every(t=>t.readyState==='ended')`, 'scroll away releases inline video');
+  await js(`document.querySelector('.inline-camera').scrollIntoView({block:'center'})`);
+  await wait(`document.querySelector('.inline-camera-status')?.dataset.state==='playing'`, 'return to preview resumes');
+  await js(`window.__sensorHidden=true;document.dispatchEvent(new Event('visibilitychange'))`);
+  await wait(`__sensorFixture.sockets.every(s=>s.readyState===3)`, 'background releases inline video');
+  await js(`window.__sensorHidden=false;document.dispatchEvent(new Event('visibilitychange'))`);
+  await wait(`document.querySelector('.inline-camera-status')?.dataset.state==='playing'`, 'foreground resumes inline video');
+  for (const width of [390,320]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height:844, deviceScaleFactor:1, mobile:true });
+    await js(`document.querySelector('.inline-camera').scrollIntoView({block:'center'})`); await sleep(150);
+    assert(await js(`(() => { const d=document.querySelector('.pd-3d').getBoundingClientRect(), c=document.querySelector('.inline-camera').getBoundingClientRect(), r=document.querySelector('#pd-remote').getBoundingClientRect();
+      return d.bottom<=c.top && c.bottom<=r.top && document.documentElement.scrollWidth<=innerWidth+1; })()`), `camera follows 3D and fits ${width}px`);
+    await shot(`inline-camera-mobile-${width}`);
+  }
+  await js(`location.hash='#/camera'`);
+  await wait(`document.querySelector('.camera-status')?.dataset.state==='playing'`, 'dedicated camera takes over');
+  assert(await js('__sensorFixture.sockets.filter(s=>s.readyState===1).length===1'), 'only one active video session across routes');
+  await js(`location.hash='#/pad'`);
+  // The handpad's async status banner can shift this anchor after it scrolls.
+  await wait(`!document.querySelector('.camera-page') && (() => { const y=document.querySelector('#pad-block').getBoundingClientRect().top; return y>=56 && y<180; })()`, 'return to visible handpad anchor before scrolling to video');
+  writeFileSync(arg('camera-config'), '[media]\nsource="other"\n');
+  await js(`document.querySelector('.inline-camera').scrollIntoView({block:'center'})`);
+  await click('.inline-camera-retry');
+  await wait(`document.querySelector('.inline-camera-status')?.dataset.state==='unknown'`, 'unknown source never claims camera');
+  assert(await js('__sensorFixture.sockets.every(s=>s.readyState===3)'), 'unknown source does not stream');
+  writeFileSync(arg('camera-config'), '[media]\nsource="test"\n');
+  await click('.inline-camera-retry');
+  await wait(`document.querySelector('.inline-camera-status')?.dataset.state==='test'`, 'test source restored');
+  await send('Emulation.setDeviceMetricsOverride', { width:1440, height:1050, deviceScaleFactor:1, mobile:false });
   await click('.band-camera');
   await wait(`document.querySelector('.camera-status')?.dataset.state==='playing'`, 'native video playback');
   assert(await js(`document.querySelector('.camera-video').videoWidth===640`), 'actual video geometry should be used');

@@ -685,7 +685,7 @@ function Overview({ st, live, age, duck, pd, onSame, tune, sensorsActive }) {
     <${Band} st=${st} pd=${pd} gray=${age > STALE_GRAY_MS} onSame=${onSame} sensorsActive=${sensorsActive} />
     <${Onboard} st=${st} live=${live} />
     <${Todo} st=${st} live=${live} />
-    <${PadPage} st=${st} pad=${pd} link=${link} live=${live} />
+    <${PadPage} st=${st} pad=${pd} link=${link} api=${api} previewActive=${sensorsActive} live=${live} />
     <${TuneSection} tune=${tune} />
   </div>`;
 }

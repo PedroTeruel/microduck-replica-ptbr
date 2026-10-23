@@ -16,19 +16,22 @@
 
 .pd-page .pd-main { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(380px, 1.15fr); gap: 16px; align-items: start; }
 .pd-page .pd-side { display: flex; flex-direction: column; gap: 16px; }
-/* 宽屏：左栏只放 3D 鸭子（占两行高、卡片吸在仪表带下面），右栏上面网页手柄图、下面遥控（用户 10-19：「鸭子 3D 在左边，虚拟手柄在右面」）。
-   窄屏一列，照 DOM 顺序：手柄图 → 3D → 遥控（3D 紧挨在摇杆上面） */
-.pd-page .pd-left { display: flex; flex-direction: column; gap: 16px; min-width: 0; align-self: stretch; }
+/* 左栏上下放姿态与前方画面，整体吸顶，卡片互不覆盖。窄屏：手柄图 → 3D → 摄像头 → 遥控。 */
+.pd-page .pd-left { --pd-view-height: calc(100vh - 80px - var(--bar-h, 0px) - var(--band-h, 0px)); display: flex; flex-direction: column; gap: 16px; min-width: 0; align-self: start; }
 @media (min-width: 1101px) {
-  .pd-page .pd-main > .pd-left { grid-column: 1; grid-row: 1 / span 2; }
+  .pd-page .pd-main > .pd-left { grid-column: 1; grid-row: 1 / span 2; position: sticky; top: calc(64px + var(--bar-h, 0px) + var(--band-h, 0px)); }
+  .pd-page .pd-main > .pd-left.pd-left-overflow { position: static; }
   .pd-page .pd-main > .pd-live { grid-column: 2; grid-row: 1; }
   .pd-page .pd-main > .pd-remote { grid-column: 2; grid-row: 2; }
 }
-.pd-page .pd-3d { padding: 10px 12px; position: sticky; top: calc(64px + var(--bar-h, 0px) + var(--band-h, 0px)); }
-.pd-page .pd-3d-stage { position: relative; height: min(60vh, 520px); border-radius: var(--radius-board); overflow: hidden; background: var(--stage-bg); }
+.pd-page .pd-3d { padding: 10px 12px; position: static; }
+.pd-page .pd-3d-stage { position: relative; height: clamp(180px, calc((var(--pd-view-height) - 220px) * .56), 400px); border-radius: var(--radius-board); overflow: hidden; background: var(--stage-bg); }
 .pd-page .pd-3d-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; }
 .pd-page .pd-3d-stage canvas.stage-stale { filter: grayscale(1); opacity: .5; }
 .pd-page .pd-3d-line { margin: 8px 4px 0; }
+@media (min-width: 1101px) and (max-height: 840px) {
+  .pd-page .pd-main > .pd-left { position: static; }
+}
 /* 遥控后面：配对向导、测急停、配过的手柄（审查 O11：遥控紧跟着手柄图） */
 /* 手柄区下面这排卡片：有几张就平分整行、一样高（用户 10-19：不要一张宽一张窄、右边空一大块） */
 .pd-page .pd-more { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: stretch; }

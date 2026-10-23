@@ -228,6 +228,7 @@ class OverviewE2E(unittest.TestCase):
         self.assertIn("急停用顶上红按钮或空格（手柄 Select 这时不管用）", b["text"])                # 审查 D6
         self.assertIn("别手动起 robotd，先点「交还主程序」", b["text"])                               # 审查 D9
         self.assertTrue(b["sticky"]["visible"], b["sticky"])                                         # 滚到手柄区还在（吸顶）
+        self.assertTrue(b["visualFits"], "有舵机提示条时，姿态和视频仍能一起显示或正常滚动")
         p = b["phone"]
         self.assertTrue(p["visible"], p)                                                             # 手机滚到遥控卡也看得到
         self.assertEqual(p["badge"], "调舵机中")
@@ -243,12 +244,14 @@ class OverviewE2E(unittest.TestCase):
         self.assertTrue(b["gone"])
 
     def test_pad_3d_left_of_sticks_and_pauses_out_of_view(self):
-        """用户 10-18 第三条：宽屏滚到手柄区时 3D 在视口里、在遥控卡左边（sticky、touch-action pan-y）；滚出去停画；
+        """用户 10-24：宽屏左侧3D与摄像头整体吸顶，卡片不相互覆盖；滚出去停画；
         3D 卡不算「在手柄区」（滚回顶上以后 active 是 false）。手机：3D 在遥控上面、矮、不 sticky，不能左右滑。"""
         d = self.out["pad3d"]
         self.assertGreaterEqual(d["visFrac"], 0.6, d)
         self.assertTrue(d["left"], d)
-        self.assertEqual(d["sticky"], "sticky")
+        self.assertEqual(d["sticky"], "static")
+        self.assertEqual(d["stackSticky"], "sticky")
+        self.assertTrue(d["cameraBelow"])
         self.assertEqual(d["touch"], "pan-y")
         self.assertTrue(d["drawsInView"])
         self.assertFalse(d["drawsOutOfView"])

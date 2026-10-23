@@ -161,24 +161,33 @@ export function SensorBandCells({ api, active }) {
 }
 
 const CAMERA_STATES = { loading: '读取连接信息…', connecting: '正在连接摄像头…', signaling: '信令已连接，等待视频来源…',
-  negotiating: '正在协商视频连接…', receiving: '视频轨道已接收，等待第一帧…', playing: '正在播放', stopped: '预览已停止', hidden: '页面隐藏，预览已暂停', error: '预览失败' };
+  negotiating: '正在协商视频连接…', receiving: '视频轨道已接收，等待第一帧…', playing: '正在播放', stopped: '预览已停止', hidden: '预览已暂停', error: '预览失败',
+  test: '测试源未播放', offline: '未连接', unknown: '来源待确认' };
 
-export function CameraPage({ api }) {
-  const video = useRef(null), camera = useRef(null);
+export function inlineCameraPolicy(info) {
+  if (info?.service_state === 'offline') return { play: false, state: 'offline', message: '摄像头画面暂不可用，连接后将在这里预览。' };
+  if (info?.source === 'test') return { play: false, state: 'test', message: '当前设置为测试画面。接入真实摄像头画面后，将在这里显示。' };
+  if (info?.source !== 'camera' || info?.service_state !== 'online') return { play: false, state: 'unknown', message: '还未确认摄像头画面来源，可前往摄像头页检查。' };
+  return { play: true };
+}
+
+function useCameraSession({ api, video, active = true, inline = false }) {
+  const camera = useRef(null);
   const [config, setConfig] = useState(null), [connection, setConnection] = useState({ state: 'loading' });
   const [wanted, setWanted] = useState(true), [attempt, setAttempt] = useState(0);
   const visible = useVisible();
   useEffect(() => {
-    if (!visible || !wanted) {
-      camera.current?.stop(!visible ? 'hidden' : 'stopped');
-      setConnection({ state: !visible ? 'hidden' : 'stopped' });
+    if (!active || !visible || !wanted) {
+      camera.current?.stop(!active || !visible ? 'hidden' : 'stopped');
+      setConnection({ state: !active || !visible ? 'hidden' : 'stopped' });
       return;
     }
-    const abort = new AbortController(); let disposed = false;
+    const abort = new AbortController(); let disposed = false, retry = null;
     const transport = new CameraLink({ video: video.current, onState: setConnection });
     camera.current = transport;
     setConnection({ state: 'loading' });
-    (async () => {
+    setConfig(null);
+    const read = async () => {
       let info;
       try {
         const result = await api('/api/camera', undefined, 3500, abort.signal);
@@ -186,16 +195,71 @@ export function CameraPage({ api }) {
       } catch (error) { info = { source: 'unknown', error: error.name === 'AbortError' ? '连接信息读取超时' : '连接信息读取失败' }; }
       if (disposed) return;
       setConfig(info);
+      if (inline) {
+        const policy = inlineCameraPolicy(info);
+        if (!policy.play) {
+          setConnection({ state: policy.state, message: policy.message });
+          retry = setTimeout(read, 10000);
+          return;
+        }
+      }
       transport.start(info?.signaling_port ?? 8443);
-    })();
-    return () => { disposed = true; abort.abort(); transport.stop(); if (camera.current === transport) camera.current = null; };
-  }, [api, visible, wanted, attempt]);
-  const source = cameraSource(config, connection.producer);
-  const reconnect = () => { setWanted(true); setAttempt(n => n + 1); };
+    };
+    read();
+    return () => { disposed = true; clearTimeout(retry); abort.abort(); transport.stop(); if (camera.current === transport) camera.current = null; };
+  }, [api, active, visible, wanted, attempt, inline]);
+  return { config, connection, wanted, reconnect: () => { setWanted(true); setAttempt(n => n + 1); },
+    stop: () => { camera.current?.stop(); setWanted(false); } };
+}
+
+function CameraScreen({ connection, video, compact = false }) {
+  const screen = useRef(null), [ratio, setRatio] = useState(16 / 9);
+  useEffect(() => {
+    const measure = () => {
+      const rect = screen.current?.getBoundingClientRect();
+      if (rect?.width > 0 && rect?.height > 0) setRatio(old => Math.abs(old - rect.width / rect.height) < 0.001 ? old : rect.width / rect.height);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(screen.current); measure();
+    return () => observer.disconnect();
+  }, []);
   const rotate = connection.metadata?.rotate || 0;
   const width = connection.width || connection.metadata?.width || 640;
   const height = connection.height || connection.metadata?.height || 480;
   const sideways = rotate === 90 || rotate === 270;
+  return html`<div ref=${screen} class="camera-screen" data-playing=${connection.state === 'playing'}
+    style=${compact ? null : { aspectRatio: sideways ? `${height} / ${width}` : `${width} / ${height}`,
+      maxWidth: `min(100%, ${72 * (sideways ? height / width : width / height)}vh)` }}>
+    <video class=${compact ? 'inline-camera-video' : 'camera-video'} ref=${video} muted playsInline autoPlay aria-label="鸭子摄像头画面"
+      style=${{ width: sideways ? `${100 / ratio}%` : '100%', height: sideways ? `${100 * ratio}%` : '100%', transform: `translate(-50%, -50%) rotate(${rotate}deg)` }}></video>
+    ${connection.state !== 'playing' ? html`<div class="camera-placeholder">${connection.error || connection.message || CAMERA_STATES[connection.state] || '等待画面'}</div>` : null}
+  </div>`;
+}
+
+export function InlineCamera({ api, active = false }) {
+  const card = useRef(null), video = useRef(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const observer = new IntersectionObserver(entries => setInView(entries.some(entry => entry.isIntersecting)), { threshold: 0 });
+    observer.observe(card.current);
+    return () => observer.disconnect();
+  }, []);
+  const { config, connection, reconnect } = useCameraSession({ api, video, active: active && inView, inline: true });
+  const source = cameraSource(config, connection.producer);
+  return html`<section ref=${card} class="board pd-card inline-camera" aria-labelledby="inline-camera-title">
+    <div class="inline-camera-head"><h3 id="inline-camera-title">摄像头</h3>
+      <span class="sensor-pill inline-camera-status" role="status" data-state=${connection.state}>${CAMERA_STATES[connection.state] || '等待画面'}</span>
+      <button class="btn-light inline-camera-retry" type="button" onClick=${reconnect} disabled=${['loading', 'connecting', 'signaling', 'negotiating', 'receiving'].includes(connection.state)}>重新检测</button>
+    </div>
+    <${CameraScreen} connection=${connection} video=${video} compact />
+    <div class="inline-camera-meta"><span class="inline-camera-source">${config ? source.label : '鸭子前方的画面'}</span><a href="#/camera">打开摄像头页 ›</a></div>
+  </section>`;
+}
+
+export function CameraPage({ api }) {
+  const video = useRef(null);
+  const { config, connection, wanted, reconnect, stop } = useCameraSession({ api, video });
+  const source = cameraSource(config, connection.producer);
   return html`<section class="sensor-page camera-page" aria-labelledby="camera-title">
     <header class="sensor-heading"><div><h1 id="camera-title">摄像头</h1><p>查看鸭子当前的视频画面。</p></div>
       <span class="sensor-pill camera-status" role="status" data-state=${connection.state}>${CAMERA_STATES[connection.state] || connection.state}</span></header>
@@ -203,15 +267,10 @@ export function CameraPage({ api }) {
       ${config?.error ? html`<p class="sensor-note">${config.error}；仍会尝试连接视频服务。</p>` : null}</div>
     <div class="sensor-actions">
       <button type="button" class="camera-start sensor-primary" onClick=${reconnect} disabled=${wanted && connection.state !== 'error' && connection.state !== 'stopped'}>开始预览</button>
-      <button type="button" class="camera-stop" onClick=${() => { camera.current?.stop(); setWanted(false); }} disabled=${!wanted}>停止预览</button>
+      <button type="button" class="camera-stop" onClick=${stop} disabled=${!wanted}>停止预览</button>
       <button type="button" class="camera-reconnect" onClick=${reconnect}>重新连接</button>
     </div>
-    <div class="camera-screen" data-playing=${connection.state === 'playing'} style=${{ aspectRatio: sideways ? `${height} / ${width}` : `${width} / ${height}`,
-      maxWidth: `min(100%, ${72 * (sideways ? height / width : width / height)}vh)` }}>
-      <video class="camera-video" ref=${video} muted playsInline autoPlay aria-label="鸭子摄像头画面"
-        style=${{ width: sideways ? `${width / height * 100}%` : '100%', height: sideways ? `${height / width * 100}%` : '100%', transform: `translate(-50%, -50%) rotate(${rotate}deg)` }}></video>
-      ${connection.state !== 'playing' ? html`<div class="camera-placeholder">${connection.error || CAMERA_STATES[connection.state] || '等待画面'}</div>` : null}
-    </div>
+    <${CameraScreen} connection=${connection} video=${video} />
     <div class="board sensor-board sensor-metrics"><div><span>实际画面</span><b class="camera-size">${connection.state === 'playing' ? `${connection.width} × ${connection.height}` : '—'}</b></div>
       <div><span>接收情况</span><b class="camera-received">${connection.state === 'playing' ? `画面正在更新${connection.frames != null ? ` · ${connection.frames} 帧` : ''}` : '等待有效画面'}</b></div></div>
     ${connection.error ? html`<p class="sensor-error" role="alert">${connection.error}</p>` : null}
