@@ -14,3 +14,5 @@ Evidence:
 - Independent code review reported no P1/P2 findings. Whitespace checks passed.
 
 These are software tests using explicit fake hardware, not physical standing/calibration acceptance. Image verification and final browser results belong in the 20261023b image release record.
+
+Final integrated release run: all 10 browser scenarios passed in 128.920 seconds against release commit 320540ed510c0380b1d01b0cb8187f2c1e6d197e. Standing capture/solve/verify retained all_enabled torque with policy disabled; explicit unload was confirmed off. The motion-case race fix also passed in this complete run.

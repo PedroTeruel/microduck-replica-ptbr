@@ -173,7 +173,7 @@ horns were remodelled and reprinted. The editable SolidWorks drawings have an FT
 
 The image is free, for personal non-commercial builds only, and is not distributed with any paid product (the models in it are under their author's personal non-commercial licence).
 
-**[20261023 release](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023)** adds model management, sensor status and repeatable IMU direction calibration. Software tests and deliverable inspection passed; physical board acceptance is pending. Camera input still defaults to a test source; hardware-based automatic camera/ToF service startup is not implemented.
+**[20261023b release](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023b)** allows initial IMU mounting calibration after manually enabling and settling the commissioning HOME hold. Model management, sensor status and repeatable IMU direction calibration are retained. Software tests and deliverable inspection passed; physical board acceptance is pending. Camera input still defaults to a test source; hardware-based automatic camera/ToF service startup is not implemented.
 
 **[Download the latest image](https://github.com/fanhao375/microduck-replica/releases/latest)**　·
 [Previous 20261021b image](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261021b)　·

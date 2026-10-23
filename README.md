@@ -156,7 +156,7 @@ HUB 和 IMU 板的脚序对得上，同向线直连。
 
 镜像免费，只供个人非商业复刻，不随收费产品分发（里面的模型是作者的个人非商业许可）。
 
-**[20261023 新版镜像](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023)**：模型管理、传感器状态和 IMU 重新标定；软件测试与交付包核验已过，新增功能待实机验收。摄像头默认仍为测试画面，按硬件自动启停摄像头/ToF 服务尚未实现。
+**[20261023b 新版镜像](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261023b)**：初次 IMU 安装方向标定也允许在「站姿使能」并站稳后采数，保留模型管理、传感器状态和 IMU 重新标定。软件测试与交付包核验已过，新增功能待实机验收。摄像头默认仍为测试画面，按硬件自动启停摄像头/ToF 服务尚未实现。
 
 **[下载最新镜像](https://github.com/fanhao375/microduck-replica/releases/latest)**　·
 [上一版 20261021b](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261021b)　·
