@@ -294,3 +294,10 @@ for _task_id, _make_cfg, _kw, _rl_cfg, _robot_cfg in _BACKLASH_TASKS:
         rl_cfg=_rl_cfg,
         runner_cls=MicroduckOnPolicyRunner,
     )
+
+# Keep Studio recipe IDs and actuator physics separate from all legacy tasks.
+# VelStand variants are registered for inspection; Studio enforces their
+# compatible walk/stand PT teacher prerequisites before launching a run.
+from .microduck_studio_env_cfg import register_studio_hd1910_tasks
+
+register_studio_hd1910_tasks(MicroduckOnPolicyRunner)

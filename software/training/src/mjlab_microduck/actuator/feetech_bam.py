@@ -10,7 +10,11 @@ from dataclasses import dataclass
 import torch
 from mjlab.actuator.actuator import ActuatorCmd
 
-from .friction_dr_bam import FrictionDRBamActuator, FrictionDRBamActuatorCfg
+from .friction_dr_bam import (
+    BacklashEncoderBamActuator,
+    FrictionDRBamActuator,
+    FrictionDRBamActuatorCfg,
+)
 
 
 class FeetechBamActuator(FrictionDRBamActuator):
@@ -43,3 +47,20 @@ class FeetechBamActuator(FrictionDRBamActuator):
 class FeetechBamActuatorCfg(FrictionDRBamActuatorCfg):
     def build(self, entity, target_ids, target_names) -> FeetechBamActuator:
         return FeetechBamActuator(self, entity, target_ids, target_names)
+
+
+class BacklashEncoderFeetechBamActuator(
+    FeetechBamActuator, BacklashEncoderBamActuator
+):
+    """Feetech goal reset plus the existing encoder-through-backlash feedback.
+
+    Both implementations use cooperative super(): initialize sets up the
+    encoder mapping and Feetech goal state, get_command reads the encoder,
+    and compute seeds the Feetech goal limiter after each world's reset.
+    """
+
+
+@dataclass(kw_only=True)
+class BacklashEncoderFeetechBamActuatorCfg(FeetechBamActuatorCfg):
+    def build(self, entity, target_ids, target_names) -> BacklashEncoderFeetechBamActuator:
+        return BacklashEncoderFeetechBamActuator(self, entity, target_ids, target_names)
