@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 import dxl2
+import feetech
 
 
 class WireTests(unittest.TestCase):
@@ -29,6 +30,75 @@ class WireTests(unittest.TestCase):
         self.assertEqual(parser.feed(b"noise" + corrupt + raw),
                          [(200, 0, b"\x01\x02\x03", raw)])
         self.assertGreater(parser.bad, 0)
+
+
+class TraceTests(unittest.TestCase):
+    def setUp(self):
+        class Serial:
+            def __init__(self):
+                self.rx = bytearray()
+                self.error = 0
+                self.respond = True
+
+            @property
+            def in_waiting(self):
+                return len(self.rx)
+
+            def reset_input_buffer(self):
+                self.rx.clear()
+
+            def write(self, data):
+                if self.respond:
+                    payload = b"\x01\x02\x03" if data[7] == dxl2.PING else bytes(12)
+                    self.rx.extend(dxl2.packet(200, 0x55, bytes([self.error]) + payload))
+                return len(data)
+
+            def read(self, size):
+                result = bytes(self.rx[:size])
+                del self.rx[:size]
+                return result
+
+        self.serial = Serial()
+        self.bus = feetech.FeetechBus(None, ser=self.serial)
+        self.logs = []
+        self.bus.trace = self.logs.append
+        self.client = dxl2.Dxl2Bus(self.bus, timeout=0.01)
+
+    def test_successful_polling_respects_shared_bus_trace_skip(self):
+        for _ in range(50):
+            self.assertEqual(self.client.sync_read([200], 124, 12), {200: (0, bytes(12))})
+        self.assertEqual(self.logs, [])
+
+    def test_polling_trace_can_be_explicitly_enabled(self):
+        self.bus.trace_skip.clear()
+        self.client.sync_read([200], 124, 12)
+        self.assertEqual(len(self.logs), 2)
+        self.assertTrue(self.logs[0].startswith("→ DXL2 "))
+        self.assertTrue(self.logs[1].startswith("← DXL2 #200 "))
+
+    def test_ping_and_manual_read_still_trace(self):
+        self.assertEqual(self.client.ping(200), (0, b"\x01\x02\x03"))
+        self.assertEqual(self.client.read(200, 124, 12), (0, bytes(12)))
+        self.assertEqual(len(self.logs), 4)
+
+    def test_bus_without_trace_skip_still_traces(self):
+        del self.bus.trace_skip
+        self.client.sync_read([200], 124, 12)
+        self.assertEqual(len(self.logs), 2)
+
+    def test_polling_status_error_still_traces(self):
+        self.serial.error = 4
+        self.assertEqual(self.client.sync_read([200], 124, 12), {200: (4, bytes(12))})
+        self.assertTrue(any("status_error=0x04" in line for line in self.logs))
+
+    def test_polling_timeout_still_traces(self):
+        self.serial.respond = False
+        self.assertEqual(self.client.sync_read([200], 124, 12), {})
+        self.assertIn("← DXL2 无有效状态包", self.logs)
+
+    def test_partial_polling_response_still_traces(self):
+        self.assertEqual(self.client.sync_read([200, 201], 124, 12), {200: (0, bytes(12))})
+        self.assertEqual(len(self.logs), 2)
 
 
 class TimeoutTests(unittest.TestCase):
