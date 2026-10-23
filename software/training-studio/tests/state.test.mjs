@@ -162,6 +162,56 @@ test('old recipe metadata falls back to available previews without inventing ver
   assert.equal(catalog({id:'future'}).instructions.length,3);
 });
 
+test('recipe metadata preserves hardware requirements and safe attribution without inventing evidence', () => {
+  const recipe={id:'roller',hardware:'HD1910 M6 · 轮滑脚部',terrain:'坡面',backlash:true,requires_rollers:true,upstream_task_id:'MicroDuck-Roller-Slope',catalog:{source_label:'kissqy 参考适配',source_url:'https://huggingface.co/kissqy/MicroDuck',author:'kissqy'}};
+  const catalog=feature('recipeCatalog')(recipe);
+  assert.equal(catalog.hardware,recipe.hardware);
+  assert.equal(catalog.terrain,'坡面');
+  assert.equal(catalog.backlash,true);
+  assert.equal(catalog.requires_rollers,true);
+  assert.equal(catalog.upstream_task_id,recipe.upstream_task_id);
+  assert.equal(catalog.source_url,recipe.catalog.source_url);
+  assert.equal(catalog.author,'kissqy');
+  assert.equal(catalog.verification_state,'unverified');
+  assert.equal(feature('recipeCatalog')({catalog:{source_url:'javascript:alert(1)'}}).source_url,null);
+  assert.equal(feature('recipeCatalog')({id:'old'}).backlash,null);
+  assert.equal(feature('recipeCatalog')({catalog:{terrain:'平地',backlash:false,requires_rollers:true}}).requires_rollers,true);
+});
+
+test('every recipe remains discoverable by exact ID and task, terrain, hardware and author terms', () => {
+  const recipes=Array.from({length:38},(_,i)=>({id:`recipe-${i}`,title:`动作 ${i}`,description:`练习目标 ${i}`,terrain:`地形${i}`,hardware:`硬件${i}`,upstream_task_id:`Task-${i}-Studio-HD1910`,catalog:{category:'动作',source_label:'参考适配',author:`作者${i}`}}));
+  const filter=feature('filterRecipes');
+  for(const recipe of recipes) assert.ok(filter(recipes,{query:recipe.id}).includes(recipe));
+  for(const query of ['Task-37-Studio-HD1910','地形37','硬件37','作者37']) assert.deepEqual(filter(recipes,{query}).map(r=>r.id),['recipe-37']);
+  assert.equal(recipes.length,38);
+});
+
+test('only explicitly blocked recipes reject launch and expose their prerequisite reason', () => {
+  const validate=feature('validateRecipeLaunch');
+  assert.doesNotThrow(()=>validate({id:'legacy'}));
+  assert.doesNotThrow(()=>validate({id:'walk',launchable:true}));
+  assert.throws(()=>validate({id:'joint',launchable:false,prerequisite_note:'先完成兼容 PT 老师训练'}),/兼容 PT 老师/);
+  assert.throws(()=>validate(null),/选择.*配方/);
+});
+
+test('teacher prerequisite choices resolve only actual recipe IDs in the provided catalog', () => {
+  const teacher={id:'teacher-walk',title:'行走老师'},other={id:'teacher-stand',title:'站立老师'};
+  const joint={id:'joint',teacher_recipe_ids:['teacher-walk','missing','teacher-stand','teacher-walk']};
+  assert.deepEqual(feature('recipeTeachers')(joint,[other,teacher]),[teacher,other]);
+  assert.deepEqual(feature('recipeTeachers')({},[teacher]),[]);
+});
+
+test('reference budget and pinned source metadata stay available for the recipe explanation', () => {
+  const meta={terrain:'Rough',source_revision:'pinned-source',official_source_url:'https://github.com/pollen-robotics/microduck_rl',budget_note:'4096 环境的预算，环境数变化不能视为等效训练'};
+  const catalog=feature('recipeCatalog')({catalog:meta});
+  assert.equal(catalog.terrain,'Rough');
+  assert.equal(catalog.terrain_label,'起伏地形');
+  assert.equal(catalog.source_revision,meta.source_revision);
+  assert.equal(catalog.official_source_url,meta.official_source_url);
+  assert.equal(catalog.budget_note,meta.budget_note);
+  assert.equal(feature('recipeCatalog')({catalog:{official_source_url:'http://unsafe.example'}}).official_source_url,null);
+});
+
 test('resource numbers distinguish missing measurements from a real zero', () => {
   const number=feature('resourceNumber');
   for(const value of [null,undefined,'',false,NaN,Infinity,-1]) assert.equal(number(value,1,'%'),'—');

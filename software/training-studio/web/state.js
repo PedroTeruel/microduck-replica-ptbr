@@ -37,17 +37,29 @@ export function recipeCatalog(recipe={}) {
   let preview=['robot_model','text','balance_target'].includes(meta.preview_kind)?meta.preview_kind:fallbackPreview;
   if(preview==='balance_target'&&!balance)preview='text';
   const strings=value=>Array.isArray(value)?value.filter(s=>typeof s==='string'&&s.trim()).map(s=>s.trim()):[];
+  const text=value=>typeof value==='string'?value.trim():'';
   const instructions=strings(meta.instructions);
   const verified=meta.verification_state==='pipeline';
+  const terrain=text(recipe.terrain)||text(meta.terrain);
   return {category:typeof meta.category==='string'&&meta.category.trim()?meta.category.trim():balance?'平衡':['hd1910-flat','hd1910-rough'].includes(recipe.id)?'行走':'其他',
-    tags:strings(meta.tags),preview_kind:preview,source_label:meta.source_label||'项目内置',
+    tags:strings(meta.tags),preview_kind:preview,source_label:text(meta.source_label)||'项目内置',source_url:safeExternalUrl(meta.source_url),author:text(meta.author)||text(recipe.author),
+    hardware:text(recipe.hardware)||text(meta.hardware),terrain,terrain_label:({Flat:'平地',Rough:'起伏地形',Slope:'斜坡'}[terrain])||terrain,backlash:typeof recipe.backlash==='boolean'?recipe.backlash:typeof meta.backlash==='boolean'?meta.backlash:null,
+    requires_rollers:recipe.requires_rollers===true||meta.requires_rollers===true,upstream_task_id:text(recipe.upstream_task_id)||text(meta.upstream_task_id),
+    source_revision:text(meta.source_revision),official_source_url:safeExternalUrl(meta.official_source_url),budget_note:text(meta.budget_note),
     verification_state:verified?'pipeline':'unverified',verification_label:meta.verification_label||(verified?'已完成短试跑':'验证记录未提供'),
     instructions:instructions.length?instructions:['选择配方并设置练习参数。','完成短试跑后开始正式训练。','保存检查点，运行评估并查看回放。']};
 }
 export function recipeCategories(recipes=[]) { return ['全部',...new Set(recipes.map(recipe=>recipeCatalog(recipe).category))]; }
 export function filterRecipes(recipes=[],{query='',category='全部'}={}) {
   const terms=String(query).trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return recipes.filter(recipe=>{const catalog=recipeCatalog(recipe),text=[recipeTitle(recipe),recipe.description||'',catalog.category,...catalog.tags].join(' ').toLocaleLowerCase();return (category==='全部'||catalog.category===category)&&terms.every(term=>text.includes(term));});
+  return recipes.filter(recipe=>{const catalog=recipeCatalog(recipe),text=[recipeTitle(recipe),recipe.id,recipe.task_id,recipe.description||'',catalog.category,catalog.hardware,catalog.terrain,catalog.source_label,catalog.author,catalog.upstream_task_id,catalog.requires_rollers?'轮滑 轮滑脚部 rollers':'',...catalog.tags].join(' ').toLocaleLowerCase();return (category==='全部'||catalog.category===category)&&terms.every(term=>text.includes(term));});
+}
+export function validateRecipeLaunch(recipe) {
+  if(!recipe)throw new Error('请先选择训练配方');
+  if(recipe.launchable===false)throw new Error(recipe.prerequisite_note||'此联合配方需要兼容的行走与站立 PT 老师检查点及联合训练适配，请先完成前置训练。');
+}
+export function recipeTeachers(recipe,recipes=[]) {
+  return [...new Set(Array.isArray(recipe?.teacher_recipe_ids)?recipe.teacher_recipe_ids:[])].map(id=>recipes.find(item=>item.id===id)).filter(Boolean);
 }
 export function runDraft(run) {
   return {recipe_id:run.recipe_id,config:run.kind==='smoke'?{seed:run.config.seed,learning_rate:run.config.learning_rate}:{...run.config},profile:run.profile,kind:run.kind==='smoke'&&run.status==='completed'?'train':'smoke',...(run.skill?{skill:{...run.skill}}:{})};
