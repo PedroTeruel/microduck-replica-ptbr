@@ -107,6 +107,10 @@ py -3.13 -I run.py --bench
 
 手柄配对的主路是 root 小助手调官方 `/usr/local/bin/robotctl pad pair --json`：`/var/lib/robot/weird-ble` 板上它会先停 `btd`、给蓝牙适配器断电再开，配完把 `btd` 起回来。没装或旧版小助手时退回 configd → bluetoothctl；这块板这样可能配不上，向导会提示重装小助手，或者在鸭子上运行 `sudo robotctl pad pair`。
 
+配对结果不等于按键已经就绪。helper/configd 返回已绑定后，向导在等待连接和 padd 输入时最多补做两次目标手柄的连接请求，每次最多 5 秒且不超过当前等待窗口；不清除配对、不重启蓝牙。只有同一 MAC 的 padd 输入报告才能确认就绪，其他已连接手柄不算。状态服务更新较慢、或输入刚在超时边界到达时，以实际输入为准；同一手柄稍后恢复也会清掉向导旧的“未连接／读不到按键”提示。用户已取消、padd 未运行或开始走路时，不继续补连。旧版没有输入旁路的降级说明仍明确标注“没法再核对”。
+
+这项补连针对网页配对流程；手柄已经配过、只是休眠时，先短按 Home / Xbox 键唤醒，不必每次忘掉重配。此项修复不提供后台无限重连，也不代表断电后所有型号的回连行为已逐一验收。
+
 出厂镜像让 robotd 跑标定模式：`/etc/systemd/system/robotd.service.d/zzzz-zz-microduck-commissioning.conf` 里 `ExecStart` 带 `--commissioning`。这样 `calibration-status` 和 `busStatus.last_sample` 马上能读，IMU 页粗校、舵机页中位都能做。上手清单第 3 步写成功后，小助手删掉这个文件、`daemon-reload`、重启 robotd，主程序回到运动模式。`systemctl show robotd -p ExecStart` 里有 `--commissioning`、但那个文件不在时，小助手拒绝自动切（`foreign_commissioning`），去日志页导出诊断包。
 
 IMU 页的「IMU 安装方向」始终保留入口：已经保存并验证过的安装四元数，也能点「重新标定方向」。先扶住鸭子并卸力，二次确认后，运动模式通过新版 root 小助手暂时回到标定模式；已经在标定模式的直接重新采集。沿用原来的静止 3 秒、整个躯干前倾 15–30° 采 3 秒、计算方向和主程序验证。**点击「交给主程序验证」前，先把实物回正并停住**，再按提示前倾。小助手的重标定恢复会话保持卸力；出厂标定模式也支持下述站姿采数，站着精校流程不变。
@@ -237,7 +241,7 @@ py -3.13 -I -c "import sys;sys.path[:0]=['deps','.','dev'];import unittest;unitt
 - 卸力：不被慢查询挡住、回读确认、hd1910 标志没清不算确认、标定模式、robotd 重启后第一次就成功、确认后别人再上力不会自动补发；
 - 轮询：一项出错不挡别的项；只在有人看时订阅，没心跳当没人看；robotd 掉线又回来；
 - 姿势判定（用真机录的数据）；通过 WebSocket 发卸力的完整来回；
-- 手柄配对：小助手 `pad-pair` / `pad-forget` 的参数校验、robotctl 成功 / 失败 / 超时解析；向导的主路、旧小助手回退、bluetoothctl 代理注册失败重试、padd 30 秒等待。
+- 手柄配对：小助手 `pad-pair` / `pad-forget` 的参数校验、robotctl 成功 / 失败 / 超时解析；向导的主路、旧小助手回退、bluetoothctl 代理注册失败重试、padd 30 秒等待、配对后有限补连、实际输入先于状态服务、超时边界和取消、迟到的同一手柄输入恢复状态。
 - 配网：小助手热点动词、连接窗口文件；net.json 缺失 / 损坏 / 各模式；扫描缓存；连接顺序、失败原因（bad_key 先 forget 再开热点）、热点恢复、同时只连一个；密码不进日志 / state / last-try / 诊断包。
 - 登录密码：网页首次设置、登录后才改、清掉；改密码保留当前浏览器会话；root 运行 `set-password` 被拒；热点模式且没密码时的卡片提示。
 - 标定模式的状态：假 robotd 先回启动报告（四个键）、读成功后回 fork 字段的实时快照、`--commissioning-stuck-status` 永远回启动报告；实时快照算主程序起来了（总览、准备情况、小助手交还都是），旧 fork 一直 `configuring_bus` 时交还照旧判没起来、话照实说；连续 30 秒报启动阶段改口「一直报启动中」。
