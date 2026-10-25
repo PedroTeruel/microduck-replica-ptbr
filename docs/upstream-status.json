@@ -19,6 +19,16 @@
       },
       "tracked_development_releases": [
         {
+          "tag": "daemon-dev-ground-grasp-x",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-ground-grasp-x",
+          "published_at": "2026-10-25T13:23:00Z",
+          "head_sha": "01a90748823e92295de4220feb4f61ccd0089464",
+          "prerelease": true,
+          "change": "Optional ground_grasp policy/skill with controller-phase beak scheduling, based on kicks and emotion skill development branch.",
+          "replica_integration": "not_integrated; requires HD-1910 policy/contract and mouth-ownership review",
+          "priority": "medium"
+        },
+        {
           "tag": "daemon-dev-kicks-on-main",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-kicks-on-main",
           "published_at": "2026-10-24T09:37:44Z",
@@ -48,6 +58,24 @@
         }
       ],
       "pending_pull_requests": [
+        {
+          "number": 452,
+          "url": "https://github.com/pollen-robotics/microduck/pull/452",
+          "title": "pet-detect: make training evaluation session-safe",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-25T10:32:29Z",
+          "head_sha": "49964294930a78023800d0b0246be30e1aecd388"
+        },
+        {
+          "number": 451,
+          "url": "https://github.com/pollen-robotics/microduck/pull/451",
+          "title": "virtual-duck: the Microduck as an Android pet over other apps",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-25T09:13:22Z",
+          "head_sha": "0520f67dd9e2df9a8811b6445b84e684fcb0b397"
+        },
         {
           "number": 450,
           "url": "https://github.com/pollen-robotics/microduck/pull/450",
@@ -172,8 +200,10 @@
           "title": "Add optional read-only MuJoCo visualization stream",
           "state": "open",
           "merged_at": null,
-          "updated_at": "2026-10-24T13:32:27Z",
-          "head_sha": "b26950afb74432b53fe81c4d322988a3785ea0a6"
+          "updated_at": "2026-10-25T12:49:06Z",
+          "head_sha": "3293273022d5f1c7f0d327f98959ce8e9543f115",
+          "scope_note": "Updated head includes optional XL330 M6 CPU BAM physics and independent lateral task/finetuning/validation, beyond the original read-only visualization title. Not merged; not HD-1910 validation.",
+          "priority": "medium"
         },
         {
           "number": 78,
@@ -227,6 +257,35 @@
       "published_on": "2026-10-23",
       "title": "SLAM on Microduck with an 8×8 depth sensor",
       "status": "Official article and dataset; integration/release status evaluated separately."
+    },
+    {
+      "url": "https://pollen-robotics.com/microduck/blog/microduck-odometry/",
+      "published_on": "2026-10-23",
+      "title": "Where did the duck go? Odometry from two feet and an IMU",
+      "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
-  ]
+  ],
+  "checked_at_utc": "2026-10-25T14:07:55Z",
+  "latest_review": {
+    "default_branch_changes": false,
+    "new_stable_release": false,
+    "previous_tracked_prs_merged": false,
+    "new_development_release": "daemon-dev-ground-grasp-x",
+    "new_pull_requests": {
+      "pollen-robotics/microduck": [
+        451,
+        452
+      ]
+    },
+    "changed_pull_request_heads": {
+      "pollen-robotics/microduck_rl": [
+        51
+      ]
+    },
+    "runtime_code_changed": false,
+    "models_replaced": false,
+    "robot_connected": false,
+    "image_built_or_published": false,
+    "notes": "Documentation-only. New development/PR content was read at fixed SHAs; no downloaded implementation was installed or executed. Existing online UI and isolated migration branches remain unchanged."
+  }
 }
