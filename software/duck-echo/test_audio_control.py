@@ -20,7 +20,7 @@ class ProtocolTests(unittest.TestCase):
         class Audio:
             active = music_mode = failed = False
             def start(self): self.active = True
-            def stop(self, play=False): self.active = self.music_mode = False
+            def stop(self, play=False, announce=False): self.active = self.music_mode = False
             def set_music(self, enabled): self.music_mode = enabled
         self.audio = Audio()
         self.feel = SimpleNamespace(snapshot=lambda: {'bpm': None, 'confidence': 0, 'feel': 'unknown'})

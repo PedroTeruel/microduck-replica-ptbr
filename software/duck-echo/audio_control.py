@@ -46,7 +46,7 @@ class AudioControl:
             if request.get('listening') is False and request.get('music') is True:
                 return {'ok': False, 'error': 'music requires listening'}
             if request.get('listening') is False:
-                self.audio.stop(play=False)
+                self.audio.stop(play=False, announce=True)
             else:
                 if (request.get('listening') is True or request.get('music') is True) and not self.audio.active:
                     self.audio.start()

@@ -25,7 +25,7 @@ class ToggleButton:
         elif value == 1 and not self.down:
             self.down = True
             if self.recording:
-                self.cancel()
+                self.cancel(announce=True)
             else:
                 self.audio.start()
                 self._recording = True
@@ -34,9 +34,12 @@ class ToggleButton:
         if self.recording and self.audio.expired():
             self.cancel()
 
-    def cancel(self):
+    def cancel(self, announce=False):
         self._recording = False
-        self.audio.stop(play=False)
+        if announce:
+            self.audio.stop(play=False, announce=True)
+        else:
+            self.audio.stop(play=False)
 
 
 class PcmSegmenter:
@@ -135,6 +138,8 @@ class ContinuousAudio:
         self.music = None
         self.music_mode = False
         self.activation_cue = None
+        self.deactivation_cue = None
+        self.deactivation_pending = None
         self.activation_duration = .45
         self.activation_pending = self.activation_inflight = None
         self.condition = threading.Condition()
@@ -213,6 +218,7 @@ class ContinuousAudio:
         self.generation += 1
         self.pending = None
         self.activation_pending = self.activation_inflight = None
+        self.deactivation_pending = None
         self.output_pending = False
         self.segmenter.reset()
         return self.generation
@@ -231,9 +237,11 @@ class ContinuousAudio:
             if current and stop_music and not self.music_mode and self.music is not None:
                 self.music.set_enabled(False)
 
-    def stop(self, play=False, expected_generation=None):
+    def stop(self, play=False, expected_generation=None, announce=False):
         with self.condition:
             if expected_generation is not None and expected_generation != self.generation:
+                return
+            if announce and not self.active:
                 return
             was_active = self.active
             self.active = False
@@ -247,6 +255,11 @@ class ContinuousAudio:
         self._cancel_voice(generation, stop_music=True)
         if capture_stop is not None:
             capture_stop.set()
+        with self.condition:
+            if (announce and was_active and self.deactivation_cue is not None and
+                    not self.active and not self.closed and generation == self.generation):
+                self.deactivation_pending = generation
+                self.condition.notify_all()
 
     def stop_playback(self):
         with self.condition:
@@ -317,16 +330,21 @@ class ContinuousAudio:
         with self.condition:
             return self.active and not self.closed and generation == self.generation
 
+    def _deactivation_valid(self, generation):
+        with self.condition:
+            return not self.active and not self.closed and generation == self.generation
+
     def _dispatch(self):
         while True:
             with self.condition:
-                while (self.pending is None and self.activation_pending is None and
+                while (self.pending is None and self.activation_pending is None and self.deactivation_pending is None and
                        not self.stop_output and not self.closed):
                     self.condition.wait()
                 stop = self.stop_output
                 self.stop_output = False
                 job, self.pending = self.pending, None
                 activation, self.activation_pending = self.activation_pending, None
+                deactivation, self.deactivation_pending = self.deactivation_pending, None
                 if activation is not None:
                     self.activation_inflight = activation
                 mode_generation = self.mode_generation
@@ -336,6 +354,14 @@ class ContinuousAudio:
             if closed:
                 self.backend.close()
                 return
+            if deactivation is not None:
+                allowed = lambda generation=deactivation: self._deactivation_valid(generation)
+                try:
+                    if allowed():
+                        self.deactivation_cue(allowed)
+                except Exception:
+                    LOG.exception('listening deactivation sound unavailable')
+                continue
             if activation is not None:
                 allowed = lambda generation=activation: self._activation_valid(generation)
                 try:

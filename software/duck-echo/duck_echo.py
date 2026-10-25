@@ -455,6 +455,7 @@ def main(argv=None):
             feel = MusicFeel(channel=args.channel)
             audio.activation_duration = sound_lengths['chirp']+.1
             audio.activation_cue = lambda allowed: robot.call('robot.sound', {'tag': 'chirp'}) if allowed() else None
+            audio.deactivation_cue = lambda allowed: robot.call('robot.sound', {'tag': 'coo'}) if allowed() else None
             def reply(tag, allowed):
                 if allowed():
                     audio.command_cue(lambda _: robot.call('robot.sound', {'tag': tag}) if allowed() else None,

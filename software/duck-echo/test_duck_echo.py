@@ -234,10 +234,13 @@ class TriggerModeTests(unittest.TestCase):
             self.assertFalse(audio.voice.recognize_speech)
             self.assertIsNotNone(audio.observer)
             self.assertIsNotNone(audio.activation_cue, 'native listening chirp is not wired')
+            self.assertIsNotNone(audio.deactivation_cue, 'native listening coo is not wired')
             audio.activation_cue(lambda: False)
             robot.return_value.call.assert_not_called()
             audio.activation_cue(lambda: True)
             robot.return_value.call.assert_called_once_with('robot.sound', {'tag': 'chirp'})
+            audio.deactivation_cue(lambda: True)
+            self.assertEqual(robot.return_value.call.call_args.args, ('robot.sound', {'tag': 'coo'}))
         with patch.object(echo.sys, 'platform', 'linux'), patch.object(echo, 'daemon', side_effect=inspect_audio), \
                 patch.object(echo.signal, 'signal'), patch.object(echo.logging, 'basicConfig'), \
                 patch.object(audio_control, 'AudioControlServer') as server, \

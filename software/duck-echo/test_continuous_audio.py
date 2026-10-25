@@ -51,7 +51,7 @@ class FakeAudio:
     def start(self):
         self.calls.append('start')
 
-    def stop(self, play):
+    def stop(self, play, announce=False):
         self.calls.append(('stop', play))
 
     def expired(self):
@@ -649,6 +649,94 @@ class ContinuousTests(unittest.TestCase):
         self.now[0] = 2
         self.audio.feed(pcm(.02))
         self.assertEqual(len(observed), 1)
+
+    def test_manual_r3_and_web_off_announce_different_native_sound_once(self):
+        from audio_control import AudioControl
+        self.assertTrue(hasattr(self.audio, 'deactivation_cue'), 'manual off cue is missing')
+        calls = []
+        self.audio.activation_cue = lambda allowed: calls.append('chirp') if allowed() else None
+        def off(allowed):
+            self.assertFalse(self.audio.active, 'off cue must not re-enable capture')
+            if allowed():
+                calls.append('coo')
+        self.audio.deactivation_cue = off
+        button = continuous.ToggleButton(self.audio)
+        button.event(1)
+        button.event(0)
+        self.assertTrue(eventually(lambda: calls == ['chirp']))
+        button.event(1)
+        button.event(2)
+        button.event(0)
+        self.assertTrue(eventually(lambda: calls == ['chirp', 'coo']))
+        hub = AudioControl(self.audio, SimpleNamespace(snapshot=lambda: {}))
+        hub.request({'method': 'set', 'listening': True})
+        self.assertTrue(eventually(lambda: len(calls) == 3))
+        with self.audio.condition:
+            hub.request({'method': 'set', 'listening': False})
+            hub.request({'method': 'set', 'listening': False})
+        self.assertTrue(eventually(lambda: len(calls) == 4))
+        self.assertEqual(calls, ['chirp', 'coo', 'chirp', 'coo'])
+
+    def test_automatic_or_initially_off_stops_do_not_announce(self):
+        self.assertTrue(hasattr(self.audio, 'deactivation_cue'), 'manual off cue is missing')
+        calls = []
+        self.audio.deactivation_cue = lambda allowed: calls.append('coo') if allowed() else None
+        self.audio.stop(announce=True)
+        self.audio.start()
+        self.audio.stop()  # Select/disconnect/EOF and close use this quiet path.
+        self.audio.close()
+        time.sleep(.02)
+        self.assertEqual(calls, [])
+
+    def test_new_start_and_close_cancel_queued_off_cue(self):
+        self.assertTrue(hasattr(self.audio, 'deactivation_cue'), 'manual off cue is missing')
+        calls = []
+        on = []
+        self.audio.activation_cue = lambda allowed: on.append('chirp') if allowed() else None
+        self.audio.deactivation_cue = lambda allowed: calls.append('coo') if allowed() else None
+        with self.audio.condition:
+            self.audio.start()
+            self.audio.stop(announce=True)
+            self.audio.start()
+        time.sleep(.02)
+        self.assertEqual(calls, [])
+        self.assertTrue(eventually(lambda: on == ['chirp']), 'stale off cue discarded the new on cue')
+        entered, release = threading.Event(), threading.Event()
+        def stop_output():
+            entered.set()
+            release.wait(1)
+        self.backend.stop_playback = stop_output
+        self.audio.stop(announce=True)
+        closing = threading.Thread(target=self.audio.close)
+        try:
+            self.assertTrue(entered.wait(1))
+            closing.start()
+            self.assertTrue(eventually(lambda: self.audio.closed))
+        finally:
+            release.set()
+            if closing.ident is not None:
+                closing.join(1)
+        self.assertEqual(calls, [])
+
+    def test_off_sound_waits_for_consumer_cancellation_and_does_not_block_caller(self):
+        self.assertTrue(hasattr(self.audio, 'deactivation_cue'), 'manual off cue is missing')
+        self.start()
+        canceled, entered, release = threading.Event(), threading.Event(), threading.Event()
+        self.audio.voice = SimpleNamespace(cancel=canceled.set)
+        def cue(allowed):
+            self.assertTrue(canceled.is_set())
+            if allowed():
+                entered.set()
+                release.wait(1)
+        self.audio.deactivation_cue = cue
+        began = time.monotonic()
+        self.audio.stop(announce=True)
+        self.assertLess(time.monotonic()-began, .1)
+        try:
+            self.assertTrue(entered.wait(1))
+            self.assertFalse(self.audio.active)
+        finally:
+            release.set()
 
 
 if __name__ == '__main__':
