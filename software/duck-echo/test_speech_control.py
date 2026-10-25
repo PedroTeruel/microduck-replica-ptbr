@@ -45,6 +45,21 @@ class SpeechTests(unittest.TestCase):
         self.assertEqual(self.executor.commands, ['sit'])
         self.assertEqual(self.echoed, [])
 
+    def test_ready_exposes_existing_recognizer_for_shared_model_without_new_factory(self):
+        recognizer = FakeRecognizer()
+        control = self.make(recognizer)
+        self.assertIs(getattr(control, 'recognizer', None), recognizer)
+
+    def test_disabled_ordinary_asr_keeps_echo_without_using_shared_recognizer(self):
+        recognizer = FakeRecognizer()
+        recognizer.recognize = lambda data: self.fail('voice-mode off ran posture ASR')
+        import inspect
+        self.assertIn('recognize_speech', inspect.signature(speech.VoiceControl).parameters)
+        control = self.make(recognizer, recognize_speech=False)
+        control.submit(b'pcm')
+        self.assertTrue(control.idle.wait(1))
+        self.assertEqual(self.echoed, [b'pcm'])
+
     def test_ordinary_low_confidence_and_negative_speech_keep_echo(self):
         for text, score in [('你好', 1), ('坐下', .4), ('不要坐下', 1), ('复读坐下', 1)]:
             control = self.make(FakeRecognizer(text, score))

@@ -377,6 +377,7 @@ def main(argv=None):
     parser.add_argument('--voice-mode', choices=['off', 'shadow', 'actions'], default='off')
     parser.add_argument('--voice-model', default='/opt/duck-echo/models/vosk-model-small-cn-0.22')
     parser.add_argument('--speech-deps', default='/opt/duck-echo/asr-deps')
+    parser.add_argument('--control-socket', default='/run/duck-echo/control.sock')
     args = parser.parse_args(argv)
     if not 0.75 <= args.pitch <= 1.6:
         parser.error('--pitch must be between 0.75 and 1.6')
@@ -392,10 +393,11 @@ def main(argv=None):
     signal.signal(signal.SIGTERM, lambda *_: stopped.set())
     signal.signal(signal.SIGINT, lambda *_: stopped.set())
     audio = AlsaAudio(args.capture_device, args.playback_device, args.channel, args.pitch, args.maximum)
-    if args.action == 'daemon' and args.trigger_mode == 'toggle':
+    toggle_daemon = args.action == 'daemon' and args.trigger_mode == 'toggle'
+    if toggle_daemon:
         from continuous_audio import ContinuousAudio
         audio = ContinuousAudio(audio)
-    if args.action == 'daemon' and args.voice_mode != 'off':
+    if args.action == 'daemon' and (args.voice_mode != 'off' or toggle_daemon):
         from speech_control import MandarinRecognizer, VoiceControl
         from voice_commands import PostureCommands, RobotClient
         robot = RobotClient()
@@ -406,8 +408,26 @@ def main(argv=None):
             cue = lambda accepted: audio.command_cue(raw_cue, accepted)
         audio.voice = VoiceControl(
             lambda: MandarinRecognizer(args.voice_model, args.speech_deps),
-            PostureCommands(robot), audio.play, execute_commands=args.voice_mode == 'actions', cue=cue)
+            PostureCommands(robot), audio.play, execute_commands=args.voice_mode == 'actions', cue=cue,
+            recognize_speech=args.voice_mode != 'off')
+    control_server = None
     try:
+        if toggle_daemon:
+            from audio_control import AudioControl, AudioControlServer
+            from music_feel import MusicFeel
+            from music_interaction import MusicInteraction
+            feel = MusicFeel(channel=args.channel)
+            def reply(tag, allowed):
+                if allowed():
+                    audio.command_cue(lambda _: robot.call('robot.sound', {'tag': tag}) if allowed() else None, True)
+            audio.music = MusicInteraction(lambda: audio.voice.recognizer, feel, reply, channel=args.channel)
+            def observe(raw, timestamp):
+                if audio.music_mode:
+                    feel.feed(raw, timestamp)
+                    audio.music.feed(raw, timestamp)
+            audio.observer = observe
+            control_server = AudioControlServer(AudioControl(audio, feel), args.control_socket)
+            control_server.start()
         if args.action == 'daemon':
             daemon(audio, stopped, args.input, trigger_mode=args.trigger_mode)
             return 0
@@ -422,9 +442,13 @@ def main(argv=None):
         print(json.dumps(result, ensure_ascii=False))
         return 0 if result and result['ok'] and (args.action != 'record' or played) else 2
     finally:
+        if control_server is not None:
+            control_server.close()
+        audio.close()
+        if toggle_daemon and audio.music is not None:
+            audio.music.close()
         if audio.voice is not None:
             audio.voice.close()
-        audio.close()
 
 
 if __name__ == '__main__':

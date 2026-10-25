@@ -110,6 +110,16 @@ class ToggleTests(unittest.TestCase):
         self.button.tick()
         self.assertEqual(self.audio.calls.count('start'), 1)
 
+    def test_external_listening_start_and_stop_use_same_actual_toggle_state(self):
+        self.audio.active = True
+        self.button.event(1)
+        self.assertIn(('stop', False), self.audio.calls)
+        self.assertNotIn('start', self.audio.calls)
+        self.button.event(0)
+        self.audio.active = False
+        self.button.event(1)
+        self.assertEqual(self.audio.calls.count('start'), 1)
+
 
 class SegmentTests(unittest.TestCase):
     def setUp(self):
@@ -405,6 +415,44 @@ class ContinuousTests(unittest.TestCase):
                 self.assertEqual(len(calls), 1, 'capture cleanup reaped the same process twice')
         finally:
             release.set()
+
+    def test_music_mode_only_streams_observer_and_never_submits_song_to_voice_or_echo(self):
+        self.assertTrue(hasattr(self.audio, 'set_music'), 'music phrase exclusion missing')
+        streams, cancellations = [], []
+        self.audio.music = SimpleNamespace(set_enabled=lambda enabled: cancellations.append(enabled),
+                                          cancel=lambda: cancellations.append('cancel'))
+        self.audio.voice = SimpleNamespace(cancel=lambda: None,
+                                          submit=lambda phrase: self.fail('song submitted to posture ASR'))
+        self.audio.observer = lambda raw, at: streams.append(raw)
+        process = self.start()
+        self.audio.set_music(True)
+        self.feed_phrase(process)
+        self.assertTrue(eventually(lambda: len(streams) > 0))
+        self.assertFalse(self.backend.played.is_set())
+        self.assertEqual(self.audio.segmenter.buffered_bytes, 0)
+        self.audio.stop(play=False)
+        self.assertFalse(self.audio.music_mode)
+        self.assertIn(False, cancellations)
+
+    def test_mode_round_trip_invalidates_echo_waiting_in_backend_teardown(self):
+        self.assertTrue(hasattr(self.audio, 'set_music'))
+        entered, release = threading.Event(), threading.Event()
+        sent = []
+        def delayed_play(data, allowed=None):
+            entered.set()
+            release.wait(1)
+            if allowed is None or allowed():
+                sent.append(data)
+        self.backend.play = delayed_play
+        self.start()
+        self.audio.play(pcm(.2))
+        self.assertTrue(entered.wait(1))
+        self.audio.set_music(True)
+        self.audio.set_music(False)
+        release.set()
+        self.assertTrue(eventually(lambda: not self.audio.output_pending))
+        time.sleep(.02)
+        self.assertEqual(len(sent), 0)
 
 
 if __name__ == '__main__':

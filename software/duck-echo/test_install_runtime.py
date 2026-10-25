@@ -16,6 +16,13 @@ class RuntimePackagingTests(unittest.TestCase):
         self.assertLess(unit.index('Environment=ECHO_TRIGGER_MODE=toggle'),
                         unit.index('EnvironmentFile=-/etc/default/duck-echo'))
 
+    def test_music_runtime_is_installed_and_socket_directory_is_private(self):
+        self.assertTrue({'music_feel.py', 'music_interaction.py', 'audio_control.py'} <= set(install.RUNTIME_FILES))
+        unit = (Path(install.__file__).parent / 'duck-echo.service').read_text()
+        self.assertIn('RuntimeDirectory=duck-echo', unit)
+        self.assertIn('RuntimeDirectoryMode=0700', unit)
+        self.assertIn('--control-socket /run/duck-echo/control.sock', unit)
+
 
 if __name__ == '__main__':
     unittest.main()

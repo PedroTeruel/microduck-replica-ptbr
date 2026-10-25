@@ -176,6 +176,39 @@ class PlaybackTests(unittest.TestCase):
 
 
 class TriggerModeTests(unittest.TestCase):
+    def test_toggle_daemon_has_private_control_and_shared_music_model_even_in_voice_off(self):
+        import audio_control
+        import speech_control
+        recognizer = SimpleNamespace(model=object())
+        def inspect_audio(audio, stopped, selected, trigger_mode):
+            self.assertIsNotNone(getattr(audio, 'music', None), 'music streaming is not integrated')
+            self.assertTrue(audio.voice.ready.wait(1))
+            self.assertIs(audio.voice.recognizer, recognizer)
+            self.assertFalse(audio.voice.recognize_speech)
+            self.assertIsNotNone(audio.observer)
+        with patch.object(echo.sys, 'platform', 'linux'), patch.object(echo, 'daemon', side_effect=inspect_audio), \
+                patch.object(echo.signal, 'signal'), patch.object(echo.logging, 'basicConfig'), \
+                patch.object(audio_control, 'AudioControlServer') as server, \
+                patch.object(speech_control, 'MandarinRecognizer', return_value=recognizer):
+            self.assertEqual(echo.main(['daemon']), 0)
+            self.assertEqual(server.call_args.args[1], '/run/duck-echo/control.sock')
+            server.return_value.start.assert_called_once()
+            server.return_value.close.assert_called_once()
+
+    def test_no_pad_wait_keeps_web_started_capture_running(self):
+        import threading
+        stopped = threading.Event()
+        audio = FakeAudio()
+        audio.active = True
+        audio.voice = None
+        audio.stop_playback = lambda: self.fail('waiting for absent pad stopped web audio')
+        def wait(delay):
+            self.assertEqual(audio.calls, [])
+            stopped.set()
+        with patch.object(echo, 'devices', return_value=[]), patch.object(stopped, 'wait', side_effect=wait):
+            echo.daemon(audio, stopped)
+        self.assertEqual(audio.calls, [])
+
     def test_factory_defaults_to_toggle_and_retains_explicit_hold(self):
         import continuous_audio
         self.assertTrue(hasattr(echo, 'make_button'), 'trigger-mode factory is missing')
@@ -189,7 +222,8 @@ class TriggerModeTests(unittest.TestCase):
         for options, expected in (([], continuous_audio.ContinuousAudio),
                                   (['--trigger-mode', 'hold'], echo.AlsaAudio)):
             with patch.object(echo.sys, 'platform', 'linux'), patch.object(echo, 'daemon') as daemon, \
-                    patch.object(echo.signal, 'signal'), patch.object(echo.logging, 'basicConfig'):
+                    patch.object(echo.signal, 'signal'), patch.object(echo.logging, 'basicConfig'), \
+                    patch('audio_control.AudioControlServer'), patch('speech_control.MandarinRecognizer'):
                 echo.main(['daemon', *options])
                 self.assertIsInstance(daemon.call_args.args[0], expected)
                 self.assertEqual(daemon.call_args.kwargs['trigger_mode'], 'hold' if options else 'toggle')

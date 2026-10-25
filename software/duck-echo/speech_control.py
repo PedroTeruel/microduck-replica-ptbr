@@ -62,9 +62,11 @@ class MandarinRecognizer:
 
 class VoiceControl:
     def __init__(self, recognizer_factory, executor, fallback, execute_commands=True,
-                 cue=None, ttl=6, clock=time.monotonic):
+                 cue=None, ttl=6, clock=time.monotonic, recognize_speech=True):
         self.factory, self.executor, self.fallback = recognizer_factory, executor, fallback
         self.execute_commands, self.cue = execute_commands, cue
+        self.recognize_speech = recognize_speech
+        self._recognizer = None
         self.ttl, self.clock = ttl, clock
         self.condition = threading.Condition()
         self.queue = deque(maxlen=1)
@@ -74,6 +76,11 @@ class VoiceControl:
         self.last_result = None
         self.thread = threading.Thread(target=self._run, name='local-speech', daemon=True)
         self.thread.start()
+
+    @property
+    def recognizer(self):
+        """Ready shared Model owner; consumers create their own Kaldi decoder."""
+        return self._recognizer if self.ready.is_set() else None
 
     def submit(self, pcm):
         with self.condition:
@@ -102,6 +109,7 @@ class VoiceControl:
     def _run(self):
         try:
             recognizer = self.factory()
+            self._recognizer = recognizer
             LOG.info('local Chinese speech recognition ready; mode=%s',
                      'actions' if self.execute_commands else 'shadow')
         except Exception:
@@ -119,7 +127,7 @@ class VoiceControl:
             try:
                 if not self.valid(job):
                     continue
-                if recognizer is None:
+                if recognizer is None or not self.recognize_speech:
                     self._echo(job)
                     continue
                 result = recognizer.recognize(job[2])

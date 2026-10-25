@@ -12,7 +12,11 @@ RATE, FRAME_BYTES = 48000, 4
 class ToggleButton:
     def __init__(self, audio, initially_down=False):
         self.audio, self.down = audio, initially_down
-        self.recording = False
+        self._recording = False
+
+    @property
+    def recording(self):
+        return getattr(self.audio, 'active', self._recording)
 
     def event(self, value, now=None):
         if value == 0:
@@ -23,14 +27,14 @@ class ToggleButton:
                 self.cancel()
             else:
                 self.audio.start()
-                self.recording = True
+                self._recording = True
 
     def tick(self, now=None):
         if self.recording and self.audio.expired():
             self.cancel()
 
     def cancel(self):
-        self.recording = False
+        self._recording = False
         self.audio.stop(play=False)
 
 
@@ -100,11 +104,14 @@ class ContinuousAudio:
         self.tail, self.clock = tail, clock
         self.observer = observer
         self.voice = None
+        self.music = None
+        self.music_mode = False
         self.condition = threading.Condition()
         # Never acquire this while holding condition: VoiceControl._echo holds
         # its own condition while calling our nonblocking play() enqueue.
         self.dispatch_lock = threading.Lock()
         self.generation = 0
+        self.mode_generation = 0
         self.active = self.closed = self.failed = False
         self.pending = None
         self.stop_output = False
@@ -135,6 +142,25 @@ class ContinuousAudio:
         with self.condition:
             generation = self._invalidate()
         self._cancel_voice(generation)
+        if self.music is not None:
+            self.music.cancel()
+
+    def set_music(self, enabled):
+        # Changing consumers must not invalidate the generation owned by the
+        # still-running capture process. Each recognizer cancels its own work.
+        with self.dispatch_lock:
+            with self.condition:
+                self.music_mode = bool(enabled) and self.active and not self.closed
+                self.mode_generation += 1
+                self.pending = None
+                self.output_pending = False
+                self.segmenter.reset()
+                self.stop_output = True
+                self.condition.notify_all()
+            if self.voice is not None:
+                self.voice.cancel()
+            if self.music is not None:
+                self.music.set_enabled(self.music_mode)
 
     def _invalidate(self):
         self.generation += 1
@@ -143,9 +169,10 @@ class ContinuousAudio:
         self.segmenter.reset()
         return self.generation
 
-    def _valid(self, generation):
+    def _valid(self, generation, mode_generation=None):
         with self.condition:
-            return self.active and generation == self.generation and not self.closed
+            return (self.active and generation == self.generation and not self.closed and
+                    not self.music_mode and (mode_generation is None or mode_generation == self.mode_generation))
 
     def _cancel_voice(self, generation):
         with self.dispatch_lock:
@@ -159,11 +186,14 @@ class ContinuousAudio:
             if expected_generation is not None and expected_generation != self.generation:
                 return
             self.active = False
+            self.music_mode = False
             generation = self._invalidate()
             capture_stop = self.capture_stop
             self.stop_output = True
             self.condition.notify_all()
         self._cancel_voice(generation)
+        if self.music is not None:
+            self.music.set_enabled(False)
         if capture_stop is not None:
             capture_stop.set()
 
@@ -191,9 +221,10 @@ class ContinuousAudio:
             if self._suppressed():
                 self.segmenter.reset()
                 return
-            for phrase in self.segmenter.feed(data):
-                self.pending = ('phrase', self.generation, phrase)
-                self.condition.notify_all()
+            if not self.music_mode:
+                for phrase in self.segmenter.feed(data):
+                    self.pending = ('phrase', self.generation, phrase)
+                    self.condition.notify_all()
             observer, timestamp = self.observer, self.clock()
         # Observers must be quick in-memory consumers. They never run under the
         # capture lock and never receive output-contaminated or inactive input.
@@ -236,6 +267,7 @@ class ContinuousAudio:
                 stop = self.stop_output
                 self.stop_output = False
                 job, self.pending = self.pending, None
+                mode_generation = self.mode_generation
                 closed = self.closed
             if stop or closed:
                 self.backend.stop_playback()
@@ -249,17 +281,19 @@ class ContinuousAudio:
                 with self.dispatch_lock:
                     with self.condition:
                         valid = self.active and generation == self.generation
-                    if valid:
+                    if valid and not self.music_mode and mode_generation == self.mode_generation:
                         self.voice.submit(data)
                 continue
             with self.condition:
-                valid = self.active and generation == self.generation
+                valid = (self.active and generation == self.generation and not self.music_mode
+                         and mode_generation == self.mode_generation)
                 if kind == 'phrase' and valid:
                     self.output_pending = True
                     self.segmenter.reset()
             if valid:
                 try:
-                    self.backend.play(data, allowed=lambda generation=generation: self._valid(generation))
+                    self.backend.play(data, allowed=lambda generation=generation, mode=mode_generation:
+                                      self._valid(generation, mode))
                 except Exception:
                     LOG.exception('continuous playback failed')
                 finally:

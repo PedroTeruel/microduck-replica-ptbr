@@ -1,6 +1,7 @@
 """Exercise real Linux subprocesses with simulated ALSA tools, without hardware."""
 import json
 import os
+import socket
 from pathlib import Path
 import tempfile
 import time
@@ -57,6 +58,53 @@ elif kind == 'amixer':
 
 @unittest.skipUnless(os.name == 'posix', 'Linux subprocess integration')
 class LinuxAlsaTests(unittest.TestCase):
+    def test_music_query_answers_during_unbroken_fake_capture_and_ipc_off_cancels(self):
+        from audio_control import AudioControl, AudioControlServer
+        from music_interaction import MusicInteraction
+        from test_music_interaction import Decoder, eventually
+        class QuestionDecoder(Decoder):
+            def AcceptWaveform(self, pcm):
+                self.current = ('partial', '感觉 怎么样', .99)
+                return False
+        shared = SimpleNamespace(model=SimpleNamespace(vosk_model_find_word=lambda word: 0),
+                                 recognizer_type=QuestionDecoder)
+        feel = SimpleNamespace(snapshot=lambda: {'feel': 'lively', 'confidence': 1., 'age': 0})
+        audio = ContinuousAudio(self.audio, maximum=1)
+        quacks = []
+        def reply(tag, allowed):
+            if allowed():
+                audio.command_cue(lambda accepted: quacks.append(tag) if allowed() else None, True)
+        music = MusicInteraction(lambda: shared, feel, reply)
+        self.addCleanup(music.close)
+        self.addCleanup(audio.close)
+        audio.music = music
+        audio.observer = lambda raw, timestamp: music.feed(raw, timestamp) if audio.music_mode else None
+        server = AudioControlServer(AudioControl(audio, feel), str(self.root / 'control.sock'))
+        server.start()
+        self.addCleanup(server.close)
+        def request(fields):
+            with socket.socket(socket.AF_UNIX) as client:
+                client.settimeout(1)
+                client.connect(str(self.root / 'control.sock'))
+                client.sendall((json.dumps(fields)+'\n').encode())
+                return json.loads(client.recv(8192))
+        self.assertTrue(request({'method': 'set', 'music': True})['status']['listening'])
+        self.assertTrue(eventually(lambda: audio.capture is not None))
+        process = audio.capture
+        self.assertTrue(eventually(lambda: len(quacks) == 1, timeout=2))
+        self.assertEqual(quacks, ['chirp'])
+        self.assertIs(audio.capture, process)
+        self.assertFalse(self.playback.exists(), 'music was submitted to ordinary echo')
+        self.assertEqual(audio.segmenter.buffered_bytes, 0)
+        request({'method': 'set', 'music': False})
+        self.assertTrue(audio.active)
+        self.assertIs(audio.capture, process)
+        status = request({'method': 'set', 'listening': False})['status']
+        self.assertFalse(status['listening'] or status['music'])
+        self.assertTrue(eventually(lambda: process.poll() is not None))
+        time.sleep(.1)
+        self.assertEqual(quacks, ['chirp'])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

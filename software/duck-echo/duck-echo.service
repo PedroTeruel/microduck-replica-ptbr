@@ -16,7 +16,9 @@ Environment=ECHO_TRIGGER_MODE=toggle
 Environment=OPENBLAS_NUM_THREADS=1
 Environment=OMP_NUM_THREADS=1
 EnvironmentFile=-/etc/default/duck-echo
-ExecStart=/usr/bin/python3 /opt/duck-echo/duck_echo.py daemon --capture-device ${ECHO_CAPTURE} --playback-device ${ECHO_PLAYBACK} --channel ${ECHO_CHANNEL} --pitch ${ECHO_PITCH} --voice-mode ${ECHO_VOICE_MODE} --trigger-mode ${ECHO_TRIGGER_MODE}
+RuntimeDirectory=duck-echo
+RuntimeDirectoryMode=0700
+ExecStart=/usr/bin/python3 /opt/duck-echo/duck_echo.py daemon --capture-device ${ECHO_CAPTURE} --playback-device ${ECHO_PLAYBACK} --channel ${ECHO_CHANNEL} --pitch ${ECHO_PITCH} --voice-mode ${ECHO_VOICE_MODE} --trigger-mode ${ECHO_TRIGGER_MODE} --control-socket /run/duck-echo/control.sock
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=5

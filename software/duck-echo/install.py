@@ -16,7 +16,7 @@ UNIT = Path('/etc/systemd/system/duck-echo.service')
 DEFAULTS = Path('/etc/default/duck-echo')
 RUNTIME_FILES = ('duck_echo.py', 'install.py', 'duck-echo.service', 'README.md',
                  'voice_commands.py', 'speech_control.py', 'install_speech.py',
-                 'continuous_audio.py')
+                 'continuous_audio.py', 'music_feel.py', 'music_interaction.py', 'audio_control.py')
 CAPTURE_SETTINGS = {
     'Right PGA Mixer Mic3R Switch': 'on',
     'Left PGA Mixer Mic3R Switch': 'off',
