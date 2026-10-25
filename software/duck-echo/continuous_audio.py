@@ -1,5 +1,6 @@
 """One continuous PCM source, bounded utterances, and cancellable echo dispatch."""
 import logging
+from collections import deque
 import subprocess
 import tempfile
 import threading
@@ -39,7 +40,7 @@ class ToggleButton:
 
 
 class PcmSegmenter:
-    """20 ms RMS windows on the selected microphone; silence terminates speech."""
+    """DC-free 20 ms windows, ambient contrast, and bounded speech pre-roll."""
     def __init__(self, channel=1, maximum=10, silence=.6, minimum=.25, threshold=-42):
         from duck_echo import prepare_audio
         if channel not in (0, 1) or not .25 <= maximum <= 10:
@@ -51,6 +52,9 @@ class PcmSegmenter:
         self.minimum_bytes = round(minimum * RATE) * FRAME_BYTES
         self.silence_bytes = round(silence * RATE) * FRAME_BYTES
         self.threshold = threshold
+        self.minimum_noise = 32768 * 10 ** (threshold / 20)
+        self.noise_floor = self.minimum_noise
+        self.pre_roll_windows = 6  # 120 ms preserves the start of an utterance.
         self.reset()
 
     def reset(self):
@@ -58,10 +62,12 @@ class PcmSegmenter:
         self.phrase = bytearray()
         self.quiet = 0
         self.voiced = 0
+        self.pre_roll = deque(maxlen=self.pre_roll_windows)
+        self.startup_bytes = round(.06 * RATE) * FRAME_BYTES
 
     @property
     def buffered_bytes(self):
-        return len(self.partial) + len(self.phrase)
+        return len(self.partial) + len(self.phrase) + sum(map(len, self.pre_roll))
 
     def feed(self, data):
         phrases = []
@@ -71,16 +77,38 @@ class PcmSegmenter:
             while len(self.partial) >= self.window_bytes:
                 raw = bytes(self.partial[:self.window_bytes])
                 del self.partial[:self.window_bytes]
-                selected, level = self.prepare(raw, self.channel)
-                voiced = level['dbfs'] >= self.threshold
-                if not self.phrase and not voiced:
+                selected, level = self.prepare(raw, self.channel, center=True)
+                # Discard the short analog settling transient after capture or
+                # output suppression. Do not put that transient in pre-roll.
+                if self.startup_bytes > 0:
+                    self.startup_bytes -= len(selected)
                     continue
+                voiced = level['rms'] >= self.noise_floor * 2.5
+                if not self.phrase and not voiced:
+                    # Only non-speech trains the environment estimate. Keep a
+                    # conservative initial floor so quiet/DC windows cannot
+                    # make the measured microphone hiss look like speech.
+                    self.noise_floor = max(self.minimum_noise,
+                                           .95 * self.noise_floor + .05 * level['rms'])
+                    self.pre_roll.append(selected)
+                    continue
+                if not self.phrase:
+                    self.phrase.extend(b''.join(self.pre_roll))
+                    self.pre_roll.clear()
                 self.phrase.extend(selected)
                 self.voiced += len(selected) if voiced else 0
                 self.quiet = 0 if voiced else self.quiet + len(selected)
                 if len(self.phrase) >= self.maximum_bytes or self.quiet >= self.silence_bytes:
                     if self.voiced >= self.minimum_bytes:
                         phrases.append(bytes(self.phrase[:self.maximum_bytes]))
+                        LOG.info('speech phrase %.2fs endpoint=%s ambient_ac_rms=%.0f',
+                                 min(len(self.phrase), self.maximum_bytes) / RATE / FRAME_BYTES,
+                                 'silence' if self.quiet >= self.silence_bytes else 'maximum',
+                                 self.noise_floor)
+                    if self.quiet >= self.silence_bytes:
+                        tail = self.phrase[-self.pre_roll_windows * self.window_bytes:]
+                        self.pre_roll.extend(bytes(tail[offset:offset + self.window_bytes])
+                                             for offset in range(0, len(tail), self.window_bytes))
                     self.phrase.clear()
                     self.quiet = self.voiced = 0
         return phrases
@@ -132,7 +160,7 @@ class ContinuousAudio:
                 return
             self.active, self.failed = True, False
             self.condition.notify_all()
-        LOG.info('continuous listening on; click R3 again to stop')
+        LOG.info('continuous listening ON; click R3 again to stop')
 
     def expired(self):
         with self.condition:
@@ -185,12 +213,15 @@ class ContinuousAudio:
         with self.condition:
             if expected_generation is not None and expected_generation != self.generation:
                 return
+            was_active = self.active
             self.active = False
             self.music_mode = False
             generation = self._invalidate()
             capture_stop = self.capture_stop
             self.stop_output = True
             self.condition.notify_all()
+        if was_active:
+            LOG.info('continuous listening OFF; pending speech and playback canceled')
         self._cancel_voice(generation)
         if self.music is not None:
             self.music.set_enabled(False)

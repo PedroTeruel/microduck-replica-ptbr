@@ -1,6 +1,7 @@
 """Continuous listening tests use PCM and fake processes, never robot hardware."""
 import array
 import importlib
+import math
 import signal
 import threading
 import time
@@ -17,7 +18,15 @@ except ModuleNotFoundError:
 
 
 def pcm(seconds, right=2000, left=0):
-    return array.array('h', [left, right] * round(48000 * seconds)).tobytes()
+    # A constant sample is DC, not speech. Keep the old amplitude/channel API
+    # while making voice fixtures oscillate around zero.
+    return array.array('h', (value for i in range(round(48000 * seconds))
+                            for value in (left, round(right * math.cos(2 * math.pi * i / 192))))).tobytes()
+
+
+def measured_pcm(seconds, amplitude=500, dc=900):
+    return array.array('h', (value for i in range(round(48000 * seconds))
+                            for value in (0, round(dc + amplitude * math.sin(2 * math.pi * i / 192))))).tobytes()
 
 
 def eventually(predicate, timeout=1):
@@ -132,7 +141,8 @@ class SegmentTests(unittest.TestCase):
         phrases = self.segmenter.feed(pcm(.1, right=0))
         self.assertEqual(len(phrases), 1)
         samples = array.array('h', phrases[0])
-        self.assertEqual(samples[0:2].tolist(), [2000, 2000])
+        self.assertEqual(max(samples), 2000)
+        self.assertEqual(samples[::2].tolist(), samples[1::2].tolist())
         self.assertLessEqual(len(phrases[0]), 48000 * 4)
 
     def test_maximum_splits_phrase_and_next_utterance_still_works(self):
@@ -149,7 +159,57 @@ class SegmentTests(unittest.TestCase):
             phrases.extend(self.segmenter.feed(raw[offset:offset + 997]))
         self.assertEqual(len(phrases), 1)
         self.segmenter.feed(pcm(20, right=0))
-        self.assertLess(self.segmenter.buffered_bytes, 3840)
+        self.assertLessEqual(self.segmenter.buffered_bytes, round(.14 * 48000) * 4)
+
+
+class MeasuredEndpointTests(unittest.TestCase):
+    def test_measured_dc_and_ambient_noise_never_generate_a_phrase(self):
+        segmenter = continuous.PcmSegmenter()
+        self.assertEqual(segmenter.feed(measured_pcm(3.2)), [],
+                         'measured AC354/DC900 ambient was classified as speech')
+        self.assertLessEqual(segmenter.buffered_bytes, round(.14 * 48000) * 4,
+                             'ambient must remain pre-roll, not accumulate a ten-second phrase')
+
+    def test_short_speech_ends_on_ambient_with_centered_bounded_preroll(self):
+        segmenter = continuous.PcmSegmenter()
+        self.assertEqual(segmenter.feed(measured_pcm(1)), [])
+        self.assertEqual(segmenter.feed(measured_pcm(.6, amplitude=6000)), [])
+        phrases = segmenter.feed(measured_pcm(.7))
+        self.assertEqual(len(phrases), 1, 'ambient must end speech after roughly .6 seconds')
+        samples = array.array('h', phrases[0])[::2]
+        self.assertLessEqual(len(samples) / 48000, 2)
+        self.assertGreaterEqual(len(samples) / 48000, 1.2)
+        self.assertLess(abs(sum(samples) / len(samples)), 2)
+        self.assertLessEqual(max(abs(value) for value in samples[:4800]), 501,
+                             'bounded pre-roll should preserve ambient before speech onset')
+
+    def test_dc_only_and_startup_analog_transient_never_echo(self):
+        segmenter = continuous.PcmSegmenter()
+        transient = array.array('h', [0, -18332] * round(48000 * .04)).tobytes()
+        self.assertEqual(segmenter.feed(transient), [])
+        self.assertEqual(segmenter.feed(measured_pcm(3.2)), [])
+        constant_dc = array.array('h', [0, 900] * (48000 * 3)).tobytes()
+        self.assertEqual(segmenter.feed(constant_dc), [])
+        self.assertLessEqual(segmenter.buffered_bytes, round(.14 * 48000) * 4)
+
+    def test_long_speech_cannot_train_itself_into_the_noise_floor(self):
+        segmenter = continuous.PcmSegmenter(maximum=1, minimum=.1)
+        self.assertEqual(segmenter.feed(measured_pcm(.4)), [])
+        self.assertTrue(hasattr(segmenter, 'noise_floor'), 'adaptive ambient noise estimate is missing')
+        floor = segmenter.noise_floor
+        phrases = segmenter.feed(measured_pcm(2.2, amplitude=6000))
+        self.assertEqual(len(phrases), 2)
+        self.assertTrue(all(len(data) == 48000 * 4 for data in phrases))
+        self.assertAlmostEqual(segmenter.noise_floor, floor)
+
+    def test_environment_floor_adapts_to_non_speech_before_next_utterance(self):
+        segmenter = continuous.PcmSegmenter()
+        segmenter.feed(measured_pcm(.5))
+        first_floor = segmenter.noise_floor
+        self.assertEqual(segmenter.feed(measured_pcm(1, amplitude=750)), [])
+        self.assertGreater(segmenter.noise_floor, first_floor)
+        segmenter.feed(measured_pcm(.6, amplitude=6000))
+        self.assertEqual(len(segmenter.feed(measured_pcm(.7, amplitude=750))), 1)
 
 
 class BlockingStream:
@@ -235,6 +295,13 @@ class ContinuousTests(unittest.TestCase):
         self.assertNotIn('-d', self.commands[0])
         self.assertIn('48000', self.commands[0])
         self.assertFalse(self.audio.expired())
+
+    def test_listening_on_and_off_are_logged_immediately(self):
+        with self.assertLogs('duck-echo', level='INFO') as logged:
+            self.start()
+            self.audio.stop(play=False)
+        self.assertTrue(any('listening ON' in line for line in logged.output))
+        self.assertTrue(any('listening OFF' in line for line in logged.output))
 
     def test_playback_and_tail_are_not_recognized(self):
         process = self.start()

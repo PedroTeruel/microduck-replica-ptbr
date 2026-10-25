@@ -32,6 +32,17 @@ class AudioTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             echo.prepare_audio(b'', 2)
 
+    def test_selected_channel_can_remove_dc_without_changing_default_api(self):
+        import inspect
+        self.assertIn('center', inspect.signature(echo.prepare_audio).parameters,
+                      'selected microphone DC centering is missing')
+        raw = pcm([0, 1500, 0, 500])
+        centered, level = echo.prepare_audio(raw, 1, center=True)
+        self.assertEqual(array.array('h', centered).tolist(), [500, 500, -500, -500])
+        self.assertEqual(level['rms'], 500)
+        self.assertEqual(array.array('h', echo.prepare_audio(raw, 1)[0]).tolist(),
+                         [1500, 1500, 500, 500])
+
 
 class FakeAudio:
     def __init__(self):

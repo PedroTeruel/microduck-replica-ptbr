@@ -23,7 +23,7 @@ BUTTON = 318  # Linux BTN_THUMBR (right stick click)
 INPUT_EVENT = struct.Struct('@qqHHi')  # 64-bit Linux timeval, type, code, value
 
 
-def prepare_audio(raw, channel):
+def prepare_audio(raw, channel, center=False):
     if channel not in (0, 1):
         raise ValueError('microphone channel must be 0 or 1')
     samples = array.array('h')
@@ -31,6 +31,9 @@ def prepare_audio(raw, channel):
     if sys.byteorder != 'little':
         samples.byteswap()
     mono = samples[channel::2]
+    dc = sum(mono) / max(1, len(mono))
+    if center:
+        mono = array.array('h', (max(-32768, min(32767, round(value - dc))) for value in mono))
     peak = max((abs(x) for x in mono), default=0)
     rms = math.sqrt(sum(x * x for x in mono) / max(1, len(mono)))
     stereo = array.array('h', (x for sample in mono for x in (sample, sample)))
@@ -38,7 +41,7 @@ def prepare_audio(raw, channel):
         stereo.byteswap()
     return stereo.tobytes(), {
         'frames': len(mono), 'seconds': round(len(mono) / RATE, 3),
-        'peak': peak, 'rms': round(rms, 3),
+        'peak': peak, 'rms': round(rms, 3), 'dc_offset': round(dc, 3),
         'dbfs': round(20 * math.log10(max(rms, 1e-6) / 32768), 1),
     }
 
