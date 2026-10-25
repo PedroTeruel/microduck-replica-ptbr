@@ -25,4 +25,5 @@
 .motion-library-warning { background: #fff5d9; padding: 9px 10px; border-radius: 8px; color: #71501b; font-size: 13px; overflow-wrap: anywhere; }
 .motion-note { line-height: 1.65; margin-bottom: 0; }
 .motion-result { overflow-wrap: anywhere; }
+.motion-posture { padding: 9px 10px; border-radius: 8px; background: #e9f2f4; color: #284f5a; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 @media (max-width: 420px) { .pd-motion { padding: 12px; } .motion-toolbar { gap: 7px; } .pd-motion button { flex: 1 1 auto; } }

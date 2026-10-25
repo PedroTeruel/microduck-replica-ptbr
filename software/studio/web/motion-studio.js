@@ -128,6 +128,8 @@ export function MotionStudio({ pad, link, activity }) {
         ${running ? html`<button type="button" class="motion-stop" data-motion="stop" disabled=${!active || !owned || link.status !== 'open'}
           onClick=${() => command('stop', { session_id: motion.session_id })}>停止当前动作</button>` : null}
       </div>
+      ${motion.posture_step ? html`<p class="motion-posture" data-motion-posture=${motion.posture_step.target} role="status">
+        ${motion.posture_step.label}</p>` : null}
       ${!running && !hasDraft && motion.record_available?.why ? html`<p class="pd-small-p pd-why">${motion.record_available.why}</p>` : null}
       ${!motion.idle_running && !motion.idle_available?.ok && motion.idle_available?.why && motion.idle_available.why !== motion.record_available?.why
         ? html`<p class="pd-small-p">灵动：${motion.idle_available.why}</p>` : null}
@@ -171,8 +173,9 @@ export function MotionStudio({ pad, link, activity }) {
       </div>
       ${motion.last_result ? html`<p class="pd-small-p motion-result" role="status">${motion.last_result}</p>` : null}
       <p class="pd-small-p motion-note">每段最多 60 秒。录下控制指令与节奏，回放时实际路线可能变化。
-        首版支持摇杆、头部、身体、嘴部与叫声；踢腿、翻滚等模型技能暂不录制。
-        灵动只做头部和嘴部的小动作。离开遥控区、后台、失焦或断线会停止，回来后需重新开始。</p>
+        支持摇杆、头部、身体、嘴部、叫声，以及坐下和站起；踢腿、翻滚、捡取暂不录制。
+        坐站按目标姿态回放，等待状态确认后继续。普通停止会取消后续步骤，已经开始的坐站仍由主程序完成。
+        灵动只做头部和嘴部的小动作。离开遥控区、后台、失焦或断线会停止后续输出，回来后需重新开始。</p>
     `}
   </section>`;
 }

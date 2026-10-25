@@ -24,6 +24,10 @@ class MotionStudioBrowser(unittest.TestCase):
         record.write_text('', encoding='utf-8')
 
         def launch(name, args):
+            if name == 'studio.log' and os.environ.get('MOTION_E2E_STACKS') == '1':
+                source = ('import faulthandler,runpy,sys;faulthandler.dump_traceback_later(10,repeat=True);'
+                          f'sys.argv={[str(ROOT / "run.py")]!r}+sys.argv[1:];runpy.run_path(sys.argv[0],run_name="__main__")')
+                args = [sys.executable, '-I', '-c', source, *args[3:]]
             stream = (output / name).open('w', encoding='utf-8')
             streams.append(stream)
             processes.append(subprocess.Popen(args, cwd=ROOT, env={**os.environ, 'PYTHONIOENCODING': 'utf-8'},
@@ -57,6 +61,19 @@ class MotionStudioBrowser(unittest.TestCase):
             self.assertGreaterEqual(report['three_loop_action_frames'], report['recorded_action_frames'] * 2.5)
             self.assertEqual(report['loops_seen'], [1, 2, 3])
             self.assertEqual(report['layouts'], [1440, 390, 320])
+            self.assertEqual(report['recorded_posture_commands'], 2)
+            self.assertEqual(report['replayed_posture_commands'], 2)
+            self.assertEqual(report['repeated_posture_commands'], 6)
+            self.assertEqual(report['cancelled_posture_commands'], 1)
+            self.assertEqual(report['disconnected_posture_commands'], 1)
+            self.assertEqual(report['posture_layouts'], [390, 320, 1440])
+            clips = [json.loads(path.read_text(encoding='utf-8')) for path in
+                     (output / 'state' / 'motion-recordings').glob('*.json')]
+            self.assertEqual(len(clips), 1)
+            self.assertEqual(clips[0]['version'], 2)
+            targets = [event['params']['target'] for event in clips[0]['events']
+                       if event['method'] == 'studio.posture']
+            self.assertEqual(targets, ['sit', 'stand'])
         finally:
             for process in reversed(processes):
                 harness._kill(process)

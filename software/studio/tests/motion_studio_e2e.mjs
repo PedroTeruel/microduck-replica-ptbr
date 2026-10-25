@@ -28,7 +28,8 @@ const assert = (condition, message) => { if (!condition) throw Error(message); }
 const wait = async (expression, description, timeout = 14000) => {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) { if (await js(expression)) return; await sleep(80); }
-  throw Error(`Timed out: ${description}\n${await js('document.body.innerText.slice(-7000)')}`);
+  writeFileSync(`${shots}/failure-state.json`, JSON.stringify(await js(`({visibility:document.visibilityState,focus:document.hasFocus(),activity:window.__pad?.active,frames:window.__frames,hbs:window.__hbs,motion:window.__motionRequests?.slice(-12)})`), null, 2));
+  throw Error(`Timed out: ${description}\n${await js('document.body.innerText.slice(-7000)')}\nConsole errors: ${JSON.stringify(errors)}`);
 };
 const click = async selector => {
   await wait(`document.querySelector(${JSON.stringify(selector)}) && !document.querySelector(${JSON.stringify(selector)}).disabled`, selector);
@@ -50,10 +51,15 @@ const shot = async name => {
 };
 try {
   await send('Runtime.enable'); await send('Page.enable');
+  // Windows can background a long-running headless Edge tab. Keep this controlled
+  // test active; production visibility/heartbeat guards remain unchanged.
+  await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `
-    window.__motionRequests=[];
+    window.__motionRequests=[];window.__frames=[];window.__hbs=[];
     {const original=WebSocket.prototype.send;WebSocket.prototype.send=function(payload){
-      try{const value=JSON.parse(payload);if(value.t==='cmd'&&value.name==='pad.op'&&value.args?.op==='motion')window.__motionRequests.push(value.args);}catch{}
+      try{if(!this.__observed){this.__observed=true;this.addEventListener('message',e=>{try{const m=JSON.parse(e.data);window.__frames.push({at:performance.now(),t:m.t,state:m.motion_studio?.state,id:m.id,ok:m.ok});if(window.__frames.length>40)window.__frames.shift();}catch{}});this.addEventListener('close',e=>window.__frames.push({closed:e.code,at:performance.now()}));}
+        const value=JSON.parse(payload);if(value.t==='cmd'&&value.name==='pad.op'&&value.args?.op==='motion')window.__motionRequests.push(value.args);
+        if(value.t==='hb'){window.__hbs.push({at:performance.now(),...value});if(window.__hbs.length>10)window.__hbs.shift();}}catch{}
       return original.call(this,payload);
     };}
   ` });
@@ -131,6 +137,72 @@ try {
   }
   await click('[data-motion="delete_open"]'); await click('[data-motion="delete"]');
   await wait(`!document.querySelector('#motion-studio').innerText.includes('展示改名')`, 'delete recording');
+
+  // A clip consisting only of sit/stand must be meaningful and remain one session.
+  const postureCalls = () => records().filter(r => r.method === 'robot.do' && r.params?.skill === 'sit_toggle');
+  const waitCalls = async count => {
+    const end = Date.now() + 8000;
+    while (postureCalls().length < count && Date.now() < end) await sleep(50);
+    assert(postureCalls().length >= count, 'expected posture command to reach robotd');
+  };
+  await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false });
+  await fakeSet({ posture: 'policy', posture_delay_s: .8 });
+  await js(`document.querySelector('#motion-studio').scrollIntoView({block:'center'})`);
+  await wait(`window.__pad?.active`, 'active posture recorder');
+  await click('[data-motion="record_start"]'); await state('recording');
+  const recordPostureBegin = postureCalls().length;
+  await click('#pd-remote .pd-bigs button:nth-child(3)');
+  await wait(`document.querySelector('#motion-studio').dataset.state==='recording' && document.querySelector('#pd-remote .pd-pose b').innerText==='坐着'`, 'sit remains in recording');
+  await wait(`!document.querySelector('[data-motion-posture]')`, 'seated transition confirmed');
+  await click('#pd-remote .pd-bigs button:nth-child(1)');
+  await wait(`document.querySelector('#motion-studio').dataset.state==='recording' && document.querySelector('#pd-remote .pd-pose b').innerText.includes('准备好走') && !document.querySelector('[data-motion-posture]')`, 'stand remains in recording and finishes');
+  await click('[data-motion="record_finish"]'); await state('draft');
+  report.recorded_posture_commands = postureCalls().length - recordPostureBegin;
+  assert(report.recorded_posture_commands === 2, 'recording sends exactly sit then stand');
+  await input('[name="motion-name"]', '坐下再站起'); await click('[data-motion="save"]'); await state('idle');
+
+  const playPostureBegin = postureCalls().length;
+  await click('[data-motion="play"]'); await state('playing');
+  await js(`window.__postureSeen=[]`);
+  await wait(`(() => {const e=document.querySelector('#motion-studio');const p=document.querySelector('#pd-remote .pd-pose b').innerText;if(!window.__postureSeen.includes(p))window.__postureSeen.push(p);return e.dataset.state==='idle';})()`, 'posture replay completion', 45000);
+  report.posture_states_seen = await js('window.__postureSeen');
+  report.replayed_posture_commands = postureCalls().length - playPostureBegin;
+  assert(report.replayed_posture_commands === 2 && report.posture_states_seen.includes('坐着') && report.posture_states_seen.some(p=>p.includes('准备好走')), 'replay must actually sit then stand');
+
+  await js(`(() => {const e=document.querySelector('[aria-label="回放次数"]');e.value='3';e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  const repeatPostureBegin = postureCalls().length;
+  await click('[data-motion="play"]'); await state('playing');
+  await wait(`document.querySelector('#motion-studio').dataset.state==='idle'`, 'three sit/stand loops complete', 90000);
+  report.repeated_posture_commands = postureCalls().length - repeatPostureBegin;
+  assert(report.repeated_posture_commands === 6, 'three loops each issue sit and stand exactly once');
+
+  await fakeSet({ posture_delay_s: 2.5 });
+  const cancelPostureBegin = postureCalls().length;
+  await click('[data-motion="play"]'); await state('playing');
+  await waitCalls(cancelPostureBegin + 1);
+  await wait(`document.querySelector('[data-motion-posture="sit"]')`, 'visible sit progress');
+  await click('[data-motion="stop"]'); await state('idle');
+  report.posture_stop_message = await js(`document.querySelector('.motion-result')?.innerText || ''`);
+  await sleep(3200);
+  report.cancelled_posture_commands = postureCalls().length - cancelPostureBegin;
+  assert(report.cancelled_posture_commands === 1, 'stop after sit must never execute later stand');
+
+  await fakeSet({ posture: 'holding' }); await sleep(1400); await fakeSet({ posture: 'policy' });
+  await wait(`!document.querySelector('[data-motion="record_start"]').disabled`, 'ready after manual stop/start reset');
+  const leavePostureBegin = postureCalls().length;
+  await click('[data-motion="play"]'); await state('playing'); await waitCalls(leavePostureBegin + 1);
+  await js(`location.hash='/logs'`); await sleep(3800);
+  report.disconnected_posture_commands = postureCalls().length - leavePostureBegin;
+  assert(report.disconnected_posture_commands === 1, 'navigation during sit cancels subsequent stand');
+  await js(`location.hash='/pad'`); await wait(`document.querySelector('#motion-studio')`, 'return to recording library');
+  await state('idle');
+  report.posture_layouts = [];
+  for (const width of [390, 320, 1440]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 500 });
+    await js(`document.querySelector('#motion-studio').scrollIntoView({block:'center'})`);
+    assert(await js(`document.documentElement.scrollWidth<=innerWidth+1`), `${width}px posture feedback overflows`);
+    report.posture_layouts.push(width); await shot(`posture-${width}`);
+  }
   assert(errors.length === 0, errors.join('\n'));
   process.stdout.write(JSON.stringify(report));
 } finally {
