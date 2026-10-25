@@ -86,7 +86,9 @@ Files: new `web/motion-studio.js`, new `web/motion-studio.css`, small integratio
 
 ## Task 4 — Delivery and project records
 
-- [ ] Update Studio README and feature ledger with exact local versus board/image acceptance. Include source/verification artifact paths and limits.
-- [ ] Integrate reviewed feature commits into studio-dev while preserving its current uncommitted roadmap/voice notes. Do not overwrite those files by resetting the checkout.
-- [ ] The human subsequently chose the existing duck control URL. Back up runtime files and user state, verify compatibility and stationary control state, update only Studio runtime files, restart only microduck-studio, and verify hashes/HTTP/snapshot and unchanged robotd/padd/voice process identities. Open the real control URL without issuing automatic movement. No image rebuild or automatic updater change.
-- [ ] Record feature state and packaging follow-up; leave a reproducible test/installation path for subsequent board acceptance.
+- [x] Update Studio README and feature ledger with exact local versus board/image acceptance. Include source/verification artifact paths and limits.
+- [x] Integrate reviewed feature commits into studio-dev while preserving its current uncommitted roadmap/voice notes. Do not overwrite those files by resetting the checkout.
+- [x] The human subsequently chose the existing duck control URL. Back up runtime files and user state, verify compatibility and stationary control state, update only Studio runtime files, restart only microduck-studio, and verify hashes/HTTP/snapshot and unchanged robotd/padd/voice process identities. Open the real control URL without issuing automatic movement. No image rebuild or automatic updater change. Installed hashes and HTTP passed; authenticated live snapshot remains behind existing login, not bypassed. UI opening was queued by the app; native browser was minimized. Actual motion acceptance is pending the human's trial.
+- [x] Record feature state and packaging follow-up; leave a reproducible test/installation path for subsequent board acceptance.
+
+Delivered runtime commit: c18783c9a2b2e2635124c6c4d53007e3fefb3ba6. Evidence, limits and deployment backup are recorded in [verification](../verification/2026-10-25-web-motion-studio.md). No action-generating test was sent to the actual robot; local browser end-to-end testing used fake robotd.

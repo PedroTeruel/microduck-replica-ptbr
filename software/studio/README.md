@@ -91,6 +91,8 @@ Windows 的 Python 没有 Unix socket，所以地址写成 `tcp:主机:端口`�
 
 实现拆分为 `studio/motion_store.py`（文件校验/保存）、`studio/motion_studio.py`（会话/时间轴/灵动）、`web/motion-studio.js`（界面）与 `web/motion-heartbeat.js`（页面存活）。通过既有 `pad.op` 的 `op=motion` 接入，原 `pad.motion` 状态不改名。当前开发与验收记录见 [网页动作实现计划](../../docs/superpowers/plans/2026-10-25-web-motion-studio.md)；本地模拟通过和实际鸭子验收分别记录。
 
+2026-10-25：c18783c 已部署到当前鸭子的原控制网址，只重启 Studio；351 项软件检查及静态资源/用户数据/控制服务身份回读通过。该设备有网页登录保护，未为核对快照而绕过登录，实际动作效果仍待用户确认。源码冻结包、备份与回退范围见[部署验收](../../docs/superpowers/verification/2026-10-25-web-motion-studio.md)。镜像和通用在线升级未更新。
+
 ## 台架模式：主控没烧，用飞特调试板在电脑上调舵机
 
 把飞特调试板（或 USB 转 TTL）插到电脑上，接好舵机和电源，然后：
