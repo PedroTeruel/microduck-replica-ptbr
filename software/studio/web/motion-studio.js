@@ -112,7 +112,7 @@ export function MotionStudio({ pad, link, activity }) {
 
   return html`<section id="motion-studio" class="pd-motion" data-state=${state} data-loop=${motion?.loop || 0} aria-label="动作录制与回放">
     <div class="motion-heading"><h4>动作录制与回放</h4>
-      <span class=${`motion-state ${state === 'recording' ? 'is-recording' : ''}`} role="status">${LABELS[state] || '状态待确认'}</span>
+      <span class=${`motion-state ${state === 'recording' ? 'is-recording' : ''}`} role="status">${state === 'idle_motion' && motion?.idle_kind === 'music' ? '随乐律动中' : LABELS[state] || '状态待确认'}</span>
     </div>
     ${!motion ? html`<p class="pd-small-p">动作功能尚未就绪，连接后重新查看。</p>` : html`
       ${other ? html`<p class="pd-small-p pd-why">${motion.owner.by || '另一个页面'}正在使用动作功能，请先停止或接管。</p>` : null}
@@ -123,8 +123,10 @@ export function MotionStudio({ pad, link, activity }) {
         ${state === 'recording' ? button('record_pause', '暂停录制', owned) : null}
         ${state === 'record_paused' ? button('record_resume', '继续录制', owned) : null}
         ${recording ? button('record_finish', '结束录制', owned) : null}
-        ${motion.idle_running ? button('idle_stop', '停止灵动', owned) :
+        ${motion.idle_running ? button('idle_stop', motion.idle_kind === 'music' ? '停止律动' : '停止灵动', owned) :
           button('idle_start', '灵动', idleCanStart && state !== 'draft' && motion.idle_available?.ok)}
+        ${!motion.idle_running ? button('idle_start', '随乐律动', idleCanStart && state !== 'draft' && motion.idle_available?.ok
+          && pad?.audio?.available && pad?.audio?.listening && pad?.audio?.music, {kind:'music'}) : null}
         ${running ? html`<button type="button" class="motion-stop" data-motion="stop" disabled=${!active || !owned || link.status !== 'open'}
           onClick=${() => command('stop', { session_id: motion.session_id })}>停止当前动作</button>` : null}
       </div>
@@ -176,6 +178,8 @@ export function MotionStudio({ pad, link, activity }) {
         支持摇杆、头部、身体、嘴部、叫声，以及坐下和站起；踢腿、翻滚、捡取暂不录制。
         坐站按目标姿态回放，等待状态确认后继续。普通停止会取消后续步骤，已经开始的坐站仍由主程序完成。
         灵动只做头部和嘴部的小动作。离开遥控区、后台、失焦或断线会停止后续输出，回来后需重新开始。</p>
+      <p class="pd-small-p motion-note">随乐律动只做头部和身体的小幅意图；没有清晰节拍时等待，音乐或收音停止后回正。
+        推网页摇杆、执行动作、实体手柄接管或离开页面时，按现有控制规则停止律动。</p>
     `}
   </section>`;
 }

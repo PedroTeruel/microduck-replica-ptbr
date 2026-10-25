@@ -362,9 +362,10 @@ def _torque_on(bus):
 class PadOps(DriveMixin):
     def __init__(self, log, configd=None, bt=None, tap=None, robot=None, *, helper=None, clock=time.monotonic,
                  exists=os.path.exists, read_text=None, robotd_toml=ROBOTD_TOML, weird_ble=WEIRD_BLE, waits=None,
-                 state_dir=None):
+                 state_dir=None, audio=None):
         self.log = log
         self.configd, self.bt, self.tap, self.robot = configd, bt, tap, robot
+        self.audio = audio
         self.helper = helper_api if helper is None else helper
         self._helper_pad_ok = None       # None 没试过；True 新版小助手认 pad-pair；False 旧版 / 没小助手
         self.clock = clock
@@ -440,6 +441,22 @@ class PadOps(DriveMixin):
             raise Refused("这个页面已经断开了")      # 线程池里晚到的指令（审查二 S1）
         if op == "motion":
             return self.motion_studio.handle(args, conn, by)
+        if op == "audio":
+            values = {key:value for key,value in args.items() if key != "op"}
+            if not values or set(values)-{"listening","music"} or any(type(value) is not bool for value in values.values()):
+                raise Refused("语音只支持监听和音乐两个开关")
+            if conn is None or conn in self._gone or conn in self._closed:
+                raise Refused("请先回到手柄遥控区操作语音")
+            if self.audio is None:
+                raise Refused("语音服务尚未配置，请检查 duck-echo")
+            if values.get("listening") is False or values.get("music") is False:
+                with self._lk:
+                    if (self.motion_studio.session or {}).get("idle_kind") == "music":
+                        self.motion_studio.invalidate("监听或音乐模式已关闭")
+            try:
+                return {"audio":self.audio.set(**values)}
+            except (OSError,ValueError,TypeError):
+                raise Refused("连接不到语音服务，请检查 duck-echo") from None
         if self.motion_studio.before(args, conn, by) is False:
             return {"dropped": "动作会话已经改变，旧请求已丢弃"}
         if op == "watch":
@@ -579,6 +596,7 @@ class PadOps(DriveMixin):
             return {"t": "pad", "status": status, "estop": self._estop_checks(now, status), "live": live,
                     "wizard": wiz, "estop_test": test, "virtual": virtual, "motion": self._motion_view(now),
                     "motion_studio": self.motion_studio.snapshot(conn, now),
+                    "audio": self.audio.snapshot() if self.audio is not None else {"available":False,"why":"语音服务尚未配置"},
                     "bindings": self.bindings}
 
     def safe_snapshot(self, conn=None):
@@ -659,6 +677,8 @@ class PadOps(DriveMixin):
         self._test_evt.set()
         self._action_stop(None, "Studio 关了")
         self._drive_close()                 # 头 / 身体回正、按住的键松开（三 V1 第 9 条，尽力发）
+        if self.audio is not None:
+            self.audio.close()
         self._files_stop.set()
         try:
             self._fast_pool.shutdown(wait=False, cancel_futures=True)
@@ -2704,5 +2724,6 @@ def default_pad(log, configd_addr="unix:/run/configd.sock", robotd_addr="unix:/r
                 tap_addr="unix:/run/padd/pad.sock", bt_prefix=(), state_dir=None):
     """鸭子上的默认接法（app.py / __main__.py 用）。没有 bluetoothctl 的机器（电脑）不给蓝牙端口。"""
     bt = BluetoothCtl(prefix=bt_prefix) if shutil.which("bluetoothctl") else None
+    from .audio_interaction import AudioClient
     return PadOps(log, configd=ConfigdPort(configd_addr), bt=bt, tap=PaddTap(tap_addr, log=log),
-                  robot=RobotPort(robotd_addr), state_dir=state_dir)
+                  robot=RobotPort(robotd_addr), state_dir=state_dir, audio=AudioClient())

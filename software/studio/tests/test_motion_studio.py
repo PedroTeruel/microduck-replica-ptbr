@@ -176,6 +176,42 @@ class MotionStudioTest(PadTestBase):
         self.assertFalse(any(e["params"].get("tag") == "unknown" for e in c["events"]))
         self.assertNotEqual(token, self.motion("play", id=c["id"], loops=1)["session_id"])
 
+    def test_music_generator_uses_existing_lease_and_cleans_on_source_off(self):
+        now = time.monotonic()
+        source = {"available": True, "listening": True, "music": True,
+                  "rhythm": {"bpm": 120., "confidence": .9, "feel": "lively", "last_beat": now, "age": .01}}
+        class Audio:
+            def snapshot(self):
+                return copy.deepcopy(source)
+            def close(self):
+                pass
+        self.ops.audio = Audio()
+        self.motion("idle_start", kind="music")
+        self.assertEqual(self.view()["idle_kind"], "music")
+        self.ops._tick_once()
+        self.assertTrue(any(m == "robot.pose" and p.get("active") is True for m,p in self.sent()))
+        source["listening"] = False
+        self.ops._tick_once()
+        self.assertTrue(any(m == "robot.pose" and p == {"active":False} for m,p in self.sent()))
+        self.move(.1)
+        self.assertEqual(self.view()["state"], "idle")
+        self.assertFalse(any(m in ("robot.init", "robot.enable") for m,p in self.robot.calls))
+
+    def test_music_rejects_missing_service_bad_kind_and_physical_pad(self):
+        for kwargs in ({"kind":"music"}, {"kind":"arbitrary"}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(Refused):
+                self.motion("idle_start", **kwargs)
+        class Audio:
+            def snapshot(self):
+                return {"available":True,"listening":True,"music":True,"rhythm":{}}
+            def close(self):
+                pass
+        self.ops.audio = Audio()
+        self.cfg.connect_pad(fixtures.PRO, "Pad")
+        self.ops._poll_status()
+        with self.assertRaisesRegex(Refused,"实体手柄"):
+            self.motion("idle_start",kind="music")
+
     def test_unsupported_skill_rejected_before_send_and_recording_keeps_running(self):
         self.start()
         for args in ({"op": "skill", "name": "kick_left"}, {"op": "key", "key": "x"},

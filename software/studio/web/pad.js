@@ -29,6 +29,7 @@ import { html, useState, useEffect, useRef, useCallback } from './vendor/preact-
 import { Duck3D } from './duck3d.js';
 import { InlineCamera } from './sensors.js';
 import { MotionStudio } from './motion-studio.js';
+import { AudioInteraction } from './audio-interaction.js';
 
 const SEND_MS = 100;        // 摇杆按住时每秒发 10 次；松手发一次 0，鸭子 0.5 秒收不到也会自己停（robotd 的 deadman）
 const WATCH_MS = 2000;
@@ -1130,6 +1131,7 @@ function Remote({ st, pad, link, vp }) {
       ${last ? html`<p class=${cx('pd-small-p', !last.ok && 'pd-bad-t')}>${last.ok ? '✓' : '×'} ${last.what}${last.by ? `（${last.by}）` : ''}：${last.ok ? (last.reason || '主程序收到了') : last.reason}</p>` : null}
     </div>
 
+    <${AudioInteraction} pad=${pad} link=${link} activity=${padActivity} />
     <${MotionStudio} pad=${pad} link=${link} activity=${padActivity} />
 
     <div class="pd-sec">

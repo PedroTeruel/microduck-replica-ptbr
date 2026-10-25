@@ -18,6 +18,7 @@ import uuid
 from .motion_store import CLEANUP, HEAD_ZERO, MAX_BYTES, MAX_EVENTS, MAX_SECONDS, MotionStore, name, validate_event
 from .pad_combo import Refused
 from .motion_posture import PostureTracker, evidence
+from .audio_interaction import MusicRhythm
 from .rpc import Timeout, Unreachable
 
 HEARTBEAT_S = .5
@@ -399,6 +400,7 @@ class MotionStudio:
                 "idle_available": {"ok": idle_why is None, "why": idle_why}, "last_result": self.last_result,
                 "error": self.error, "idle_running": bool(s and s.get("lively") and not s.get("invalid")
                                                             and self.state in ("idle_motion", "recording")),
+                "idle_kind": s.get("idle_kind", "lively") if s and s.get("lively") else None,
                 "posture_step": self.posture.snapshot()}
 
     def invalidate(self, why, conn=None):
@@ -591,6 +593,15 @@ class MotionStudio:
 
     def handle(self, args, conn, by):
         action = args.get("action")
+        idle_kind = args.get("kind", "lively")
+        if action == "idle_start":
+            if idle_kind not in ("lively", "music"):
+                raise Refused("律动类型只能选择灵动或音乐")
+            if idle_kind == "music":
+                audio = getattr(self.pad, "audio", None)
+                status = audio.snapshot() if audio is not None else {}
+                if not status.get("available") or not status.get("listening") or not status.get("music"):
+                    raise Refused("先在语音面板开启「听音乐」，等待服务连接")
         supplied_token = args.get("session_id")
         with self.pad._lk:
             entry_session, entry_epoch = self.session, self.epoch
@@ -674,7 +685,8 @@ class MotionStudio:
                             # Starting a producer is a new request generation even
                             # when the recording keeps its public session token.
                             self._boundary(record=True)
-                            s["lively"] = Lively()
+                            s["lively"] = MusicRhythm(self.pad.audio.snapshot) if idle_kind == "music" else Lively()
+                            s["idle_kind"] = idle_kind
                         return {"session_id": s["id"]}
                     self._boundary(conn=conn)
                     result = self._new(conn, by, fp, hashed_identity)
@@ -682,7 +694,9 @@ class MotionStudio:
                     if action == "record_start":
                         self.state = "recording"
                     elif action == "idle_start":
-                        self.state, s["lively"] = "idle_motion", Lively()
+                        self.state = "idle_motion"
+                        s["lively"] = MusicRhythm(self.pad.audio.snapshot) if idle_kind == "music" else Lively()
+                        s["idle_kind"] = idle_kind
                     else:
                         self.state = "playing"
                         s.update(clip=clip, duration=clip["duration_s"], loop=1, loops=args.get("loops", 1), index=0,
