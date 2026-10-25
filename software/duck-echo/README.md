@@ -1,0 +1,92 @@
+# 鸭子麦克风复读
+
+按住手柄右摇杆按钮 **R3**，对着鸭子的麦克风说话；松开后喇叭复读。最长录 10 秒，默认音调和语速提高到 1.25 倍；设为 1.0 可恢复原声。新一轮按下会打断上一段播放。
+
+这是独立服务，通过 SSH 安装，沿用主程序的坐立动作接口，不重新烧录或重启 robotd/padd。只读旁听实体手柄，不独占输入设备。声音只放在内存，不保存对话录音文件。
+
+**状态：2026-10-25 已通过 SSH 部署到 duck-0de6（192.168.0.102），设为开机自启动。真实麦克风采集、变调回放、实体手柄 R3 按住/松开均已跑通。45 项软件测试通过；用户随后明确确认真人语音“站起来和坐下都成功”。**
+
+实际手柄为 Nintendo Switch Pro Controller，输入设备 /dev/input/event4。安装前后 robotd PID 1090、padd PID 1128 及启动时间均未变化，控制环保持 50 Hz。已设置服务 enabled，未为此重启整机；已配对手柄开机回连后，复读服务会自动检测。
+
+适用硬件：64 位 Linux、TLV320AIC3104 HAT、已有正常的喇叭播放通路、支持 BTN_THUMBR 的实体手柄。采集的是项目初始化脚本使用的 Mic3R（右声道）。不支持网页模拟手柄的 R3。
+
+## 中文口令模式
+
+新增可选的本地声控模式，仍然按住 R3 说话、松开处理：说“坐下”“坐下来”“站起来”“起立”等明确短口令时执行对应动作，普通话语继续复读。“不要坐下”、多个动作混在一句里、低置信度识别不会触发动作。按 Select、手柄断线、输入溢出或开始新录音会取消未执行的旧口令。
+
+已经在鸭子 CPU 上通过 14 条合成测试语音，覆盖正向口令、否定、引用、混合动作和普通话语，识别约 0.26–0.51 秒，峰值内存约 144 MB。使用含未知语音及否定形式的小词表，避免完整听写的 6–7 秒延迟。用户随后使用实际麦克风与 R3 测试，并确认站起和坐下均成功。
+
+验收后曾出现 SSH 与网页均不可达。后续经蓝牙配网恢复连接，将这台鸭子固定到 TP-LINK_5G_6494（5240 MHz），关闭其他已保存网络的自动连接及 Wi-Fi 省电。网页连续 20 次访问均成功。语音关闭约 160 秒、开启约 180 秒的蓝牙记录均无断链，手柄数据最大间隔均不足 49 毫秒；开启期间完成真人复读、坐下与站起，已取得两次动作 accepted=true 的日志。用户确认复读和摇杆均正常；另一次看到灯闪时，动作也正常，记录中没有对应断链。此前日志确有真实掉线，尚未确定其原因，短时复测不能证明长期间歇问题彻底消失。详见 docs/network-20261025.md 与本地 artifacts/duck-network-20261025/final-verification.json。
+
+使用 Vosk small-cn-0.22，模型和依赖放在 /opt/duck-echo 内，不上传语音。完整录音不写入文件，日志只记口令类别、置信度和动作回执，不记普通对话文本。每次会先读当前坐立状态，重复“坐下”不会反向站起；主程序拒绝姿态请求时不绕过。坐着卸力后的恢复仍遵循现有固件要求。
+
+声控模式录音达到 10 秒上限时取消本次，不会在仍按着 R3 时自动做动作。识别结果超过 6 秒不再执行。
+
+```bash
+# 先更新运行文件，再准备本地识别依赖和模型。离线安装可提供 ARM64/cp313 wheels。
+sudo python3 /home/radxa/duck-echo/install.py
+sudo python3 /opt/duck-echo/install_speech.py --mode actions \
+  --archive /home/radxa/duck-echo/vosk-model-small-cn-0.22.zip \
+  --wheels /home/radxa/duck-echo/arm64-wheels
+
+# 观察识别，暂不执行动作：
+sudo python3 /opt/duck-echo/install_speech.py --mode shadow
+
+# 返回纯复读：
+sudo python3 /opt/duck-echo/install_speech.py --mode off
+```
+
+来源：[Vosk 官方模型](https://alphacephei.com/vosk/models)、[ARM64 安装支持](https://alphacephei.com/vosk/install)。
+
+## SSH 上机
+
+将本文件夹上传到鸭子的 `/home/radxa/duck-echo`。在鸭子上执行：
+
+```bash
+cd /home/radxa/duck-echo
+arecord -l
+python3 duck_echo.py devices
+sudo python3 install.py prepare-mic
+python3 duck_echo.py probe --seconds 3
+python3 duck_echo.py record --seconds 4
+sudo python3 install.py
+journalctl -u duck-echo -n 30 --no-pager
+```
+
+`probe` 的 3 秒内在麦克风旁说话，输出包含 peak、rms、dbfs；静音/过短/采集失败时退出码为 2。`record` 命令在 4 秒内录音，然后播放；播放进程退出成功才会输出 `playback_ok: true`。进程成功仍需耳朵确认实际音质和喇叭响度。
+
+安装需要 sudo；服务以 radxa 用户运行，并加入 audio/input 附加组。依赖系统 Python 3、alsa-utils 和 systemd，无需下载 Python 包。
+
+## 原声与设备设置
+
+```bash
+sudo nano /etc/default/duck-echo
+# ECHO_PITCH=1.0 为原声，1.25 为较高较快的声音。
+# ECHO_CHANNEL=1 为 Mic3R 右声道；仅硬件确实接左路时改成 0。
+sudo systemctl restart duck-echo
+```
+
+仅重启复读服务。声卡名不同则修改 ECHO_CAPTURE/ECHO_PLAYBACK；本安装脚本的麦克风设置专用于 aic3104，其他声卡须另按其硬件确认采集通路。
+
+## 诊断与撤回
+
+- 没有手柄时服务等待，连接后自动找到支持 R3 的 evdev 设备；启动时 R3 已按下需先松开再试。多个手柄会监听第一个。日志写出实际设备名及 event 路径。
+- 录不到声音：查看 `arecord -l`、probe 电平和 Mic3R 焊接/线路；尚未验证本机硬件，不把静音归因为软件或焊接。
+- 播放提示 Device busy：松开原有发声扳机后再试。原生音效与复读可能竞争硬件播放通路；本版会报错，不会停止 robotd 或篡改全局 ALSA 播放配置。
+- 变调同时改变语速；本版支持按键后识别坐立短口令，不含连续唤醒、自由对话和保持语速的变声。
+
+```bash
+sudo systemctl stop duck-echo
+sudo python3 /opt/duck-echo/install.py uninstall
+```
+
+卸载会关闭复读服务并恢复安装前的麦克风采集设置。程序和备份留在 /opt/duck-echo、/var/lib/duck-echo；喇叭音量不受该安装脚本修改。安装或升级失败时会尝试恢复本次修改的文件、采集设置和此前的复读服务状态；恢复失败会明确输出错误。
+
+## 离线验证
+
+```bash
+python3 -m unittest -v test_duck_echo test_alsa_linux test_voice_commands test_speech_control test_speech_install
+python3 duck_echo.py --help
+```
+
+Linux 集成测试用临时假 arecord/aplay/amixer 程序运行真实子进程，覆盖录放、限时、断线、声卡忙碌、麦克风设置恢复；不代表真机声音已经验收。
