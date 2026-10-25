@@ -1,0 +1,21 @@
+"""Packaging contracts needed by the continuous microphone upgrade."""
+from pathlib import Path
+import unittest
+
+import install
+
+
+class RuntimePackagingTests(unittest.TestCase):
+    def test_continuous_controller_is_in_install_and_rollback_manifest(self):
+        self.assertIn('continuous_audio.py', install.RUNTIME_FILES)
+
+    def test_service_can_select_toggle_or_hold_from_preserved_defaults(self):
+        unit = (Path(install.__file__).parent / 'duck-echo.service').read_text()
+        self.assertIn('Environment=ECHO_TRIGGER_MODE=toggle', unit)
+        self.assertIn('--trigger-mode ${ECHO_TRIGGER_MODE}', unit)
+        self.assertLess(unit.index('Environment=ECHO_TRIGGER_MODE=toggle'),
+                        unit.index('EnvironmentFile=-/etc/default/duck-echo'))
+
+
+if __name__ == '__main__':
+    unittest.main()

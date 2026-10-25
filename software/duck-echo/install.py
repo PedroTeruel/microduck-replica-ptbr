@@ -15,7 +15,8 @@ DESTINATION = Path('/opt/duck-echo')
 UNIT = Path('/etc/systemd/system/duck-echo.service')
 DEFAULTS = Path('/etc/default/duck-echo')
 RUNTIME_FILES = ('duck_echo.py', 'install.py', 'duck-echo.service', 'README.md',
-                 'voice_commands.py', 'speech_control.py', 'install_speech.py')
+                 'voice_commands.py', 'speech_control.py', 'install_speech.py',
+                 'continuous_audio.py')
 CAPTURE_SETTINGS = {
     'Right PGA Mixer Mic3R Switch': 'on',
     'Left PGA Mixer Mic3R Switch': 'off',
@@ -208,15 +209,16 @@ def main(argv=None):
             UNIT.chmod(0o644)
             if not DEFAULTS.exists():
                 DEFAULTS.write_text(
-                    '# R3 microphone echo. pitch=1.0 means original pitch and speed.\n'
+                    '# R3 microphone listening. pitch=1.0 means original pitch and speed.\n'
                     f'ECHO_CAPTURE=plughw:CARD={args.card},DEV=0\n'
                     f'ECHO_PLAYBACK=plughw:CARD={args.card},DEV=0\n'
-                    'ECHO_CHANNEL=1\nECHO_PITCH=1.25\nECHO_VOICE_MODE=off\n')
+                    'ECHO_CHANNEL=1\nECHO_PITCH=1.25\nECHO_VOICE_MODE=off\nECHO_TRIGGER_MODE=toggle\n')
             atomic_json(STATE / 'motion-before.json', before)
             run(['systemctl', 'daemon-reload'])
             run(['systemctl', 'enable', '--now', 'duck-echo.service'])
             run(['systemctl', 'is-active', 'duck-echo.service'])
-        print('Echo service started. Hold R3, speak, then release.')
+        print('Echo service started. Press R3 to enable listening; press again to disable.')
+        print('Set ECHO_TRIGGER_MODE=hold in /etc/default/duck-echo for hold-to-talk.')
         print('Microphone and speaker still require physical audio verification.')
     after = motion_snapshot()
     if before != after:
