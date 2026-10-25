@@ -17,6 +17,8 @@ FAKE_ALSA = r'''#!/usr/bin/env python3
 import array, json, math, os, signal, sys, time
 from pathlib import Path
 kind = Path(sys.argv[0]).name
+if kind == 'arecord':
+    time.sleep(float(os.environ.get('FAKE_CAPTURE_START_DELAY', '0')))
 if os.environ.get('FAKE_BUSY') == kind:
     print('audio open error: Device or resource busy', file=sys.stderr)
     sys.exit(1)
@@ -71,6 +73,7 @@ class LinuxAlsaTests(unittest.TestCase):
             'FAKE_CAPTURE_EOF': '-1',
             'FAKE_PLAYBACK_DELAY': '0',
             'FAKE_PLAY_LOG': '',
+            'FAKE_CAPTURE_START_DELAY': '0',
         })
         self.environment.start()
         self.audio = echo.AlsaAudio('fake-mic', 'fake-speaker', maximum=1)
@@ -81,8 +84,11 @@ class LinuxAlsaTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_real_capture_release_and_playback_subprocesses(self):
+        # Startup deliberately exceeds the old 400 ms recording sleep, which
+        # reproduced short/empty clips on the ARM integration runner.
+        os.environ['FAKE_CAPTURE_START_DELAY'] = '.45'
         self.audio.start()
-        time.sleep(.4)
+        self.wait_for_captured_audio()
         result = self.audio.stop(play=True)
         self.assertTrue(self.audio.finish_playback())
         self.assertTrue(result['ok'])
@@ -102,15 +108,19 @@ class LinuxAlsaTests(unittest.TestCase):
         button = echo.HoldButton(self.audio)
         button.event(1)
         process = self.audio.capture[0]
-        time.sleep(.3)
+        self.wait_for_captured_audio()
         button.cancel()
         self.assertIsNotNone(process.poll())
         self.assertFalse(self.playback.exists())
 
     def test_busy_capture_does_not_play(self):
         os.environ['FAKE_BUSY'] = 'arecord'
+        os.environ['FAKE_CAPTURE_START_DELAY'] = '.2'
         self.audio.start()
-        time.sleep(.1)
+        process = self.audio.capture[0]
+        self.assertTrue(self.wait_for(lambda: process.poll() is not None),
+                        'fake capture did not reach its injected busy-device exit')
+        self.assertEqual(process.returncode, 1)
         with self.assertLogs('duck-echo', level='ERROR'):
             result = self.audio.stop(play=True)
         self.assertFalse(result['ok'])
@@ -118,8 +128,9 @@ class LinuxAlsaTests(unittest.TestCase):
 
     def test_busy_playback_reports_failure(self):
         os.environ['FAKE_BUSY'] = 'aplay'
+        os.environ['FAKE_CAPTURE_START_DELAY'] = '.45'
         self.audio.start()
-        time.sleep(.4)
+        self.wait_for_captured_audio()
         with self.assertLogs('duck-echo', level='ERROR'):
             self.audio.stop(play=True)
             self.assertFalse(self.audio.finish_playback())
@@ -136,6 +147,14 @@ class LinuxAlsaTests(unittest.TestCase):
                 return True
             time.sleep(.02)
         return predicate()
+
+    def wait_for_captured_audio(self, seconds=.3):
+        process, _, _, chunks, _ = self.audio.capture
+        required = round(seconds * echo.RATE) * echo.FRAME_BYTES
+        self.assertTrue(self.wait_for(lambda: len(chunks) >= required or process.poll() is not None),
+                        'fake capture produced no complete clip before deadline')
+        self.assertGreaterEqual(len(chunks), required,
+                                f'capture exited {process.poll()} before producing a complete clip')
 
     def test_continuous_limit_echoes_without_ending_single_capture_stream(self):
         audio = self.continuous()
@@ -275,7 +294,9 @@ class LinuxAlsaTests(unittest.TestCase):
             return SimpleNamespace(returncode=0, stdout='stable', stderr='')
 
         with patch.multiple(install, STATE=state, DESTINATION=destination, UNIT=unit,
-                            DEFAULTS=self.root / 'defaults'), patch.object(install, 'run', run):
+                            DEFAULTS=self.root / 'defaults'), patch.object(install, 'run', run), \
+                patch.object(install.os, 'geteuid', return_value=0), \
+                patch.object(install.shutil, 'which', return_value='/fake/tool'):
             with self.assertRaises(subprocess.CalledProcessError):
                 install.main(['install'])
         self.assertEqual(json.loads(mixer.read_text()), original)
