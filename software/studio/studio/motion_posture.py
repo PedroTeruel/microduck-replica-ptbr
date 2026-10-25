@@ -62,17 +62,20 @@ class PostureTracker:
         self.pending = token
         return token
 
-    def accepted(self, token):
+    def accepted(self, token, now=None):
         if token is not None and self.pending is token:
             token["accepted"] = True
+            token["count"], token["previous"] = 0, None
+            if now is not None:
+                token["last"] = max(token["last"], now)
 
     def rejected(self, token):
         if token is not None and self.pending is token:
             self.pending, self.error = None, None
 
-    def uncertain(self, token, reason):
+    def uncertain(self, token, reason, now=None):
         if token is not None and self.pending is token:
-            token["accepted"] = True  # only telemetry can resolve an uncertain reply
+            self.accepted(token, now)  # only new telemetry can resolve an uncertain reply
             self.error = f"坐站执行结果未知（{reason}）：已取消后续动作，不会重试切换"
 
     def check_timeout(self, now):

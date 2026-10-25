@@ -101,6 +101,20 @@ class PostureTest(unittest.TestCase):
         p.feed(on, 12.)
         self.assertFalse(p.pending)
 
+    def test_delayed_ack_requires_three_new_distinct_samples(self):
+        p = self.tracker()
+        token = p.begin("sit", sample(), 10.)
+        for at in (10.1, 10.2, 10.3):
+            p.feed(sample(at, "sit", True), at)
+        self.assertTrue(p.pending)
+        p.accepted(token)
+        p.feed(sample(10.4, "sit", True), 10.4)
+        self.assertTrue(p.pending, "pre-reply samples cannot release a newly accepted barrier")
+        p.feed(sample(10.5, "sit", True), 10.5)
+        self.assertTrue(p.pending)
+        p.feed(sample(10.6, "sit", True), 10.6)
+        self.assertFalse(p.pending)
+
     def test_absent_paused_stale_bus_and_torque_off_never_resolve_completion(self):
         for changes in ({"present": False}, {"paused": True}, {"bus_at": 1.},
                         {"bus": {"policy_enabled": True, "native": {"torque_state_confirmed": False}}}):

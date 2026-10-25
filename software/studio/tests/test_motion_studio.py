@@ -1148,6 +1148,105 @@ class MotionStudioTest(PadTestBase):
             with self.subTest(changes=changes), self.assertRaises(Refused):
                 self.ops.motion_studio.begin_posture("sit")
 
+    def test_missing_posture_evidence_cancels_session_and_recovery_never_resumes(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        cid = self.posture_clip()
+        self.motion("play", id=cid)
+        self.ops.motion_studio.tick()
+        self.feed(state=None, state_at=None, policies_at=self.ops.clock())
+        self.ops.motion_studio.tick()
+        self.assertEqual(self.view()["state"], "idle")
+        self.assertIn("回读", self.view()["last_result"])
+        self.assertIsNotNone(self.view()["posture_step"])
+        self.settle_posture("sit")
+        self.assertEqual(self.view()["state"], "idle")
+        self.assertIsNone(self.view()["posture_step"])
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 1)
+
+    def test_stale_or_incomplete_posture_evidence_cancels_future_actions(self):
+        self.stop_background_tick()
+        cid = self.posture_clip()
+        for state, age in (({"policy": "sit", "joints": [0.] * 15, "targets": [0.] * 15}, 2.),
+                           ({"policy": "sit", "joints": [0.] * 15}, 0.),
+                           ({"policy": "kick_left", "joints": [0.] * 15, "targets": [0.] * 15}, 0.)):
+            self.posture_feed()
+            self.motion("play", id=cid)
+            self.ops.motion_studio.tick()
+            before = sum(m == "robot.do" for m, _ in self.robot.calls)
+            self.feed(posture="sitting", pol={"sitting": True}, state=state,
+                      state_at=self.ops.clock() - age, policies_at=self.ops.clock(),
+                      bus=fixtures.bus(policy_enabled=True, homed=True))
+            self.ops.motion_studio.tick()
+            with self.subTest(state=state, age=age):
+                self.assertEqual(self.view()["state"], "idle")
+            self.motion("stop")
+            self.settle_posture("sit")
+            self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), before)
+
+    def test_recording_limit_ends_while_posture_is_still_in_progress(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        self.start()
+        self.ops.handle({"op": "sit"}, conn=self.conn)
+        self.ops.motion_studio.session["anchor"] -= 61.
+        self.ops.motion_studio.tick()
+        self.assertEqual(self.view()["state"], "draft")
+        self.assertIn("60 秒", self.view()["last_result"])
+        self.assertIsNotNone(self.view()["posture_step"])
+        self.settle_posture("sit")
+        self.assertEqual(self.view()["state"], "draft")
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 1)
+
+    def test_unexpected_sit_after_verified_stand_cancels_later_velocity(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        cid = self.posture_clip()
+        clip = self.ops.motion_studio.store.get(cid)
+        clip["events"].append({"t": .2, "method": "robot.move", "params": {"vx": .12, "vy": 0., "vyaw": 0.}})
+        self.ops.motion_studio.store.save(clip)
+        self.motion("play", id=cid)
+        self.ops.motion_studio.tick()
+        self.settle_posture("sit")
+        self.ops.motion_studio.session["anchor"] -= .11
+        self.ops.motion_studio.tick()
+        self.settle_posture("stand")
+        s = self.ops.motion_studio.session
+        self.robot.sent.clear()
+        self.posture_feed("sit", True)
+        s["anchor"] -= .11
+        self.ops.motion_studio.tick()
+        self.assertEqual(self.view()["state"], "idle")
+        self.assertFalse(any(p.get("vx") for _, p in self.sent("robot.move")))
+
+    def test_seated_start_refuses_continuous_motion_before_first_posture(self):
+        self.stop_background_tick()
+        self.posture_feed("sit", True)
+        cid = self.posture_clip()
+        clip = self.ops.motion_studio.store.get(cid)
+        clip["events"].insert(0, {"t": 0., "method": "robot.move", "params": {"vx": .12, "vy": 0., "vyaw": 0.}})
+        self.ops.motion_studio.store.save(clip)
+        with self.assertRaises(Refused):
+            self.motion("play", id=cid)
+        self.assertFalse(any(m == "robot.do" for m, _ in self.robot.calls))
+
+    def test_frames_captured_before_ack_but_fed_later_do_not_complete_posture(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        self.start()
+        stamps = []
+        def reply(_):
+            stamps.extend(self.ops.clock() for _ in range(3))
+            return {"accepted": True}
+        self.robot.replies["robot.do"] = reply
+        self.ops.handle({"op": "sit"}, conn=self.conn)
+        for stamp in stamps:
+            self.posture_feed("sit", True, at=stamp)
+            self.ops.motion_studio.tick()
+        self.assertIsNotNone(self.view()["posture_step"])
+        self.settle_posture("sit")
+        self.assertIsNone(self.view()["posture_step"])
+
 
 if __name__ == "__main__":
     unittest.main()

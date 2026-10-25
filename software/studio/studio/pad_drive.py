@@ -1676,7 +1676,7 @@ class DriveMixin:
                 origin = motion.recording_origin()
             if not token["command"]:
                 with self._lk:
-                    motion.posture.accepted(token)
+                    motion.posture.accepted(token, self.clock())
                 return {"accepted": True, "reason": "已经达到目标姿态"}
             return self._call_rpc(what, method, params, by, ctx, posture_token=token, record_origin=origin)
 

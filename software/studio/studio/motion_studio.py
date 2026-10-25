@@ -17,7 +17,7 @@ import uuid
 
 from .motion_store import CLEANUP, HEAD_ZERO, MAX_BYTES, MAX_EVENTS, MAX_SECONDS, MotionStore, name, validate_event
 from .pad_combo import Refused
-from .motion_posture import PostureTracker
+from .motion_posture import PostureTracker, evidence
 from .rpc import Timeout, Unreachable
 
 HEARTBEAT_S = .5
@@ -118,7 +118,32 @@ class MotionStudio:
     def posture_allowed(self):
         s = self.session
         return bool(s and s.get("posture_control") and self.state in
-                    ("recording", "record_paused", "playing", "play_paused"))
+                    ("recording", "record_paused", "playing", "play_paused")
+                    and (self.posture.pending or s.get("posture_target") == "sit"))
+
+    def _posture_why(self, view, now):
+        """A controlled posture permits its expected state, never arbitrary drift.
+
+        Invalid evidence cancels the web session permanently. The independent
+        tracker can later verify robotd completion and release its safety fence.
+        Legacy sessions without posture steps keep their original telemetry path.
+        """
+        s = self.session
+        if not s or not s.get("posture_control"):
+            return None
+        try:
+            _, phase, sitting, _, _ = evidence(view, now)
+        except Refused as e:
+            why = f"坐站完成回读中断：{e}；已取消后续动作"
+            if self.posture.pending:
+                self.posture.error = self.posture.error or why
+            return why
+        target = s.get("posture_target")
+        if not self.posture.pending and target is not None:
+            matches = phase == "sit" and sitting if target == "sit" else phase in ("walk", "stand") and not sitting
+            if not matches:
+                return "姿态在坐站步骤后被改变：已取消后续动作"
+        return None
 
     def begin_posture(self, target):
         """Fence before a toggle can leave the process; caller owns send ordering."""
@@ -141,6 +166,8 @@ class MotionStudio:
             token = self.posture.begin(target, view, now)
             if token is not None and self.session:
                 self.session["posture_control"] = True
+                self.session.setdefault("posture_target", "sit" if (p._policies() or {}).get("sitting") else "stand")
+                token["session"] = self.session
             return token
 
     def posture_reply(self, token, accepted, origin=None, reason=None):
@@ -148,12 +175,14 @@ class MotionStudio:
             if token is None or self.posture.pending is not token:
                 return
             if accepted is True:
-                self.posture.accepted(token)
+                self.posture.accepted(token, self.pad.clock())
+                if self.session is not None and self.session is token.get("session"):
+                    self.session["posture_target"] = token["target"]
                 self.accepted_from(origin, "studio.posture", {"target": token["target"]})
             elif accepted is False:
                 self.posture.rejected(token)
             else:
-                self.posture.uncertain(token, reason or "主程序没有确认")
+                self.posture.uncertain(token, reason or "主程序没有确认", self.pad.clock())
                 self.invalidate(self.posture.error)
             self.pad._tick_evt.set()
 
@@ -222,6 +251,9 @@ class MotionStudio:
         No automation sends enable/disable requests to manufacture this boundary.
         """
         self.posture.feed(view, self.pad.clock())
+        why = self._posture_why(view, self.pad.clock())
+        if why:
+            self.invalidate(why)
         if not self._skill_pending:
             return
         p = view.get("policies") or {}
@@ -618,8 +650,12 @@ class MotionStudio:
                                 or (action == "idle_start" and self.state == "recording"))
                     if s and not combine:
                         raise Refused("已有录制或回放会话：先停止")
+                    if action == "play" and (self.pad._policies() or {}).get("sitting") is True:
+                        first = next((e for e in clip["events"] if self._meaningful(e)), None)
+                        if first is None or first["method"] != "studio.posture":
+                            raise Refused("这段动作在坐站步骤前有连续动作：请先站稳再回放")
                     why = self.ready_why(conn, self.pad.clock(), starting=True,
-                                         posture_start=action == "play" and clip["version"] == 2)
+                                         posture_start=action == "play" and any(e["method"] == "studio.posture" for e in clip["events"]))
                     if why:
                         raise Refused(why)
                     if combine:
@@ -644,7 +680,8 @@ class MotionStudio:
                     else:
                         self.state = "playing"
                         s.update(clip=clip, duration=clip["duration_s"], loop=1, loops=args.get("loops", 1), index=0,
-                                 posture_control=any(e["method"] == "studio.posture" for e in clip["events"]))
+                                 posture_control=any(e["method"] == "studio.posture" for e in clip["events"]),
+                                 posture_target="sit" if (self.pad._policies() or {}).get("sitting") else "stand")
                     return result
                 if action in ("record_pause", "pause"):
                     wanted = "recording" if action == "record_pause" else "playing"
@@ -742,7 +779,7 @@ class MotionStudio:
                 if s is None:
                     return
                 now = p.clock()
-                why = s.get("invalid") or self.ready_why(s["conn"], now)
+                why = s.get("invalid") or self._posture_why(p._robot or {}, now) or self.ready_why(s["conn"], now)
                 if now - s["heartbeat"] > HEARTBEAT_S:
                     why = why or "页面超过 500 毫秒没有动作心跳"
                 if policy_identity(p) != s["identity"]:
@@ -751,15 +788,15 @@ class MotionStudio:
                     self._stop(why)
                     return
                 p._touch_lease(s["conn"], now)
+                if self.state == "recording" and self.elapsed(now) >= MAX_SECONDS:
+                    self._finish("已达到 60 秒上限，尚未保存")
+                    return
                 if s.get("posture_barrier"):
                     if self.posture.pending or self.state != "playing":
                         return
                     s.update(posture_barrier=False, anchor=now)
                     return
                 if self.posture.pending:
-                    return
-                if self.state == "recording" and self.elapsed(now) >= MAX_SECONDS:
-                    self._finish("已达到 60 秒上限，尚未保存")
                     return
                 if self.state in ("recording", "idle_motion") and s.get("lively"):
                     for method, params in s["lively"].sample(now, p._inputs["head"], p._inputs["mouth"]):
