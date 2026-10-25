@@ -197,6 +197,106 @@ class MotionStudioTest(PadTestBase):
         self.assertEqual(self.view()["state"], "idle")
         self.assertFalse(any(m in ("robot.init", "robot.enable") for m,p in self.robot.calls))
 
+    def music_source(self):
+        source = {"available": True, "listening": True, "music": True, "error": None,
+                  "rhythm": {"bpm": 120., "confidence": .9, "feel": "lively",
+                             "last_beat": self.ops.clock(), "age": .01}}
+        class Audio:
+            def snapshot(self):
+                return copy.deepcopy(source)
+            def close(self):
+                pass
+        self.ops.audio = Audio()
+        return source
+
+    def test_music_phase_tracks_waiting_moving_and_unknown_in_same_session(self):
+        self.stop_background_tick()
+        source = self.music_source()
+        rhythm = copy.deepcopy(source["rhythm"])
+        source["rhythm"] = {"bpm": None, "confidence": 0., "feel": "unknown",
+                            "last_beat": None, "age": None}
+        token = self.motion("idle_start", kind="music")["session_id"]
+        self.assertEqual(self.view().get("idle_phase"), "waiting")
+        with self.robot.lk:
+            self.robot.sent.clear()
+        self.ops._tick_once()
+        self.assertEqual(self.sent(), [])
+        self.assertEqual(self.view().get("idle_phase"), "waiting")
+        source["rhythm"] = rhythm
+        self.ops._tick_once()
+        self.assertEqual(self.view().get("idle_phase"), "moving")
+        self.assertTrue(self.sent("robot.pose")[-1][1]["active"])
+        with self.robot.lk:
+            self.robot.sent.clear()
+        source["rhythm"]["confidence"] = 0.
+        self.ops._tick_once()
+        self.assertEqual(self.view().get("idle_phase"), "waiting")
+        self.assertEqual(self.view()["session_id"], token)
+        self.assertEqual(self.sent("robot.pose"), [("robot.pose", {"active": False})])
+        self.ops._tick_once()
+        self.assertEqual(len(self.sent("robot.pose")), 1)
+        source["rhythm"]["confidence"] = .9
+        self.ops._tick_once()
+        self.assertEqual(self.view().get("idle_phase"), "moving")
+        self.assertEqual(self.view()["session_id"], token)
+
+    def test_music_source_shutdown_ends_session_once_and_never_revives_it(self):
+        from studio.motion_store import HEAD_ZERO
+        self.stop_background_tick()
+        for change in ({"listening": False}, {"music": False}, {"available": False},
+                       {"error": "capture unavailable"}):
+            with self.subTest(change=change):
+                self.motion("stop")
+                source = self.music_source()
+                original = copy.deepcopy(source)
+                token = self.motion("idle_start", kind="music")["session_id"]
+                self.ops._tick_once()
+                with self.robot.lk:
+                    self.robot.sent.clear()
+                # External status changes include the native R3 toggle, bypassing pad.op.
+                source.update(change)
+                self.ops._tick_once()
+                self.assertEqual(self.view()["state"], "idle")
+                self.assertIsNone(self.view()["session_id"])
+                self.assertFalse(self.view()["idle_running"])
+                self.assertEqual(self.sent("robot.head"), [("robot.head", HEAD_ZERO)])
+                self.assertEqual(self.sent("robot.pose"), [("robot.pose", {"active": False})])
+                stopped = self.sent()
+                self.ops._tick_once()
+                source.update(original)
+                self.ops._tick_once()
+                self.assertEqual(self.sent(), stopped)
+                self.assertEqual(self.view()["state"], "idle")
+                self.assertTrue(self.motion("heartbeat", session_id=token).get("dropped"))
+
+    def test_music_source_shutdown_keeps_combined_recording_semantics(self):
+        self.stop_background_tick()
+        source = self.music_source()
+        token = self.start()
+        self.assertEqual(self.motion("idle_start", kind="music")["session_id"], token)
+        self.ops._tick_once()
+        source["listening"] = False
+        self.ops._tick_once()
+        self.assertEqual(self.view()["state"], "recording")
+        self.assertEqual(self.view()["session_id"], token)
+        self.assertIsNone(self.view().get("idle_phase"))
+        self.assertEqual(self.sent("robot.pose")[-1][1], {"active": False})
+
+    def test_audio_shutdown_does_not_change_lively_or_plain_recording(self):
+        self.stop_background_tick()
+        source = self.music_source()
+        source["available"] = False
+        self.motion("idle_start")
+        self.ops._tick_once()
+        self.assertEqual(self.view()["state"], "idle_motion")
+        self.assertIsNone(self.view().get("idle_phase"))
+        self.motion("stop")
+        token = self.start()
+        self.ops._tick_once()
+        self.assertEqual(self.view()["state"], "recording")
+        self.assertEqual(self.view()["session_id"], token)
+        self.assertIsNone(self.view().get("idle_phase"))
+
     def test_music_rejects_missing_service_bad_kind_and_physical_pad(self):
         for kwargs in ({"kind":"music"}, {"kind":"arbitrary"}):
             with self.subTest(kwargs=kwargs), self.assertRaises(Refused):

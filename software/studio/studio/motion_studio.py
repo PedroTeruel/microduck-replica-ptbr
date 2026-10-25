@@ -401,6 +401,9 @@ class MotionStudio:
                 "error": self.error, "idle_running": bool(s and s.get("lively") and not s.get("invalid")
                                                             and self.state in ("idle_motion", "recording")),
                 "idle_kind": s.get("idle_kind", "lively") if s and s.get("lively") else None,
+                "idle_phase": ("moving" if s["lively"].moving else "waiting")
+                              if s and self.state == "idle_motion" and s.get("idle_kind") == "music"
+                              and s.get("lively") else None,
                 "posture_step": self.posture.snapshot()}
 
     def invalidate(self, why, conn=None):
@@ -819,7 +822,14 @@ class MotionStudio:
                 if self.posture.pending:
                     return
                 if self.state in ("recording", "idle_motion") and s.get("lively"):
-                    for method, params in s["lively"].sample(now, p._inputs["head"], p._inputs["mouth"]):
+                    producer = s["lively"]
+                    outputs = producer.sample(now, p._inputs["head"], p._inputs["mouth"])
+                    if self.state == "idle_motion" and s.get("idle_kind") == "music" and not producer.source_active:
+                        # Source shutdown ends this lease; rhythm uncertainty only waits.
+                        # The session boundary owns neutral cleanup, exactly once.
+                        self._stop("监听、音乐模式或语音服务已关闭；重新开启后请再点「随乐律动」")
+                        return
+                    for method, params in outputs:
                         self._send(method, params)
                 elif self.state == "playing":
                     self._play_tick(s, now)

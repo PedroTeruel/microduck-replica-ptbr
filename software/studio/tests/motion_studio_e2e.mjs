@@ -207,9 +207,16 @@ try {
   await js(`document.querySelector('#audio-interaction').scrollIntoView({block:'center'})`);
   await wait(`document.querySelector('[data-audio="music"]') && !document.querySelector('[data-audio="music"]').disabled`, 'audio control ready');
   await click('[data-audio="music"]');
-  await wait(`document.querySelector('[data-audio-listening="true"]') && document.querySelector('[data-audio-rhythm]')?.innerText.includes('120 BPM')`, 'visible microphone and tempo');
+  await wait(`document.querySelector('[data-audio-listening="true"]') && document.querySelector('[data-audio-rhythm]')?.innerText==='等待清晰节拍'`, 'microphone waiting for its first stable beat');
   const musicBegin = records().length;
-  await click('[data-motion-kind="music"]'); await state('idle_motion'); await sleep(900);
+  await click('[data-motion-kind="music"]'); await state('idle_motion');
+  await wait(`document.querySelector('#motion-studio .motion-state')?.innerText==='等待稳定节拍'`, 'explicit waiting state before rhythm evidence');
+  report.music_waiting_visible = true;
+  report.music_waiting_no_motion = !records().slice(musicBegin).some(movingIntent);
+  assert(report.music_waiting_no_motion, 'waiting for music must not invent motion');
+  await wait(`document.querySelector('[data-audio-rhythm]')?.innerText.includes('120 BPM') && document.querySelector('#motion-studio .motion-state')?.innerText==='随乐律动中'`, 'visible tempo and actual music motion');
+  report.music_moving_visible = true;
+  await sleep(900);
   const musicFrames = records().slice(musicBegin);
   report.music_head_frames = musicFrames.filter(nonzeroHead).length;
   report.music_body_frames = musicFrames.filter(r=>r.method==='robot.pose' && r.params.active && Math.abs(r.params.roll||0)>.001).length;

@@ -129,15 +129,16 @@ class MusicRhythm:
     def __init__(self, snapshot):
         self.snapshot = snapshot
         self.moving = False
+        self.source_active = False
         self.started = None
 
     def sample(self, now, head_limit, mouth_percent):
         state = self.snapshot()
         rhythm = state.get('rhythm') or {}
         bpm, beat = rhythm.get('bpm'), rhythm.get('last_beat')
-        valid = (state.get('available') is True and state.get('listening') is True
-                 and state.get('music') is True and not state.get('error')
-                 and type(bpm) in (int,float) and math.isfinite(bpm) and 40 <= bpm <= 220
+        self.source_active = (state.get('available') is True and state.get('listening') is True
+                              and state.get('music') is True and not state.get('error'))
+        valid = (self.source_active and type(bpm) in (int,float) and math.isfinite(bpm) and 40 <= bpm <= 220
                  and type(beat) in (int,float) and math.isfinite(beat)
                  and 0 <= now-beat <= max(1.5,120/bpm)
                  and type(rhythm.get('age')) in (int,float) and 0 <= rhythm['age'] <= .5

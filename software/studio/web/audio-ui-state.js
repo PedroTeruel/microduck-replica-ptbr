@@ -10,3 +10,8 @@ export function rhythmLabel(rhythm) {
   const feel = { lively: '轻快', mellow: '低沉', sway: '摇摆' }[rhythm.feel];
   return feel ? `${feel} · ${Math.round(rhythm.bpm)} BPM` : '等待清晰节拍';
 }
+
+export function musicMotionLabel(motion) {
+  if (motion?.state !== 'idle_motion' || motion.idle_kind !== 'music') return null;
+  return motion.idle_phase === 'moving' ? '随乐律动中' : '等待稳定节拍';
+}
