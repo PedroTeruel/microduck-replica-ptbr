@@ -461,6 +461,33 @@ class MotionStudioTest(PadTestBase):
         self.feed()
         self.start()
 
+    def test_skill_reset_uses_bus_runtime_flag_when_policy_config_stays_enabled(self):
+        self.ops.handle({"op": "skill", "name": "kick_left"}, conn=self.conn)
+        # The real daemon's robot.policies.enabled is a startup configuration flag.
+        # Stopping the runtime does not turn that flag off.
+        self.ops.handle({"op": "walk_stop"}, conn=self.conn)
+        self.feed(posture="holding")
+        stopped = self.view()
+        self.assertFalse(stopped["record_available"]["ok"])
+        self.assertIn("开始走", stopped["record_available"]["why"])
+        self.assertNotIn("先手动停下策略", stopped["record_available"]["why"])
+        with self.assertRaises(Refused):
+            self.start()
+        self.ops.handle({"op": "walk"}, conn=self.conn)
+        with self.assertRaises(Refused):
+            self.start()  # A successful enable response still needs fresh ready telemetry.
+        self.feed()
+        self.assertTrue(self.view()["record_available"]["ok"])
+        self.assertTrue(self.view()["idle_available"]["ok"])
+        self.start()
+
+    def test_policy_config_disabled_does_not_replace_runtime_stop_evidence(self):
+        self.ops.handle({"op": "skill", "name": "kick_left"}, conn=self.conn)
+        self.feed(pol={"enabled": False})  # bus.policy_enabled is still True
+        self.feed()
+        with self.assertRaises(Refused):
+            self.motion("idle_start")
+
     def test_body_modes_replay_without_changing_browser_mode(self):
         self.start()
         self.ops.handle({"op": "mode", "mode": "body", "seq": next(self.seq)}, conn=self.conn)

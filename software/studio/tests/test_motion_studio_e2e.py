@@ -51,6 +51,7 @@ class MotionStudioBrowser(unittest.TestCase):
             self.assertEqual(result.returncode, 0, f'{result.stderr[-5000:]}\nArtifacts: {output}')
             report = json.loads(result.stdout)
             self.assertEqual(report['errors'], [])
+            self.assertIs(report['skill_gate_recovered'], True)
             self.assertGreater(report['recorded_action_frames'], 3)
             self.assertGreater(report['replayed_action_frames'], 3)
             self.assertGreaterEqual(report['three_loop_action_frames'], report['recorded_action_frames'] * 2.5)

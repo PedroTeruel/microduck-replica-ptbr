@@ -63,6 +63,14 @@ try {
   await wait(`document.querySelector('#motion-studio')`, 'motion recording panel');
   await js(`document.querySelector('#motion-studio').scrollIntoView({block:'center'})`);
   await wait(`window.__pad?.active`, 'active remote');
+  await click('[title="robot.do kick_left"]');
+  await wait(`document.querySelector('[data-motion="record_start"]').disabled && document.querySelector('#motion-studio').innerText.includes('上个模型技能')`, 'skill completion barrier');
+  await click('.pd-bigs .pd-stopbtn');
+  await wait(`document.querySelector('#motion-studio').innerText.includes('已确认策略停下')`, 'runtime stopped while policy config remains enabled');
+  assert(await js(`document.querySelector('[data-motion="record_start"]').disabled`), 'stopped policy still cannot record');
+  await click('.pd-bigs button:nth-child(2)');
+  await wait(`!document.querySelector('[data-motion="record_start"]').disabled && !document.querySelector('[data-motion="idle_start"]').disabled`, 'fresh ready state clears skill barrier');
+  report.skill_gate_recovered = true;
   await click('[data-motion="record_start"]'); await state('recording');
   const begin = records().length;
   await click('[data-motion="idle_start"]'); await sleep(900);

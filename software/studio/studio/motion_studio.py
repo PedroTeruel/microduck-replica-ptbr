@@ -184,7 +184,9 @@ class MotionStudio:
         if (view.get("bus_at") is None or self.pad.clock() - view["bus_at"] > 3
                 or view.get("paused") or view.get("present") is not True):
             return
-        if p.get("enabled") is False and b.get("policy_enabled") is False:
+        # robot.policies.enabled is the startup [policy] configuration, not the
+        # live enable flag. Only bus.policy_enabled observes an actual stop.
+        if b.get("policy_enabled") is False:
             self._skill_reset_seen = True
         elif (self._skill_reset_seen and p.get("enabled") is True and p.get("homed") is True
                 and b.get("policy_enabled") is True and b.get("homed") is True):
@@ -256,6 +258,8 @@ class MotionStudio:
         if base:
             return base
         if self._skill_pending:
+            if self._skill_reset_seen:
+                return "已确认策略停下：点击上方「开始走」，等新鲜回读确认「准备好走」后再开始"
             return "上个模型技能没有可验证的完成状态：先手动停下策略、再重新开始走，等新鲜回读确认准备好"
         pol = p._policies() or {}
         b = (p._robot or {}).get("bus") or {}
