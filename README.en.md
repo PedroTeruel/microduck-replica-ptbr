@@ -161,9 +161,9 @@ The first three images are custom-board design previews; the Radxa and HAT image
 
 ---
 
-## 🧠 Actuator modelling · BAM for Feetech HD-1910
+## 🧠 Actuator modelling · Feetech's official BAM
 
-The training project already uses a **BAM actuator model for Feetech HD-1910**. The current baseline uses **LuwuDynamics' public 1910 M6 parameters**; see the [parameter notes](docs/HD-1910-M6参数来源.md) for provenance and a comparison with the manufacturer's parameter set.
+[**Feetech's official HD-1910 BAM**](https://gitee.com/ftservo/ftservo-bam) provides actuator models and identified parameters as a reference for simulation training. This repository includes an open-source [training project](software/training/README.md) and [web training workbench](software/training-studio/README.md); see the [parameter notes](docs/HD-1910-M6参数来源.md) for the model configuration and parameter sources used here.
 
 ---
 

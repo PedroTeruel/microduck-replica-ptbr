@@ -161,9 +161,9 @@
 
 ---
 
-## 🧠 算法 · 飞特 HD-1910 BAM 模型
+## 🧠 算法 · 飞特官方 BAM
 
-训练工程已采用 **飞特 HD-1910 的 BAM 舵机动力学模型**，用于仿真训练。当前基线使用 **LuwuDynamics 公开的 1910 M6 参数**，来源及飞特厂家参数的对比见[参数说明](docs/HD-1910-M6参数来源.md)。
+[**飞特官方 HD-1910 BAM**](https://gitee.com/ftservo/ftservo-bam) 提供舵机动力学模型与辨识参数，供仿真训练参考。本仓提供开源[训练工程](software/training/README.md)与[网页训练工作台](software/training-studio/README.md)，具体模型配置与参数来源见[参数说明](docs/HD-1910-M6参数来源.md)。
 
 ---
 
