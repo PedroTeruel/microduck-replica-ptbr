@@ -187,6 +187,18 @@ class EnvelopePeriodicityTests(unittest.TestCase):
         self.assertGreaterEqual(state['confidence'], .55)
         self.assertAlmostEqual(state['bpm'], 125, delta=4)
 
+    def test_moderate_sparse_onsets_do_not_hide_stronger_repetition(self):
+        listener = MusicFeel()
+        for index in range(500):
+            at = index*.02
+            level = 700 + 220*math.cos(2*math.pi*at/.48)
+            if index in (315,355,395,435,475):
+                level = 2200
+            listener.observe(level, at)
+        state = listener.snapshot(at)
+        self.assertGreaterEqual(state['confidence'], .55)
+        self.assertAlmostEqual(state['bpm'], 125, delta=4)
+
     def test_music_stopping_at_measured_microphone_hiss_releases_beat(self):
         listener = MusicFeel()
         for index,rms in enumerate(MICROPHONE_RMS,1):
@@ -197,6 +209,18 @@ class EnvelopePeriodicityTests(unittest.TestCase):
             listener.observe(300 + source.uniform(-40,40),8+index*.02)
         self.assertEqual(listener.snapshot(10)['confidence'], 0)
         self.assertIsNone(listener.snapshot(10)['last_beat'])
+
+    def test_slow_beats_stopping_at_microphone_hiss_release_within_two_seconds(self):
+        listener = MusicFeel()
+        for index in range(722):
+            at = index*.02
+            listener.observe(1400 if at % 1.2 < .055 else 100, at)
+        self.assertGreaterEqual(listener.snapshot(14.42)['confidence'], .55)
+        source = random.Random(17)
+        for index in range(1,101):
+            listener.observe(300 + source.uniform(-40,40),14.42+index*.02)
+        self.assertEqual(listener.snapshot(16.42)['confidence'], 0)
+        self.assertIsNone(listener.snapshot(16.42)['last_beat'])
 
 
 if __name__ == '__main__':

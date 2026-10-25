@@ -139,8 +139,16 @@ class MusicFeel:
             if at-self.analysis_at >= .2-1e-9:
                 self.analysis_at = at
                 onsets = self._onset_rhythm(at)
-                self.rhythm = (onsets if onsets is not None and onsets[1] >= .55 else
-                               self._periodic_rhythm())
+                if onsets is not None and onsets[1] >= .85:
+                    self.rhythm = onsets
+                else:
+                    periodic = self._periodic_rhythm()
+                    # Sparse startup onsets can form a different, moderately
+                    # regular rhythm. Let substantially stronger repetition
+                    # win, while preserving well-supported drums and swing.
+                    self.rhythm = (onsets if onsets is not None and onsets[1] >= .55
+                                   and (periodic is None or periodic[1] <= onsets[1]+.1)
+                                   else periodic)
 
     def _onset_rhythm(self, at):
         if len(self.onsets) < 4:
@@ -163,7 +171,7 @@ class MusicFeel:
             variation = statistics.median(abs(v-period) for v in gaps)/max(period,.001)
             if sum(abs(v-period) <= period*.2 for v in gaps) < len(gaps)*.8:
                 return None
-        if not .3 <= period <= 1.2 or variation > .16 or at-self.onsets[-1] > max(1.5, period*2):
+        if not .3 <= period <= 1.2 or variation > .16 or at-self.onsets[-1] > 1.5:
             return None
         confidence = min(1., len(gaps)/6) * (1-min(1.,variation*3))
         return period, confidence, swing, self.onsets[-1]
@@ -224,7 +232,9 @@ class MusicFeel:
                 return state
             period, confidence, swing, beat = self.rhythm
             beat += offset
-            if beat > now or now-beat > max(1.5, period*2):
+            # Even the slowest supported period is 1.2 s. Do not retain two
+            # slow periods after the sound has stopped at the microphone.
+            if beat > now or now-beat > 1.5:
                 return state
             bpm = 60/period
             feel = 'sway' if swing or 90 <= bpm < 115 else 'lively' if bpm >= 115 else 'mellow'
