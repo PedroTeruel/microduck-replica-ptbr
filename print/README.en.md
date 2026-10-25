@@ -6,13 +6,14 @@
 
 | Servo | Download |
 |---|---|
-| Feetech HD-1910 | [CAD repository](https://github.com/fanhao375/microduck-replica-cad); current checked release: [v2.1](https://github.com/fanhao375/microduck-replica-cad/releases/tag/v2.1), as of 2026-09-28 |
-| Dynamixel XL330 | [CAD repository](https://github.com/fanhao375/microduck-replica-cad); current checked release: [v1.1](https://github.com/fanhao375/microduck-replica-cad/releases/tag/v1.1), as of 2026-09-28 |
-| Materials, quantities and assembly | [CAD documentation and BOM](https://github.com/fanhao375/microduck-replica-cad#装配-bom) |
+| Feetech HD-1910 | [Feetech print resources](https://github.com/fanhao375/microduck-replica-cad#飞特-hd-1910-打印资料): 3MF print project, CAD sources and update notes |
+| Dynamixel XL330 | [XL330 print resources](https://github.com/fanhao375/microduck-replica-cad#dynamixel-xl330-打印资料): matching CAD sources and printing instructions |
+| Feetech shopping list | [Online preview](../BOM/README.md), including materials, quantities, recorded prices and purchase links |
+| Assembly steps | [CAD assembly resources](https://github.com/fanhao375/microduck-replica-cad#装配资料与采购清单) |
 
 **Do not mix mating parts from the Feetech and XL330 versions.** The old STLs here came from the upstream XL330 simulation model and did not include the Feetech CAD changes. They were removed on 2026-09-28 to prevent incorrect prints; Git history retains them for reference. This repository no longer maintains a second download copy of those models.
 
-At the time of this check, the CAD repository's **09-15 3MF does not include the v2.1 combined TPU wheel**. Check each file's version before printing; that change affects the roller variant. SolidWorks and STEP downloads are CAD sources, not sliced printer files.
+See the corresponding CAD sections for current files, update dates, printing materials and roller-variant notes. SolidWorks and STEP downloads are CAD sources; 3MF files are print projects. Check the servo version, printer and material before slicing.
 
 Meshes retained in `software/training/` and the web servo console are for simulation/display, **not manufacturing**. Their geometry, mass and inertia have not been updated to match the latest physical CAD in this change.
 

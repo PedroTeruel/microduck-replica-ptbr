@@ -1,0 +1,19 @@
+{
+  "checked_on": "2026-10-25",
+  "release_url": "https://github.com/pbatard/rufus/releases/tag/v4.15",
+  "version": "4.15",
+  "files": [
+    {
+      "name": "rufus-4.15p.exe",
+      "source_url": "https://github.com/pbatard/rufus/releases/download/v4.15/rufus-4.15p.exe",
+      "size": 1989992,
+      "sha256": "84c8a437f8af89257524478489e5c85f1edf25f761d299e2bcde46ac0afbe106"
+    },
+    {
+      "name": "rufus-4.15-source.zip",
+      "source_url": "https://github.com/pbatard/rufus/archive/refs/tags/v4.15.zip",
+      "size": 7829971,
+      "sha256": "21cf189915032c3094abbb1e9cf4103866340daf01f8ca12a7020e66f516ea9c"
+    }
+  ]
+}

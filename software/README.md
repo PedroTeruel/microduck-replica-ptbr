@@ -8,12 +8,15 @@
 
 | 软件 | 干什么 | 在哪、怎么用 | 许可 |
 |---|---|---|---|
-| **复刻镜像** | 烧卡开机就能用的整套系统：主程序、模型、Studio、首次开机和配网 | [`image/`](image/)：用户看[烧录和第一次使用](image/烧录和第一次使用.md)，做镜像的人看 [image/README.md](image/README.md)。第一版在真机验收，验过了放下载 | 构建脚本 Apache-2.0；镜像里各部分的许可见镜像内 `/usr/share/doc/microduck/` |
+| **复刻镜像** | 烧卡开机就能用的整套系统：主程序、模型、Studio、首次开机和配网 | [`image/`](image/)：用户看[烧录和第一次使用](image/烧录和第一次使用.md)，做镜像的人看 [image/README.md](image/README.md)。已发布版本见 [Releases](https://github.com/fanhao375/microduck-replica/releases/latest) | 构建脚本 Apache-2.0；镜像里各部分的许可见镜像内 `/usr/share/doc/microduck/` |
 | **Microduck Studio** | 装在鸭子上的网页中控：状态、卸力、舵机零位、IMU 方向、写进主程序、手柄、遥控、日志 | [`studio/`](studio/)。用复刻镜像的不用另装 | 代码 Apache-2.0 |
-| **主程序 robotd / padd / mediad** | 在官方 0.15.1 上加了飞特 HD-1910 舵机总线、I²C IMU 模块、陀螺融合、UDP 手柄 | 源码在我们的 fork（链接见[首页「软件」一节](../README.md)），对应提交记在 [image/README.md](image/README.md)。复刻镜像里已经装好 | Apache-2.0 |
+| **主程序 robotd / padd / mediad** | 在官方 0.15.1 上加了飞特 HD-1910 舵机总线、I²C IMU 模块、陀螺融合、UDP 手柄 | 源码在 [fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy)，具体镜像使用的分支和提交见 [image/README.md](image/README.md)。复刻镜像里已经装好 | Apache-2.0 |
 | **走路和动作模型** | 走路、坐下 / 站起、低头捡、前滚翻、左右踢、轮滑 4 个 | 复刻镜像里带着。每个模型干什么、对应哪个手柄键、谁训练的，见[模型说明](image/overlay/usr/share/doc/microduck/模型说明.txt) | 作者的个人非商业许可，**不是开源许可**：不得随收费产品分发 |
 | **训练工程** | HD-1910 仿真训练 | [`training/`](training/) | 代码 Apache-2.0，3D 网格 CC BY-NC-SA |
+| **Microduck Training Studio** | 电脑上的网页训练工作台：实验管理、曲线、评估与模型导出 | [`training-studio/`](training-studio/README.md)，与鸭子上的 Studio 分开运行 | 代码 Apache-2.0；依赖与素材许可见该目录说明 |
 | servo-web（旧） | 9 月的网页舵机调试台，Studio 出来以前用 | [`tools/servo-web/`](../tools/servo-web/) | Apache-2.0 |
+
+独立的舵机测试、IMU 检查和步态分析入口见[工具导航](../tools/README.md)；电路板与固件入口见[硬件工程](../hardware/README.md)。
 
 ## HD1910 仿真训练
 

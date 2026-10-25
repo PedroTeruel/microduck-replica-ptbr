@@ -71,6 +71,7 @@ Microduck 是 Pollen Robotics 的商业产品，硬件**部分开源**：
 | 路径 | 内容 | 来源 | 许可证 |
 |---|---|---|---|
 | `tools/飞特/` | 飞特 FD 调试软件 1.9.8.5 + CH340 驱动 | [gitee.com/ftservo/fddebug](https://gitee.com/ftservo/fddebug)，2026-09-11 复制 | **MIT**（FTServo 2024，LICENSE 同目录） |
+| `tools/rufus/` | Rufus 4.15 Windows x64 便携版与同版本源码 | [pbatard/rufus v4.15](https://github.com/pbatard/rufus/releases/tag/v4.15)，2026-10-25 原样下载 | **GPL-3.0-or-later**；许可、源码归档、校验值及来源记录在该目录 |
 | `software/studio/web/vendor/` | Studio 前端库：Preact、htm 3.1.1、three.js 0.160.0 | 各自官方发布 | Preact、three.js **MIT**，htm **Apache-2.0**（许可证在 `web/vendor/licenses/`） |
 | `software/studio/deps/` | Studio 的 Python 依赖（anyio、click、h11、idna、pyserial、sniffio、starlette、typing_extensions、uvicorn、wsproto） | pypi.org 原版 wheel，版本和校验值见 `deps/VERSIONS.txt` | MIT / BSD-3-Clause / PSF-2.0 等，各包许可证在各自的 `*.dist-info` 里 |
 
