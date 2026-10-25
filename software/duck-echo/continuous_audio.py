@@ -423,6 +423,7 @@ class ContinuousAudio:
                 process = subprocess.Popen([
                     'arecord', '-q', '-D', self.capture_device, '-t', 'raw',
                     '-f', 'S16_LE', '-c', '2', '-r', str(RATE),
+                    '--period-time=20000', '--buffer-time=80000',
                 ], stdout=subprocess.PIPE, stderr=errors)
                 # Exactly one reaper owns this process. Repeated off/cancel
                 # events only set its Event; cleanup joins the same owner.

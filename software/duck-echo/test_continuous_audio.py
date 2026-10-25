@@ -296,6 +296,11 @@ class ContinuousTests(unittest.TestCase):
         self.assertIn('48000', self.commands[0])
         self.assertFalse(self.audio.expired())
 
+    def test_continuous_capture_requests_20ms_period_and_80ms_buffer(self):
+        self.start()
+        self.assertIn('--period-time=20000', self.commands[0])
+        self.assertIn('--buffer-time=80000', self.commands[0])
+
     def test_listening_on_and_off_are_logged_immediately(self):
         with self.assertLogs('duck-echo', level='INFO') as logged:
             self.start()

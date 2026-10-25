@@ -209,6 +209,8 @@ class LinuxAlsaTests(unittest.TestCase):
         audio.start()
         self.assertTrue(self.wait_for(lambda: audio.capture is not None))
         process = audio.capture
+        self.assertIn('--period-time=20000', process.args)
+        self.assertIn('--buffer-time=80000', process.args)
         self.assertTrue(self.wait_for(self.playback.exists))
         self.assertFalse(audio.expired())
         self.assertIs(audio.capture, process)
