@@ -139,6 +139,96 @@ class PlaybackTests(unittest.TestCase):
             audio.play(pcm([1000, 1000]))
             self.assertTrue(audio.finish_playback())
 
+    def test_active_playback_includes_writer_and_player_lifetime(self):
+        audio = echo.AlsaAudio('capture', 'playback')
+        self.assertTrue(hasattr(audio, 'playback_active'), 'playback state is missing')
+        self.assertFalse(audio.playback_active())
+        audio.player = SimpleNamespace(poll=lambda: None)
+        self.assertTrue(audio.playback_active())
+        audio.player = None
+        audio.player_thread = SimpleNamespace(is_alive=lambda: True)
+        self.assertTrue(audio.playback_active())
+
+    def test_cancelled_playback_guard_is_rechecked_after_old_player_teardown(self):
+        import inspect
+        audio = echo.AlsaAudio('capture', 'playback')
+        self.assertIn('allowed', inspect.signature(audio.play).parameters,
+                      'cancellable playback launch guard is missing')
+        valid = [True]
+        with patch.object(audio, 'stop_playback', side_effect=lambda: valid.__setitem__(0, False)), \
+                patch.object(echo.subprocess, 'Popen') as spawn:
+            audio.play(pcm([1000, 1000]), allowed=lambda: valid[0])
+        spawn.assert_not_called()
+
+    def test_cancellation_after_spawn_closes_player_pipes_without_sending_pcm(self):
+        audio = echo.AlsaAudio('capture', 'playback')
+        valid = [True]
+        calls = []
+        player = self.player(0)
+        player.communicate = lambda **kwargs: calls.append(kwargs)
+        def spawn(*args, **kwargs):
+            valid[0] = False
+            return player
+        with patch.object(echo.subprocess, 'Popen', side_effect=spawn):
+            audio.play(pcm([1000, 1000]), allowed=lambda: valid[0])
+            audio.finish_playback()
+        self.assertEqual(calls, [{'timeout': 1}])
+
+
+class TriggerModeTests(unittest.TestCase):
+    def test_factory_defaults_to_toggle_and_retains_explicit_hold(self):
+        import continuous_audio
+        self.assertTrue(hasattr(echo, 'make_button'), 'trigger-mode factory is missing')
+        audio = FakeAudio()
+        audio.voice = None
+        self.assertIsInstance(echo.make_button(audio, initially_down=True), continuous_audio.ToggleButton)
+        self.assertIsInstance(echo.make_button(audio, trigger_mode='hold'), echo.HoldButton)
+
+    def test_cli_defaults_daemon_to_continuous_and_hold_uses_original_capture(self):
+        import continuous_audio
+        for options, expected in (([], continuous_audio.ContinuousAudio),
+                                  (['--trigger-mode', 'hold'], echo.AlsaAudio)):
+            with patch.object(echo.sys, 'platform', 'linux'), patch.object(echo, 'daemon') as daemon, \
+                    patch.object(echo.signal, 'signal'), patch.object(echo.logging, 'basicConfig'):
+                echo.main(['daemon', *options])
+                self.assertIsInstance(daemon.call_args.args[0], expected)
+                self.assertEqual(daemon.call_args.kwargs['trigger_mode'], 'hold' if options else 'toggle')
+
+    def test_probe_remains_bounded_capture_with_toggle_default(self):
+        with patch.object(echo.sys, 'platform', 'linux'), patch.object(echo, 'AlsaAudio') as audio, \
+                patch.object(echo.signal, 'signal'), patch.object(echo.logging, 'basicConfig'), \
+                patch('builtins.print'):
+            audio.return_value.expired.return_value = True
+            audio.return_value.stop.return_value = {'ok': True}
+            audio.return_value.voice = None
+            self.assertEqual(echo.main(['probe']), 0)
+            audio.return_value.start.assert_called_once()
+
+    def test_daemon_uses_factory_for_initial_state_and_syn_dropped_resync(self):
+        stopped = SimpleNamespace(is_set=lambda: False, wait=lambda delay: None)
+        audio = FakeAudio()
+        audio.voice = None
+        audio.close = lambda: None
+        audio.stop_playback = lambda: None
+        bits = iter((True, False))
+        records = [echo.INPUT_EVENT.pack(1, 0, 0, 3, 0) + echo.INPUT_EVENT.pack(1, 0, 0, 0, 0)]
+        records.append(b'')
+        polls = iter((False, False, True, True))
+        stopped.is_set = lambda: next(polls)
+        self.assertTrue(hasattr(echo, 'make_button'), 'trigger-mode factory is missing')
+        with patch.object(echo, 'devices', return_value=[{'name': 'pad', 'path': 'event0'}]), \
+                patch.object(echo.os, 'O_NONBLOCK', 0, create=True), \
+                patch.object(echo.os, 'open', return_value=4), patch.object(echo.os, 'close'), \
+                patch.object(echo, 'right_pressed', side_effect=lambda fd: next(bits)), \
+                patch.object(echo.select, 'select', return_value=([4], [], [])), \
+                patch.object(echo.os, 'read', side_effect=records), \
+                patch.object(echo, 'make_button', wraps=echo.make_button) as factory:
+            echo.daemon(audio, stopped)
+        self.assertEqual(factory.call_count, 2)
+        self.assertTrue(factory.call_args_list[0].kwargs['initially_down'])
+        self.assertFalse(factory.call_args_list[1].kwargs['initially_down'])
+        self.assertTrue(all(call.kwargs['trigger_mode'] == 'toggle' for call in factory.call_args_list))
+
 
 if __name__ == '__main__':
     unittest.main()

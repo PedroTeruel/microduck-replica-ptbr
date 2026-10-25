@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 import duck_echo as echo
+from continuous_audio import ContinuousAudio
 
 
 FAKE_ALSA = r'''#!/usr/bin/env python3
@@ -21,15 +22,22 @@ if os.environ.get('FAKE_BUSY') == kind:
     sys.exit(1)
 if kind == 'arecord':
     signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
-    seconds = int(sys.argv[sys.argv.index('-d') + 1])
+    seconds = int(sys.argv[sys.argv.index('-d') + 1]) if '-d' in sys.argv else 3600
     block = array.array('h', [x for i in range(480) for x in (0, int(2000*math.sin(i/7)))])
-    for _ in range(seconds * 100):
+    for index in range(seconds * 100):
+        if index == int(os.environ.get('FAKE_CAPTURE_EOF', '-1')):
+            print('injected capture exit', file=sys.stderr)
+            sys.exit(1)
         sys.stdout.buffer.write(block.tobytes())
         sys.stdout.buffer.flush()
         time.sleep(.01)
 elif kind == 'aplay':
     data = sys.stdin.buffer.read()
+    time.sleep(float(os.environ.get('FAKE_PLAYBACK_DELAY', '0')))
     Path(os.environ['FAKE_PLAYBACK']).write_text(str(len(data)))
+    if os.environ.get('FAKE_PLAY_LOG'):
+        with open(os.environ['FAKE_PLAY_LOG'], 'a') as target:
+            target.write(str(len(data)) + '\n')
 elif kind == 'amixer':
     state_path = Path(os.environ['FAKE_MIXER'])
     state = json.loads(state_path.read_text())
@@ -60,6 +68,9 @@ class LinuxAlsaTests(unittest.TestCase):
             'FAKE_PLAYBACK': str(self.playback),
             'FAKE_MIXER': str(self.root / 'mixer.json'),
             'FAKE_BUSY': '',
+            'FAKE_CAPTURE_EOF': '-1',
+            'FAKE_PLAYBACK_DELAY': '0',
+            'FAKE_PLAY_LOG': '',
         })
         self.environment.start()
         self.audio = echo.AlsaAudio('fake-mic', 'fake-speaker', maximum=1)
@@ -112,6 +123,64 @@ class LinuxAlsaTests(unittest.TestCase):
         with self.assertLogs('duck-echo', level='ERROR'):
             self.audio.stop(play=True)
             self.assertFalse(self.audio.finish_playback())
+
+    def continuous(self):
+        audio = ContinuousAudio(self.audio, maximum=1)
+        self.addCleanup(audio.close)
+        return audio
+
+    def wait_for(self, predicate, timeout=4):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return True
+            time.sleep(.02)
+        return predicate()
+
+    def test_continuous_limit_echoes_without_ending_single_capture_stream(self):
+        audio = self.continuous()
+        audio.start()
+        self.assertTrue(self.wait_for(lambda: audio.capture is not None))
+        process = audio.capture
+        self.assertTrue(self.wait_for(self.playback.exists))
+        self.assertFalse(audio.expired())
+        self.assertIs(audio.capture, process)
+        self.assertIsNone(process.poll())
+        audio.stop(play=False)
+        self.assertTrue(self.wait_for(lambda: process.poll() is not None))
+
+    def test_continuous_busy_capture_ends_session_and_does_not_retry(self):
+        os.environ['FAKE_BUSY'] = 'arecord'
+        audio = self.continuous()
+        with self.assertLogs('duck-echo', level='WARNING'):
+            audio.start()
+            self.assertTrue(self.wait_for(audio.expired))
+        generation = audio.generation
+        time.sleep(.1)
+        self.assertEqual(audio.generation, generation)
+        self.assertIsNone(audio.capture)
+        self.assertFalse(self.playback.exists())
+
+    def test_continuous_eof_discards_unfinished_phrase_and_reaps_process(self):
+        os.environ['FAKE_CAPTURE_EOF'] = '30'
+        audio = self.continuous()
+        with self.assertLogs('duck-echo', level='WARNING'):
+            audio.start()
+            self.assertTrue(self.wait_for(audio.expired))
+        self.assertFalse(self.playback.exists())
+        self.assertIsNone(audio.capture)
+
+    def test_continuous_playback_and_tail_do_not_form_next_phrase(self):
+        os.environ['FAKE_PLAYBACK_DELAY'] = '.4'
+        os.environ['FAKE_PLAY_LOG'] = str(self.root / 'play-log')
+        audio = self.continuous()
+        audio.start()
+        self.assertTrue(self.wait_for(self.playback.exists))
+        time.sleep(.5)
+        self.assertEqual((self.root / 'play-log').read_text().count('\n'), 1)
+        self.assertFalse(audio.expired())
+        audio.stop(play=False)
+        self.assertTrue(self.wait_for(lambda: not self.audio.playback_active()))
 
     def test_mic_setup_and_restore_preserve_existing_settings(self):
         import install

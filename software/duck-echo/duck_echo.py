@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hold R3 to record; release to echo. No robot motion or exclusive input grab."""
+"""Click R3 to toggle continuous speech; --trigger-mode hold retains hold/release."""
 import argparse
 import array
 import glob
@@ -188,12 +188,14 @@ class AlsaAudio:
             LOG.warning('clip too short or silent; check microphone and mixer routing')
         return level
 
-    def play(self, data):
+    def play(self, data, allowed=None):
         with self.playback_lock:
-            self._play(data)
+            self._play(data, allowed)
 
-    def _play(self, data):
+    def _play(self, data, allowed=None):
         self.stop_playback()
+        if allowed is not None and not allowed():
+            return
         self.playback_ok = None
         errors = tempfile.TemporaryFile()
         try:
@@ -208,6 +210,10 @@ class AlsaAudio:
 
         def write():
             try:
+                if allowed is not None and not allowed():
+                    terminate(process)
+                    process.communicate(timeout=1)
+                    return
                 process.communicate(input=data, timeout=self.maximum / self.pitch + 4)
                 self.playback_ok = process.returncode == 0
                 if process.returncode not in (0, -signal.SIGTERM):
@@ -247,6 +253,11 @@ class AlsaAudio:
             self.player_thread.join(timeout=self.maximum / self.pitch + 6)
         self.stop_playback()
         return self.playback_ok is True
+
+    def playback_active(self):
+        player, writer = self.player, self.player_thread
+        return ((player is not None and player.poll() is None) or
+                (writer is not None and writer.is_alive()))
 
     def close(self):
         self.cancel_processing()
@@ -291,7 +302,14 @@ def devices():
     return result
 
 
-def daemon(audio, stopped, selected=None):
+def make_button(audio, initially_down=False, trigger_mode='toggle'):
+    if trigger_mode == 'hold':
+        return HoldButton(audio, initially_down=initially_down, repeat_on_limit=audio.voice is None)
+    from continuous_audio import ToggleButton
+    return ToggleButton(audio, initially_down=initially_down)
+
+
+def daemon(audio, stopped, selected=None, trigger_mode='toggle'):
     announced = False
     while not stopped.is_set():
         available = devices()
@@ -309,7 +327,7 @@ def daemon(audio, stopped, selected=None):
         button = None
         try:
             fd = os.open(item['path'], os.O_RDONLY | os.O_NONBLOCK)
-            button = HoldButton(audio, initially_down=right_pressed(fd), repeat_on_limit=audio.voice is None)
+            button = make_button(audio, initially_down=right_pressed(fd), trigger_mode=trigger_mode)
             LOG.info('listening without grab: %s (%s), R3=%s', item['name'], item['path'], BUTTON)
             resync = False
             while not stopped.is_set():
@@ -324,8 +342,8 @@ def daemon(audio, stopped, selected=None):
                             resync = True
                         elif resync:
                             if kind == 0 and code == 0:
-                                button = HoldButton(audio, initially_down=right_pressed(fd),
-                                                    repeat_on_limit=audio.voice is None)
+                                button = make_button(audio, initially_down=right_pressed(fd),
+                                                     trigger_mode=trigger_mode)
                                 resync = False
                         elif kind == 1 and code == BUTTON:
                             button.event(value)
@@ -338,7 +356,8 @@ def daemon(audio, stopped, selected=None):
         finally:
             if button:
                 button.cancel()
-            audio.close()
+            audio.stop(play=False)
+            audio.stop_playback()
             if fd is not None:
                 os.close(fd)
         stopped.wait(1)
@@ -354,6 +373,7 @@ def main(argv=None):
     parser.add_argument('--maximum', type=int, default=10)
     parser.add_argument('--seconds', type=float, default=4)
     parser.add_argument('--input', help='optional fixed /dev/input/eventN')
+    parser.add_argument('--trigger-mode', choices=['toggle', 'hold'], default='toggle')
     parser.add_argument('--voice-mode', choices=['off', 'shadow', 'actions'], default='off')
     parser.add_argument('--voice-model', default='/opt/duck-echo/models/vosk-model-small-cn-0.22')
     parser.add_argument('--speech-deps', default='/opt/duck-echo/asr-deps')
@@ -372,18 +392,24 @@ def main(argv=None):
     signal.signal(signal.SIGTERM, lambda *_: stopped.set())
     signal.signal(signal.SIGINT, lambda *_: stopped.set())
     audio = AlsaAudio(args.capture_device, args.playback_device, args.channel, args.pitch, args.maximum)
+    if args.action == 'daemon' and args.trigger_mode == 'toggle':
+        from continuous_audio import ContinuousAudio
+        audio = ContinuousAudio(audio)
     if args.action == 'daemon' and args.voice_mode != 'off':
         from speech_control import MandarinRecognizer, VoiceControl
         from voice_commands import PostureCommands, RobotClient
         robot = RobotClient()
         def cue(accepted):
             robot.call('robot.sound', {'tag': 'chirp' if accepted else 'inquire'})
+        if args.trigger_mode == 'toggle':
+            raw_cue = cue
+            cue = lambda accepted: audio.command_cue(raw_cue, accepted)
         audio.voice = VoiceControl(
             lambda: MandarinRecognizer(args.voice_model, args.speech_deps),
             PostureCommands(robot), audio.play, execute_commands=args.voice_mode == 'actions', cue=cue)
     try:
         if args.action == 'daemon':
-            daemon(audio, stopped, args.input)
+            daemon(audio, stopped, args.input, trigger_mode=args.trigger_mode)
             return 0
         audio.start()
         until = time.monotonic() + args.seconds
