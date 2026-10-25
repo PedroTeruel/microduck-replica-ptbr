@@ -23,6 +23,7 @@ Find resources by task. Start with first use and assembly; detailed investigatio
 | [Training project](../software/training/README.md) | Training environment and commands |
 | [Pre-training data checklist](HD-1910训练前数据清单.md) | Geometry, actuators, IMU and measurements |
 | [Software sources and changes](软件来源与我们的改动.md) | Upstream sources and project modifications |
+| [Official upstream updates (Chinese)](官方更新跟踪.md) | Stable releases, development branches, pending PRs and implications for this replica |
 
 ## Tools
 

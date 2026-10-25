@@ -235,7 +235,7 @@ Paths are relative to this repository's root. Mechanical CAD is maintained in a 
 | Electronics and firmware | [hardware/](hardware/README.md) | [Board projects](hardware/README.md) · [IMU firmware](hardware/imu_to_dxl/README.md) |
 | Debug and analysis tools | [tools/](tools/README.en.md) | [Tool index](tools/README.en.md) · Flashing, serial debugging, Feetech references and analysis |
 | Documentation and records | [docs/](docs/README.en.md) | [All documentation](docs/README.en.md) · [Pitfalls](踩坑记录.md) · [Debug log](调试记录.md) · [Build log](BUILD-LOG.en.md) |
-| History and community | [docs/](docs/README.en.md#research-and-archives) | [Update history](docs/update-history.en.md) · [Community contributions](docs/community-contributions.en.md) |
+| History and community | [docs/](docs/README.en.md#research-and-archives) | [Upstream updates (Chinese)](docs/官方更新跟踪.md) · [Update history](docs/update-history.en.md) · [Community contributions](docs/community-contributions.en.md) |
 
 ---
 

@@ -235,7 +235,7 @@
 | 电气与固件 | [hardware/](hardware/README.md) | [电路板工程](hardware/README.md) · [IMU 固件](hardware/imu_to_dxl/README.md) |
 | 调试与分析工具 | [tools/](tools/README.md) | [工具导航](tools/README.md) · 烧卡、串口调试、飞特资料和分析脚本 |
 | 文档与记录 | [docs/](docs/README.md) | [完整文档导航](docs/README.md) · [踩坑](踩坑记录.md) · [调试](调试记录.md) · [构建](构建日志.md) |
-| 历史与社区 | [docs/](docs/README.md#深入研究与归档) | [历史更新](docs/历史更新.md) · [社区贡献](docs/社区贡献.md) |
+| 历史与社区 | [docs/](docs/README.md#深入研究与归档) | [官方更新跟踪](docs/官方更新跟踪.md) · [历史更新](docs/历史更新.md) · [社区贡献](docs/社区贡献.md) |
 
 ---
 

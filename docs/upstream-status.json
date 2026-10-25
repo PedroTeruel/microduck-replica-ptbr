@@ -1,0 +1,232 @@
+{
+  "schema_version": 1,
+  "recorded_on": "2026-10-25",
+  "display_timezone": "Asia/Tokyo",
+  "scope": "Upstream documentation tracking; this snapshot does not certify integration into the replica image.",
+  "repositories": {
+    "pollen-robotics/microduck": {
+      "default_branch": "main",
+      "head": {
+        "sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+        "committed_at": "2026-10-19T14:18:36Z",
+        "subject": "Merge pull request #428 from pollen-robotics/prepare-release-0.17.8"
+      },
+      "latest_stable_release": {
+        "tag_name": "daemon-v0.17.8",
+        "html_url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-v0.17.8",
+        "published_at": "2026-10-19T14:24:43Z",
+        "prerelease": false
+      },
+      "tracked_development_releases": [
+        {
+          "tag": "daemon-dev-kicks-on-main",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-kicks-on-main",
+          "published_at": "2026-10-24T09:37:44Z",
+          "head_sha": "e603c93f00fa7a32aec1e1c11cc7b9e4ea66e075",
+          "prerelease": true
+        },
+        {
+          "tag": "daemon-dev-docs-encoder-imports-dmabuf",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-docs-encoder-imports-dmabuf",
+          "published_at": "2026-10-22T12:51:49Z",
+          "head_sha": "3c65a06e874fb3cef7cfc6344b41e9a2a57b4842",
+          "prerelease": true
+        },
+        {
+          "tag": "daemon-dev-mediad-no-downscale",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-mediad-no-downscale",
+          "published_at": "2026-10-21T16:08:32Z",
+          "head_sha": "b0d9466eb5f75b8ee9a9e143592e8d324525b9b6",
+          "prerelease": true
+        },
+        {
+          "tag": "daemon-dev-mpegts_udp",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-mpegts_udp",
+          "published_at": "2026-10-20T10:56:11Z",
+          "head_sha": "764b98f316b219d457920f1255c888ff658fbdfe",
+          "prerelease": true
+        }
+      ],
+      "pending_pull_requests": [
+        {
+          "number": 450,
+          "url": "https://github.com/pollen-robotics/microduck/pull/450",
+          "title": "duck-sim walks on velstand, as a robot does",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-25T06:21:04Z",
+          "head_sha": "7fd745a4dd21ff7c40519dc732847ca8a1a5994f"
+        },
+        {
+          "number": 447,
+          "url": "https://github.com/pollen-robotics/microduck/pull/447",
+          "title": "btd: show chorale discovery state in robotctl health",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-25T00:17:14Z",
+          "head_sha": "4ec54ae0857634f5f164a5b5c9c3dd3dceb6b399"
+        },
+        {
+          "number": 446,
+          "url": "https://github.com/pollen-robotics/microduck/pull/446",
+          "title": "btd: retry stopped chorale scans with bounded backoff",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-25T00:17:10Z",
+          "head_sha": "ffb50990a012d3015db84d43fe27fdb8c659902d"
+        },
+        {
+          "number": 449,
+          "url": "https://github.com/pollen-robotics/microduck/pull/449",
+          "title": "Phase-encoded policies can run as skills",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-24T20:43:00Z",
+          "head_sha": "b15d10ead9f3f6dcd1afb4844da167c8965b6cb4"
+        },
+        {
+          "number": 448,
+          "url": "https://github.com/pollen-robotics/microduck/pull/448",
+          "title": "robotctl: policy add --dry-run shows the skill it would add",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-24T20:24:41Z",
+          "head_sha": "90fa792dff8261422874333c097d4d503cd98371"
+        },
+        {
+          "number": 445,
+          "url": "https://github.com/pollen-robotics/microduck/pull/445",
+          "title": "btd: stop chorale discovery tasks with their session",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-24T16:01:36Z",
+          "head_sha": "724e7ee6f0e8aec0384bef0297171e660fae10f8"
+        },
+        {
+          "number": 444,
+          "url": "https://github.com/pollen-robotics/microduck/pull/444",
+          "title": "nfc: keep short reads when NDEF follows other TLVs",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-24T09:29:10Z",
+          "head_sha": "59ea2287142c714881c037def281cdd21d0beb0b"
+        },
+        {
+          "number": 442,
+          "url": "https://github.com/pollen-robotics/microduck/pull/442",
+          "title": "duck-sim: make first-run setup and status failures actionable",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-24T01:18:04Z",
+          "head_sha": "e025e5b7fa2ecbe0291b340be727a1dc91280b7b"
+        },
+        {
+          "number": 441,
+          "url": "https://github.com/pollen-robotics/microduck/pull/441",
+          "title": "kinematics: measure ToF hit range from the trunk axis",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-24T01:00:50Z",
+          "head_sha": "6ac0c34a0e741b3334d0b772cc18f7a5216c9c56"
+        },
+        {
+          "number": 439,
+          "url": "https://github.com/pollen-robotics/microduck/pull/439",
+          "title": "sounds: a MIDI part's name comes from its own track",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-23T15:13:47Z",
+          "head_sha": "150af70aeb9725414a556422f1fcb4174f63545a"
+        },
+        {
+          "number": 438,
+          "url": "https://github.com/pollen-robotics/microduck/pull/438",
+          "title": "sounds: a sharp in a score is a note, not the start of a comment",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-23T15:13:40Z",
+          "head_sha": "6bab33387831e9cc7fb3b463ff5c7085ab78f241"
+        }
+      ]
+    },
+    "pollen-robotics/microduck_rl": {
+      "default_branch": "develop",
+      "head": {
+        "sha": "b02fdea4902c2b93b7d34a83a6f05da4ececb7d3",
+        "committed_at": "2026-10-12T11:58:55Z",
+        "subject": "Merge branch 'improve_standup_velstand' into develop"
+      },
+      "pending_pull_requests": [
+        {
+          "number": 80,
+          "url": "https://github.com/pollen-robotics/microduck_rl/pull/80",
+          "title": "Fix apartment stairwell ToF: line well with collision geometry (#76)",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-24T15:08:01Z",
+          "head_sha": "af24c035cf7967dd6a7ec58277ffacd7afe9b559"
+        },
+        {
+          "number": 51,
+          "url": "https://github.com/pollen-robotics/microduck_rl/pull/51",
+          "title": "Add optional read-only MuJoCo visualization stream",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-24T13:32:27Z",
+          "head_sha": "b26950afb74432b53fe81c4d322988a3785ea0a6"
+        },
+        {
+          "number": 78,
+          "url": "https://github.com/pollen-robotics/microduck_rl/pull/78",
+          "title": "feat: add MicroDuck 2.0 simulation and trainer",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-23T23:44:06Z",
+          "head_sha": "921747ca87961e283022267615116da3dae2f5e5"
+        },
+        {
+          "number": 77,
+          "url": "https://github.com/pollen-robotics/microduck_rl/pull/77",
+          "title": "feat: Windows 10 support  ",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-20T09:27:15Z",
+          "head_sha": "0ed85a56da1dd22f992059aefc2020a786505767"
+        },
+        {
+          "number": 71,
+          "url": "https://github.com/pollen-robotics/microduck_rl/pull/71",
+          "title": "Windows support for infer_policy.py (termios shims, msvcrt keys, --max-seconds)",
+          "state": "open",
+          "merged_at": null,
+          "updated_at": "2026-10-04T13:07:44Z",
+          "head_sha": "8b12c34378860d962a7fbe3b43c2f2c354c9167d"
+        }
+      ]
+    },
+    "pollen-robotics/elec_RPI_Robot_HAT": {
+      "default_branch": "main",
+      "head": {
+        "sha": "6de86283297e4c49a9da8312cd3395ab83c437e3",
+        "committed_at": "2026-10-20T15:43:22Z",
+        "subject": "[added] old ref prod files"
+      }
+    },
+    "pollen-robotics/microduck_emotions": {
+      "default_branch": "main",
+      "head": {
+        "sha": "431c73df8a9d3cb6b6067d09ced6c169fdfa59fd",
+        "committed_at": "2026-10-07T11:45:06Z",
+        "subject": "Keep only what replays the emotions: keyframes, sounds, previews, the runtime patch, quack.py and a short README"
+      }
+    }
+  },
+  "official_articles": [
+    {
+      "url": "https://pollen-robotics.com/microduck/blog/microduck-slam/",
+      "published_on": "2026-10-23",
+      "title": "SLAM on Microduck with an 8×8 depth sensor",
+      "status": "Official article and dataset; integration/release status evaluated separately."
+    }
+  ]
+}
