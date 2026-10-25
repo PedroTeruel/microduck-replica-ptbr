@@ -127,9 +127,17 @@ The image is free for personal non-commercial builds; see the release for compon
 
 ---
 
-## 🔌 Electronics · three circuit boards
+## 🔌 Electronics · five circuit boards
 
-EasyEDA Pro projects and whole-board STEP models are available for the bus IMU board, servo bus hub and battery terminal board. See each project's notes for fabrication, wiring and physical verification status.
+The main board is a **Radxa ZERO 3W**, paired with Pollen Robotics' open-source **RPI Robot HAT**. This repository also provides projects for the bus IMU board, servo bus hub and battery terminal board.
+
+<table>
+<tr><th>Radxa ZERO 3W main board</th><th>Official RPI Robot HAT</th></tr>
+<tr>
+<td align="center" width="440">Runs the robot runtime and Studio web console<br><a href="https://item.taobao.com/item.htm?id=763812025816">Buy the main board on Taobao</a> · <a href="https://docs.radxa.com/en/zero/zero3">Radxa documentation</a></td>
+<td align="center" width="440">Open-source expansion board by Pollen Robotics<br><a href="https://github.com/pollen-robotics/elec_RPI_Robot_HAT">Official engineering and fabrication files</a></td>
+</tr>
+</table>
 
 <table>
 <tr><th>Bus IMU board</th><th>Servo bus hub</th><th>Battery terminal board</th></tr>
@@ -145,7 +153,7 @@ EasyEDA Pro projects and whole-board STEP models are available for the bus IMU b
 </tr>
 </table>
 
-3D design previews; click an image to view the original.
+The three images above are design previews of this project's custom boards; click an image to view the original. EasyEDA Pro projects and whole-board STEP models are available. See each project's notes for fabrication, wiring and physical verification status.
 
 [All hardware projects](hardware/README.md) · [Three-board notes](hardware/新版/README.md) · [Bus IMU firmware](hardware/imu_to_dxl/README.md)
 

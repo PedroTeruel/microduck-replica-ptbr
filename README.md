@@ -127,9 +127,17 @@
 
 ---
 
-## 🔌 电气 · 三块电路板
+## 🔌 电气 · 五块电路板
 
-总线 IMU 板、舵机总线 HUB 和电池接口板的嘉立创 EDA 专业版工程与整板 STEP 已提供。打样、接线和实测进度见各工程说明。
+主控采用瑞莎 **Radxa ZERO 3W**，扩展板使用 Pollen Robotics 官方开源的 **RPI Robot HAT**；本仓还提供总线 IMU 板、舵机总线 HUB 和电池接口板的工程资料。
+
+<table>
+<tr><th>瑞莎 Radxa ZERO 3W 主控</th><th>官方 RPI Robot HAT</th></tr>
+<tr>
+<td align="center" width="440">运行主程序与 Studio 网页中控<br><a href="https://item.taobao.com/item.htm?id=763812025816">主控购买（淘宝）</a> · <a href="https://docs.radxa.com/en/zero/zero3">瑞莎官方资料</a></td>
+<td align="center" width="440">Pollen Robotics 开源扩展板<br><a href="https://github.com/pollen-robotics/elec_RPI_Robot_HAT">官方开源工程与打样资料</a></td>
+</tr>
+</table>
 
 <table>
 <tr><th>总线 IMU 板</th><th>舵机总线 HUB</th><th>电池接口板</th></tr>
@@ -145,7 +153,7 @@
 </tr>
 </table>
 
-3D 设计预览，点击图片可查看原图。
+上面三张为自制板的 3D 设计预览，点击图片可查看原图。嘉立创 EDA 专业版工程与整板 STEP 已提供，打样、接线和实测进度见各工程说明。
 
 [全部硬件工程](hardware/README.md) · [三块板的说明](hardware/新版/README.md) · [总线 IMU 固件](hardware/imu_to_dxl/README.md)
 
