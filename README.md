@@ -129,27 +129,33 @@
 
 ## 🔌 电气 · 五块电路板
 
-主控采用瑞莎 **Radxa ZERO 3W**，扩展板使用 Pollen Robotics 官方开源的 **RPI Robot HAT**；本仓还提供总线 IMU 板、舵机总线 HUB 和电池接口板的工程资料。
+本仓提供总线 IMU 板、舵机总线 HUB 和电池接口板的工程资料；主控采用瑞莎 **Radxa ZERO 3W**，扩展板使用 Pollen Robotics 官方开源的 **RPI Robot HAT**。
 
 <table>
-<tr><th>瑞莎主控<br>Radxa ZERO 3W</th><th>官方 HAT<br>RPI Robot HAT</th><th>总线 IMU 板</th><th>舵机总线 HUB</th><th>电池接口板</th></tr>
 <tr>
-<td align="center" valign="middle" width="170"><a href="assets/hw/radxa-zero3w-official.webp"><img src="assets/hw/radxa-zero3w-official.webp" alt="瑞莎官方 ZERO 3W 板卡图" width="160"></a></td>
-<td align="center" valign="middle" width="170"><a href="assets/hw/rpi-robot-hat-official.png"><img src="assets/hw/rpi-robot-hat-official.png" alt="Pollen Robotics 官方 RPI Robot HAT 设计图" width="160"></a></td>
+<th>总线 IMU 板</th>
+<th>舵机总线 HUB</th>
+<th>电池接口板</th>
+<th>瑞莎主控<br>Radxa ZERO 3W</th>
+<th>官方 HAT<br>RPI Robot HAT</th>
+</tr>
+<tr>
 <td align="center" valign="middle" width="170"><a href="assets/hw/imu-to-dxl-1v0a-3d.png"><img src="assets/hw/imu-to-dxl-1v0a-3d.png" alt="总线 IMU 板 3D 设计预览" width="160"></a></td>
 <td align="center" valign="middle" width="170"><a href="assets/hw/wire-hub-1v0a-3d.png"><img src="assets/hw/wire-hub-1v0a-3d.png" alt="舵机总线 HUB 3D 设计预览" width="160"></a></td>
 <td align="center" valign="middle" width="170"><a href="assets/hw/pogo-pin-1v0a-3d.png"><img src="assets/hw/pogo-pin-1v0a-3d.png" alt="电池接口板 3D 设计预览" width="160"></a></td>
+<td align="center" valign="middle" width="170"><a href="assets/hw/radxa-zero3w-official.webp"><img src="assets/hw/radxa-zero3w-official.webp" alt="瑞莎官方 ZERO 3W 板卡图" width="160"></a></td>
+<td align="center" valign="middle" width="170"><a href="assets/hw/rpi-robot-hat-official.png"><img src="assets/hw/rpi-robot-hat-official.png" alt="Pollen Robotics 官方 RPI Robot HAT 设计图" width="160"></a></td>
 </tr>
 <tr>
-<td align="center" valign="top"><a href="https://item.taobao.com/item.htm?id=763812025816">购买（淘宝）</a><br><a href="https://docs.radxa.com/en/zero/zero3">官方资料</a> · <a href="https://docs.radxa.com/en/zero/zero3/download#hardware-design">设计文件</a></td>
-<td align="center" valign="top"><a href="https://github.com/pollen-robotics/elec_RPI_Robot_HAT">KiCad 工程</a><br><a href="https://github.com/pollen-robotics/elec_RPI_Robot_HAT/tree/main/production">生产打样文件</a></td>
 <td align="center" valign="top"><a href="assets/hw/imu-to-dxl-1v0a-pcb.png">PCB 预览</a><br><a href="hardware/新版/imu_to_dxl_1V0A/">工程文件</a></td>
 <td align="center" valign="top"><a href="assets/hw/wire-hub-1v0a-pcb.png">PCB 预览</a><br><a href="hardware/新版/wire_hub_1V0A/">工程文件</a></td>
 <td align="center" valign="top"><a href="assets/hw/pogo-pin-1v0a-pcb.png">PCB 预览</a><br><a href="hardware/新版/POGO_PIN_1V0A/">工程文件</a></td>
+<td align="center" valign="top"><a href="https://item.taobao.com/item.htm?id=763812025816">购买（淘宝）</a><br><a href="https://docs.radxa.com/en/zero/zero3">官方资料</a> · <a href="https://docs.radxa.com/en/zero/zero3/download#hardware-design">设计文件</a></td>
+<td align="center" valign="top"><a href="https://github.com/pollen-robotics/elec_RPI_Robot_HAT">KiCad 工程</a><br><a href="https://github.com/pollen-robotics/elec_RPI_Robot_HAT/tree/main/production">生产打样文件</a></td>
 </tr>
 </table>
 
-瑞莎与 HAT 配图来自官方资料，其余三张为自制板的 3D 设计预览。点击图片可查看原图，[图片来源](assets/hw/official-board-images.md)。瑞莎设计资料含原理图、2D 尺寸与 3D 模型；三块自制板的嘉立创 EDA 工程、STEP 和实测进度见各工程说明。
+前三张为自制板的 3D 设计预览，后两张瑞莎与 HAT 配图来自官方资料。点击图片可查看原图，[图片来源](assets/hw/official-board-images.md)。瑞莎设计资料含原理图、2D 尺寸与 3D 模型；三块自制板的嘉立创 EDA 工程、STEP 和实测进度见各工程说明。
 
 [全部硬件工程](hardware/README.md) · [三块板的说明](hardware/新版/README.md) · [总线 IMU 固件](hardware/imu_to_dxl/README.md)
 
