@@ -22,20 +22,28 @@ def _fresh(at, now, age):
     return isinstance(at, (int, float)) and not isinstance(at, bool) and 0 <= now - at <= age
 
 
-def evidence(view, now):
+def phase_evidence(view, now):
     if not _fresh(view.get("state_at"), now, STATE_MAX_AGE_S):
         raise Refused("坐站需要新鲜的策略阶段和关节回读")
     if not _fresh(view.get("policies_at"), now, POLICIES_MAX_AGE_S):
         raise Refused("坐站需要新鲜的坐姿回读")
     state, pol = view.get("state") or {}, view.get("policies") or {}
+    if not isinstance(state, dict) or not isinstance(pol, dict):
+        raise Refused("坐站策略阶段不明确，不能猜测或重试切换")
     phase, sitting = state.get("policy"), pol.get("sitting")
     if phase not in ("sit", "rise", "walk", "stand") or type(sitting) is not bool:
         raise Refused("坐站策略阶段不明确，不能猜测或重试切换")
+    return view["state_at"], phase, sitting
+
+
+def evidence(view, now):
+    at, phase, sitting = phase_evidence(view, now)
+    state = view["state"]
     actual, targets = state.get("joints"), state.get("targets")
     if not (isinstance(actual, list) and isinstance(targets, list) and len(actual) == len(targets) == 15
             and all(type(v) in (int, float) and math.isfinite(v) for v in actual + targets)):
         raise Refused("坐站缺少完整的实际 / 目标关节回读")
-    return view["state_at"], phase, sitting, actual, targets
+    return at, phase, sitting, actual, targets
 
 
 def converged(actual, targets):
@@ -47,31 +55,40 @@ class PostureTracker:
         self.pending = None
         self.error = None
 
-    def begin(self, target, view, now):
-        if self.pending:
+    def begin(self, target, view, now, manual=False):
+        previous = self.pending
+        if previous and (not manual or previous["target"] == target):
             raise Refused(self.error or "当前坐站仍会完成：等新鲜回读确认后再操作")
         if target not in ("sit", "stand"):
             raise Refused("不认识的坐站目标")
-        at, phase, sitting, actual, targets = evidence(view, now)
-        if phase == "rise" or (phase == "sit") != sitting or not converged(actual, targets):
+        if manual:
+            at, phase, sitting = phase_evidence(view, now)
+        else:
+            at, phase, sitting, actual, targets = evidence(view, now)
+        if (phase == "rise" or (phase == "sit") != sitting
+                or (not manual and not converged(actual, targets))):
             raise Refused("坐站尚未稳定或姿态不明确，不能切换")
+        if previous and (at <= previous["start"] or (target == "sit") == sitting):
+            raise Refused("上次坐站尚无明确的新姿态回读，不能重试或反向切换")
+        prior = (previous, self.error) if previous else None
         self.error = None
         token = {"target": target, "start": now, "after": at, "last": at, "count": 0,
                  "previous": None, "accepted": False, "reset": False,
-                 "command": (target == "sit") != sitting}
+                 "command": (target == "sit") != sitting, "prior": prior}
         self.pending = token
         return token
 
     def accepted(self, token, now=None):
         if token is not None and self.pending is token:
             token["accepted"] = True
+            token.pop("prior", None)
             token["count"], token["previous"] = 0, None
             if now is not None:
                 token["last"] = max(token["last"], now)
 
     def rejected(self, token):
         if token is not None and self.pending is token:
-            self.pending, self.error = None, None
+            self.pending, self.error = token.get("prior") or (None, None)
 
     def uncertain(self, token, reason, now=None):
         if token is not None and self.pending is token:

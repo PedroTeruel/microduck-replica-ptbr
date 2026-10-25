@@ -1247,6 +1247,103 @@ class MotionStudioTest(PadTestBase):
         self.settle_posture("sit")
         self.assertIsNone(self.view()["posture_step"])
 
+    def test_manual_stand_accepts_known_unconverged_seat_and_tracks_completion(self):
+        self.stop_background_tick()
+        self.posture_feed("sit", True, error=.3)
+        self.assertTrue(self.ops._motion_view(self.ops.clock())["buttons"]["stand"]["ok"])
+        self.assertTrue(self.ops.handle({"op": "stand"}, conn=self.conn)["accepted"])
+        self.assertEqual(self.view()["posture_step"]["target"], "stand")
+        with self.assertRaises(Refused):
+            self.start()
+        self.settle_posture("stand")
+        self.assertIsNone(self.view()["posture_step"])
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 1)
+
+    def manual_pending_sit(self):
+        self.posture_feed()
+        self.ops.handle({"op": "sit"}, conn=self.conn)
+        self.posture_feed("sit", True, error=.3)
+        return self.ops.motion_studio.posture.pending
+
+    def test_manual_opposite_target_recovers_timed_out_sit_without_home_or_torque_changes(self):
+        self.stop_background_tick()
+        pending = self.manual_pending_sit()
+        pending["start"] -= 16.
+        self.ops.motion_studio.tick()
+        self.assertIn("15 秒", self.view()["posture_step"]["label"])
+        self.assertTrue(self.ops.handle({"op": "stand"}, conn=self.conn)["accepted"])
+        self.assertEqual(self.view()["posture_step"]["target"], "stand")
+        self.posture_feed("rise", False)
+        with self.assertRaises(Refused):
+            self.start()
+        self.settle_posture("stand")
+        self.assertIsNone(self.view()["posture_step"])
+        self.assertFalse(any(m in ("robot.init", "robot.enable", "robot.relax") for m, _ in self.robot.calls))
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 2)
+
+    def test_refused_manual_override_preserves_previous_pending_fence(self):
+        self.stop_background_tick()
+        previous = self.manual_pending_sit()
+        self.robot.replies["robot.do"] = {"accepted": False, "reason": "not ready"}
+        with self.assertRaises(Refused):
+            self.ops.handle({"op": "stand"}, conn=self.conn)
+        self.assertIs(self.ops.motion_studio.posture.pending, previous)
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 2)
+        with self.assertRaises(Refused):
+            self.start()
+
+    def test_uncertain_manual_override_fences_new_target_and_never_retries(self):
+        self.stop_background_tick()
+        self.manual_pending_sit()
+        self.robot.replies["robot.do"] = fixtures.Timeout("lost")
+        with self.assertRaises(Refused):
+            self.ops.handle({"op": "stand"}, conn=self.conn)
+        self.assertEqual(self.view()["posture_step"]["target"], "stand")
+        with self.assertRaises(Refused):
+            self.ops.handle({"op": "stand"}, conn=self.conn)
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 2)
+        with self.assertRaises(Refused):
+            self.start()
+
+    def test_manual_recovery_rejects_missing_stale_unknown_or_mismatched_phase(self):
+        self.stop_background_tick()
+        previous = self.manual_pending_sit()
+        for phase, sitting, age in (("sit", True, 2.), ("rise", True, 0.), ("walk", True, 0.), ("kick_left", True, 0.)):
+            self.posture_feed(phase, sitting, error=.3, at=self.ops.clock() - age)
+            with self.subTest(phase=phase, age=age), self.assertRaises(Refused):
+                self.ops.handle({"op": "stand"}, conn=self.conn)
+            self.assertIs(self.ops.motion_studio.posture.pending, previous)
+        self.feed(posture="sitting", pol={"sitting": True}, state=None, state_at=None, policies_at=self.ops.clock(),
+                  bus=fixtures.bus(policy_enabled=True, homed=True))
+        with self.assertRaises(Refused):
+            self.ops.handle({"op": "stand"}, conn=self.conn)
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 1)
+
+    def test_manual_opposite_target_cancels_replay_before_overriding_transition(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        cid = self.posture_clip()
+        self.motion("play", id=cid)
+        self.ops.motion_studio.tick()
+        self.posture_feed("sit", True, error=.3)
+        self.ops.handle({"op": "stand"}, conn=self.conn)
+        self.assertEqual(self.view()["state"], "idle")
+        self.assertEqual(self.view()["posture_step"]["target"], "stand")
+        self.settle_posture("stand")
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 2)
+
+    def test_manual_opposite_recovery_finishes_recording_before_override(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        self.start()
+        self.ops.handle({"op": "sit"}, conn=self.conn)
+        self.posture_feed("sit", True, error=.3)
+        self.ops.handle({"op": "stand"}, conn=self.conn)
+        self.assertEqual(self.view()["state"], "draft")
+        targets = [e["params"]["target"] for e in self.ops.motion_studio.draft["events"] if e["method"] == "studio.posture"]
+        self.assertEqual(targets, ["sit"])
+        self.assertEqual(self.view()["posture_step"]["target"], "stand")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -145,7 +145,7 @@ class MotionStudio:
                 return "姿态在坐站步骤后被改变：已取消后续动作"
         return None
 
-    def begin_posture(self, target):
+    def begin_posture(self, target, manual=False):
         """Fence before a toggle can leave the process; caller owns send ordering."""
         with self.pad._lk:
             p, now = self.pad, self.pad.clock()
@@ -159,11 +159,13 @@ class MotionStudio:
             if "sit_toggle" not in (p._known_skills() or []):
                 raise Refused("这只鸭子没装坐站模型")
             if self.session:
+                if manual:
+                    raise Refused("手动坐站前必须先取消自动会话")
                 s = self.session
                 if (s.get("invalid") or now - s["heartbeat"] > HEARTBEAT_S or s["conn"] in p._gone
                         or s["conn"] in p._closed or p._pad_attached(now)[0] is not False):
                     raise Refused(s.get("invalid") or "页面已离开、心跳过期或实体手柄接管，坐站请求已取消")
-            token = self.posture.begin(target, view, now)
+            token = self.posture.begin(target, view, now, manual=manual)
             if token is not None and self.session:
                 self.session["posture_control"] = True
                 self.session.setdefault("posture_target", "sit" if (p._policies() or {}).get("sitting") else "stand")
@@ -547,6 +549,10 @@ class MotionStudio:
                     if self.state == "recording" and op in ("sit", "stand"):
                         self._own(conn)
                         if self.posture.pending:
+                            if self.posture.pending["target"] != op:
+                                self._stop("手动坐站恢复接管，录制已结束")
+                                self._refresh_request()
+                                return
                             raise Refused(self.posture.error or "当前坐站仍会完成：请等待关节稳定")
                         # Only sitstand, never init/enable, belongs in a recording.
                         if op == "stand" and (self.pad._policies() or {}).get("sitting") is not True:

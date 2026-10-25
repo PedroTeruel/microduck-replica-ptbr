@@ -1661,7 +1661,7 @@ class DriveMixin:
                 # Old robotd/manual fixtures without state evidence retain their
                 # original control path. Automation always requires complete data.
                 legacy = (not recording and not ordered and not motion.posture.pending
-                          and not (self._robot or {}).get("state"))
+                          and "state" not in (self._robot or {}))
                 if recording:
                     motion._boundary(record=True)
                     motion._refresh_request()
@@ -1672,7 +1672,7 @@ class DriveMixin:
             with self._lk:
                 if recording and (not motion.session or motion.session.get("invalid")):
                     raise Refused("动作会话已经结束，坐站请求已取消")
-                token = motion.begin_posture(posture_target)
+                token = motion.begin_posture(posture_target, manual=not recording and not ordered)
                 origin = motion.recording_origin()
             if not token["command"]:
                 with self._lk:
