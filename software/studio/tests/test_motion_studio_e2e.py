@@ -37,7 +37,7 @@ class MotionStudioBrowser(unittest.TestCase):
             launch('fake.log', [sys.executable, '-I', str(ROOT / 'dev/fake_robotd.py'), '--fixture',
                                str(ROOT / 'tests/fixtures/now-20261018.jsonl'), '--robotd-port', str(p_robot),
                                '--configd-port', str(p_config), '--posture', 'policy', '--record', str(record)])
-            launch('studio.log', [sys.executable, '-I', str(ROOT / 'run.py'), '--listen', f'127.0.0.1:{p_web}',
+            launch('studio.log', [sys.executable, '-I', str(ROOT / 'tests/audio_fixture_launcher.py'), '--listen', f'127.0.0.1:{p_web}',
                                  '--robotd', f'tcp:127.0.0.1:{p_robot}', '--configd', f'tcp:127.0.0.1:{p_config}',
                                  '--dev-autologin', '--servo-sim', '--state-dir', str(output / 'state'),
                                  '--log-dir', str(output / 'logs')])
@@ -67,6 +67,9 @@ class MotionStudioBrowser(unittest.TestCase):
             self.assertEqual(report['cancelled_posture_commands'], 1)
             self.assertEqual(report['disconnected_posture_commands'], 1)
             self.assertEqual(report['posture_layouts'], [390, 320, 1440])
+            self.assertGreater(report['music_head_frames'], 2)
+            self.assertGreater(report['music_body_frames'], 2)
+            self.assertTrue(report['music_off_stopped'])
             clips = [json.loads(path.read_text(encoding='utf-8')) for path in
                      (output / 'state' / 'motion-recordings').glob('*.json')]
             self.assertEqual(len(clips), 1)

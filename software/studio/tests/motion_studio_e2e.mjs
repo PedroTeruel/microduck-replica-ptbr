@@ -203,6 +203,29 @@ try {
     assert(await js(`document.documentElement.scrollWidth<=innerWidth+1`), `${width}px posture feedback overflows`);
     report.posture_layouts.push(width); await shot(`posture-${width}`);
   }
+  await fakeSet({posture:'holding'}); await sleep(1300); await fakeSet({posture:'policy'});
+  await js(`document.querySelector('#audio-interaction').scrollIntoView({block:'center'})`);
+  await wait(`document.querySelector('[data-audio="music"]') && !document.querySelector('[data-audio="music"]').disabled`, 'audio control ready');
+  await click('[data-audio="music"]');
+  await wait(`document.querySelector('[data-audio-listening="true"]') && document.querySelector('[data-audio-rhythm]')?.innerText.includes('120 BPM')`, 'visible microphone and tempo');
+  const musicBegin = records().length;
+  await click('[data-motion-kind="music"]'); await state('idle_motion'); await sleep(900);
+  const musicFrames = records().slice(musicBegin);
+  report.music_head_frames = musicFrames.filter(nonzeroHead).length;
+  report.music_body_frames = musicFrames.filter(r=>r.method==='robot.pose' && r.params.active && Math.abs(r.params.roll||0)>.001).length;
+  assert(report.music_head_frames>2 && report.music_body_frames>2,'music drives small head/body intents');
+  assert(!musicFrames.some(r=>['robot.init','robot.enable'].includes(r.method)),'music never powers or starts policy');
+  await click('[data-audio="listening"]'); await state('idle'); await sleep(250);
+  const musicOff = records().length; await sleep(550);
+  report.music_off_stopped = !records().slice(musicOff).some(movingIntent);
+  assert(report.music_off_stopped,'microphone off stops subsequent music movement');
+  await shot('audio-and-music-1440');
+  for (const width of [390,320]) {
+    await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:true});
+    await js(`document.querySelector('#audio-interaction').scrollIntoView({block:'center'})`);
+    assert(await js(`document.documentElement.scrollWidth<=innerWidth+1`),`${width}px audio panel overflows`);
+    await shot(`audio-${width}`);
+  }
   assert(errors.length === 0, errors.join('\n'));
   process.stdout.write(JSON.stringify(report));
 } finally {

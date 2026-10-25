@@ -103,7 +103,7 @@ export function MotionStudio({ pad, link, activity }) {
     }
   };
   const button = (action, label, enabled = true, params = {}, className = 'btn-light') => html`
-    <button type="button" class=${className} data-motion=${action} disabled=${!ready || !enabled}
+    <button type="button" class=${className} data-motion=${action} data-motion-kind=${params.kind || null} disabled=${!ready || !enabled}
       onClick=${() => command(action, params)}>${pending === action ? '处理中…' : label}</button>`;
   const idleCanStart = !running || state === 'recording';
   const hasDraft = state === 'draft' && !!motion?.draft;
