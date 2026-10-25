@@ -112,6 +112,7 @@ class ContinuousAudio:
         self.cue_active = False
         self.suppress_until = 0
         self.capture = None
+        self.capture_stop = None
         self.capture_thread = threading.Thread(target=self._capture_loop, name='continuous-capture', daemon=True)
         self.worker = threading.Thread(target=self._dispatch, name='continuous-dispatch', daemon=True)
         self.capture_thread.start()
@@ -159,15 +160,12 @@ class ContinuousAudio:
                 return
             self.active = False
             generation = self._invalidate()
-            process = self.capture
+            capture_stop = self.capture_stop
             self.stop_output = True
             self.condition.notify_all()
         self._cancel_voice(generation)
-        if process is not None and process.poll() is None:
-            # Bounded reap happens away from evdev, including a process which
-            # ignores SIGTERM and leaves stdout blocked.
-            from duck_echo import terminate
-            threading.Thread(target=terminate, args=(process,), daemon=True).start()
+        if capture_stop is not None:
+            capture_stop.set()
 
     def stop_playback(self):
         with self.condition:
@@ -219,6 +217,7 @@ class ContinuousAudio:
                 return
             self.cue_active = True
             self.pending = None
+            self.output_pending = False
             self.segmenter.reset()
         try:
             callback(accepted)
@@ -269,8 +268,13 @@ class ContinuousAudio:
                             self.output_pending = False
                             self.suppress_until = self.clock() + self.tail
 
-    def _capture_loop(self):
+    @staticmethod
+    def _reap_capture(process, requested):
+        requested.wait()
         from duck_echo import terminate
+        terminate(process)
+
+    def _capture_loop(self):
         while True:
             with self.condition:
                 while not self.active and not self.closed:
@@ -280,13 +284,21 @@ class ContinuousAudio:
                 generation = self.generation
             errors = tempfile.TemporaryFile()
             process = None
+            reaper = capture_stop = None
             try:
                 process = subprocess.Popen([
                     'arecord', '-q', '-D', self.capture_device, '-t', 'raw',
                     '-f', 'S16_LE', '-c', '2', '-r', str(RATE),
                 ], stdout=subprocess.PIPE, stderr=errors)
+                # Exactly one reaper owns this process. Repeated off/cancel
+                # events only set its Event; cleanup joins the same owner.
+                capture_stop = threading.Event()
+                reaper = threading.Thread(target=self._reap_capture, args=(process, capture_stop),
+                                          name='continuous-reaper', daemon=True)
+                reaper.start()
                 with self.condition:
                     self.capture = process
+                    self.capture_stop = capture_stop
                     valid = self.active and generation == self.generation
                 if valid:
                     while True:
@@ -301,7 +313,10 @@ class ContinuousAudio:
                 LOG.exception('continuous capture unavailable')
             finally:
                 if process is not None:
-                    terminate(process)
+                    # Also handles stop arriving during Popen, before the
+                    # process and its stop Event were visible to evdev.
+                    capture_stop.set()
+                    reaper.join()
                     process.stdout.close()
                 errors.seek(0)
                 message = errors.read().decode(errors='replace').strip()
@@ -309,6 +324,7 @@ class ContinuousAudio:
                 with self.condition:
                     if self.capture is process:
                         self.capture = None
+                        self.capture_stop = None
                     failed = self.active and generation == self.generation
                     if failed:
                         self.failed = True

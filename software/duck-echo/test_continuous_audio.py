@@ -375,6 +375,37 @@ class ContinuousTests(unittest.TestCase):
         self.assertIn('threshold', inspect.signature(continuous.ContinuousAudio).parameters,
                       'controller signal threshold cannot be calibrated')
 
+    def test_command_cue_clearing_queued_echo_does_not_latch_suppression(self):
+        self.start()
+        with self.audio.condition:  # Keep dispatch from consuming the queued play.
+            self.audio.play(pcm(.2))
+            self.audio.command_cue(lambda accepted: None, True)
+            self.now[0] = 100
+            self.assertFalse(self.audio.suppressed(),
+                             'cue discarded playback but left output suppression latched')
+
+    def test_repeated_stop_uses_one_reaper_for_the_current_capture(self):
+        process = self.start()
+        entered, release = threading.Event(), threading.Event()
+        calls = []
+        original_terminate = echo.terminate
+        def blocked_terminate(target):
+            calls.append(target)
+            entered.set()
+            release.wait(1)
+            original_terminate(target)
+        try:
+            with patch.object(echo, 'terminate', side_effect=blocked_terminate):
+                for _ in range(50):
+                    self.audio.stop(play=False)
+                self.assertTrue(entered.wait(1))
+                self.assertEqual(len(calls), 1, 'stop spawned duplicate recorder reapers')
+                release.set()
+                self.assertTrue(eventually(lambda: self.audio.capture is None))
+                self.assertEqual(len(calls), 1, 'capture cleanup reaped the same process twice')
+        finally:
+            release.set()
+
 
 if __name__ == '__main__':
     unittest.main()
