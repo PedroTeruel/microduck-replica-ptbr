@@ -27,6 +27,8 @@ class Decoder:
         self.outputs = []
         self.reset_count = 0
         self.words = self.partial_words = False
+        self.alignment_calls = 0
+        self.aligned_text = None
         self.entered = self.release = None
 
     def SetWords(self, enabled):
@@ -43,7 +45,11 @@ class Decoder:
         return self.current[0] == 'final'
 
     def PartialResult(self):
-        return json.dumps({'partial': self.current[1], 'partial_result': [{'conf': self.current[2]}]})
+        if not self.partial_words:
+            return json.dumps({'partial': self.current[1]})
+        self.alignment_calls += 1
+        return json.dumps({'partial': self.aligned_text if self.aligned_text is not None else self.current[1],
+                           'partial_result': [{'conf': self.current[2]}]})
 
     def Result(self):
         return json.dumps({'text': self.current[1], 'result': [{'conf': self.current[2]}]})
@@ -85,7 +91,8 @@ class StreamingTests(unittest.TestCase):
         self.assertEqual(self.replies, ['chirp'])
         self.feed('final', '感觉 怎么样', .9, 11.)
         self.assertEqual(self.replies, ['chirp'])
-        self.assertTrue(self.decoder.words and self.decoder.partial_words)
+        self.assertTrue(self.decoder.words)
+        self.assertFalse(self.decoder.partial_words, 'alignment must return to cheap text-only partials')
         self.assertGreaterEqual(self.decoder.reset_count, 1)
         self.assertIs(self.created[0][0], self.shared.model)
         self.assertIn('[unk]', self.created[0][2])
@@ -148,6 +155,24 @@ class StreamingTests(unittest.TestCase):
         self.feel.snapshot = lambda: {'feel': 'mellow', 'confidence': 1., 'age': 0}
         self.feed('final', '感觉 怎么样', .9, 10.)
         self.assertEqual(self.replies, ['chirp'])
+
+    def test_non_question_partials_never_request_word_alignment(self):
+        for index in range(50):
+            self.feed('partial', '不要 感觉 怎么样', .99, 10+index*.02)
+        self.assertEqual(self.decoder.alignment_calls, 0)
+        self.assertEqual(self.replies, [])
+
+    def test_candidate_alignments_are_throttled_and_low_word_confidence_never_answers(self):
+        for index in range(50):
+            self.feed('partial', '感觉 怎么样', .79, 10+index*.02)
+        self.assertLessEqual(self.decoder.alignment_calls, 10)
+        self.assertEqual(self.replies, [])
+
+    def test_aligned_partial_must_still_be_the_exact_complete_question(self):
+        self.decoder.aligned_text = '感觉'
+        self.feed('partial', '感觉 怎么样', .99, 10.)
+        self.feed('partial', '感觉 怎么样', .99, 10.6)
+        self.assertEqual(self.replies, [])
 
 
 if __name__ == '__main__':

@@ -96,7 +96,7 @@ class MusicInteraction:
                    all(shared.model.vosk_model_find_word(word) >= 0 for word in phrase.split())]
         decoder = shared.recognizer_type(shared.model, 48000, json.dumps(grammar, ensure_ascii=False))
         decoder.SetWords(True)
-        decoder.SetPartialWords(True)
+        decoder.SetPartialWords(False)
         self.error = None
         return decoder
 
@@ -106,6 +106,7 @@ class MusicInteraction:
         candidate = None
         candidate_at = None
         context = None
+        last_partial = -1e9
         while True:
             with self.condition:
                 while not self.queue and not self.closed:
@@ -113,6 +114,7 @@ class MusicInteraction:
                         decoder.Reset()
                         decoder_generation = self.generation
                         candidate = candidate_at = context = None
+                        last_partial = -1e9
                     self.idle.set()
                     self.condition.wait()
                 if self.closed:
@@ -129,6 +131,7 @@ class MusicInteraction:
                     decoder.Reset()
                     decoder_generation = generation
                     candidate = candidate_at = context = None
+                    last_partial = -1e9
                 samples = array.array('h')
                 samples.frombytes(raw[:len(raw)//4*4])
                 if sys.byteorder != 'little':
@@ -137,7 +140,23 @@ class MusicInteraction:
                 if sys.byteorder != 'little':
                     mono.byteswap()
                 final = decoder.AcceptWaveform(mono.tobytes())
-                result = json.loads(decoder.Result() if final else decoder.PartialResult())
+                if final:
+                    result = json.loads(decoder.Result())
+                else:
+                    if timestamp-last_partial < .1:
+                        continue
+                    last_partial = timestamp
+                    # Vosk aligns the whole partial lattice when PartialWords
+                    # is enabled. Incomplete/unknown music paths can warn on
+                    # every frame. Inspect cheap best-path text first, then
+                    # align only an exact candidate to verify real confidence.
+                    result = json.loads(decoder.PartialResult())
+                    if is_music_question(result.get('partial', ''), 1):
+                        decoder.SetPartialWords(True)
+                        try:
+                            result = json.loads(decoder.PartialResult())
+                        finally:
+                            decoder.SetPartialWords(False)
                 text = result.get('text' if final else 'partial', '')
                 words = result.get('result' if final else 'partial_result', [])
                 confidence = min((word.get('conf', 0) for word in words), default=0)
@@ -156,6 +175,7 @@ class MusicInteraction:
                 if final or answer:
                     decoder.Reset()
                     candidate = candidate_at = context = None
+                    last_partial = -1e9
             except Exception:
                 self.error = 'music speech recognition unavailable'
                 LOG.exception('music question recognition failed')
