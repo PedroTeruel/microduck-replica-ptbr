@@ -1951,6 +1951,8 @@ def robot_view(rd, posture=None):
     applied = ((st or {}).get("move") or {}).get("applied") if isinstance(st, dict) else None
     batt = ((health or {}).get("battery") or {}).get("percent") if isinstance(health, dict) else None
     return {"present": rd.present, "bus": rd.bus.value, "bus_at": rd.bus.at, "posture": posture,
+            "state": st if isinstance(st, dict) else None, "state_at": rd.state.at,
+            "policies_at": rd.policies.at,
             "policies": pol if isinstance(pol, dict) else None, "applied": applied, "battery_pct": batt,
             "estop_active": rd.estop.active, "estop_presses": rd.estop.press_count, "paused": rd.paused,
             "pad_status": rd.pad.value, "pad_status_at": rd.pad.at, "pad_status_error": rd.pad.error}

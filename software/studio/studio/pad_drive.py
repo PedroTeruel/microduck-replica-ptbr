@@ -63,6 +63,7 @@ robot.init 直线回 HOME，网页走 sit_toggle（sitstand 网络起身，更�
 stop + enable off（直接给 HOME 目标）。
 """
 import itertools
+from contextlib import nullcontext
 import json
 import math
 import os
@@ -753,7 +754,7 @@ class DriveMixin:
             self._pose_reset = "due"
             self._tick_evt.set()
         drv = self._posture() in DRIVING
-        if not drv:
+        if not drv and not self.motion_studio.posture_allowed():
             self.motion_studio.invalidate("策略离开准备好走的状态")
         left = self._was_driving and not drv
         self._was_driving = drv
@@ -1648,33 +1649,78 @@ class DriveMixin:
 
     # ================= 站起来 / 开始走 / 坐下 / 技能 / 声音：按 =================
 
-    def _call(self, what, method, params, by, ctx=None):
+    def _call(self, what, method, params, by, ctx=None, posture_target=None, ordered=False):
+        if posture_target is None:
+            return self._call_rpc(what, method, params, by, ctx)
+        motion = self.motion_studio
+        with (nullcontext() if ordered else self._send_lk):
+            with self._lk:
+                if not motion.request_current():
+                    raise Refused("动作会话已经改变，旧命令请求已丢弃")
+                recording = motion.session and motion.state == "recording"
+                # Old robotd/manual fixtures without state evidence retain their
+                # original control path. Automation always requires complete data.
+                legacy = (not recording and not ordered and not motion.posture.pending
+                          and not (self._robot or {}).get("state"))
+                if recording:
+                    motion._boundary(record=True)
+                    motion._refresh_request()
+            if legacy:
+                return self._call_rpc(what, method, params, by, ctx)
+            if recording:
+                motion._flush_outputs()
+            with self._lk:
+                if recording and (not motion.session or motion.session.get("invalid")):
+                    raise Refused("动作会话已经结束，坐站请求已取消")
+                token = motion.begin_posture(posture_target)
+                origin = motion.recording_origin()
+            if not token["command"]:
+                with self._lk:
+                    motion.posture.accepted(token)
+                return {"accepted": True, "reason": "已经达到目标姿态"}
+            return self._call_rpc(what, method, params, by, ctx, posture_token=token, record_origin=origin)
+
+    def _call_rpc(self, what, method, params, by, ctx=None, posture_token=None, record_origin=None):
         """一个要回话的请求：记「发出 → 回执 · 耗时」（log_cmd，分类「命令」），拒绝的原因翻成人话抛 Refused。"""
         if self.robot is None:
             raise Refused("这只鸭子没配主程序的地址")
         with self._lk:
             if not self.motion_studio.request_current():
                 raise Refused("动作会话已经改变，旧命令请求已丢弃")
-        record_origin = self.motion_studio.recording_origin() if method == "robot.sound" else None
-        skill_fence = self.motion_studio.note_skill() if method == "robot.do" else None
+        if method == "robot.sound":
+            record_origin = self.motion_studio.recording_origin()
+        skill_fence = self.motion_studio.note_skill() if method == "robot.do" and posture_token is None else None
         with log_cmd(self.log, what, method, who=by, args=params or None, ctx=ctx) as t:
             try:
                 r = self.robot.call(method, params, CMD_TIMEOUT_S)
             except Unreachable as e:
+                if posture_token:
+                    self.motion_studio.posture_reply(posture_token, None, reason="连接中断")
                 t.fail(f"没发出去：{e}", hint="主程序 robotd 不在？看总览页")
                 raise Refused(f"没发出去：{e}") from None
             except Timeout:
+                if posture_token:
+                    self.motion_studio.posture_reply(posture_token, None, reason="回执超时")
                 t.fail(f"主程序 {CMD_TIMEOUT_S:g} 秒没回话", hint="它可能卡住了：看日志里 robotd 那几行，必要时卸力")
                 raise Refused(f"主程序 {CMD_TIMEOUT_S:g} 秒没回话：它可能卡住了") from None
             except RpcError as e:
+                if posture_token:
+                    self.motion_studio.posture_reply(posture_token, False)
                 why = plain_refusal(e.message)
                 t.fail(f"主程序报错：{e.message}", raw={"code": e.code, "message": e.message}, hint=why)
                 raise Refused(why) from None
             if isinstance(r, dict) and r.get("accepted") is False:
+                if posture_token:
+                    self.motion_studio.posture_reply(posture_token, False)
                 self.motion_studio.rejected_skill(skill_fence)
                 why = plain_refusal(r.get("reason"))
                 t.fail(f"主程序没接受：{r.get('reason')}", raw=r, hint=why)
                 raise Refused(why)
+            if posture_token:
+                if not isinstance(r, dict) or r.get("accepted") is not True:
+                    self.motion_studio.posture_reply(posture_token, None, reason="回执格式不明确")
+                    raise Refused(self.motion_studio.posture.error)
+                self.motion_studio.posture_reply(posture_token, True, origin=record_origin)
             t.ok(r, note=(r.get("reason") or "") if isinstance(r, dict) else "")
         if method == "robot.sound":
             self.motion_studio.accepted_from(record_origin, method, params)
@@ -1734,7 +1780,7 @@ class DriveMixin:
                 if stand_call == "robot.init":
                     r = self._call(what, "robot.init", {}, by, ctx)
                 else:
-                    r = self._call(what + "（坐着：sit_toggle）", "robot.do", {"skill": "sit_toggle"}, by, ctx)
+                    r = self._call(what + "（坐着：sit_toggle）", "robot.do", {"skill": "sit_toggle"}, by, ctx, posture_target="stand")
             elif op == "walk":
                 r = self._call(what, "robot.enable", {"on": True, "toggle": False}, by, ctx)
             elif op == "walk_stop":
@@ -1751,7 +1797,7 @@ class DriveMixin:
                     self._cancel_wait(0.05)
                 r = self._call(what, "robot.enable", {"on": False, "toggle": False}, by, ctx)
             elif op == "sit":
-                r = self._call(what, "robot.do", {"skill": "sit_toggle"}, by, ctx)
+                r = self._call(what, "robot.do", {"skill": "sit_toggle"}, by, ctx, posture_target="sit")
             elif op == "skill":
                 r = self._call(what, "robot.do", {"skill": args.get("name")}, by, ctx)
             else:

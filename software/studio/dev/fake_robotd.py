@@ -147,6 +147,9 @@ class FakeRobotd:
         self.net_signal = 72 if self.net_mode == "wifi" else None
         self.net_ip4 = "192.168.1.50" if self.net_mode == "wifi" else None
         self.frames = frames or [{}]
+        self._posture_transition = None
+        self.posture_delay_s = .55
+        self.sitting = False
         self.relax_delay = 0.3
         self.hd_delay = 0.2
         self.delays = {}
@@ -365,6 +368,8 @@ class FakeRobotd:
             self.calib["uncalibrated_joints"] = [j.get("name") for j in js[:2]]
 
     def set_posture(self, p):
+        self._posture_transition = None
+        self.sitting = p == "sitting"
         if p == "commissioning":
             if self.mode != "commissioning":
                 self.comm_boot()                  # 模式是启动参数：切进标定模式 = 主程序重新起来，先回启动报告
@@ -388,10 +393,31 @@ class FakeRobotd:
         if p == "limp":
             n.update({"torque_enabled": False, "torque_state_confirmed": False})
             hd.update({"restore_pending": False, "temporary_gains_applied": False})
-        elif p == "policy":
+        elif p in ("policy", "sitting"):
             self.bus["policy_enabled"] = True
         self.posture = p
         fake_tune.after_posture(self, p)          # 调参卡要的形状（策略开着的 active_*、walk_unloaded）
+
+    def posture_frame(self, source):
+        """Live sitstand evidence atop the recorded sensors, with physical lag."""
+        frame = copy.deepcopy(source)
+        now = time.monotonic()
+        frame["t"] = now
+        frame["t_ns"] = int(now * 1e9)
+        transition = self._posture_transition
+        if transition:
+            done = now - transition["start"] >= self.posture_delay_s
+            target = [v + (.35 if transition["target"] == "sit" else 0.) for v in transition["home"]]
+            frame["targets"] = target
+            frame["joints"] = target[:] if done else [v + .25 for v in target]
+            frame["policy"] = "sit" if self.sitting else ("walk" if done else "rise")
+        elif self.posture in ("policy", "sitting"):
+            frame["policy"] = "sit" if self.sitting else "walk"
+            frame["joints"] = list(frame.get("targets") or frame.get("joints") or [0.] * 15)
+            frame["targets"] = frame["joints"][:]
+        if self.posture in ("policy", "sitting"):
+            frame["move"] = {"applied": [0., 0., 0.], "requested": [0., 0., 0.], "limited_by": []}
+        return frame
 
     def _shape(self, p):
         """真机上这几种时候 busStatus 的样子（审查 O18）：没有 native，只有几个顶层字段。"""
@@ -551,7 +577,7 @@ class FakeRobotd:
         if method == "robot.policies":
             if self.mode != "motion" or self._motion_error():
                 return None, {"code": -32603, "message": "robotd is in commissioning mode"}
-            return dict(self.policies or {}, sitting=False), None
+            return dict(self.policies or {}, sitting=self.sitting), None
         if method == "robot.busCommand" and (params or {}).get("action") == "calibration-status":
             # 卡在等总线：标定只在开总线成功后才存（fork main.rs:1535），这时回错
             if self.mode != "commissioning" and self._shaped_bus().get("phase") == "waiting_for_bus":
@@ -599,6 +625,8 @@ class FakeRobotd:
         if method == "pad.bindings":
             return {"bindings": self.bindings}, None
         if method == "fake.set":                       # 测试用：换姿势、假装实体手柄连着
+            if type(params.get("posture_delay_s")) in (int, float):
+                self.posture_delay_s = max(.1, min(30., float(params["posture_delay_s"])))
             if params.get("mode") in ("commissioning", "motion"):
                 if params["mode"] == "commissioning" and self.mode != "commissioning":
                     self.comm_boot()
@@ -672,6 +700,18 @@ class FakeRobotd:
                 return {"accepted": True, "reason": "mode already selected"}, None
             self.policies = dict(self.policies or {}, mode=want)
             return {"accepted": True}, None
+        if method == "robot.do" and params.get("skill") == "sit_toggle":
+            previous = self._posture_transition
+            if previous and previous["target"] == "stand" and time.monotonic() - previous["start"] < self.posture_delay_s:
+                return {"accepted": False, "reason": "already standing up"}, None
+            if self.bus.get("policy_enabled") is not True or (self.bus.get("native") or {}).get("torque_state_confirmed") is not True:
+                return {"accepted": False, "reason": "policy is not driving"}, None
+            target = "stand" if self.sitting else "sit"
+            home = list((self.frames[0] or {}).get("targets") or [0.] * 15)
+            self.sitting = target == "sit"
+            self.posture = "sitting" if self.sitting else "policy"
+            self._posture_transition = {"start": time.monotonic(), "target": target, "home": home}
+            return {"accepted": True, "reason": target}, None
         if method in ACCEPT:
             if method == "robot.enable" and self.posture in ("holding", "policy"):
                 on = (not (self.posture == "policy")) if params.get("toggle") else bool(params.get("on"))
@@ -758,7 +798,7 @@ class FakeRobotd:
         i = 0
         try:
             while True:
-                frame = self.frames[i % len(self.frames)]
+                frame = self.posture_frame(self.frames[i % len(self.frames)])
                 writer.write((json.dumps({"jsonrpc": "2.0", "method": "robot.state", "params": frame}, ensure_ascii=False) + "\n").encode())
                 await writer.drain()
                 i += 1

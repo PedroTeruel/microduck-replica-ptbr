@@ -39,6 +39,10 @@ def validate_event(raw):
     method, p = raw["method"], raw["params"]
     if not isinstance(p, dict):
         raise Refused("动作参数要是对象")
+    if method == "studio.posture":
+        if set(p) != {"target"} or p["target"] not in ("sit", "stand"):
+            raise Refused("坐站事件只能包含 sit / stand 目标")
+        return raw
     if method == "robot.move":
         bounds = {"vx": (-.6, .6), "vy": (-.6, .6), "vyaw": (-3., 3.)}
     elif method == "robot.head":
@@ -69,7 +73,7 @@ def validate_event(raw):
 
 def validate_clip(raw):
     keys = {"version", "id", "name", "created", "duration_s", "fingerprint", "events"}
-    if not isinstance(raw, dict) or set(raw) != keys or type(raw["version"]) is not int or raw["version"] != 1:
+    if not isinstance(raw, dict) or set(raw) != keys or type(raw["version"]) is not int or raw["version"] not in (1, 2):
         raise Refused("动作记录版本或字段不对")
     if not isinstance(raw["id"], str) or not ID.fullmatch(raw["id"]):
         raise Refused("动作记录编号不对")
@@ -85,6 +89,8 @@ def validate_clip(raw):
     previous = 0.
     for event in events:
         validate_event(event)
+        if raw["version"] == 1 and event["method"] == "studio.posture":
+            raise Refused("坐站事件需要 v2 动作记录")
         if event["t"] < previous or event["t"] > duration:
             raise Refused("动作事件时间逆序或超出时长")
         previous = event["t"]

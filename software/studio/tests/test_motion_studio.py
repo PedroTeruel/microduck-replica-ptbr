@@ -40,7 +40,7 @@ class StorageTest(unittest.TestCase):
             store.delete(clip["id"])
             self.assertEqual(m.MotionStore(td).summaries(), [])
             for mutate in (
-                lambda c: c.update(extra=True), lambda c: c.update(version=2),
+                lambda c: c.update(extra=True), lambda c: c.update(version=3),
                 lambda c: c.update(duration_s=61), lambda c: c.update(duration_s=float("nan")),
                 lambda c: c.update(name="x" * 33),
                 lambda c: c["events"][0].update(method="robot.init"),
@@ -87,6 +87,21 @@ class StorageTest(unittest.TestCase):
             c["events"] *= 3001
             with self.assertRaises(Refused):
                 m.validate_clip(c)
+
+    def test_v2_posture_targets_are_strict_and_v1_remains_readable(self):
+        m = self.module()
+        c = self.clip()
+        m.validate_clip(c)
+        c.update(version=2, events=[{"t": 0., "method": "studio.posture", "params": {"target": "sit"}}])
+        self.assertEqual(m.validate_clip(c), c)
+        for params in ({"target": "init"}, {"target": True}, {"target": "sit", "skill": "kick"}, {}):
+            c["events"][0]["params"] = params
+            with self.subTest(params=params), self.assertRaises(Refused):
+                m.validate_clip(c)
+        c["events"][0]["params"] = {"target": "sit"}
+        c["version"] = 1
+        with self.assertRaises(Refused):
+            m.validate_clip(c)
 
     def test_huge_json_integers_are_skipped_on_restart(self):
         m = self.module()
@@ -904,6 +919,234 @@ class MotionStudioTest(PadTestBase):
         self.assertEqual(self.view()["state"], "recording")
         self.assertTrue(self.view()["idle_running"])
         self.assertFalse(any(p.get("vx") for _, p in self.sent("robot.move")))
+
+
+    def posture_feed(self, phase="walk", sitting=False, error=0., at=None):
+        at = self.ops.clock() if at is None else at
+        self.feed(posture="sitting" if sitting else "policy", pol={"sitting": sitting},
+                  state={"policy": phase, "joints": [error] * 15, "targets": [0.] * 15},
+                  state_at=at, policies_at=at,
+                  bus=fixtures.bus(policy_enabled=True, homed=True))
+
+    def settle_posture(self, target):
+        for _ in range(3):
+            self.posture_feed("sit" if target == "sit" else "walk", target == "sit")
+            self.ops.motion_studio.tick()
+
+    def posture_clip(self, targets=("sit", "stand")):
+        from studio.motion_studio import fingerprint
+        c = StorageTest().clip()
+        c.update(version=2, fingerprint=fingerprint(self.ops), duration_s=.3,
+                 events=[{"t": i * .1, "method": "studio.posture", "params": {"target": t}}
+                         for i, t in enumerate(targets)])
+        self.ops.motion_studio.store.save(c)
+        return c["id"]
+
+    def test_records_direct_and_dpad_postures_without_ending_recording(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        self.start()
+        self.ops.handle({"op": "sit"}, conn=self.conn)
+        self.assertEqual(self.view()["state"], "recording")
+        self.assertEqual(self.view()["posture_step"]["target"], "sit")
+        self.settle_posture("sit")
+        self.ops.handle({"op": "key", "key": "dpad_down"}, conn=self.conn)
+        self.settle_posture("stand")
+        self.assertEqual(self.view()["state"], "recording")
+        self.motion("record_finish")
+        self.assertEqual(self.view()["state"], "draft")
+        self.motion("save", name="坐下再站起")
+        c = self.ops.motion_studio.store.get(self.view()["recordings"][0]["id"])
+        self.assertEqual(c["version"], 2)
+        self.assertEqual([e["params"]["target"] for e in c["events"] if e["method"] == "studio.posture"], ["sit", "stand"])
+
+    def test_refused_posture_is_not_recorded_and_lost_reply_is_not_retried(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        self.start()
+        self.robot.replies["robot.do"] = {"accepted": False, "reason": "not ready"}
+        with self.assertRaises(Refused):
+            self.ops.handle({"op": "sit"}, conn=self.conn)
+        self.assertFalse(any(e["method"] == "studio.posture" for e in self.ops.motion_studio.session["events"]))
+        self.assertIsNone(self.view()["posture_step"])
+        self.robot.replies["robot.do"] = fixtures.Timeout("lost")
+        with self.assertRaises(Refused):
+            self.ops.handle({"op": "sit"}, conn=self.conn)
+        self.ops.motion_studio.tick()
+        self.assertIn("未知", self.view()["last_result"])
+        self.assertIsNotNone(self.view()["posture_step"])
+        with self.assertRaises(Refused):
+            self.start()
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 2)
+
+    def test_replay_postures_are_ordered_barriers_even_when_late(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        cid = self.posture_clip()
+        self.motion("play", id=cid)
+        s = self.ops.motion_studio.session
+        s["anchor"] -= .3
+        self.ops.motion_studio.tick()
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 1)
+        frozen = self.view()["elapsed_s"]
+        self.posture_feed("sit", True, error=.3)
+        self.ops.motion_studio.tick()
+        self.assertEqual(self.view()["elapsed_s"], frozen)
+        self.assertEqual(self.view()["state"], "playing")
+        self.settle_posture("sit")
+        s["anchor"] -= .11
+        self.ops.motion_studio.tick()
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 2)
+        self.posture_feed("rise", False)
+        self.ops.motion_studio.tick()
+        self.assertEqual(self.view()["state"], "playing")
+        self.settle_posture("stand")
+        s["anchor"] -= .3
+        self.ops.motion_studio.tick()
+        self.assertEqual(self.view()["state"], "idle")
+        self.assertEqual(self.view()["last_result"], "回放完成")
+
+    def test_stop_during_posture_preserves_fence_and_emits_no_more_motion(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        cid = self.posture_clip()
+        self.motion("play", id=cid)
+        self.ops.motion_studio.tick()
+        self.robot.sent.clear()
+        self.motion("stop")
+        self.assertIn("仍会完成", self.view()["last_result"])
+        self.assertFalse(any(m == "robot.move" and any(p.values()) for m, p in self.sent()))
+        self.assertFalse(any(m in ("robot.init", "robot.enable", "robot.do") for m, _ in self.sent()))
+        with self.assertRaises(Refused):
+            self.motion("play", id=cid)
+        self.settle_posture("sit")
+        self.assertIsNone(self.view()["posture_step"])
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 1)
+
+    def test_seated_single_play_is_allowed_but_seated_multi_loop_is_refused(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        cid = self.posture_clip(("sit",))
+        with self.assertRaisesRegex(Refused, "站"):
+            self.motion("play", id=cid, loops=3)
+        self.motion("play", id=cid)
+        self.ops.motion_studio.tick()
+        self.settle_posture("sit")
+        s = self.ops.motion_studio.session
+        s["anchor"] -= .31
+        self.ops.motion_studio.tick()
+        self.assertEqual(self.view()["state"], "idle")
+
+    def test_pause_during_sit_waits_for_completion_then_resumes_same_next_step(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        cid = self.posture_clip()
+        self.motion("play", id=cid)
+        self.ops.motion_studio.tick()
+        self.motion("pause")
+        self.assertEqual(self.view()["state"], "play_paused")
+        self.assertIn("仍会完成", self.view()["last_result"])
+        with self.assertRaisesRegex(Refused, "坐站"):
+            self.motion("resume")
+        self.settle_posture("sit")
+        self.motion("resume")
+        self.ops.motion_studio.tick()
+        self.ops.motion_studio.session["anchor"] -= .11
+        self.ops.motion_studio.tick()
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 2)
+        self.assertEqual(self.view()["posture_step"]["target"], "stand")
+
+    def test_seated_replay_skips_toggle_but_verifies_target_before_stand(self):
+        self.stop_background_tick()
+        self.posture_feed("sit", True)
+        cid = self.posture_clip()
+        self.motion("play", id=cid)
+        self.ops.motion_studio.tick()
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 0)
+        self.assertEqual(self.view()["posture_step"]["target"], "sit")
+        self.ops.motion_studio.tick()
+        self.assertIsNotNone(self.view()["posture_step"])
+        self.settle_posture("sit")
+        self.ops.motion_studio.session["anchor"] -= .11
+        self.ops.motion_studio.tick()
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 1)
+        self.assertEqual(self.view()["posture_step"]["target"], "stand")
+
+    def test_posture_timeout_fences_future_sessions_and_never_retries(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        cid = self.posture_clip()
+        self.motion("play", id=cid)
+        self.ops.motion_studio.tick()
+        self.ops.motion_studio.posture.pending["start"] -= 16.
+        self.ops.motion_studio.tick()
+        self.assertEqual(self.view()["state"], "idle")
+        self.assertIn("15 秒", self.view()["last_result"])
+        for _ in range(3):
+            self.posture_feed()
+            self.ops.motion_studio.tick()
+        with self.assertRaises(Refused):
+            self.motion("play", id=cid)
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 1)
+
+    def test_disconnected_late_posture_reply_does_not_enter_recording_or_restart(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        self.start()
+        entered, release = threading.Event(), threading.Event()
+        def delayed(_):
+            entered.set()
+            release.wait(1.)
+            return {"accepted": True}
+        self.robot.replies["robot.do"] = delayed
+        worker = threading.Thread(target=lambda: self.ops.handle({"op": "sit"}, conn=self.conn))
+        worker.start()
+        self.assertTrue(entered.wait(.5))
+        self.ops.mark_gone(self.conn)
+        release.set()
+        worker.join(2.)
+        self.assertFalse(worker.is_alive())
+        self.ops.motion_studio.tick()
+        self.assertEqual(self.view()["state"], "idle")
+        self.assertIsNone(self.view()["draft"])
+        self.assertIsNotNone(self.view()["posture_step"])
+        self.settle_posture("sit")
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 1)
+
+    def test_pending_posture_never_uses_legacy_toggle_when_fresh_state_disappears(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        self.start()
+        self.robot.replies["robot.do"] = fixtures.Timeout("lost")
+        with self.assertRaises(Refused):
+            self.ops.handle({"op": "sit"}, conn=self.conn)
+        self.ops.motion_studio.tick()
+        self.feed(state=None, state_at=None, policies_at=self.ops.clock())
+        self.robot.replies["robot.do"] = {"accepted": True}
+        with self.assertRaises(Refused):
+            self.ops.handle({"op": "sit"}, conn=self.conn)
+        self.assertEqual(sum(m == "robot.do" for m, _ in self.robot.calls), 1)
+
+    def test_recording_rebound_dpad_skill_is_refused_before_output(self):
+        self.stop_background_tick()
+        self.posture_feed()
+        self.ops.bindings = [{"button": "dpad_down", "skill": "kick_left"}]
+        self.ops._bindings_at = self.ops.clock()
+        self.start()
+        with self.assertRaisesRegex(Refused, "技能"):
+            self.ops.handle({"op": "key", "key": "dpad_down"}, conn=self.conn)
+        self.assertFalse(any(m == "robot.do" for m, _ in self.robot.calls))
+
+    def test_posture_final_precheck_requires_live_runtime_enable_and_torque(self):
+        self.stop_background_tick()
+        for changes in ({"bus": fixtures.bus(policy_enabled=False, homed=True)},
+                        {"bus": fixtures.bus(False, policy_enabled=True, homed=True)},
+                        {"present": False}, {"paused": True}):
+            self.posture_feed()
+            self.ops.motion_studio.posture.pending = None
+            self.ops._robot.update(changes)
+            with self.subTest(changes=changes), self.assertRaises(Refused):
+                self.ops.motion_studio.begin_posture("sit")
 
 
 if __name__ == "__main__":
