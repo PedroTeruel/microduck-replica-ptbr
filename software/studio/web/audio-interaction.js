@@ -42,7 +42,9 @@ export function AudioInteraction({ pad, link, activity }) {
     ${status?.listening && status?.music ? html`<p class="pd-small-p" data-audio-rhythm>${rhythmLabel(status.rhythm)}</p>
       <p class="pd-small-p">手机或音箱在旁边放歌，可以问“感觉怎么样”“喜欢这种歌吗”。
       叫声按近期节奏感觉变化；低置信度时会用询问声回应。音乐模式暂不执行坐站口令或复读整首歌。</p>` : null}
-    <p class="pd-small-p motion-note">R3 按一下开启，再按一下关闭；停顿后处理一句。
-      监听会持续到关闭。听音乐后，在下面点“随乐律动”让头和身体小幅跟拍；先关闭实体手柄、站稳并点“开始走”。</p>
+    <p class="pd-small-p motion-note">R3 按一下开启并短叫一声，再按一下关闭；提示声后稍停再说话。
+      日常口令是“坐下”“站起来”，执行后用叫声确认，普通话语不会原样播放。录音复读单独保留，专门按键以后再设。</p>
+    <p class="pd-small-p motion-note">监听会持续到关闭。听音乐后，在下面点“随乐律动”让头和身体小幅跟拍；
+      先关闭实体手柄、站稳并点“开始走”。</p>
   </section>`;
 }
