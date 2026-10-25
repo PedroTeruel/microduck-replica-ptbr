@@ -81,6 +81,12 @@ class RhythmTests(unittest.TestCase):
         self.assertIn(('robot.pose', {'active': False}), stopped)
         self.assertEqual(self.rhythm.sample(10.9, 2.5, 100), [])
 
+    def test_user_head_limit_caps_every_head_axis(self):
+        self.rhythm.sample(10, .01, 100)
+        self.status['rhythm']['last_beat'] = 11.
+        head = dict(self.rhythm.sample(11, .01, 100))['robot.head']
+        self.assertTrue(all(abs(value)<=.01 for value in head.values()),head)
+
     def test_off_unavailable_and_expired_beat_never_move(self):
         for change in ({'listening': False}, {'music': False}, {'available': False},
                        {'rhythm': {**self.status['rhythm'], 'last_beat': 1.}}):

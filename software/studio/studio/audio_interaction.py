@@ -156,7 +156,9 @@ class MusicRhythm:
         phase = 2*math.pi*(now-beat)*bpm/60
         sway, nod = math.sin(phase), math.cos(phase)
         limit = min(.18,max(0.,head_limit))
-        return [('robot.head',{'neck_pitch':.06*amount*nod,'head_pitch':-.08*amount*nod,
-                              'head_yaw':limit*amount*sway,'head_roll':.06*amount*sway}),
+        head = {'neck_pitch':.06*amount*nod,'head_pitch':-.08*amount*nod,
+                'head_yaw':limit*amount*sway,'head_roll':.06*amount*sway}
+        head = {key:max(-limit,min(limit,value)) for key,value in head.items()}
+        return [('robot.head',head),
                 ('robot.pose',{'active':True,'roll':.025*amount*sway,
                                'pitch':.018*amount*nod,'z':.0015*amount*nod})]
