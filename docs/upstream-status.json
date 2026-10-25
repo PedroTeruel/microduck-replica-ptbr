@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "recorded_on": "2026-10-25",
+  "recorded_on": "2026-10-26",
   "display_timezone": "Asia/Tokyo",
   "scope": "Upstream documentation tracking; this snapshot does not certify integration into the replica image.",
   "repositories": {
@@ -15,7 +15,8 @@
         "tag_name": "daemon-v0.17.8",
         "html_url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-v0.17.8",
         "published_at": "2026-10-19T14:24:43Z",
-        "prerelease": false
+        "prerelease": false,
+        "head_sha": "942e58e3aa6dbb28e7037203fff11866122c7567"
       },
       "tracked_development_releases": [
         {
@@ -58,6 +59,19 @@
         }
       ],
       "pending_pull_requests": [
+        {
+          "number": 453,
+          "url": "https://github.com/pollen-robotics/microduck/pull/453",
+          "title": "udp-pad: scope the 'authenticated and encrypted' WebRTC claim to the remote path",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T15:55:29Z",
+          "updated_at": "2026-10-25T15:55:29Z",
+          "head_sha": "3d67e43f1b04fb6d1b08f8d012999c2ef5986f3c",
+          "scope_note": "Documentation-only clarification of existing remote vs LAN authentication scope; does not change runtime or add authentication.",
+          "priority": "low"
+        },
         {
           "number": 452,
           "url": "https://github.com/pollen-robotics/microduck/pull/452",
@@ -186,6 +200,19 @@
       },
       "pending_pull_requests": [
         {
+          "number": 82,
+          "url": "https://github.com/pollen-robotics/microduck_rl/pull/82",
+          "title": "Fix shared rough-terrain configs and walking curriculum",
+          "state": "open",
+          "draft": true,
+          "merged_at": null,
+          "created_at": "2026-10-25T16:44:11Z",
+          "updated_at": "2026-10-25T16:44:11Z",
+          "head_sha": "930dc02c5154f5e0c6a819f99ab6630ea45ac18b",
+          "scope_note": "Draft: deep-copy shared rough-terrain templates in four factories, restore walking curriculum; changes training distribution/geometry. Submitter CPU/config checks only, no CUDA learning-quality or physical validation. Not integrated into replica.",
+          "priority": "medium_before_rough_training"
+        },
+        {
           "number": 80,
           "url": "https://github.com/pollen-robotics/microduck_rl/pull/80",
           "title": "Fix apartment stairwell ToF: line well with collision geometry (#76)",
@@ -265,27 +292,25 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-25T14:07:55Z",
+  "checked_at_utc": "2026-10-25T17:04:04Z",
   "latest_review": {
     "default_branch_changes": false,
     "new_stable_release": false,
     "previous_tracked_prs_merged": false,
-    "new_development_release": "daemon-dev-ground-grasp-x",
-    "new_pull_requests": {
-      "pollen-robotics/microduck": [
-        451,
-        452
-      ]
-    },
-    "changed_pull_request_heads": {
-      "pollen-robotics/microduck_rl": [
-        51
-      ]
-    },
+    "new_development_release": null,
     "runtime_code_changed": false,
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "Documentation-only. New development/PR content was read at fixed SHAs; no downloaded implementation was installed or executed. Existing online UI and isolated migration branches remain unchanged."
+    "notes": "Documentation-only. RL #82 is a draft rough-terrain configuration/curriculum fix, not verified learning performance or deployment. Runtime #453 is an already-reviewed documentation-only clarification, indexed with this substantive training update. Existing online UI and migration branches remain unchanged.",
+    "new_pull_requests": {
+      "pollen-robotics/microduck": [
+        453
+      ],
+      "pollen-robotics/microduck_rl": [
+        82
+      ]
+    },
+    "changed_pull_request_heads": {}
   }
 }
