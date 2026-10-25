@@ -2,13 +2,15 @@
 
 **English** · [简体中文](README.md)
 
-A third-party replica project based on [Pollen Robotics' Microduck](https://pollen-robotics.com/microduck/), with resources for sourcing parts, printing, assembly, calibration, control, and training.
+A third-party full-robot replica project based on [Pollen Robotics' Microduck](https://pollen-robotics.com/microduck/), with resources for sourcing parts, printing, assembly, calibration, control, and training.
 
-Our main build uses **15 Feetech HD-1910 servos**. We provide a **ready-to-flash system image** and the **Microduck Studio web console** for Wi-Fi setup, calibration, and remote control from a phone or computer browser.
+**The Feetech HD-1910 build has passed real hardware validation: standing, walking, a forward roll and standing back up.** Our main build uses **15 Feetech HD-1910 servos**. We provide a **ready-to-flash system image** and the **Microduck Studio web console** for Wi-Fi setup, calibration, and remote control from a phone or computer browser.
+
+**The first-use workflow has also been completed on real hardware:** flash the image → hotspot and Wi-Fi setup → servo and IMU calibration → gamepad pairing and e-stop test → stand and walk. [Real hardware validation records](docs/update-history.en.md#latest)
 
 ## The ducks in action
 
-**2026-10-24 · Real hardware demos**: two short clips from the latest builds, showing a forward roll followed by standing back up, and walking on a tabletop.
+**2026-10-24 · Motion validated on real hardware**: the two recordings below show a forward roll followed by standing back up, and walking on a tabletop.
 
 <table>
 <tr>
@@ -96,7 +98,7 @@ Mating parts from the two servo versions are not interchangeable. File versions 
 
 ## Where things stand
 
-As of **2026-10-25**. Current progress is grouped below by software, mechanics, electronics, actuator modelling, the training workbench and tools. See [update history](docs/update-history.en.md) for the history.
+As of **2026-10-25**, **the Feetech replica, first-use workflow and robot motion have been validated on real hardware**. The sections below cover the completed work and further extensions. See [update history](docs/update-history.en.md) for the test scope and development history.
 
 ---
 
