@@ -132,28 +132,24 @@ The image is free for personal non-commercial builds; see the release for compon
 The main board is a **Radxa ZERO 3W**, paired with Pollen Robotics' open-source **RPI Robot HAT**. This repository also provides projects for the bus IMU board, servo bus hub and battery terminal board.
 
 <table>
-<tr><th>Radxa ZERO 3W main board</th><th>Official RPI Robot HAT</th></tr>
+<tr><th>Main board<br>Radxa ZERO 3W</th><th>Official HAT<br>RPI Robot HAT</th><th>Bus IMU board</th><th>Servo bus hub</th><th>Battery terminal board</th></tr>
 <tr>
-<td align="center" width="440">Runs the robot runtime and Studio web console<br><a href="https://item.taobao.com/item.htm?id=763812025816">Buy the main board on Taobao</a> · <a href="https://docs.radxa.com/en/zero/zero3">Radxa documentation</a></td>
-<td align="center" width="440">Open-source expansion board by Pollen Robotics<br><a href="https://github.com/pollen-robotics/elec_RPI_Robot_HAT">Official engineering and fabrication files</a></td>
+<td align="center" valign="middle" width="170"><a href="assets/hw/radxa-zero3w-official.webp"><img src="assets/hw/radxa-zero3w-official.webp" alt="Official Radxa ZERO 3W board overview" width="160"></a></td>
+<td align="center" valign="middle" width="170"><a href="assets/hw/rpi-robot-hat-official.png"><img src="assets/hw/rpi-robot-hat-official.png" alt="Official Pollen Robotics RPI Robot HAT rendering" width="160"></a></td>
+<td align="center" valign="middle" width="170"><a href="assets/hw/imu-to-dxl-1v0a-3d.png"><img src="assets/hw/imu-to-dxl-1v0a-3d.png" alt="Bus IMU board 3D design preview" width="160"></a></td>
+<td align="center" valign="middle" width="170"><a href="assets/hw/wire-hub-1v0a-3d.png"><img src="assets/hw/wire-hub-1v0a-3d.png" alt="Servo bus hub 3D design preview" width="160"></a></td>
+<td align="center" valign="middle" width="170"><a href="assets/hw/pogo-pin-1v0a-3d.png"><img src="assets/hw/pogo-pin-1v0a-3d.png" alt="Battery terminal board 3D design preview" width="160"></a></td>
+</tr>
+<tr>
+<td align="center" valign="top"><a href="https://item.taobao.com/item.htm?id=763812025816">Buy on Taobao</a><br><a href="https://docs.radxa.com/en/zero/zero3">Documentation</a> · <a href="https://docs.radxa.com/en/zero/zero3/download#hardware-design">Design files</a></td>
+<td align="center" valign="top"><a href="https://github.com/pollen-robotics/elec_RPI_Robot_HAT">KiCad sources</a><br><a href="https://github.com/pollen-robotics/elec_RPI_Robot_HAT/tree/main/production">Production files</a></td>
+<td align="center" valign="top"><a href="assets/hw/imu-to-dxl-1v0a-pcb.png">PCB preview</a><br><a href="hardware/新版/imu_to_dxl_1V0A/">Project files</a></td>
+<td align="center" valign="top"><a href="assets/hw/wire-hub-1v0a-pcb.png">PCB preview</a><br><a href="hardware/新版/wire_hub_1V0A/">Project files</a></td>
+<td align="center" valign="top"><a href="assets/hw/pogo-pin-1v0a-pcb.png">PCB preview</a><br><a href="hardware/新版/POGO_PIN_1V0A/">Project files</a></td>
 </tr>
 </table>
 
-<table>
-<tr><th>Bus IMU board</th><th>Servo bus hub</th><th>Battery terminal board</th></tr>
-<tr>
-<td align="center" valign="middle" width="280"><a href="assets/hw/imu-to-dxl-1v0a-3d.png"><img src="assets/hw/imu-to-dxl-1v0a-3d.png" alt="Bus IMU board 3D design preview" width="260"></a></td>
-<td align="center" valign="middle" width="280"><a href="assets/hw/wire-hub-1v0a-3d.png"><img src="assets/hw/wire-hub-1v0a-3d.png" alt="Servo bus hub 3D design preview" width="260"></a></td>
-<td align="center" valign="middle" width="280"><a href="assets/hw/pogo-pin-1v0a-3d.png"><img src="assets/hw/pogo-pin-1v0a-3d.png" alt="Battery terminal board 3D design preview" width="260"></a></td>
-</tr>
-<tr>
-<td align="center"><a href="assets/hw/imu-to-dxl-1v0a-pcb.png">PCB preview</a> · <a href="hardware/新版/imu_to_dxl_1V0A/">Project files</a></td>
-<td align="center"><a href="assets/hw/wire-hub-1v0a-pcb.png">PCB preview</a> · <a href="hardware/新版/wire_hub_1V0A/">Project files</a></td>
-<td align="center"><a href="assets/hw/pogo-pin-1v0a-pcb.png">PCB preview</a> · <a href="hardware/新版/POGO_PIN_1V0A/">Project files</a></td>
-</tr>
-</table>
-
-The three images above are design previews of this project's custom boards; click an image to view the original. EasyEDA Pro projects and whole-board STEP models are available. See each project's notes for fabrication, wiring and physical verification status.
+The Radxa and HAT images come from official resources; the other three are custom-board design previews. Click an image for full size; see [image credits](assets/hw/official-board-images.md). Radxa provides schematics, 2D dimensions and 3D models. See the custom projects for EasyEDA Pro files, STEP models and physical validation status.
 
 [All hardware projects](hardware/README.md) · [Three-board notes](hardware/新版/README.md) · [Bus IMU firmware](hardware/imu_to_dxl/README.md)
 

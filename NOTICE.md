@@ -46,7 +46,18 @@ Microduck 是 Pollen Robotics 的商业产品，硬件**部分开源**：
 | `software/image/` | 复刻镜像的构建脚本、首次开机和配网脚本 | **Apache-2.0** |
 | `docs/*.md`、`*.md` | 全部文档与逆向分析文本 | **CC BY-NC-SA 4.0** |
 | `build-log/` 照片 | 实物构建照片 | **CC BY-NC-SA 4.0**，由本项目参与者拍摄并授权 |
-| `assets/` | 封面与交流群二维码 | 同上 |
+| `assets/` 中的项目原创素材 | 封面、交流群二维码与项目预览图；不含下列官方板卡图片 | 同上 |
+
+## 官方板卡图片
+
+以下两张图片原样引用，保留各自的作者与原许可，不受本项目文档或原创素材的 CC BY-NC-SA 许可覆盖：
+
+| 路径 | 来源与作者 | 许可证 |
+|---|---|---|
+| `assets/hw/radxa-zero3w-official.webp` | [Radxa ZERO 3 官方文档](https://docs.radxa.com/en/zero/zero3)，Radxa Computer (Shenzhen) Co., Ltd. | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| `assets/hw/rpi-robot-hat-official.png` | [Pollen Robotics 官方 HAT 仓库](https://github.com/pollen-robotics/elec_RPI_Robot_HAT)，Pollen Robotics | [Apache-2.0](https://github.com/pollen-robotics/elec_RPI_Robot_HAT/blob/main/LICENSE) |
+
+原图地址、固定版本和校验值见[图片来源记录](assets/hw/official-board-images.md)。
 
 ## 内置训练工程
 
