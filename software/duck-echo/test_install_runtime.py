@@ -23,6 +23,11 @@ class RuntimePackagingTests(unittest.TestCase):
         self.assertIn('RuntimeDirectoryMode=0700', unit)
         self.assertIn('--control-socket /run/duck-echo/control.sock', unit)
 
+    def test_service_default_is_native_duck_and_explicit_echo_is_configurable(self):
+        unit = (Path(install.__file__).parent / 'duck-echo.service').read_text()
+        self.assertIn('Environment=ECHO_REPLY_MODE=duck', unit)
+        self.assertIn('--reply-mode ${ECHO_REPLY_MODE}', unit)
+
 
 if __name__ == '__main__':
     unittest.main()

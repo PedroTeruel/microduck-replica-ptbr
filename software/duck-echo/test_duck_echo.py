@@ -1,6 +1,9 @@
 import array
 import math
+from pathlib import Path
+import tempfile
 import unittest
+import wave
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -130,6 +133,25 @@ class InputTests(unittest.TestCase):
             echo.decode_events(b'123')
 
 
+class NativeCueDurationTests(unittest.TestCase):
+    def test_fixed_native_tags_use_maximum_wav_header_duration_and_safe_fallback(self):
+        self.assertTrue(hasattr(echo, 'native_sound_durations'), 'native cue duration lookup missing')
+        with tempfile.TemporaryDirectory() as folder:
+            bank = Path(folder)
+            for tag, durations in [('chirp', [.1, .28]), ('coo', [1.11])]:
+                (bank / tag).mkdir()
+                for index, duration in enumerate(durations):
+                    with wave.open(str(bank / tag / f'{index}.wav'), 'wb') as sound:
+                        sound.setparams((1, 2, 1000, 0, 'NONE', 'not compressed'))
+                        sound.writeframes(b'\x00\x00' * round(duration * 1000))
+            (bank / 'chirp' / 'bad.wav').write_bytes(b'not a wave')
+            durations = echo.native_sound_durations(bank)
+            self.assertAlmostEqual(durations['chirp'], .28)
+            self.assertAlmostEqual(durations['coo'], 1.11)
+            self.assertGreaterEqual(durations['greet'], 1.4)
+            self.assertEqual(set(durations), {'chirp', 'coo', 'greet', 'inquire'})
+
+
 class PlaybackTests(unittest.TestCase):
     def player(self, code):
         return SimpleNamespace(
@@ -187,6 +209,20 @@ class PlaybackTests(unittest.TestCase):
 
 
 class TriggerModeTests(unittest.TestCase):
+    def test_daemon_default_discards_unknown_pcm_and_explicit_echo_restores_replay(self):
+        import continuous_audio
+        for options, should_play in (([], False), (['--reply-mode', 'echo'], True)):
+            def inspect_audio(audio, *args, **kwargs):
+                self.assertTrue(audio.voice.ready.wait(1))
+                audio.voice.fallback(b'unknown words pcm')
+            with patch.object(echo.sys, 'platform', 'linux'), \
+                    patch.object(echo, 'daemon', side_effect=inspect_audio), \
+                    patch.object(echo.signal, 'signal'), patch.object(echo.logging, 'basicConfig'), \
+                    patch('audio_control.AudioControlServer'), patch('speech_control.MandarinRecognizer'), \
+                    patch.object(continuous_audio.ContinuousAudio, 'play') as play:
+                self.assertEqual(echo.main(['daemon', *options]), 0)
+                self.assertEqual(play.called, should_play)
+
     def test_toggle_daemon_has_private_control_and_shared_music_model_even_in_voice_off(self):
         import audio_control
         import speech_control
@@ -197,10 +233,16 @@ class TriggerModeTests(unittest.TestCase):
             self.assertIs(audio.voice.recognizer, recognizer)
             self.assertFalse(audio.voice.recognize_speech)
             self.assertIsNotNone(audio.observer)
+            self.assertIsNotNone(audio.activation_cue, 'native listening chirp is not wired')
+            audio.activation_cue(lambda: False)
+            robot.return_value.call.assert_not_called()
+            audio.activation_cue(lambda: True)
+            robot.return_value.call.assert_called_once_with('robot.sound', {'tag': 'chirp'})
         with patch.object(echo.sys, 'platform', 'linux'), patch.object(echo, 'daemon', side_effect=inspect_audio), \
                 patch.object(echo.signal, 'signal'), patch.object(echo.logging, 'basicConfig'), \
                 patch.object(audio_control, 'AudioControlServer') as server, \
-                patch.object(speech_control, 'MandarinRecognizer', return_value=recognizer):
+                patch.object(speech_control, 'MandarinRecognizer', return_value=recognizer), \
+                patch('voice_commands.RobotClient') as robot:
             self.assertEqual(echo.main(['daemon']), 0)
             self.assertEqual(server.call_args.args[1], '/run/duck-echo/control.sock')
             server.return_value.start.assert_called_once()

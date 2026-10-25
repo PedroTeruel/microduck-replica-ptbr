@@ -134,6 +134,9 @@ class ContinuousAudio:
         self.voice = None
         self.music = None
         self.music_mode = False
+        self.activation_cue = None
+        self.activation_duration = .45
+        self.activation_pending = self.activation_inflight = None
         self.condition = threading.Condition()
         # Never acquire this while holding condition: VoiceControl._echo holds
         # its own condition while calling our nonblocking play() enqueue.
@@ -154,12 +157,28 @@ class ContinuousAudio:
         self.worker.start()
 
     def start(self):
-        self.stop(play=False)
-        with self.condition:
-            if self.closed:
-                return
-            self.active, self.failed = True, False
-            self.condition.notify_all()
+        # Keep capture/play inactive until both consumers have invalidated old
+        # work. Otherwise an old VoiceControl._echo can enqueue into this session.
+        with self.dispatch_lock:
+            with self.condition:
+                if self.closed or self.active:
+                    return
+                generation = self._invalidate()
+                capture_stop = self.capture_stop
+            if self.voice is not None:
+                self.voice.cancel()
+            if self.music is not None:
+                self.music.set_enabled(False)
+            with self.condition:
+                if self.closed or generation != self.generation:
+                    return
+                self.active, self.failed = True, False
+                self.stop_output = True
+                if self.activation_cue is not None:
+                    self.activation_pending = generation
+                self.condition.notify_all()
+        if capture_stop is not None:
+            capture_stop.set()
         LOG.info('continuous listening ON; click R3 again to stop')
 
     def expired(self):
@@ -193,6 +212,7 @@ class ContinuousAudio:
     def _invalidate(self):
         self.generation += 1
         self.pending = None
+        self.activation_pending = self.activation_inflight = None
         self.output_pending = False
         self.segmenter.reset()
         return self.generation
@@ -202,12 +222,14 @@ class ContinuousAudio:
             return (self.active and generation == self.generation and not self.closed and
                     not self.music_mode and (mode_generation is None or mode_generation == self.mode_generation))
 
-    def _cancel_voice(self, generation):
+    def _cancel_voice(self, generation, stop_music=False):
         with self.dispatch_lock:
             with self.condition:
                 current = generation == self.generation
             if current and self.voice is not None:
                 self.voice.cancel()
+            if current and stop_music and not self.music_mode and self.music is not None:
+                self.music.set_enabled(False)
 
     def stop(self, play=False, expected_generation=None):
         with self.condition:
@@ -222,9 +244,7 @@ class ContinuousAudio:
             self.condition.notify_all()
         if was_active:
             LOG.info('continuous listening OFF; pending speech and playback canceled')
-        self._cancel_voice(generation)
-        if self.music is not None:
-            self.music.set_enabled(False)
+        self._cancel_voice(generation, stop_music=True)
         if capture_stop is not None:
             capture_stop.set()
 
@@ -234,6 +254,8 @@ class ContinuousAudio:
             self.condition.notify_all()
 
     def _suppressed(self):
+        if self.activation_pending is not None or self.activation_inflight is not None:
+            return True
         playing = self.backend.playback_active()
         if playing or self.output_pending or self.cue_active:
             self.suppress_until = self.clock() + self.tail
@@ -273,31 +295,40 @@ class ContinuousAudio:
                 self.pending = ('play', self.generation, data)
                 self.condition.notify_all()
 
-    def command_cue(self, callback, accepted):
+    def command_cue(self, callback, accepted, duration=1, allowed=None):
         with self.condition:
-            if not self.active or self.closed:
+            if not self.active or self.closed or (allowed is not None and not allowed()):
                 return
             self.cue_active = True
             self.pending = None
             self.output_pending = False
             self.segmenter.reset()
         try:
-            callback(accepted)
+            if allowed is None or allowed():
+                callback(accepted)
         finally:
             with self.condition:
                 self.cue_active = False
                 # robot.sound acknowledges asynchronously, so reserve enough
                 # time for the short chirp itself as well as the acoustic tail.
-                self.suppress_until = max(self.suppress_until, self.clock() + 1 + self.tail)
+                self.suppress_until = max(self.suppress_until, self.clock() + duration + self.tail)
+
+    def _activation_valid(self, generation):
+        with self.condition:
+            return self.active and not self.closed and generation == self.generation
 
     def _dispatch(self):
         while True:
             with self.condition:
-                while self.pending is None and not self.stop_output and not self.closed:
+                while (self.pending is None and self.activation_pending is None and
+                       not self.stop_output and not self.closed):
                     self.condition.wait()
                 stop = self.stop_output
                 self.stop_output = False
                 job, self.pending = self.pending, None
+                activation, self.activation_pending = self.activation_pending, None
+                if activation is not None:
+                    self.activation_inflight = activation
                 mode_generation = self.mode_generation
                 closed = self.closed
             if stop or closed:
@@ -305,6 +336,18 @@ class ContinuousAudio:
             if closed:
                 self.backend.close()
                 return
+            if activation is not None:
+                allowed = lambda generation=activation: self._activation_valid(generation)
+                try:
+                    self.command_cue(lambda _: self.activation_cue(allowed), True,
+                                     duration=self.activation_duration, allowed=allowed)
+                except Exception:
+                    LOG.exception('listening activation sound unavailable')
+                finally:
+                    with self.condition:
+                        if self.activation_inflight == activation:
+                            self.activation_inflight = None
+                continue
             if job is None:
                 continue
             kind, generation, data = job

@@ -3,6 +3,7 @@
 import argparse
 import array
 import glob
+from itertools import islice
 import json
 import logging
 import math
@@ -15,12 +16,39 @@ import sys
 import tempfile
 import threading
 import time
+import wave
 
 LOG = logging.getLogger('duck-echo')
 RATE = 48000
 FRAME_BYTES = 4
 BUTTON = 318  # Linux BTN_THUMBR (right stick click)
 INPUT_EVENT = struct.Struct('@qqHHi')  # 64-bit Linux timeval, type, code, value
+
+
+def native_sound_durations(bank='/var/lib/robot/sounds'):
+    """Read only a bounded set of installed native WAV headers, once at startup."""
+    durations = {'chirp': .45, 'coo': 1.8, 'greet': 1.5, 'inquire': .85}
+    for tag in durations:
+        found = []
+        try:
+            with os.scandir(os.path.join(bank, tag)) as entries:
+                for entry in islice(entries, 64):
+                    if not entry.name.endswith('.wav') or not entry.is_file(follow_symlinks=False):
+                        continue
+                    try:
+                        if entry.stat().st_size > 8 * 1024 * 1024:
+                            continue
+                        with wave.open(entry.path, 'rb') as sound:
+                            duration = sound.getnframes() / sound.getframerate()
+                        if 0 < duration <= 5:
+                            found.append(duration)
+                    except (OSError, EOFError, ValueError, wave.Error):
+                        continue
+        except OSError:
+            continue
+        if found:
+            durations[tag] = max(found)
+    return durations
 
 
 def prepare_audio(raw, channel, center=False):
@@ -378,6 +406,8 @@ def main(argv=None):
     parser.add_argument('--input', help='optional fixed /dev/input/eventN')
     parser.add_argument('--trigger-mode', choices=['toggle', 'hold'], default='toggle')
     parser.add_argument('--voice-mode', choices=['off', 'shadow', 'actions'], default='off')
+    parser.add_argument('--reply-mode', choices=['duck', 'echo'], default='duck',
+                        help='daemon ordinary speech: native duck interaction or explicit PCM replay')
     parser.add_argument('--voice-model', default='/opt/duck-echo/models/vosk-model-small-cn-0.22')
     parser.add_argument('--speech-deps', default='/opt/duck-echo/asr-deps')
     parser.add_argument('--control-socket', default='/run/duck-echo/control.sock')
@@ -400,18 +430,21 @@ def main(argv=None):
     if toggle_daemon:
         from continuous_audio import ContinuousAudio
         audio = ContinuousAudio(audio)
-    if args.action == 'daemon' and (args.voice_mode != 'off' or toggle_daemon):
+    if args.action == 'daemon' and (args.voice_mode != 'off' or toggle_daemon or args.reply_mode == 'duck'):
         from speech_control import MandarinRecognizer, VoiceControl
         from voice_commands import PostureCommands, RobotClient
         robot = RobotClient()
+        sound_lengths = native_sound_durations()
         def cue(accepted):
             robot.call('robot.sound', {'tag': 'chirp' if accepted else 'inquire'})
         if args.trigger_mode == 'toggle':
             raw_cue = cue
-            cue = lambda accepted: audio.command_cue(raw_cue, accepted)
+            cue = lambda accepted: audio.command_cue(
+                raw_cue, accepted, duration=sound_lengths['chirp' if accepted else 'inquire']+.1)
         audio.voice = VoiceControl(
             lambda: MandarinRecognizer(args.voice_model, args.speech_deps),
-            PostureCommands(robot), audio.play, execute_commands=args.voice_mode == 'actions', cue=cue,
+            PostureCommands(robot), audio.play if args.reply_mode == 'echo' else lambda pcm: None,
+            execute_commands=args.voice_mode == 'actions', cue=cue,
             recognize_speech=args.voice_mode != 'off')
     control_server = None
     try:
@@ -420,9 +453,12 @@ def main(argv=None):
             from music_feel import MusicFeel
             from music_interaction import MusicInteraction
             feel = MusicFeel(channel=args.channel)
+            audio.activation_duration = sound_lengths['chirp']+.1
+            audio.activation_cue = lambda allowed: robot.call('robot.sound', {'tag': 'chirp'}) if allowed() else None
             def reply(tag, allowed):
                 if allowed():
-                    audio.command_cue(lambda _: robot.call('robot.sound', {'tag': tag}) if allowed() else None, True)
+                    audio.command_cue(lambda _: robot.call('robot.sound', {'tag': tag}) if allowed() else None,
+                                      True, duration=sound_lengths.get(tag, 1)+.1, allowed=allowed)
             audio.music = MusicInteraction(lambda: audio.voice.recognizer, feel, reply, channel=args.channel)
             def observe(raw, timestamp):
                 if audio.music_mode:

@@ -212,7 +212,7 @@ def main(argv=None):
                     '# R3 microphone listening. pitch=1.0 means original pitch and speed.\n'
                     f'ECHO_CAPTURE=plughw:CARD={args.card},DEV=0\n'
                     f'ECHO_PLAYBACK=plughw:CARD={args.card},DEV=0\n'
-                    'ECHO_CHANNEL=1\nECHO_PITCH=1.25\nECHO_VOICE_MODE=off\nECHO_TRIGGER_MODE=toggle\n')
+                    'ECHO_CHANNEL=1\nECHO_PITCH=1.25\nECHO_VOICE_MODE=off\nECHO_TRIGGER_MODE=toggle\nECHO_REPLY_MODE=duck\n')
             atomic_json(STATE / 'motion-before.json', before)
             run(['systemctl', 'daemon-reload'])
             run(['systemctl', 'enable', '--now', 'duck-echo.service'])

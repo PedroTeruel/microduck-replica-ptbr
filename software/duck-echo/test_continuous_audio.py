@@ -521,6 +521,135 @@ class ContinuousTests(unittest.TestCase):
         time.sleep(.02)
         self.assertEqual(len(sent), 0)
 
+    def test_stale_stop_cannot_disable_music_after_new_web_start(self):
+        music = SimpleNamespace(enabled=False, cancel=lambda: None)
+        music.set_enabled = lambda enabled: setattr(music, 'enabled', enabled)
+        self.audio.music = music
+        self.start()
+        self.audio.set_music(True)
+        entered, release = threading.Event(), threading.Event()
+        cancel = self.audio._cancel_voice
+        def pause(*args, **kwargs):
+            cancel(*args, **kwargs)
+            if threading.current_thread().name == 'stale-stop':
+                entered.set()
+                release.wait(1)
+        with patch.object(self.audio, '_cancel_voice', side_effect=pause):
+            stale = threading.Thread(target=self.audio.stop, name='stale-stop')
+            stale.start()
+            try:
+                self.assertTrue(entered.wait(1))
+                self.audio.start()
+                self.audio.set_music(True)
+            finally:
+                release.set()
+                stale.join(1)
+        self.assertTrue(self.audio.active and self.audio.music_mode)
+        self.assertTrue(music.enabled, 'stale stop disabled the newly enabled question worker')
+
+    def test_activation_chirp_once_for_r3_and_web_actual_off_on(self):
+        from audio_control import AudioControl
+        self.assertTrue(hasattr(self.audio, 'activation_cue'), 'activation cue is missing')
+        calls = []
+        self.audio.activation_cue = lambda allowed: calls.append('chirp') if allowed() else None
+        button = continuous.ToggleButton(self.audio)
+        button.event(1)
+        button.event(2)
+        button.event(0)
+        self.assertTrue(eventually(lambda: len(calls) == 1))
+        self.audio.start()  # Already active does not restart/chirp.
+        hub = AudioControl(self.audio, SimpleNamespace(snapshot=lambda: {}))
+        hub.request({'method': 'set', 'listening': True})
+        hub.request({'method': 'status'})
+        time.sleep(.02)
+        self.assertEqual(calls, ['chirp'])
+        self.audio.stop()
+        hub.request({'method': 'set', 'music': True})
+        self.assertTrue(eventually(lambda: len(calls) == 2))
+        self.assertTrue(self.audio.music_mode)
+
+    def test_normal_restart_cancels_old_music_worker_even_if_previous_stop_is_waiting(self):
+        music = SimpleNamespace(enabled=False, cancel=lambda: None)
+        music.set_enabled = lambda enabled: setattr(music, 'enabled', enabled)
+        self.audio.music = music
+        self.start()
+        self.audio.set_music(True)
+        entered, release = threading.Event(), threading.Event()
+        cancel = self.audio._cancel_voice
+        def pause(*args, **kwargs):
+            if threading.current_thread().name == 'stale-stop':
+                entered.set()
+                release.wait(1)
+            cancel(*args, **kwargs)
+        with patch.object(self.audio, '_cancel_voice', side_effect=pause):
+            stale = threading.Thread(target=self.audio.stop, name='stale-stop')
+            stale.start()
+            try:
+                self.assertTrue(entered.wait(1))
+                self.audio.start()
+                self.assertFalse(music.enabled, 'new normal session retained old music generation')
+            finally:
+                release.set()
+                stale.join(1)
+
+    def test_restart_does_not_expose_active_until_old_voice_is_canceled(self):
+        self.start()
+        self.audio.stop()
+        entered, release = threading.Event(), threading.Event()
+        def cancel():
+            entered.set()
+            release.wait(1)
+        self.audio.voice = SimpleNamespace(cancel=cancel)
+        restart = threading.Thread(target=self.audio.start)
+        restart.start()
+        try:
+            self.assertTrue(entered.wait(1))
+            self.assertFalse(self.audio.active, 'old voice could enqueue PCM into the new session')
+            self.audio.play(b'old pcm')
+            self.assertIsNone(self.audio.pending)
+        finally:
+            release.set()
+            restart.join(1)
+
+    def test_off_cancels_queued_activation_and_does_not_latch_suppression(self):
+        self.assertTrue(hasattr(self.audio, 'activation_cue'), 'activation cue is missing')
+        calls = []
+        self.audio.activation_cue = lambda allowed: calls.append('chirp') if allowed() else None
+        with self.audio.condition:  # Dispatcher cannot consume the pending cue.
+            self.audio.start()
+            self.assertTrue(self.audio.suppressed())
+            self.audio.stop()
+        time.sleep(.02)
+        self.now[0] = 100
+        self.assertFalse(self.audio.suppressed())
+        self.assertEqual(calls, [])
+
+    def test_activation_chirp_runs_off_caller_thread_and_suppresses_feedback_and_tail(self):
+        self.assertTrue(hasattr(self.audio, 'activation_cue'), 'activation cue is missing')
+        entered, release = threading.Event(), threading.Event()
+        observed = []
+        self.audio.observer = lambda raw, at: observed.append(raw)
+        def cue(allowed):
+            if allowed():
+                entered.set()
+                release.wait(1)
+        self.audio.activation_cue = cue
+        began = time.monotonic()
+        self.audio.start()
+        self.assertLess(time.monotonic()-began, .1)
+        try:
+            self.assertTrue(entered.wait(1))
+            self.audio.feed(pcm(.02))
+            self.assertEqual(len(observed), 0)
+        finally:
+            release.set()
+        self.assertTrue(eventually(lambda: not self.audio.cue_active))
+        self.audio.feed(pcm(.02))
+        self.assertEqual(len(observed), 0)
+        self.now[0] = 2
+        self.audio.feed(pcm(.02))
+        self.assertEqual(len(observed), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
