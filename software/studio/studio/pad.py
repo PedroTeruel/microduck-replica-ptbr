@@ -36,6 +36,7 @@ from collections import deque
 from . import helper as helper_api
 from .estop import STARTING_PHASES, relaxed, torque_off
 from .pad_combo import Refused
+from .motion_studio import MotionStudio, _digest
 from .pad_drive import (DRIVING, FAST_WORKERS, MAX_V, MAX_W, RELAX_CLEAR_DELAY_S, RELAX_GUARD_S,  # noqa: F401 —— MAX_V / MAX_W 给别处 import
                         DriveMixin, parse_speed_limits)
 from .rpc import LINE_LIMIT, RpcError, Timeout, Unreachable, parse_addr
@@ -415,6 +416,7 @@ class PadOps(DriveMixin):
         self._attach_said = None             # 旁路 attached 只在换了设备时记一行（审查 O16：滚出去 6 秒再滚回来就是一行）
         self._pad_config = robotd_toml       # padd 读 [netpad]、[pad_imu_head_control] 的文件：padd.service 的 --config（_refresh_files）
         self._drive_init(state_dir)
+        self.motion_studio = MotionStudio(self)
         # move / sticks / keys / stop 走自己的小线程池，不跟 configd、蓝牙、一次性请求这些慢调用挤（审查二 一般 4）；
         # 第三轮多了摇杆、按键、模式的心跳，开到 4 条，「停」和回正不用排队（三 V13）
         self._fast_pool = concurrent.futures.ThreadPoolExecutor(max_workers=FAST_WORKERS, thread_name_prefix="pad-fast")
@@ -427,11 +429,19 @@ class PadOps(DriveMixin):
     # ================= 对外 =================
 
     def handle(self, args, by=None, conn=None):
+        with self.motion_studio.request():
+            return self._handle_request(args, by=by, conn=conn)
+
+    def _handle_request(self, args, by=None, conn=None):
         """页面的指令（在线程里跑）。返回给页面的 dict；不能做就抛 Refused（原因给页面看）。
         by：「电脑 192.168.1.5」这种给人看的；conn：哪一个页面连接（同一台电脑开两个标签页也分得开）。"""
         op = args.get("op")
         if conn is not None and conn in self._gone and op not in ("watch", "stop", "action_stop", "drive"):
             raise Refused("这个页面已经断开了")      # 线程池里晚到的指令（审查二 S1）
+        if op == "motion":
+            return self.motion_studio.handle(args, conn, by)
+        if self.motion_studio.before(args, conn, by) is False:
+            return {"dropped": "动作会话已经改变，旧请求已丢弃"}
         if op == "watch":
             self._watch()
             return {}
@@ -568,6 +578,7 @@ class PadOps(DriveMixin):
                        "latch": {k: v is not None for k, v in self._latch.items()}}
             return {"t": "pad", "status": status, "estop": self._estop_checks(now, status), "live": live,
                     "wizard": wiz, "estop_test": test, "virtual": virtual, "motion": self._motion_view(now),
+                    "motion_studio": self.motion_studio.snapshot(conn, now),
                     "bindings": self.bindings}
 
     def safe_snapshot(self, conn=None):
@@ -703,8 +714,10 @@ class PadOps(DriveMixin):
             inputs, cfg = self._inputs, None
         path = cfg or self.robotd_toml
         imu_head, imu_why = None, None
+        config_text = None
         try:
-            data = tomllib.loads(self.read_text(path))
+            config_text = self.read_text(path)
+            data = tomllib.loads(config_text)
             netpad, why = bool((data.get("netpad") or {}).get("enabled", False)), None
             ih = data.get("pad_imu_head_control") or {}
             imu_head = bool(ih.get("enabled", False)) if isinstance(ih, dict) else None
@@ -723,6 +736,7 @@ class PadOps(DriveMixin):
             self._netpad, self._netpad_why, self._limits = netpad, why, limits
             self._inputs, self._pad_config = inputs, path
             self._imu_head, self._imu_head_why = imu_head, imu_why
+            self._motion_config_digest = _digest({"padd": texts, "path": path, "config": config_text})
 
     def _files_loop(self):
         while not self._files_stop.wait(self.w["files"]):
