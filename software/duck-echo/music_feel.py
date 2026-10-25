@@ -73,7 +73,10 @@ class MusicFeel:
         with self.lock:
             duration = len(stereo) / (RATE * 4)
             if (self.last_arrival is not None and
-                    (now < self.last_arrival or now-self.last_arrival > max(.5, duration+.25))):
+                    (now < self.last_arrival or now-self.last_arrival > max(.18, duration+.15))):
+                # Permit measured 125 ms ALSA bursts, but treat short omitted
+                # PCM intervals (mode changes/output suppression) as a new
+                # stream rather than slowly correcting their missing samples.
                 self._reset_rhythm()
                 self.partial.clear()
                 self.sample_bytes = 0

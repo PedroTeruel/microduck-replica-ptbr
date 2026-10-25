@@ -112,6 +112,24 @@ class SampleTimingTests(unittest.TestCase):
         listener.feed(self.raw[:3840], now + 2)
         self.assertIsNone(listener.snapshot(now + 2)['bpm'])
 
+    def test_short_omitted_pcm_gap_discards_previous_rhythm(self):
+        listener, now = self.replay()
+        listener.feed(self.raw[:3840], now + .42)
+        self.assertIsNone(listener.snapshot(now + .42)['bpm'])
+
+    def test_repeated_short_pcm_omissions_recover_fresh_sample_time(self):
+        listener, now = self.replay()
+        for index, offset in enumerate(range(0,len(self.raw),3840)):
+            if index in (0,50):
+                now += .4  # Music disabled: these samples never reach feed().
+            now += .02
+            listener.feed(self.raw[offset:offset+3840],now)
+            self.assertLessEqual(listener.snapshot(now)['last_beat'] or 0,now)
+        state = listener.snapshot(now)
+        self.assertLess(state['age'], .1)
+        self.assertGreaterEqual(state['confidence'], .55)
+        self.assertAlmostEqual(state['bpm'], 125, delta=3)
+
     def test_backward_capture_clock_discards_old_rhythm(self):
         listener, _ = self.replay()
         listener.feed(self.raw[:3840], 1)
