@@ -56,9 +56,35 @@
           "published_at": "2026-10-20T10:56:11Z",
           "head_sha": "764b98f316b219d457920f1255c888ff658fbdfe",
           "prerelease": true
+        },
+        {
+          "tag": "daemon-dev-demo_antoine",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-demo_antoine",
+          "published_at": "2026-10-20T12:53:56Z",
+          "head_sha": "cbd07c995597c378f1b5991effed4946d6f246db",
+          "prerelease": true,
+          "scope_note": "Existing October 20 development release newly indexed as provenance context for PR467; not a newly published release, not integrated into replica.",
+          "priority": "reference_only"
         }
       ],
       "pending_pull_requests": [
+        {
+          "number": 467,
+          "url": "https://github.com/pollen-robotics/microduck/pull/467",
+          "title": "Bring back three fixes from demo_antoine: idle head centre, beta rkaiq exposure, console freeze reconnect",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-26T10:52:18Z",
+          "updated_at": "2026-10-26T10:52:18Z",
+          "head_sha": "ecffc587c4260783ea7500ef13221dfd7d36afbd",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...ecffc587c4260783ea7500ef13221dfd7d36afbd",
+          "scope_note": "Three selective demo_antoine fixes: idle head centres on straight pose; beta GC2093 uses rkaiq AE while IMX219 keeps mediad AE; official console reconnects after decoded frames stall after the first frame. API44 unchanged; Studio client and hardware behavior unverified here.",
+          "priority": "medium_camera_and_migration_review",
+          "replica_integration": "not_integrated_or_executed; no robot, camera, PCB fabrication or Studio runtime validation performed"
+        },
         {
           "number": 466,
           "url": "https://github.com/pollen-robotics/microduck/pull/466",
@@ -507,7 +533,26 @@
         "sha": "6de86283297e4c49a9da8312cd3395ab83c437e3",
         "committed_at": "2026-10-20T15:43:22Z",
         "subject": "[added] old ref prod files"
-      }
+      },
+      "pending_pull_requests": [
+        {
+          "number": 8,
+          "url": "https://github.com/pollen-robotics/elec_RPI_Robot_HAT/pull/8",
+          "title": "fix(pcb): increase U12 pad clearance",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-26T10:17:49Z",
+          "updated_at": "2026-10-26T10:17:49Z",
+          "head_sha": "4d1988a592c6a18e813ba8cf8bbd3716dbe73ec3",
+          "base_branch": "main",
+          "base_sha": "6de86283297e4c49a9da8312cd3395ab83c437e3",
+          "fixed_diff_url": "https://github.com/pollen-robotics/elec_RPI_Robot_HAT/compare/6de86283297e4c49a9da8312cd3395ab83c437e3...4d1988a592c6a18e813ba8cf8bbd3716dbe73ec3",
+          "scope_note": "Only source PCB changed: 14 U12 pad narrow dimensions 0.35 to 0.30 mm, adjacent copper gap 0.15 to 0.20 mm at 0.50 mm pitch. No new production Gerber/drill files committed. Overall DRC/fabrication not certified; paste geometry not verified here.",
+          "priority": "higher_before_official_HAT_fabrication_low_for_software",
+          "replica_integration": "not_integrated_or_executed; no robot, camera, PCB fabrication or Studio runtime validation performed"
+        }
+      ]
     },
     "pollen-robotics/microduck_emotions": {
       "default_branch": "main",
@@ -532,47 +577,32 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-26T06:11:58Z",
+  "checked_at_utc": "2026-10-26T10:55:04Z",
   "latest_review": {
     "default_branch_changes": false,
     "new_stable_release": false,
     "previous_tracked_prs_merged": false,
     "new_development_release": null,
+    "newly_tracked_existing_development_releases": {
+      "pollen-robotics/microduck": [
+        "daemon-dev-demo_antoine"
+      ]
+    },
     "new_pull_requests": {
       "pollen-robotics/microduck": [
-        455,
-        456,
-        457,
-        458,
-        459,
-        460,
-        461,
-        462,
-        463,
-        464,
-        465,
-        466
+        467
       ],
-      "pollen-robotics/microduck_rl": [
-        83
+      "pollen-robotics/elec_RPI_Robot_HAT": [
+        8
       ]
     },
     "changed_pull_request_heads": {},
-    "changed_pull_request_review_states": {
-      "pollen-robotics/microduck_rl": {
-        "82": {
-          "previous_draft": true,
-          "draft": false,
-          "head_sha_changed": false,
-          "merged": false
-        }
-      }
-    },
+    "changed_pull_request_review_states": {},
     "official_blog_new_articles": false,
     "runtime_code_changed": false,
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "Documentation-only review of fixed PR diffs. The new runtime proposals concern input/model validation, IPC resource bounds, remote heartbeat and update/rollback handling; RL #83 is read-only simulation object state. Contributor tests were not rerun; downloaded implementations were not executed. No applicability or fix is certified for the deployed replica or isolated migration."
+    "notes": "Documentation-only fixed-diff review. PR467 separates IMX219/GC2093 exposure ownership and only changes the official webclient reconnect logic; it is not a deployed Studio fix. HAT PR8 only changes PCB source pad widths; no complete DRC clearance, regenerated production artifacts, paste or physical validation is certified. No runtime/EDA/downloaded implementation was executed."
   }
 }
