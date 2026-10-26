@@ -60,6 +60,210 @@
       ],
       "pending_pull_requests": [
         {
+          "number": 466,
+          "url": "https://github.com/pollen-robotics/microduck/pull/466",
+          "title": "updater: a policy fetch does not resume a partial from an older commit",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T21:49:59Z",
+          "updated_at": "2026-10-25T21:49:59Z",
+          "head_sha": "310738a1b022efb429531ea9c073abd151177110",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...310738a1b022efb429531ea9c073abd151177110",
+          "scope_note": "Discard cross-attempt leftover policy .part before fetching a moving revision; retries within the active download remain resumable.",
+          "priority": "higher_for_model_download_review",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
+          "number": 465,
+          "url": "https://github.com/pollen-robotics/microduck/pull/465",
+          "title": "netpadd: a backlog that drains a little at a time stays dropped",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T21:44:34Z",
+          "updated_at": "2026-10-25T21:44:34Z",
+          "head_sha": "1356e89b9cd26575f1f7333fb46eab9097c75f95",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...1356e89b9cd26575f1f7333fb46eab9097c75f95",
+          "scope_note": "Restart moved-clock observation when stale packet delay decreases; official netpadd path differs from retained padd-feetech UDP.",
+          "priority": "higher_if_using_official_netpadd",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
+          "number": 464,
+          "url": "https://github.com/pollen-robotics/microduck/pull/464",
+          "title": "robotd: an idle delay too large to time is never, not a panic",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T21:38:52Z",
+          "updated_at": "2026-10-25T21:38:52Z",
+          "head_sha": "fc40ac513d046196122fc754489e88d5474c451f",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...fc40ac513d046196122fc754489e88d5474c451f",
+          "scope_note": "Treat an unrepresentable finite idle delay as never instead of panicking during Duration conversion.",
+          "priority": "higher_for_migration_regression",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
+          "number": 463,
+          "url": "https://github.com/pollen-robotics/microduck/pull/463",
+          "title": "updater: an exact version installs only a manifest for that version",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T21:31:08Z",
+          "updated_at": "2026-10-25T21:31:08Z",
+          "head_sha": "5227507cd3470ec62f9d9a78f8f40f4bffac8b95",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...5227507cd3470ec62f9d9a78f8f40f4bffac8b95",
+          "scope_note": "Exact/StagingExact installation must match the verified manifest version to the requested version.",
+          "priority": "medium_before_updater_adoption",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
+          "number": 462,
+          "url": "https://github.com/pollen-robotics/microduck/pull/462",
+          "title": "updater: pruning keeps the release a rollback can land on, not a known-bad one",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T21:26:27Z",
+          "updated_at": "2026-10-25T21:26:27Z",
+          "head_sha": "426af115fb7af35fa0034422dda9accc4068f39f",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...426af115fb7af35fa0034422dda9accc4068f39f",
+          "scope_note": "Prefer valid rollback predecessors over known-bad releases during pruning.",
+          "priority": "medium_before_updater_adoption",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
+          "number": 461,
+          "url": "https://github.com/pollen-robotics/microduck/pull/461",
+          "title": "robotd: robot.setSkill checks the file a pathless skill resolves to",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T21:22:55Z",
+          "updated_at": "2026-10-25T21:22:55Z",
+          "head_sha": "7914c5c2aede444f988f8e21d9c6fa401229e75d",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...7914c5c2aede444f988f8e21d9c6fa401229e75d",
+          "scope_note": "Validate the resolved implicit skill model path before writing configuration, including pathless setSkill requests.",
+          "priority": "higher_for_model_management_review",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
+          "number": 460,
+          "url": "https://github.com/pollen-robotics/microduck/pull/460",
+          "title": "robotd: a command too large for f32 is dropped before it stalls the policy",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T21:20:54Z",
+          "updated_at": "2026-10-25T21:20:54Z",
+          "head_sha": "d98d2d8315f617b9d528664c5b1bd77bc5a3c4e6",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...d98d2d8315f617b9d528664c5b1bd77bc5a3c4e6",
+          "scope_note": "Reject command targets whose narrowing to f32 is non-finite, before EMA/policy observation contamination.",
+          "priority": "higher_for_migration_regression",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
+          "number": 459,
+          "url": "https://github.com/pollen-robotics/microduck/pull/459",
+          "title": "mediad: clamp a too-large heartbeat interval from the rendezvous instead of panicking",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T21:08:00Z",
+          "updated_at": "2026-10-25T21:08:00Z",
+          "head_sha": "a0385330f81156bdd4817304f58e2e58799bdb80",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...a0385330f81156bdd4817304f58e2e58799bdb80",
+          "scope_note": "Clamp an unrepresentable remote rendezvous heartbeat interval; not a LAN video/encoding change.",
+          "priority": "medium",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
+          "number": 458,
+          "url": "https://github.com/pollen-robotics/microduck/pull/458",
+          "title": "tof: refuse an oversized request while it arrives, not after buffering it",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T21:05:51Z",
+          "updated_at": "2026-10-25T21:05:51Z",
+          "head_sha": "9b1167e90c696300c8f90fe0c40dcd0adadc9cd9",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...9b1167e90c696300c8f90fe0c40dcd0adadc9cd9",
+          "scope_note": "tofd caps requests at 64 KiB, replies and closes on excess; not a sensor/algorithm update.",
+          "priority": "medium",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
+          "number": 457,
+          "url": "https://github.com/pollen-robotics/microduck/pull/457",
+          "title": "robotd: refuse an oversized request while it arrives, not after buffering it",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T21:03:58Z",
+          "updated_at": "2026-10-25T21:03:58Z",
+          "head_sha": "5ec58d932fdb41b858c56736c3a48e80f839b8dd",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...5ec58d932fdb41b858c56736c3a48e80f839b8dd",
+          "scope_note": "robotd bounds IPC request lines while receiving; subscription/cancellation behavior requires integration review.",
+          "priority": "medium",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
+          "number": 456,
+          "url": "https://github.com/pollen-robotics/microduck/pull/456",
+          "title": "configd: refuse an oversized request while it arrives, not after buffering it",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T21:00:37Z",
+          "updated_at": "2026-10-25T21:00:37Z",
+          "head_sha": "1d3b26a984a374d405b07c7998e9f249ab7663c0",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...1d3b26a984a374d405b07c7998e9f249ab7663c0",
+          "scope_note": "configd bounds an unterminated IPC request while receiving; decoder recovery needs integration review.",
+          "priority": "medium",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
+          "number": 455,
+          "url": "https://github.com/pollen-robotics/microduck/pull/455",
+          "title": "updater: refuse an oversized request while it arrives, not after buffering it",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-25T20:57:52Z",
+          "updated_at": "2026-10-25T20:57:52Z",
+          "head_sha": "d582f4b3304a88a4af9fad89ce44836f7d906b7b",
+          "base_branch": "main",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...d582f4b3304a88a4af9fad89ce44836f7d906b7b",
+          "scope_note": "updaterd bounds an unterminated IPC request while receiving, before an entire line is buffered.",
+          "priority": "medium",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
           "number": 453,
           "url": "https://github.com/pollen-robotics/microduck/pull/453",
           "title": "udp-pad: scope the 'authenticated and encrypted' WebRTC claim to the remote path",
@@ -79,7 +283,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-25T10:32:29Z",
-          "head_sha": "49964294930a78023800d0b0246be30e1aecd388"
+          "head_sha": "49964294930a78023800d0b0246be30e1aecd388",
+          "draft": false
         },
         {
           "number": 451,
@@ -88,7 +293,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-25T09:13:22Z",
-          "head_sha": "0520f67dd9e2df9a8811b6445b84e684fcb0b397"
+          "head_sha": "0520f67dd9e2df9a8811b6445b84e684fcb0b397",
+          "draft": false
         },
         {
           "number": 450,
@@ -97,7 +303,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-25T06:21:04Z",
-          "head_sha": "7fd745a4dd21ff7c40519dc732847ca8a1a5994f"
+          "head_sha": "7fd745a4dd21ff7c40519dc732847ca8a1a5994f",
+          "draft": false
         },
         {
           "number": 447,
@@ -106,7 +313,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-25T00:17:14Z",
-          "head_sha": "4ec54ae0857634f5f164a5b5c9c3dd3dceb6b399"
+          "head_sha": "4ec54ae0857634f5f164a5b5c9c3dd3dceb6b399",
+          "draft": false
         },
         {
           "number": 446,
@@ -115,7 +323,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-25T00:17:10Z",
-          "head_sha": "ffb50990a012d3015db84d43fe27fdb8c659902d"
+          "head_sha": "ffb50990a012d3015db84d43fe27fdb8c659902d",
+          "draft": false
         },
         {
           "number": 449,
@@ -124,7 +333,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-24T20:43:00Z",
-          "head_sha": "b15d10ead9f3f6dcd1afb4844da167c8965b6cb4"
+          "head_sha": "b15d10ead9f3f6dcd1afb4844da167c8965b6cb4",
+          "draft": false
         },
         {
           "number": 448,
@@ -133,7 +343,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-24T20:24:41Z",
-          "head_sha": "90fa792dff8261422874333c097d4d503cd98371"
+          "head_sha": "90fa792dff8261422874333c097d4d503cd98371",
+          "draft": false
         },
         {
           "number": 445,
@@ -142,7 +353,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-24T16:01:36Z",
-          "head_sha": "724e7ee6f0e8aec0384bef0297171e660fae10f8"
+          "head_sha": "724e7ee6f0e8aec0384bef0297171e660fae10f8",
+          "draft": false
         },
         {
           "number": 444,
@@ -151,7 +363,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-24T09:29:10Z",
-          "head_sha": "59ea2287142c714881c037def281cdd21d0beb0b"
+          "head_sha": "59ea2287142c714881c037def281cdd21d0beb0b",
+          "draft": false
         },
         {
           "number": 442,
@@ -160,7 +373,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-24T01:18:04Z",
-          "head_sha": "e025e5b7fa2ecbe0291b340be727a1dc91280b7b"
+          "head_sha": "e025e5b7fa2ecbe0291b340be727a1dc91280b7b",
+          "draft": false
         },
         {
           "number": 441,
@@ -169,7 +383,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-24T01:00:50Z",
-          "head_sha": "6ac0c34a0e741b3334d0b772cc18f7a5216c9c56"
+          "head_sha": "6ac0c34a0e741b3334d0b772cc18f7a5216c9c56",
+          "draft": false
         },
         {
           "number": 439,
@@ -178,7 +393,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-23T15:13:47Z",
-          "head_sha": "150af70aeb9725414a556422f1fcb4174f63545a"
+          "head_sha": "150af70aeb9725414a556422f1fcb4174f63545a",
+          "draft": false
         },
         {
           "number": 438,
@@ -187,7 +403,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-23T15:13:40Z",
-          "head_sha": "6bab33387831e9cc7fb3b463ff5c7085ab78f241"
+          "head_sha": "6bab33387831e9cc7fb3b463ff5c7085ab78f241",
+          "draft": false
         }
       ]
     },
@@ -200,17 +417,35 @@
       },
       "pending_pull_requests": [
         {
+          "number": 83,
+          "url": "https://github.com/pollen-robotics/microduck_rl/pull/83",
+          "title": "body_server: read-only `objects` op for viewers that mirror the world",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-26T01:46:49Z",
+          "updated_at": "2026-10-26T01:46:49Z",
+          "head_sha": "e9ea98bb075d13e7b9d0f0553d645a3842cdd03f",
+          "base_branch": "develop",
+          "base_sha": "b02fdea4902c2b93b7d34a83a6f05da4ececb7d3",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck_rl/compare/b02fdea4902c2b93b7d34a83a6f05da4ececb7d3...e9ea98bb075d13e7b9d0f0553d645a3842cdd03f",
+          "scope_note": "Read-only simulator objects operation returns loose-body poses separately from robot observations; not real camera/ToF perception.",
+          "priority": "medium",
+          "replica_integration": "not_integrated_or_executed; applicability to deployed replica and isolated migration requires separate review"
+        },
+        {
           "number": 82,
           "url": "https://github.com/pollen-robotics/microduck_rl/pull/82",
           "title": "Fix shared rough-terrain configs and walking curriculum",
           "state": "open",
-          "draft": true,
+          "draft": false,
           "merged_at": null,
           "created_at": "2026-10-25T16:44:11Z",
-          "updated_at": "2026-10-25T16:44:11Z",
+          "updated_at": "2026-10-25T18:21:09Z",
           "head_sha": "930dc02c5154f5e0c6a819f99ab6630ea45ac18b",
-          "scope_note": "Draft: deep-copy shared rough-terrain templates in four factories, restore walking curriculum; changes training distribution/geometry. Submitter CPU/config checks only, no CUDA learning-quality or physical validation. Not integrated into replica.",
-          "priority": "medium_before_rough_training"
+          "scope_note": "Ready for review but not merged; same fixed source SHA. deep-copy shared rough-terrain templates in four factories, restore walking curriculum; changes training distribution/geometry. Submitter CPU/config checks only, no CUDA learning-quality or physical validation. Not integrated into replica.",
+          "priority": "medium_before_rough_training",
+          "previous_draft_state": true
         },
         {
           "number": 80,
@@ -219,7 +454,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-24T15:08:01Z",
-          "head_sha": "af24c035cf7967dd6a7ec58277ffacd7afe9b559"
+          "head_sha": "af24c035cf7967dd6a7ec58277ffacd7afe9b559",
+          "draft": false
         },
         {
           "number": 51,
@@ -230,7 +466,8 @@
           "updated_at": "2026-10-25T12:49:06Z",
           "head_sha": "3293273022d5f1c7f0d327f98959ce8e9543f115",
           "scope_note": "Updated head includes optional XL330 M6 CPU BAM physics and independent lateral task/finetuning/validation, beyond the original read-only visualization title. Not merged; not HD-1910 validation.",
-          "priority": "medium"
+          "priority": "medium",
+          "draft": false
         },
         {
           "number": 78,
@@ -239,7 +476,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-23T23:44:06Z",
-          "head_sha": "921747ca87961e283022267615116da3dae2f5e5"
+          "head_sha": "921747ca87961e283022267615116da3dae2f5e5",
+          "draft": false
         },
         {
           "number": 77,
@@ -248,7 +486,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-20T09:27:15Z",
-          "head_sha": "0ed85a56da1dd22f992059aefc2020a786505767"
+          "head_sha": "0ed85a56da1dd22f992059aefc2020a786505767",
+          "draft": false
         },
         {
           "number": 71,
@@ -257,7 +496,8 @@
           "state": "open",
           "merged_at": null,
           "updated_at": "2026-10-04T13:07:44Z",
-          "head_sha": "8b12c34378860d962a7fbe3b43c2f2c354c9167d"
+          "head_sha": "8b12c34378860d962a7fbe3b43c2f2c354c9167d",
+          "draft": false
         }
       ]
     },
@@ -292,25 +532,47 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-25T17:04:04Z",
+  "checked_at_utc": "2026-10-26T06:11:58Z",
   "latest_review": {
     "default_branch_changes": false,
     "new_stable_release": false,
     "previous_tracked_prs_merged": false,
     "new_development_release": null,
+    "new_pull_requests": {
+      "pollen-robotics/microduck": [
+        455,
+        456,
+        457,
+        458,
+        459,
+        460,
+        461,
+        462,
+        463,
+        464,
+        465,
+        466
+      ],
+      "pollen-robotics/microduck_rl": [
+        83
+      ]
+    },
+    "changed_pull_request_heads": {},
+    "changed_pull_request_review_states": {
+      "pollen-robotics/microduck_rl": {
+        "82": {
+          "previous_draft": true,
+          "draft": false,
+          "head_sha_changed": false,
+          "merged": false
+        }
+      }
+    },
+    "official_blog_new_articles": false,
     "runtime_code_changed": false,
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "Documentation-only. RL #82 is a draft rough-terrain configuration/curriculum fix, not verified learning performance or deployment. Runtime #453 is an already-reviewed documentation-only clarification, indexed with this substantive training update. Existing online UI and migration branches remain unchanged.",
-    "new_pull_requests": {
-      "pollen-robotics/microduck": [
-        453
-      ],
-      "pollen-robotics/microduck_rl": [
-        82
-      ]
-    },
-    "changed_pull_request_heads": {}
+    "notes": "Documentation-only review of fixed PR diffs. The new runtime proposals concern input/model validation, IPC resource bounds, remote heartbeat and update/rollback handling; RL #83 is read-only simulation object state. Contributor tests were not rerun; downloaded implementations were not executed. No applicability or fix is certified for the deployed replica or isolated migration."
   }
 }
