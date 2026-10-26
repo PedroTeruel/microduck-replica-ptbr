@@ -31,6 +31,7 @@ export function AudioInteraction({ pad, link, activity }) {
       <span class="motion-state" role="status" data-audio-listening=${!!status?.listening}>${audioLabel(status)}</span>
     </div>
     <div class="motion-toolbar">
+      <a class="btn-light" href="#/settings" data-ai-link>配置 AI 对话（文字试聊）</a>
       <button type="button" class=${status?.listening ? 'motion-stop' : 'btn-primary'} data-audio="listening"
         disabled=${!ready || !status?.available} onClick=${() => change({listening:!status?.listening})}>
         ${status?.listening ? '关闭监听' : '开启监听'}</button>

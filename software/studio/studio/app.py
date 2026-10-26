@@ -45,6 +45,8 @@ from .servo import boot_id, view_from_robotd
 from .sshkeys import BadKey, SshKeys
 from .state import summarize
 from .pad import Refused as PadRefused, robot_view  # 手柄页
+from .ai_connections import AiError
+from .ai_service import AiService
 
 VERSION = "0.1.0-dev"
 MODEL_UPLOAD_LIMIT = 64 * 1024 * 1024
@@ -70,6 +72,14 @@ class HostGuard:
         self.app, self.guard, self.log = app, guard, log
 
     async def __call__(self, scope, receive, send):
+        if scope['type'] == 'http' and scope.get('path') == '/api/ai':
+            original_send = send
+            async def private_send(message):
+                if message['type'] == 'http.response.start':
+                    message = {**message, 'headers':[(k,v) for k,v in message.get('headers',[])
+                        if k.lower() != b'cache-control'] + [(b'cache-control',b'no-store')]}
+                await original_send(message)
+            send = private_send
         if scope["type"] in ("http", "websocket"):
             host = dict(scope.get("headers") or []).get(b"host", b"").decode("latin-1")
             local_ip = (scope.get("server") or (None,))[0]
@@ -141,6 +151,7 @@ def _bus_give_back(by, servo=None):
 def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev_autologin=False, servo=None, imu=None, pad=None,
               onboard=None, battery=None, tune=None, net=None, commit=None, ssh_home=None, models=None, sensors=None):
     guard = OriginGuard(names=names)
+    ai = AiService(state_dir)
     if imu is not None and commit is not None:
         imu.commit = commit                          # 标定模式「站姿使能」：跟写进主程序同一套方向
     if onboard is not None:
@@ -179,6 +190,39 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         return guard.origin_ok(conn.headers.get("origin"), conn.headers.get("host", ""))
 
     # ---- HTTP ----
+
+    async def api_ai(request):
+        def response(data, status=200):
+            return JSONResponse(data, status_code=status, headers={'Cache-Control':'no-store'})
+        _, sess = session_of(request)
+        local_dev = dev_autologin and request.client and request.client.host == '127.0.0.1'
+        # The general Studio open session is unsuitable for billable external requests.
+        if not auth.has_password() and not local_dev:
+            return response({'ok':False,'code':'password_required','error':'请先在设置中配置网页密码，再使用 AI 连接'},403)
+        if not sess:
+            return response({'ok':False,'code':'unauthorized','error':'请先登录'},401)
+        if request.method == 'POST' and (not origin_ok(request) or request.headers.get('x-csrf') != sess['csrf']):
+            return response({'ok':False,'code':'csrf','error':'请求来源或登录令牌不正确'},403)
+        try:
+            if request.method == 'GET':
+                result = await ai.view()
+            else:
+                raw = bytearray()
+                async for chunk in request.stream():
+                    raw.extend(chunk)
+                    if len(raw) > 65536:
+                        raise AiError('oversize','AI 请求过大',413)
+                try:
+                    body = json.loads(raw)
+                except (ValueError,RecursionError):
+                    raise AiError('validation','请求不是有效 JSON') from None
+                result = await ai.handle(body)
+            return response({'ok':True,**result})
+        except AiError as error:
+            return response({'ok':False,'code':error.code,'error':str(error)},error.status)
+        except Exception:
+            # Do not log exception details: network libraries may include request credentials.
+            return response({'ok':False,'code':'internal','error':'AI 请求未完成，请稍后重试'},500)
 
     async def healthz(request):
         return JSONResponse({"ok": True, "version": VERSION})
@@ -1448,6 +1492,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
     routes = [
         Route("/healthz", healthz),
         Route("/api/session", api_session),
+        Route("/api/ai", api_ai, methods=["GET", "POST"]),
         Route("/api/login", api_login, methods=["POST"]),
         Route("/api/logout", api_logout, methods=["POST"]),
         Route("/api/password", api_password, methods=["POST"]),
