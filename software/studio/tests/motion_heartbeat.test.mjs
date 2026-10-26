@@ -75,3 +75,36 @@ test('drafts have no automation heartbeat and time formatting rejects bad values
   assert.equal(motionTime(NaN), '0:00.0');
   assert.equal(motionTime(-1), '0:00.0');
 });
+
+const music = (token = 'music') => ({state:'idle_motion', idle_kind:'music', session_id:token, owner:{mine:true}});
+
+test('standalone music has no action heartbeat and survives foreground interruption', async () => {
+  const x = setup(); x.lease.sync(music()); await flush();
+  assert.equal(x.calls.length, 0);
+  assert.equal(x.callbacks.size, 0);
+  x.active(false); x.lease.interrupt('inactive'); x.lease.sync(music()); x.tick(); await flush();
+  assert.equal(x.calls.length, 0);
+  x.active(true); x.lease.sync(music()); x.lease.interrupt(); await flush();
+  assert.deepEqual(x.calls, [{op:'motion', action:'stop', session_id:'music'}]);
+});
+
+test('only standalone music survives inactivity; music during recording still stops', async () => {
+  const x = setup(); x.lease.sync({...music(), state:'recording'}); await flush();
+  x.active(false); x.lease.interrupt('inactive'); await flush();
+  assert.equal(x.calls[0].action, 'heartbeat');
+  assert.equal(x.calls.at(-1).action, 'stop');
+});
+
+test('confirmed music survives component disposal while the socket stays connected', async () => {
+  const x = setup(); x.lease.sync(music()); x.lease.dispose(); await flush();
+  assert.equal(x.calls.length, 0);
+  assert.equal(x.callbacks.size, 0);
+});
+
+test('disconnected music token is blocked and never adopted from a stale snapshot', async () => {
+  const x = setup(); x.lease.sync(music()); x.connected(false); x.lease.interrupt('disconnect');
+  x.connected(true); x.lease.sync(music()); x.lease.interrupt(); await flush();
+  assert.equal(x.calls.length, 0);
+  x.lease.sync(music('new')); x.lease.interrupt(); await flush();
+  assert.deepEqual(x.calls, [{op:'motion', action:'stop', session_id:'new'}]);
+});

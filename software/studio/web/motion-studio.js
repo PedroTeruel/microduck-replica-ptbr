@@ -1,5 +1,5 @@
 import { html, useEffect, useRef, useState } from './vendor/preact-htm.module.js';
-import { createMotionHeartbeat, motionTime } from './motion-heartbeat.js';
+import { createMotionHeartbeat, isBackgroundMusic, motionTime } from './motion-heartbeat.js';
 import { musicMotionLabel } from './audio-ui-state.js';
 
 if (typeof document !== 'undefined' && !document.getElementById('motion-studio-css')) {
@@ -27,6 +27,8 @@ export function MotionStudio({ pad, link, activity }) {
   const [deleting, setDeleting] = useState(null);
   const focused = useRef(true), alive = useRef(false), epoch = useRef(0), busy = useRef(false);
   const expectedStop = useRef(false), lease = useRef(null);
+  const currentMotion = useRef(motion), backgroundStart = useRef(false);
+  currentMotion.current = motion;
   const state = motion?.state || 'idle';
   const owned = !!motion?.owner?.mine;
   const other = !!motion?.owner && !owned;
@@ -45,15 +47,21 @@ export function MotionStudio({ pad, link, activity }) {
       isConnected: () => link.status === 'open',
       onError: reason => { if (alive.current && !expectedStop.current) setError(reason); },
     });
-    const interrupt = () => {
+    const interrupt = reason => {
+      if (reason === 'inactive' && (backgroundStart.current ||
+          (currentMotion.current?.owner?.mine && isBackgroundMusic(currentMotion.current)))) {
+        lease.current?.interrupt(reason);
+        return;
+      }
       epoch.current += 1; busy.current = false; setPending(null);
-      lease.current?.interrupt();
+      backgroundStart.current = false;
+      lease.current?.interrupt(reason);
     };
     const offActivity = activity.subscribe(({ active: value }) => {
-      setActive(value); if (!value) interrupt();
+      setActive(value); if (!value) interrupt('inactive');
     });
-    const offLink = link.on(message => { if (message.t === '_status' && message.status !== 'open') interrupt(); });
-    const blur = () => { focused.current = false; interrupt(); };
+    const offLink = link.on(message => { if (message.t === '_status' && message.status !== 'open') interrupt('disconnect'); });
+    const blur = () => { focused.current = false; interrupt('inactive'); };
     const focus = () => { focused.current = true; };
     window.addEventListener('blur', blur); window.addEventListener('focus', focus);
     return () => {
@@ -63,15 +71,17 @@ export function MotionStudio({ pad, link, activity }) {
     };
   }, [link, activity]);
 
-  useEffect(() => { lease.current?.sync(motion); }, [motion?.session_id, state, owned]);
+  useEffect(() => { lease.current?.sync(motion); }, [motion?.session_id, state, owned, motion?.idle_kind]);
   useEffect(() => {
     if (!clips.some(clip => clip.id === selected)) setSelected(clips[0]?.id || '');
   }, [clips, selected]);
 
   const command = async (action, params = {}) => {
     if (busy.current && action !== 'stop') return null;
-    if (!activity.active || link.status !== 'open') { setError('请回到遥控区并恢复连接后操作'); return null; }
+    if (!activity.active || !focused.current || link.status !== 'open') { setError('请回到遥控区并恢复连接后操作'); return null; }
     const mine = ++epoch.current;
+    const startingBackground = action === 'idle_start' && params.kind === 'music' && !recording;
+    backgroundStart.current = startingBackground;
     busy.current = true; setPending(action); setError(null);
     const ending = action === 'stop' || action === 'record_finish' || (action === 'idle_stop' && !recording);
     if (ending) expectedStop.current = true;
@@ -80,7 +90,8 @@ export function MotionStudio({ pad, link, activity }) {
       const request = { op: 'motion', action,
         ...(motion?.session_id && RUNNING.has(state) ? { session_id: motion.session_id } : {}), ...params };
       const result = await link.cmd('pad.op', request, 8000);
-      if (!alive.current || epoch.current !== mine || !activity.active || !focused.current) {
+      if (!alive.current || epoch.current !== mine ||
+          (!startingBackground && (!activity.active || !focused.current))) {
         if (START[action] && result?.ok && result.data?.session_id) {
           void link.cmd('pad.op', { op: 'motion', action: 'stop', session_id: result.data.session_id }, 1000);
         }
@@ -90,6 +101,7 @@ export function MotionStudio({ pad, link, activity }) {
       if (ending) lease.current?.sync(null);
       if (START[action] && result.data?.session_id) {
         lease.current?.sync({ state: action === 'idle_start' && recording ? state : START[action],
+          idle_kind: action === 'idle_start' ? params.kind || 'lively' : null,
           session_id: result.data.session_id, owner: { mine: true } });
       }
       if (action === 'save') setName('');
@@ -100,7 +112,9 @@ export function MotionStudio({ pad, link, activity }) {
       if (alive.current && mine === epoch.current) setError(err?.message || '操作连接中断');
       return null;
     } finally {
-      if (alive.current && mine === epoch.current) { busy.current = false; setPending(null); }
+      if (alive.current && mine === epoch.current) {
+        busy.current = false; backgroundStart.current = false; setPending(null);
+      }
     }
   };
   const button = (action, label, enabled = true, params = {}, className = 'btn-light') => html`
@@ -180,7 +194,8 @@ export function MotionStudio({ pad, link, activity }) {
         坐站按目标姿态回放，等待状态确认后继续。普通停止会取消后续步骤，已经开始的坐站仍由主程序完成。
         灵动只做头部和嘴部的小动作。离开遥控区、后台、失焦或断线会停止后续输出，回来后需重新开始。</p>
       <p class="pd-small-p motion-note">随乐律动只做头部和身体的小幅意图；没有清晰节拍时等待，音乐或收音停止后回正。
-        必须保持网页在前台并停留在遥控区；失焦、切到后台、滚出遥控区或断线会停止，回来后需重新点「随乐律动」。
+        独立随乐律动开启后，失焦、切到后台、滚出遥控区或切换站内页面仍会继续；关闭网页或连接断开会停止。
+        录制中的随乐律动仍需保持前台和遥控区可见，离开后停止。返回页面可查看状态并停止律动。
         推网页摇杆、执行动作或实体手柄接管时，按现有控制规则停止律动。</p>
     `}
   </section>`;

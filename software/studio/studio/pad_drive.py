@@ -481,9 +481,14 @@ class DriveMixin:
             q["stop"] = max(q["stop"], top)                  # 离开之前发出的摇杆帧都作废
             q["hi"] = max(q["hi"], top)
             mine = self._driver is not None and self._driver["conn"] == conn
-            if mine:
+            background_music = self.motion_studio.background_music(conn)
+            if mine and not background_music:
                 self._driver = None
-        if mine:
+        if background_music:
+            # The drive area closes and late manual frames stay fenced, while
+            # standalone music remains owned by this still-connected socket.
+            pass
+        elif mine:
             self._halt("离开了手柄区", conn)            # 里面排清理、发
         else:
             self._request_clear(conn, "离开了手柄区")

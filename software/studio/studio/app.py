@@ -53,6 +53,7 @@ STATE_HZ = 10
 COMMANDS = {"relax", "servo.open", "servo.close", "servo.op", "servo.ports", "imu.op", "calib.op", "pad.op", "onboard.op", "battery.op", "tune.op", "net.op"}
 HB_QUIET_S = 5.0         # 页面这么久没发心跳：当作看不见（停推状态、可能退订）
 HB_DEAD_S = 30.0         # 这么久没任何消息：当作半开的连接（手机走出 WiFi），直接关掉
+MUSIC_PONG_TIMEOUT_S = 5.0
 SERVO_IDLE_S = 60.0      # 舵机页没人在看（页面关了、断网、切走了没交还）这么久、又没有舵机保持着：自动交还主程序
 ONBOARD_TICK_S = 0.5     # 上手清单多久判一次（站起来过 3 秒、走过 2 秒按这个粒度数）
 SERVO_MARKER = "servo-session.json"   # 舵机会话开着的标记（state 目录；交还成功才删：审查 D1）
@@ -597,9 +598,20 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             while True:
                 quiet = time.monotonic() - me["hb_at"]
                 if quiet > HB_DEAD_S:
-                    log.info(f"页面 {HB_DEAD_S:.0f} 秒没消息，当作断了（{by}）", cat="连接")
-                    await ws.close(code=4408)
-                    return
+                    # Background timer throttling must not end server-owned music.
+                    # A matched native Pong renews transport liveness only: it never
+                    # changes hb_at, visible viewers, drive-area state or ownership.
+                    music = pad is not None and pad.motion_studio.background_music(pad_conn)
+                    ping = ws.scope.get("extensions", {}).get("studio.websocket.ping")
+                    transport_alive = music and time.monotonic() - me.get("pong_at", 0.) <= HB_DEAD_S
+                    if music and not transport_alive and callable(ping):
+                        transport_alive = await ping(MUSIC_PONG_TIMEOUT_S)
+                        if transport_alive:
+                            me["pong_at"] = time.monotonic()
+                    if not transport_alive:
+                        log.info(f"页面 {HB_DEAD_S:.0f} 秒没消息且连接未确认，当作断了（{by}）", cat="连接")
+                        await ws.close(code=4408)
+                        return
                 if me["visible"] and quiet > HB_QUIET_S:
                     me["visible"] = False          # 没心跳了：先当看不见，别让 robotd 白组帧
                     update_viewers()
@@ -1369,6 +1381,9 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         while True:
             await asyncio.sleep(1 / STATE_HZ)
             try:
+                # A server-owned music lease consumes real robot.state frames
+                # even after the last browser viewer leaves the drive area.
+                robotd.set_background_music(pad.motion_studio.background_music())
                 pad.feed_robot(robot_view(robotd))
             except Exception as e:  # noqa: BLE001
                 log.error("把主程序的状态交给手柄页时出错", cat="手柄", raw=f"{type(e).__name__}: {e}", exc=True,

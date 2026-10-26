@@ -17,7 +17,7 @@ import uuid
 
 from .motion_store import CLEANUP, HEAD_ZERO, MAX_BYTES, MAX_EVENTS, MAX_SECONDS, MotionStore, name, validate_event
 from .pad_combo import Refused
-from .motion_posture import PostureTracker, evidence
+from .motion_posture import PostureTracker, evidence, phase_evidence
 from .audio_interaction import MusicRhythm
 from .rpc import Timeout, Unreachable
 
@@ -115,6 +115,42 @@ class MotionStudio:
         self._skill_fence = 0
         self._request_local = threading.local()
         self.posture = PostureTracker()
+
+    def background_music(self, conn=None):
+        """Only standalone music owns a server-managed, socket-bound lifetime."""
+        with self.pad._lk:
+            s = self.session
+            return bool(s and self.state == "idle_motion" and s.get("idle_kind") == "music"
+                        and s.get("lively") and not s.get("invalid")
+                        and (conn is None or s["conn"] == conn))
+
+    def _heartbeat_expired(self, s, now):
+        return not self.background_music() and now - s["heartbeat"] > HEARTBEAT_S
+
+    def _music_ready_why(self, now):
+        p = self.pad
+        audio = getattr(p, "audio", None)
+        source = audio.snapshot() if audio is not None else {}
+        if (source.get("available") is not True or source.get("listening") is not True
+                or source.get("music") is not True or source.get("error")):
+            return "监听、音乐模式或语音服务已关闭；重新开启后请再点「随乐律动」"
+        try:
+            _, phase, sitting = phase_evidence(p._robot or {}, now)
+        except Refused:
+            return "随乐律动需要新鲜的策略阶段和坐姿回读"
+        if phase not in ("walk", "stand") or sitting:
+            return "随乐律动需要站稳并准备好走"
+        status = p._status
+        if (not isinstance(status, dict) or not isinstance(status.get("pads"), list)
+                or p._status_at is None or not 0 <= now - p._status_at < 15
+                or p._status_error or (p._robot or {}).get("pad_status_error")):
+            return "实体手柄状态读不出：随乐律动已停止，请恢复状态后重新开始"
+        if any(not isinstance(row, dict) or type(row.get("connected")) is not bool
+               for row in status["pads"]):
+            return "实体手柄状态不明确：请恢复状态后重新开始"
+        if any(row["connected"] for row in status["pads"]):
+            return "实体手柄连着：先关闭实体手柄"
+        return None
 
     def posture_allowed(self):
         s = self.session
@@ -293,14 +329,23 @@ class MotionStudio:
                     if s is target:
                         self.session, self.state = None, "idle"
                         self.last_result = s.get("invalid") or ("页面超过 500 毫秒没有动作心跳"
-                            if self.pad.clock() - s["heartbeat"] > HEARTBEAT_S else "回放完成")
+                            if self._heartbeat_expired(s, self.pad.clock()) else "回放完成")
                     continue
                 if not cleanup and (s is not target or s.get("invalid")
-                                    or self.pad.clock() - s["heartbeat"] > HEARTBEAT_S):
+                                    or self._heartbeat_expired(s, self.pad.clock())):
                     continue
                 if not cleanup and policy_identity(self.pad) != target["identity"]:
                     self.invalidate("模型或控制配置已改变")
                     continue
+                if not cleanup and self.background_music():
+                    # The previous send can block while real evidence goes stale.
+                    # Music has no page heartbeat, so fence each queued send with
+                    # its actual safety evidence before it leaves the process.
+                    now = self.pad.clock()
+                    why = self.ready_why(s["conn"], now) or self._music_ready_why(now)
+                    if why:
+                        self.invalidate(why)
+                        continue
             if method == "studio.posture":
                 try:
                     self._execute_posture(target, params["target"])
@@ -338,7 +383,8 @@ class MotionStudio:
         p = self.pad
         if p._closing:
             return "Studio 正在关闭"
-        if conn is None or conn in p._gone or conn in p._closed:
+        if conn is None or conn in p._gone or (conn in p._closed and
+                                               (starting or not self.background_music(conn))):
             return "页面不在手柄控制区：滚到遥控区再开始"
         attached, why = p._pad_attached(now)
         if attached is not False:
@@ -617,7 +663,9 @@ class MotionStudio:
                 if (not s or s["conn"] != conn or s["id"] != args.get("session_id") or s.get("invalid")
                         or conn in self.pad._closed or conn in self.pad._gone):
                     return {"dropped": "旧的或已关闭的动作会话"}
-                if self.pad.clock() - s["heartbeat"] > HEARTBEAT_S:
+                if self.background_music(conn):
+                    return {"session_id": s["id"]}
+                if self._heartbeat_expired(s, self.pad.clock()):
                     s["invalid"] = "页面超过 500 毫秒没有动作心跳"
                     self.pad._tick_evt.set()
                     return {"dropped": s["invalid"]}
@@ -659,7 +707,7 @@ class MotionStudio:
                 if self._storage_busy:
                     raise Refused("正在保存或整理动作文件，等它完成")
                 s = self.session
-                if s and (s.get("invalid") or self.pad.clock() - s["heartbeat"] > HEARTBEAT_S):
+                if s and (s.get("invalid") or self._heartbeat_expired(s, self.pad.clock())):
                     why = s.get("invalid") or "页面超过 500 毫秒没有动作心跳，会话已经结束"
                     self._stop(why)
                     raise Refused(why)
@@ -678,6 +726,10 @@ class MotionStudio:
                                          posture_start=action == "play" and any(e["method"] == "studio.posture" for e in clip["events"]))
                     if why:
                         raise Refused(why)
+                    if action == "idle_start" and idle_kind == "music" and not combine:
+                        why = self._music_ready_why(self.pad.clock())
+                        if why:
+                            raise Refused(why)
                     if combine:
                         if action == "record_start":
                             self.epoch += 1
@@ -745,6 +797,9 @@ class MotionStudio:
                         else:
                             self._stop("灵动已停止")
                 elif action == "stop":
+                    if s is None:
+                        # A foreground start may still be hashing outside locks.
+                        self.epoch += 1
                     self._stop("页面停止了动作会话")
                 else:
                     raise Refused(f"不认识的动作录制操作：{action}")
@@ -803,8 +858,10 @@ class MotionStudio:
                     return
                 now = p.clock()
                 why = s.get("invalid") or self._posture_why(p._robot or {}, now) or self.ready_why(s["conn"], now)
-                if now - s["heartbeat"] > HEARTBEAT_S:
+                if self._heartbeat_expired(s, now):
                     why = why or "页面超过 500 毫秒没有动作心跳"
+                if self.background_music():
+                    why = why or self._music_ready_why(now)
                 if policy_identity(p) != s["identity"]:
                     why = why or "模型或控制配置已改变"
                 if why:

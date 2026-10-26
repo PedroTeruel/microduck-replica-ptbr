@@ -177,6 +177,7 @@ class MotionStudioTest(PadTestBase):
         self.assertNotEqual(token, self.motion("play", id=c["id"], loops=1)["session_id"])
 
     def test_music_generator_uses_existing_lease_and_cleans_on_source_off(self):
+        self.music_telemetry(self.ops.clock())
         now = time.monotonic()
         source = {"available": True, "listening": True, "music": True,
                   "rhythm": {"bpm": 120., "confidence": .9, "feel": "lively", "last_beat": now, "age": .01}}
@@ -198,6 +199,7 @@ class MotionStudioTest(PadTestBase):
         self.assertFalse(any(m in ("robot.init", "robot.enable") for m,p in self.robot.calls))
 
     def music_source(self):
+        self.music_telemetry(self.ops.clock())
         source = {"available": True, "listening": True, "music": True, "error": None,
                   "rhythm": {"bpm": 120., "confidence": .9, "feel": "lively",
                              "last_beat": self.ops.clock(), "age": .01}}
@@ -208,6 +210,186 @@ class MotionStudioTest(PadTestBase):
                 pass
         self.ops.audio = Audio()
         return source
+
+    def music_telemetry(self, now):
+        self.feed(state={"policy": "walk"}, state_at=now, policies_at=now, bus_at=now,
+                  pad_status={"driver": "active", "pads": []}, pad_status_at=now)
+
+    def test_background_music_survives_inactive_over_ten_seconds_without_heartbeat(self):
+        self.stop_background_tick()
+        now = [self.ops.clock()]
+        self.ops.clock = lambda: now[0]
+        source = self.music_source()
+        self.music_telemetry(now[0])
+        token = self.motion("idle_start", kind="music")["session_id"]
+        self.ops.handle({"op": "drive", "on": False, "seq": next(self.seq)}, conn=self.conn)
+        for delay in (.6, 11., 25.):
+            now[0] += delay
+            self.music_telemetry(now[0])
+            source["rhythm"].update(last_beat=now[0], age=.01)
+            with self.robot.lk:
+                self.robot.sent.clear()
+            self.ops._tick_once()
+            self.assertEqual(self.view()["session_id"], token)
+            self.assertEqual(self.view()["idle_phase"], "moving")
+            self.assertTrue(self.sent("robot.pose")[-1][1]["active"])
+        # A returning page sees the actual lease, and can stop with its old token.
+        self.ops.handle({"op": "drive", "open": True, "seq": next(self.seq)}, conn=self.conn)
+        self.assertTrue(self.view()["owner"]["mine"])
+        self.motion("stop", session_id=token)
+        self.assertEqual(self.view()["state"], "idle")
+
+    def test_background_music_still_rejects_start_outside_foreground_drive_area(self):
+        self.stop_background_tick()
+        self.music_source()
+        self.music_telemetry(self.ops.clock())
+        self.ops.handle({"op": "drive", "on": False, "seq": next(self.seq)}, conn=self.conn)
+        with self.assertRaises(Refused):
+            self.motion("idle_start", kind="music")
+
+    def test_explicit_stop_fences_music_start_still_hashing_without_a_session(self):
+        from studio import motion_studio as module
+        self.stop_background_tick()
+        self.music_source()
+        entered, release = threading.Event(), threading.Event()
+        original, result = module.fingerprint, []
+        def delayed(*args, **kwargs):
+            entered.set()
+            release.wait(1.)
+            return original(*args, **kwargs)
+        with mock.patch.object(module, "fingerprint", side_effect=delayed):
+            worker = threading.Thread(target=lambda: result.append(self.motion("idle_start", kind="music")))
+            worker.start()
+            self.assertTrue(entered.wait(.5))
+            self.motion("stop")
+            release.set()
+            worker.join(2.)
+        self.assertTrue(result[0].get("dropped"))
+        self.assertIsNone(self.ops.motion_studio.session)
+
+    def test_background_music_rechecks_safety_between_queued_outputs(self):
+        self.stop_background_tick()
+        self.music_source()
+        self.motion("idle_start", kind="music")
+        with self.robot.lk:
+            self.robot.sent.clear()
+        original = self.robot.notify
+        def stale_after_head(method, params):
+            original(method, params)
+            if method == "robot.head":
+                self.ops._robot["state_at"] -= 2.
+        with mock.patch.object(self.robot, "notify", side_effect=stale_after_head):
+            self.ops._tick_once()
+        self.assertFalse(any(params.get("active") for _, params in self.sent("robot.pose")))
+        self.ops._tick_once()
+        self.assertIsNone(self.ops.motion_studio.session)
+        self.assertEqual(self.sent("robot.pose"), [("robot.pose", {"active": False})])
+
+    def test_background_music_rechecks_source_shutdown_between_queued_outputs(self):
+        self.stop_background_tick()
+        source = self.music_source()
+        self.motion("idle_start", kind="music")
+        with self.robot.lk:
+            self.robot.sent.clear()
+        original = self.robot.notify
+        def source_off_after_head(method, params):
+            original(method, params)
+            if method == "robot.head":
+                source["listening"] = False
+        with mock.patch.object(self.robot, "notify", side_effect=source_off_after_head):
+            self.ops._tick_once()
+        self.assertFalse(any(params.get("active") for _, params in self.sent("robot.pose")))
+        self.ops._tick_once()
+        self.assertIsNone(self.ops.motion_studio.session)
+        self.assertEqual(self.sent("robot.pose"), [("robot.pose", {"active": False})])
+
+    def test_only_standalone_music_ignores_action_heartbeat_expiry(self):
+        self.stop_background_tick()
+        self.music_source()
+        for mode in ("lively", "recording", "recording_music", "playback"):
+            with self.subTest(mode=mode):
+                self.motion("stop")
+                if self.view()["state"] == "draft":
+                    self.motion("discard")
+                self.feed()
+                if mode == "lively":
+                    self.motion("idle_start")
+                elif mode == "playback":
+                    clip = self.saved()
+                    self.motion("play", id=clip)
+                else:
+                    self.start()
+                    if mode == "recording_music":
+                        self.motion("idle_start", kind="music")
+                self.ops.motion_studio.session["heartbeat"] -= 11.
+                self.ops._tick_once()
+                self.assertIsNone(self.ops.motion_studio.session)
+
+    def test_background_music_safety_stops_once_and_never_reclaims_after_takeover(self):
+        from studio.motion_store import CLEANUP
+        self.stop_background_tick()
+        mutations = ("disconnect", "takeover", "manual", "pad", "pad_unreadable", "pad_stale",
+                     "state_stale", "state_invalid", "bus_stale", "estop", "policy", "model", "config")
+        for reason in mutations:
+            with self.subTest(reason=reason):
+                self.ops._gone.pop(self.conn, None)
+                self.motion("stop")
+                self.ops._closed.pop(self.conn, None)
+                self.ops._driver = None
+                self.ops._web_driving = False
+                self.ops._seqs.pop(self.conn, None)
+                self.ops._status_error = None
+                source = self.music_source()
+                self.music_telemetry(self.ops.clock())
+                self.ops.handle({"op": "drive", "open": True}, conn=self.conn)
+                token = self.motion("idle_start", kind="music")["session_id"]
+                self.ops._tick_once()
+                self.ops.handle({"op": "drive", "on": False}, conn=self.conn)
+                self.assertEqual(self.view()["session_id"], token)
+                with self.robot.lk:
+                    self.robot.sent.clear()
+                if reason == "disconnect":
+                    self.ops.mark_gone(self.conn)
+                elif reason == "takeover":
+                    other = self.ops.new_conn()
+                    self.ops.handle({"op": "drive", "on": True, "force": True}, conn=other)
+                elif reason == "manual":
+                    self.ops.handle({"op": "drive", "open": True}, conn=self.conn)
+                    self.move(.1)
+                elif reason == "pad":
+                    self.ops._status = {"driver": "active", "pads": [{"connected": True}]}
+                elif reason == "pad_unreadable":
+                    self.ops._status_error = "unreachable"
+                elif reason == "pad_stale":
+                    self.ops._status_at -= 16.
+                elif reason == "state_stale":
+                    self.ops._robot["state_at"] -= 2.
+                elif reason == "state_invalid":
+                    self.ops._robot["state"] = None
+                elif reason == "bus_stale":
+                    self.ops._robot["bus_at"] -= 4.
+                elif reason == "estop":
+                    self.ops._robot["estop_active"] = True
+                elif reason == "policy":
+                    self.ops._robot["policies"]["enabled"] = False
+                elif reason == "model":
+                    self.ops._robot["policies"] = copy.deepcopy(self.ops._robot["policies"])
+                    self.ops._robot["policies"]["slots"][0]["path"] = "/changed.onnx"
+                else:
+                    self.ops._motion_config_digest = "changed"
+                self.ops._tick_once()
+                self.assertIsNone(self.ops.motion_studio.session)
+                for method, params in CLEANUP:
+                    if method in ("robot.head", "robot.pose"):
+                        self.assertEqual(self.sent().count((method, params)), 1)
+                stopped = self.sent()
+                self.music_telemetry(self.ops.clock())
+                source["rhythm"].update(last_beat=self.ops.clock(), age=.01)
+                if reason != "disconnect":
+                    self.motion("heartbeat", session_id=token)
+                self.ops._tick_once()
+                self.assertEqual(self.sent(), stopped)
+                self.assertIsNone(self.ops.motion_studio.session)
 
     def test_music_phase_tracks_waiting_moving_and_unknown_in_same_session(self):
         self.stop_background_tick()

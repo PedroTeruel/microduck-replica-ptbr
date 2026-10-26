@@ -1,6 +1,8 @@
 // One page lease per server session. Losing activity never resumes an old token.
 const LIVE = new Set(['recording', 'record_paused', 'playing', 'play_paused', 'idle_motion']);
 
+export const isBackgroundMusic = snapshot => snapshot?.state === 'idle_motion' && snapshot?.idle_kind === 'music';
+
 export function motionTime(value) {
   const ticks = Number.isFinite(value) ? Math.max(0, Math.round(value * 10)) : 0;
   return `${Math.floor(ticks / 600)}:${((ticks % 600) / 10).toFixed(1).padStart(4, '0')}`;
@@ -8,12 +10,12 @@ export function motionTime(value) {
 
 export function createMotionHeartbeat({ send, isActive, isConnected, onError = () => {},
   schedule = fn => setInterval(fn, 100), cancel = id => clearInterval(id) }) {
-  let token = null, timer = null, generation = 0, pending = false, disposed = false;
+  let token = null, timer = null, generation = 0, pending = false, disposed = false, background = false;
   const blocked = new Set();
   const clear = () => { if (timer !== null) cancel(timer); timer = null; pending = false; generation += 1; };
   const stop = () => {
     const previous = token;
-    clear(); token = null;
+    clear(); token = null; background = false;
     if (!previous) return;
     blocked.add(previous);
     if (blocked.size > 64) blocked.delete(blocked.values().next().value);
@@ -44,14 +46,24 @@ export function createMotionHeartbeat({ send, isActive, isConnected, onError = (
     sync(snapshot) {
       if (disposed) return;
       const next = snapshot?.session_id;
-      if (!snapshot?.owner?.mine || !LIVE.has(snapshot.state) || !next) { clear(); token = null; return; }
+      if (!snapshot?.owner?.mine || !LIVE.has(snapshot.state) || !next) { clear(); token = null; background = false; return; }
       if (blocked.has(next)) return;
-      if (next === token) { if (!isActive() || !isConnected()) stop(); return; }
-      clear(); token = next;
-      if (!isActive() || !isConnected()) { stop(); return; }
+      const nextBackground = isBackgroundMusic(snapshot);
+      if (next === token && background === nextBackground) {
+        if (!isConnected() || (!background && !isActive())) stop();
+        return;
+      }
+      clear(); token = next; background = nextBackground;
+      if (!isConnected() || (!background && !isActive())) { stop(); return; }
+      if (background) return;
       timer = schedule(beat); void beat();
     },
-    interrupt: stop,
-    dispose() { if (!disposed) { stop(); disposed = true; } },
+    interrupt(reason) { if (reason === 'inactive' && background && isConnected()) return; stop(); },
+    dispose() {
+      if (disposed) return;
+      if (background && isConnected()) { clear(); token = null; }
+      else stop();
+      disposed = true;
+    },
   };
 }
