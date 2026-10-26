@@ -72,6 +72,11 @@ class MotionStudioBrowser(unittest.TestCase):
             self.assertTrue(report['music_moving_visible'])
             self.assertGreater(report['music_head_frames'], 2)
             self.assertGreater(report['music_body_frames'], 2)
+            self.assertGreater(report['music_blur_frames'], 4)
+            self.assertGreater(report['music_background_frames'], 5)
+            self.assertTrue(report['music_background_returned'])
+            self.assertEqual(report['music_background_action_heartbeats'], 0)
+            self.assertTrue(report['music_disconnect_stopped'])
             self.assertTrue(report['music_off_stopped'])
             clips = [json.loads(path.read_text(encoding='utf-8')) for path in
                      (output / 'state' / 'motion-recordings').glob('*.json')]

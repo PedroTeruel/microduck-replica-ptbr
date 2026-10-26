@@ -46,6 +46,8 @@ const fakeSet = params => new Promise((resolve, reject) => {
   let text = ''; client.on('error', reject); client.on('data', chunk => { text += chunk; if (text.includes('\n')) { client.end(); resolve(JSON.parse(text)); } });
 });
 const shot = async name => {
+  await send('Page.bringToFront');
+  await js(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
   const image = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
   writeFileSync(`${shots}/${name}.png`, Buffer.from(image.data, 'base64'));
 };
@@ -57,8 +59,9 @@ try {
   await send('Page.addScriptToEvaluateOnNewDocument', { source: `
     window.__motionRequests=[];window.__frames=[];window.__hbs=[];
     {const original=WebSocket.prototype.send;WebSocket.prototype.send=function(payload){
-      try{if(!this.__observed){this.__observed=true;this.addEventListener('message',e=>{try{const m=JSON.parse(e.data);window.__frames.push({at:performance.now(),t:m.t,state:m.motion_studio?.state,id:m.id,ok:m.ok});if(window.__frames.length>40)window.__frames.shift();}catch{}});this.addEventListener('close',e=>window.__frames.push({closed:e.code,at:performance.now()}));}
-        const value=JSON.parse(payload);if(value.t==='cmd'&&value.name==='pad.op'&&value.args?.op==='motion')window.__motionRequests.push(value.args);
+      try{if(!this.__observed){this.__observed=true;window.__motionSocket=this;this.addEventListener('message',e=>{try{const m=JSON.parse(e.data);window.__frames.push({at:performance.now(),t:m.t,state:m.motion_studio?.state,id:m.id,ok:m.ok});if(window.__frames.length>40)window.__frames.shift();}catch{}});this.addEventListener('close',e=>window.__frames.push({closed:e.code,at:performance.now()}));}
+        const value=JSON.parse(payload);if(value.t==='hb'&&window.__dropHeartbeat)return;
+        if(value.t==='cmd'&&value.name==='pad.op'&&value.args?.op==='motion')window.__motionRequests.push(value.args);
         if(value.t==='hb'){window.__hbs.push({at:performance.now(),...value});if(window.__hbs.length>10)window.__hbs.shift();}}catch{}
       return original.call(this,payload);
     };}
@@ -222,6 +225,34 @@ try {
   report.music_body_frames = musicFrames.filter(r=>r.method==='robot.pose' && r.params.active && Math.abs(r.params.roll||0)>.001).length;
   assert(report.music_head_frames>2 && report.music_body_frames>2,'music drives small head/body intents');
   assert(!musicFrames.some(r=>['robot.init','robot.enable'].includes(r.method)),'music never powers or starts policy');
+  // The server owns a confirmed standalone music session. Losing focus must
+  // not require browser action heartbeats to keep it running.
+  const backgroundCommandBegin = await js('window.__motionRequests.length');
+  // Simulate suspended/throttled JS heartbeats. Native browser Ping/Pong still
+  // operates, so the connection is alive independently of JavaScript timers.
+  await js(`window.__dropHeartbeat=true`);
+  await js(`window.dispatchEvent(new Event('blur'))`);
+  await sleep(900);
+  const blurBegin = records().length; await sleep(650);
+  report.music_blur_frames = records().slice(blurBegin).filter(nonzeroHead).length;
+  assert(report.music_blur_frames>4,'confirmed standalone music continues after blur and heartbeat deadline');
+  await js(`window.dispatchEvent(new Event('focus'))`);
+  // A real route change unmounts the component and removes the browser robot
+  // viewer. Continue past both robotd's 10s linger and the generic 30s JS
+  // heartbeat deadline, using real internal state and native protocol liveness.
+  await js(`location.hash='/logs'`);
+  await sleep(31500);
+  const backgroundBegin = records().length; await sleep(900);
+  report.music_background_frames = records().slice(backgroundBegin).filter(nonzeroHead).length;
+  assert(report.music_background_frames>5,'music survives unmount and >30s JavaScript heartbeat silence');
+  report.music_background_action_heartbeats = await js(`window.__motionRequests.slice(${backgroundCommandBegin}).filter(x=>x.action==='heartbeat').length`);
+  assert(report.music_background_action_heartbeats===0,'standalone background music does not use browser action heartbeats');
+  await js(`window.__dropHeartbeat=false;window.dispatchEvent(new Event('focus'));location.hash='/pad'`);
+  await wait(`document.querySelector('#motion-studio')?.dataset.state==='idle_motion'`, 'same background music session on return');
+  await js(`document.querySelector('#audio-interaction').scrollIntoView({block:'center'})`);
+  await wait(`window.__pad?.active`, 'foreground control restored after background music');
+  report.music_background_returned = await js(`document.querySelector('#motion-studio .motion-state')?.innerText==='随乐律动中'`);
+  assert(report.music_background_returned,'return shows the current server music session');
   await click('[data-audio="listening"]'); await state('idle'); await sleep(250);
   const musicOff = records().length; await sleep(550);
   report.music_off_stopped = !records().slice(musicOff).some(movingIntent);
@@ -231,8 +262,21 @@ try {
     await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:true});
     await js(`document.querySelector('#audio-interaction').scrollIntoView({block:'center'})`);
     assert(await js(`document.documentElement.scrollWidth<=innerWidth+1`),`${width}px audio panel overflows`);
+    await sleep(200);
     await shot(`audio-${width}`);
   }
+  await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
+  await js(`document.querySelector('#motion-studio').scrollIntoView({block:'center'})`);
+  await wait(`window.__pad?.active`, 'active area before disconnect test');
+  await click('[data-audio="music"]');
+  await click('[data-motion-kind="music"]'); await state('idle_motion');
+  await wait(`document.querySelector('#motion-studio .motion-state')?.innerText==='随乐律动中'`, 'music restarted for real disconnect check');
+  await sleep(300);
+  await js(`window.__motionSocket.close(1000,'music disconnect check')`);
+  await sleep(1300);
+  const disconnectedMusic = records().length; await sleep(800);
+  report.music_disconnect_stopped = !records().slice(disconnectedMusic).some(movingIntent);
+  assert(report.music_disconnect_stopped,'true WebSocket disconnect stops music and reconnect never revives it');
   assert(errors.length === 0, errors.join('\n'));
   process.stdout.write(JSON.stringify(report));
 } finally {
