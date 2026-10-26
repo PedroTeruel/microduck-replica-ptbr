@@ -14,7 +14,7 @@ export function missingFields(form, saved) {
   return missing;
 }
 export function requestMessages(history, content) {
-  const messages = [...history.slice(-8).map(m=>({...m,content:m.content.slice(0,2000)})), {role:'user',content}];
+  const messages = [...history.slice(-8).map(m=>({...m})), {role:'user',content}];
   while (messages.length > 1 && messages.reduce((n,m)=>n+m.content.length,0) > 12000) messages.splice(0,2);
   return messages;
 }

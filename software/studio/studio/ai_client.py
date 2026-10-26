@@ -21,8 +21,9 @@ def validate_messages(messages):
         if (not isinstance(message, dict) or set(message) != {'role','content'}
                 or message['role'] != ('user' if index % 2 == 0 else 'assistant')
                 or not isinstance(message['content'], str) or not message['content'].strip()
-                or len(message['content']) > 2000 or '\x00' in message['content']):
-            raise AiError('validation', '消息格式不正确，每条最多 2000 字')
+                or len(message['content']) > (2000 if index % 2 == 0 else OUTPUT_LIMIT)
+                or '\x00' in message['content']):
+            raise AiError('validation', '消息格式不正确，用户输入最多 2000 字，模型回复最多 4000 字')
         total += len(message['content'])
     if total > 12000 or messages[-1]['role'] != 'user':
         raise AiError('validation', '对话过长或顺序不正确，请清空后重试')

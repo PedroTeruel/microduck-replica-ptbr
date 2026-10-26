@@ -123,6 +123,23 @@ class ClientTests(unittest.TestCase):
             with self.subTest(messages=str(messages)[:50]), self.assertRaises(AiError):
                 validate_messages(messages)
 
+    def test_long_assistant_reply_can_be_sent_intact_in_the_next_turn(self):
+        long_reply = 'answer ' + 'x' * 3993
+        self.server.reply = (200,json.dumps({'choices':[{'message':{'content':long_reply}}]}).encode())
+        first = [{'role':'user','content':'first question'}]
+        reply = self.client.complete(self.config,first)
+        self.assertEqual(len(reply),4000)
+        second = [*first,{'role':'assistant','content':reply},{'role':'user','content':'next question'}]
+        self.client.complete(self.config,second)
+        self.assertEqual(self.server.requests[-1][2]['messages'],second)
+        for messages in (
+            [*first,{'role':'assistant','content':'x'*4001},{'role':'user','content':'next'}],
+            [{'role':'user','content':'x'*2000},{'role':'assistant','content':'x'*4000}]*2
+                + [{'role':'user','content':'next'}],
+        ):
+            with self.subTest(lengths=[len(m['content']) for m in messages]), self.assertRaises(AiError):
+                validate_messages(messages)
+
 
 if __name__ == '__main__':
     unittest.main()
