@@ -101,7 +101,7 @@
           "included_in_official_release": "daemon-v0.17.9",
           "scope_note": "Workspace version bump to 0.17.9; no upstream API change (v44).",
           "priority": "release_provenance",
-          "replica_integration": "not_integrated_or_executed"
+          "replica_integration": "integrated_in_local_isolated_runtime_59d95132b6bc13b4acf5772afad7cf974a5d5aba; not_in_published_image; not_hardware_validated"
         },
         {
           "number": 468,
@@ -120,7 +120,7 @@
           "included_in_official_release": "daemon-v0.17.9",
           "scope_note": "Battery/thermal endurance client and log plotting, dependent on odometry, battery state and command arbitration; no replica run or validation.",
           "priority": "medium_for_measurement_review",
-          "replica_integration": "not_integrated_or_executed"
+          "replica_integration": "integrated_in_local_isolated_runtime_59d95132b6bc13b4acf5772afad7cf974a5d5aba; not_in_published_image; not_hardware_validated"
         },
         {
           "number": 467,
@@ -137,7 +137,7 @@
           "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...ecffc587c4260783ea7500ef13221dfd7d36afbd",
           "scope_note": "Three selective demo_antoine fixes: idle head centres on straight pose; beta GC2093 uses rkaiq AE while IMX219 keeps mediad AE; official console reconnects after decoded frames stall after the first frame. API44 unchanged; Studio client and hardware behavior unverified here.",
           "priority": "medium_camera_and_migration_review",
-          "replica_integration": "not_integrated_or_executed; no robot, camera, PCB fabrication or Studio runtime validation performed",
+          "replica_integration": "integrated_in_local_isolated_runtime_59d95132b6bc13b4acf5772afad7cf974a5d5aba; not_in_published_image; not_hardware_validated",
           "merge_commit_sha": "b2505b8e4f8a84af16de055f62fb8c6bb65b0f09",
           "included_in_official_release": "daemon-v0.17.9"
         },
@@ -651,36 +651,67 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-26T12:59:56Z",
+  "checked_at_utc": "2026-10-26T14:13:26.759531Z",
   "latest_review": {
-    "default_branch_changes": true,
-    "new_stable_release": true,
+    "default_branch_changes": false,
+    "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
-    "previous_tracked_prs_merged": true,
-    "merged_pull_requests": {
-      "pollen-robotics/microduck": [
-        467,
-        468,
-        469
-      ]
-    },
-    "new_pull_requests": {
-      "pollen-robotics/microduck": [
-        468,
-        469
-      ]
-    },
-    "new_development_releases": [
-      "daemon-dev-main",
-      "daemon-dev-prepare-release-0.17.9"
-    ],
+    "previous_tracked_prs_merged": false,
+    "new_pull_requests": {},
+    "new_development_releases": [],
     "changed_pull_request_heads": {},
     "official_blog_new_articles": false,
-    "runtime_code_changed": false,
+    "runtime_code_changed_by_heartbeat": false,
+    "human_authorized_local_integration_recorded": true,
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "Official stable 0.17.9 now includes three PR467 fixes and PR468 endurance/plotting, plus version bump PR469; upstream API stays44. PR455-466 remain unmerged. This check only reads sources and maintains documentation; it does not change the isolated 0.17.8 migration target, run endurance, connect hardware, install software or update any replica runtime/image."
+    "notes": "25 read-only GitHub queries found no new upstream state since the previous baseline. Official Microduck blog still lists three articles, latest October23. This documentation update records the separately human-authorized local 0.17.9 integration and software checks, without publishing runtime branches or updating the image/online services."
+  },
+  "replica_migration": {
+    "recorded_on": "2026-10-26",
+    "scope": "Human-authorized local isolated integration; not the published image or running robot.",
+    "runtime_branch": "codex/runtime-0178-feetech",
+    "runtime_source_sha": "59d95132b6bc13b4acf5772afad7cf974a5d5aba",
+    "upstream_tag": "daemon-v0.17.9",
+    "upstream_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+    "previous_runtime_checkpoint": "b1c2d8bd5a9b980b59792b080ed56c024dae94fa",
+    "replica_documentation_commit": "6df47576f2f64751183786cd9223d4352b390ddb",
+    "migration_api": 45,
+    "local_only": true,
+    "runtime_branch_pushed": false,
+    "broad_tests": {
+      "passed": 1345,
+      "failed": 0,
+      "ignored": 65,
+      "rust": "1.94.1"
+    },
+    "actual_ort_tests": {
+      "daemon_passed": 406,
+      "core_ignored_subset_passed": 15,
+      "version": "1.28.0",
+      "overlapping_groups_not_summed": true
+    },
+    "official_console_offline_cases_passed": 9,
+    "arm_binaries": {
+      "count": 16,
+      "source_mode": "git_archive",
+      "target": "aarch64-unknown-linux-gnu.2.31",
+      "hashes_reverified": true,
+      "installed": false,
+      "executed": false,
+      "board_dependencies_verified": false
+    },
+    "media_limit": "ARM compile only; native media tests blocked by unavailable offline async-stream and native GStreamer/GLib development metadata; no real camera, exposure, ICE or live Studio test.",
+    "endurance_limit": "Not invoked. Feetech HOME/enable readiness must be satisfied; imported enable timeout can continue logging without the intended workload. Guard retained.",
+    "pending": [
+      "Full Studio and configuration integration",
+      "Separate test image",
+      "Hardware acceptance"
+    ],
+    "published_image_updated": false,
+    "online_services_updated": false,
+    "robot_connected": false
   }
 }
