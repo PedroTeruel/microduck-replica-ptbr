@@ -13,6 +13,53 @@ BODY_LIMIT = 65536
 OUTPUT_LIMIT = 4000
 
 
+class RequestControl:
+    """Interrupt connected I/O, including a response owned by HTTPResponse.
+
+    Python's OS DNS resolver cannot be interrupted here. An expired resolution/
+    connect is checked before sending any request or credentials. Connection and
+    TLS setup also retain their socket timeout.
+    """
+    def __init__(self):
+        self.stopped = threading.Event()
+        self._lock = threading.Lock()
+        self._socket = None
+
+    @staticmethod
+    def _shutdown(sock):
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+    def bind(self, sock):
+        with self._lock:
+            self._socket = sock
+            stopped = self.stopped.is_set()
+        if stopped:
+            self._shutdown(sock)
+        self.check()
+
+    def cancel(self):
+        self.stopped.set()
+        with self._lock:
+            sock = self._socket
+        self._shutdown(sock)
+
+    def unbind(self):
+        with self._lock:
+            self._socket = None
+
+    def check(self):
+        if self.stopped.is_set():
+            raise TimeoutError()
+
+
 def validate_messages(messages):
     if not isinstance(messages, list) or not 1 <= len(messages) <= 12:
         raise AiError('validation', '对话最多 12 条消息，请清空后重试')
@@ -35,23 +82,35 @@ class CompatibleClient:
         self.timeout = timeout
         self._gate = threading.BoundedSemaphore(2)
 
-    def complete(self, config, messages, *, max_tokens=512):
+    def complete(self, config, messages, *, max_tokens=512, cancel=None):
         validate_messages(messages)
         if not self._gate.acquire(blocking=False):
             raise AiError('busy', 'AI 请求正在进行，请稍后重试', 429)
-        connection = None
+        connection = response = watchdog = None
+        control = cancel if cancel is not None else RequestControl()
         try:
+            control.check()
             url = urlsplit(base_url(config['base_url']))
             cls = http.client.HTTPSConnection if url.scheme == 'https' else http.client.HTTPConnection
             connection = cls(url.hostname, url.port, timeout=self.timeout)
             deadline = time.monotonic() + self.timeout
+            watchdog = threading.Timer(self.timeout,control.cancel)
+            watchdog.daemon = True
+            watchdog.start()
             body = json.dumps({'model':config['model'], 'messages':messages, 'stream':False,
                                'max_tokens':max_tokens}, ensure_ascii=False).encode('utf-8')
             headers = {'Content-Type':'application/json', 'Accept':'application/json'}
             if config['auth_mode'] == 'bearer':
                 headers['Authorization'] = 'Bearer ' + config['api_key']
+            connection.connect()
+            # getresponse() may transfer this socket to HTTPResponse (and clear
+            # connection.sock), so retain the actual socket before parsing headers.
+            control.bind(connection.sock)
+            if time.monotonic() >= deadline:
+                raise TimeoutError()
             connection.request('POST', (url.path.rstrip('/') or '') + '/chat/completions', body, headers)
             response = connection.getresponse()
+            control.check()
             if response.status != 200:
                 code, message = {
                     401:('auth','API Key 无效或尚未开通'),
@@ -66,9 +125,9 @@ class CompatibleClient:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError()
-                if connection.sock:
-                    connection.sock.settimeout(remaining)
+                control.check()
                 part = response.read1(min(8192, BODY_LIMIT + 1 - size))
+                control.check()
                 if not part:
                     break
                 parts.append(part)
@@ -84,17 +143,31 @@ class CompatibleClient:
                 raise AiError('malformed','提供商未返回有效文字回复',502) from None
             if len(result) > OUTPUT_LIMIT:
                 raise AiError('oversize','提供商回复文字过长',502)
+            control.check()
             key = config.get('api_key')
             return result.replace(key,'[已隐藏]') if key else result
         except socket.gaierror:
+            if control.stopped.is_set():
+                raise AiError('timeout','AI 请求超时或已取消，请稍后重试',504) from None
             raise AiError('dns','无法解析提供商地址，请检查网络和 Base URL',502) from None
         except ssl.SSLError:
+            if control.stopped.is_set():
+                raise AiError('timeout','AI 请求超时或已取消，请稍后重试',504) from None
             raise AiError('tls','提供商 HTTPS 证书或 TLS 连接失败',502) from None
         except (TimeoutError, socket.timeout):
             raise AiError('timeout','AI 请求超时，请稍后重试',504) from None
         except (OSError, http.client.HTTPException):
+            if control.stopped.is_set():
+                raise AiError('timeout','AI 请求超时或已取消，请稍后重试',504) from None
             raise AiError('provider','无法连接提供商，请检查服务和网络',502) from None
         finally:
-            if connection:
-                connection.close()
-            self._gate.release()
+            if watchdog:
+                watchdog.cancel()
+            control.unbind()
+            try:
+                if response:
+                    response.close()
+                if connection:
+                    connection.close()
+            finally:
+                self._gate.release()

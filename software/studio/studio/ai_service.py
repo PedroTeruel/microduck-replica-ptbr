@@ -1,7 +1,7 @@
 """Async boundary: disk/network never block the web loop or touch robot ports."""
 import asyncio
 
-from .ai_client import CompatibleClient, validate_messages
+from .ai_client import CompatibleClient, RequestControl, validate_messages
 from .ai_connections import Connections, AiError
 
 
@@ -37,10 +37,15 @@ class AiService:
             raise AiError('incomplete', '请先保存完整的名称、Base URL、Model ID 和认证设置')
         messages = ([{'role':'user','content':'请只回复：连接成功'}] if op == 'test'
                     else validate_messages(body['messages']))
+        control = RequestControl()
         try:
             result = await asyncio.wait_for(asyncio.to_thread(self.client.complete,config,messages,
-                max_tokens=64 if op == 'test' else 512),22)
+                max_tokens=64 if op == 'test' else 512,cancel=control),22)
+        except asyncio.CancelledError:
+            control.cancel()
+            raise
         except asyncio.TimeoutError:
+            control.cancel()
             raise AiError('timeout','AI 请求超时，请稍后重试',504) from None
         result = await asyncio.to_thread(self.store.finish,generation,result)
         return {'id':ident, 'revision':config['revision'], 'text':result}

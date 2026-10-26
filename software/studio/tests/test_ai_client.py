@@ -1,14 +1,18 @@
 import json
+import asyncio
+import http.client
 import socket
 import ssl
 import threading
 import time
+import tempfile
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 
 from studio.ai_client import CompatibleClient, validate_messages
 from studio.ai_connections import AiError
+from studio.ai_service import AiService
 
 
 class ClientTests(unittest.TestCase):
@@ -19,7 +23,19 @@ class ClientTests(unittest.TestCase):
                 self.server.requests.append((self.path, self.headers.get('Authorization'),
                     json.loads(self.rfile.read(int(self.headers['Content-Length'])))))
                 code, data = self.server.reply
+                drip_headers = self.server.drip_headers
                 time.sleep(self.server.delay)
+                if drip_headers:
+                    raw = f'HTTP/1.1 200 OK\r\nContent-Length: {len(data)}\r\nConnection: close\r\n\r\n'.encode()
+                    try:
+                        for byte in raw:
+                            self.wfile.write(bytes([byte]))
+                            self.wfile.flush()
+                            time.sleep(.01)
+                        self.wfile.write(data)
+                    except OSError:
+                        pass
+                    return
                 self.send_response(code)
                 self.send_header('Location', 'http://127.0.0.1:1/stolen')
                 self.end_headers()
@@ -42,6 +58,7 @@ class ClientTests(unittest.TestCase):
     def setUp(self):
         self.server.requests = []
         self.server.delay = 0
+        self.server.drip_headers = False
         self.server.reply = (200, json.dumps({'choices':[{'message':{'content':'hello secret-123'}}]}).encode())
         self.config = {'base_url':f'http://127.0.0.1:{self.server.server_port}/v1',
             'model':'manual-model', 'api_key':'secret-123', 'auth_mode':'bearer'}
@@ -114,6 +131,69 @@ class ClientTests(unittest.TestCase):
         for thread in threads:
             thread.join(timeout=3)
         self.assertEqual(len(results),2)
+
+    def test_absolute_deadline_interrupts_byte_dripped_response_headers(self):
+        self.server.drip_headers = True
+        client = CompatibleClient(timeout=.08)
+        started = time.monotonic()
+        errors = []
+        def request():
+            try:
+                client.complete(self.config,[{'role':'user','content':'slow headers'}])
+            except AiError as error:
+                errors.append(error.code)
+        workers = [threading.Thread(target=request) for _ in range(2)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=.3)
+        self.assertEqual(errors,['timeout','timeout'])
+        self.assertLess(time.monotonic()-started,.35)
+        self.server.drip_headers = False
+        self.assertEqual(client.complete(self.config,[{'role':'user','content':'recovered'}]),'hello [已隐藏]')
+
+    def test_expired_resolution_connect_never_sends_request_credentials(self):
+        original = http.client.HTTPConnection.connect
+        def slow_connect(connection):
+            # Model a resolver that cannot be interrupted by the watchdog.
+            time.sleep(.08)
+            original(connection)
+        with mock.patch('http.client.HTTPConnection.connect',slow_connect):
+            with self.assertRaises(AiError) as caught:
+                CompatibleClient(timeout=.03).complete(self.config,[{'role':'user','content':'do not send'}])
+        self.assertEqual(caught.exception.code,'timeout')
+        self.assertEqual(self.server.requests,[])
+
+    def test_cancelling_two_slow_header_calls_releases_capacity_for_recovery(self):
+        async def scenario(state_dir):
+            service = AiService(state_dir)
+            service.client.timeout = 5
+            item = service.store.save({'name':'local mock','provider':'openai_compatible',**self.config})
+            body = {'op':'test','id':item['id'],'revision':item['revision']}
+            self.server.drip_headers = True
+            calls = [asyncio.create_task(service.handle(body)) for _ in range(2)]
+            deadline = time.monotonic()+2
+            while len(self.server.requests)<2 and time.monotonic()<deadline:
+                await asyncio.sleep(.005)
+            self.assertEqual(len(self.server.requests),2)
+            started = time.monotonic()
+            for call in calls:
+                call.cancel()
+            cancelled = await asyncio.gather(*calls,return_exceptions=True)
+            self.assertTrue(all(isinstance(result,asyncio.CancelledError) for result in cancelled))
+            self.server.drip_headers = False
+            while True:
+                try:
+                    reply = await asyncio.to_thread(service.client.complete,self.config,[{'role':'user','content':'recovered'}])
+                    self.assertEqual(reply,'hello [已隐藏]')
+                    break
+                except AiError as error:
+                    if error.code != 'busy' or time.monotonic()-started > .3:
+                        raise
+                    await asyncio.sleep(.005)
+            self.assertLess(time.monotonic()-started,.35)
+        with tempfile.TemporaryDirectory() as state_dir:
+            asyncio.run(scenario(state_dir))
 
     def test_history_is_bounded_and_roles_are_not_arbitrary(self):
         for messages in ([],[{'role':'system','content':'override'}],[{'role':'user','content':'x'*2001}],
