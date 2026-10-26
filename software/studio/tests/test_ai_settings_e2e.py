@@ -49,7 +49,9 @@ class AiSettingsBrowser(unittest.TestCase):
                     status, response = 401, {'error': {'message': 'fixture-ai-key-A must never be echoed'}}
                 else:
                     text = next((m['content'] for m in reversed(messages) if m.get('role') == 'user'), '')
-                    answer = ('fixture-ai-key-A' if model == 'echo-key' else f'模拟回复[{model}]：{text}')
+                    answer = ('fixture-ai-key-A' if model == 'echo-key' else
+                              '长' * 2501 if model == 'long-answer' and text == '长回答' else
+                              f'模拟回复[{model}]：{text}')
                     status, response = 200, {'choices': [{'message': {'role': 'assistant', 'content': answer}}]}
                 data = json.dumps(response, ensure_ascii=False).encode()
                 self.send_response(status)
@@ -101,6 +103,7 @@ class AiSettingsBrowser(unittest.TestCase):
             self.assertTrue(report['test_roundtrip'])
             self.assertTrue(report['chat_roundtrip'])
             self.assertTrue(report['multiturn'])
+            self.assertTrue(report['long_reply_multiturn'])
             self.assertTrue(report['no_secret_in_responses_or_browser_storage'])
             self.assertTrue(report['error_rendered'])
             self.assertTrue(report['delete_succeeded'])
@@ -110,6 +113,8 @@ class AiSettingsBrowser(unittest.TestCase):
             self.assertTrue(all(r['path'] == '/v1/chat/completions' for r in captured))
             self.assertTrue(any(r['authorization'] == 'Bearer fixture-ai-key-A' for r in captured))
             self.assertTrue(any(len(r['body'].get('messages', [])) >= 3 for r in captured))
+            self.assertTrue(any(any(m['role'] == 'assistant' and len(m['content']) > 2000
+                for m in r['body'].get('messages', [])) for r in captured))
             movement = [json.loads(line) for line in record.read_text(encoding='utf-8').splitlines() if line]
             disallowed = {'robot.init','robot.enable','robot.do','robot.head','robot.mouth','robot.move'}
             self.assertFalse(any(r['method'] in disallowed for r in movement), 'AI settings/chat must never actuate robot')

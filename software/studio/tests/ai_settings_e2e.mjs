@@ -101,6 +101,12 @@ try{
   assert(report.multiturn,'second turn must include real previous conversation');
   await click('[data-ai="clear"]');
   assert(await js(`document.querySelector('[data-ai-history]').innerText.trim()===''`),'clear conversation works');
+  await fill('Model ID','long-answer');await save('本地模拟A');
+  await fill('试聊内容','长回答');await click('[data-ai="send"]');
+  await wait(`document.querySelector('[data-ai-history]')?.innerText.includes('长'.repeat(2501))`,'long provider answer');
+  await fill('试聊内容','长回答之后继续聊');await click('[data-ai="send"]');
+  await wait(`document.querySelector('[data-ai-history]')?.innerText.includes('模拟回复[long-answer]：长回答之后继续聊')`,'next turn after long answer');
+  report.long_reply_multiturn=true;
   await fill('Model ID','reject-auth');await save('本地模拟A');
   await click('[data-ai="test"]');await wait(`document.querySelector('[data-ai-settings] [role="alert"]')`,'provider authentication error');
   report.error_rendered=true;
