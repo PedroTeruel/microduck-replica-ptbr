@@ -18,9 +18,9 @@ Files to inspect/modify as necessary:
 - `software/studio/web/motion-studio.js`, `motion-heartbeat.js`, relevant activity code: music-specific inactivity handling, pending start/stop races, readable explanation.
 - Relevant tests in `software/studio/tests/`, existing Node tests.
 
-- [ ] Reproduce with tests before editing production: start standalone music, mark owner drive area left, advance >.5s and >10s without browser heartbeat; session/output should survive with fresh simulated robot/audio data. Existing behavior must fail this assertion.
-- [ ] Add tests that recording+music, ordinary lively, playback still stop on inactivity/timeout; standalone music stops on actual disconnect, physical pad attached or unreadable, another controller taking ownership/manual operation, source-off, stale telemetry, policy/model changes and estop. Assert neutral cleanup occurs once and old queued output/heartbeat cannot revive.
-- [ ] Implement the narrow predicate and background path. Example interface (adapt to existing architecture):
+- [x] Reproduce with tests before editing production: start standalone music, mark owner drive area left, advance >.5s and >10s without browser heartbeat; session/output should survive with fresh simulated robot/audio data. Existing behavior must fail this assertion.
+- [x] Add tests that recording+music, ordinary lively, playback still stop on inactivity/timeout; standalone music stops on actual disconnect, physical pad attached or unreadable, another controller taking ownership/manual operation, source-off, stale telemetry, policy/model changes and estop. Assert neutral cleanup occurs once and old queued output/heartbeat cannot revive.
+- [x] Implement the narrow predicate and background path. Example interface (adapt to existing architecture):
 
 ```python
 def background_music(self):
@@ -30,14 +30,16 @@ def background_music(self):
 
 All bypasses must depend on this predicate and only skip foreground/heartbeat gates. Do not let a general `invalidate()` ignore safety reasons. Handle fresh telemetry with an actual internal subscriber, not a fake fresh timestamp.
 
-- [ ] Add Node tests for no stop/heartbeats on music blur, ordinary blur still stopping, true disconnect and late start response cancellation.
-- [ ] Protocol/app tests must verify matched Pong, wrong Pong, missing Pong, connection loss/shutdown, inherited event dispatch, ordinary heartbeat deadline and JavaScript-silent music surviving native Pongs. Pending start cannot overwrite a competing explicit stop.
-- [ ] Run `py -3.13 -m unittest tests.test_audio_interaction tests.test_motion_studio` in `software/studio`, then relevant pad/server tests and `node --test` for changed Node modules. Inspect failures, self-review, commit only task files.
-- [ ] Independent spec review, fixes/review as needed; then independent quality review, fixes/review as needed.
+- [x] Add Node tests for no stop/heartbeats on music blur, ordinary blur still stopping, true disconnect and late start response cancellation.
+- [x] Protocol/app tests must verify matched Pong, wrong Pong, missing Pong, connection loss/shutdown, inherited event dispatch, ordinary heartbeat deadline and JavaScript-silent music surviving native Pongs. Pending start cannot overwrite a competing explicit stop.
+- [x] Run `py -3.13 -m unittest tests.test_audio_interaction tests.test_motion_studio` in `software/studio`, then relevant pad/server tests and `node --test` for changed Node modules. Inspect failures, self-review, commit only task files.
+- [x] Independent spec review, fixes/review as needed; then independent quality review, fixes/review as needed.
 
 ## Task 2: Browser and device verification (root agent)
 
-- [ ] Exercise actual local Edge with fake robot/audio: stable music plus blur and `/logs` route/unmount with JavaScript heartbeat filtered >30s continues; native browser Pongs work independently of JS; returning renders active status; no music action heartbeat, source-off and real socket disconnect end with cleanup/no revival; ordinary record/replay baseline remains passing.
-- [ ] Recheck current device state and component identities. Stage frozen tested files with hash manifest and backup. Apply only when motion stopped/standing per current deployment contract; verify user-state hashes and core daemon identities unchanged.
+- [x] Exercise actual local Edge with fake robot/audio: stable music plus blur and `/logs` route/unmount with JavaScript heartbeat filtered >30s continues; native browser Pongs work independently of JS; returning renders active status; no music action heartbeat, source-off and real socket disconnect end with cleanup/no revival; ordinary record/replay baseline remains passing.
+- [x] Recheck current device state and component identities. Stage frozen tested files with hash manifest and backup. Apply only when motion stopped/standing per current deployment contract; verify user-state hashes and core daemon identities unchanged.
 - [ ] With music playing and current stable policy, verify received rhythm timestamps and real head feedback over a foreground→background interval; report head motion separately from known body-model limits. If a physical step needs user action, request only that action after all independent work is ready.
-- [ ] Update feature ledger/verification with exact revisions, checks, actual measured result and unresolved music-locking/body limits. Do not mark original music repair complete on software-only tests.
+- [x] Update feature ledger/verification with exact revisions, checks, actual measured result and unresolved music-locking/body limits. Do not mark original music repair complete on software-only tests.
+
+Physical follow-up: after user confirmed started,450 fresh45s samples showed no head position change although136 rhythm samples were valid. Session state/reason still needs confirmation; this physical step remains unchecked. Details: `../verification/2026-10-26-background-music.md`.
