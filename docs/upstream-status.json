@@ -7,18 +7,34 @@
     "pollen-robotics/microduck": {
       "default_branch": "main",
       "head": {
-        "sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
-        "committed_at": "2026-10-19T14:18:36Z",
-        "subject": "Merge pull request #428 from pollen-robotics/prepare-release-0.17.8"
+        "sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+        "committed_at": "2026-10-26T11:19:18Z",
+        "subject": "Merge pull request #469 from pollen-robotics/prepare-release-0.17.9"
       },
       "latest_stable_release": {
-        "tag_name": "daemon-v0.17.8",
-        "html_url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-v0.17.8",
-        "published_at": "2026-10-19T14:24:43Z",
+        "tag_name": "daemon-v0.17.9",
+        "html_url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-v0.17.9",
+        "published_at": "2026-10-26T11:19:51Z",
         "prerelease": false,
-        "head_sha": "942e58e3aa6dbb28e7037203fff11866122c7567"
+        "head_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f"
       },
       "tracked_development_releases": [
+        {
+          "tag": "daemon-dev-main",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-main",
+          "published_at": "2026-10-26T11:29:24Z",
+          "head_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "prerelease": true,
+          "scope_note": "Development release tracked separately from daemon-v0.17.9; not installed in the replica."
+        },
+        {
+          "tag": "daemon-dev-prepare-release-0.17.9",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-prepare-release-0.17.9",
+          "published_at": "2026-10-26T11:23:42Z",
+          "head_sha": "9897704dfdc998e1908646695264abae5f9d3d30",
+          "prerelease": true,
+          "scope_note": "Development release tracked separately from daemon-v0.17.9; not installed in the replica."
+        },
         {
           "tag": "daemon-dev-ground-grasp-x",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-ground-grasp-x",
@@ -69,21 +85,61 @@
       ],
       "pending_pull_requests": [
         {
+          "number": 469,
+          "url": "https://github.com/pollen-robotics/microduck/pull/469",
+          "title": "Prepare release 0.17.9",
+          "state": "closed",
+          "draft": false,
+          "merged_at": "2026-10-26T11:19:19Z",
+          "merge_commit_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "created_at": "2026-10-26T11:18:29Z",
+          "updated_at": "2026-10-26T11:22:19Z",
+          "head_sha": "9897704dfdc998e1908646695264abae5f9d3d30",
+          "base_sha": "323e106f73ff8dc9d9cb1b0cb04a3b5be2507fa7",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/323e106f73ff8dc9d9cb1b0cb04a3b5be2507fa7...9897704dfdc998e1908646695264abae5f9d3d30",
+          "included_in_official_release": "daemon-v0.17.9",
+          "scope_note": "Workspace version bump to 0.17.9; no upstream API change (v44).",
+          "priority": "release_provenance",
+          "replica_integration": "not_integrated_or_executed"
+        },
+        {
+          "number": 468,
+          "url": "https://github.com/pollen-robotics/microduck/pull/468",
+          "title": "robotctl endurance: a battery and heat test that runs until the pack is empty",
+          "state": "closed",
+          "draft": false,
+          "merged_at": "2026-10-26T11:17:29Z",
+          "merge_commit_sha": "323e106f73ff8dc9d9cb1b0cb04a3b5be2507fa7",
+          "created_at": "2026-10-26T11:05:51Z",
+          "updated_at": "2026-10-26T11:34:43Z",
+          "head_sha": "6816d1307bf3f9aa2c145e1c79e9827fbb112004",
+          "base_sha": "b2505b8e4f8a84af16de055f62fb8c6bb65b0f09",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/b2505b8e4f8a84af16de055f62fb8c6bb65b0f09...6816d1307bf3f9aa2c145e1c79e9827fbb112004",
+          "included_in_official_release": "daemon-v0.17.9",
+          "scope_note": "Battery/thermal endurance client and log plotting, dependent on odometry, battery state and command arbitration; no replica run or validation.",
+          "priority": "medium_for_measurement_review",
+          "replica_integration": "not_integrated_or_executed"
+        },
+        {
           "number": 467,
           "url": "https://github.com/pollen-robotics/microduck/pull/467",
           "title": "Bring back three fixes from demo_antoine: idle head centre, beta rkaiq exposure, console freeze reconnect",
-          "state": "open",
+          "state": "closed",
           "draft": false,
-          "merged_at": null,
+          "merged_at": "2026-10-26T10:59:02Z",
           "created_at": "2026-10-26T10:52:18Z",
-          "updated_at": "2026-10-26T10:52:18Z",
+          "updated_at": "2026-10-26T10:59:06Z",
           "head_sha": "ecffc587c4260783ea7500ef13221dfd7d36afbd",
           "base_branch": "main",
           "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
           "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...ecffc587c4260783ea7500ef13221dfd7d36afbd",
           "scope_note": "Three selective demo_antoine fixes: idle head centres on straight pose; beta GC2093 uses rkaiq AE while IMX219 keeps mediad AE; official console reconnects after decoded frames stall after the first frame. API44 unchanged; Studio client and hardware behavior unverified here.",
           "priority": "medium_camera_and_migration_review",
-          "replica_integration": "not_integrated_or_executed; no robot, camera, PCB fabrication or Studio runtime validation performed"
+          "replica_integration": "not_integrated_or_executed; no robot, camera, PCB fabrication or Studio runtime validation performed",
+          "merge_commit_sha": "b2505b8e4f8a84af16de055f62fb8c6bb65b0f09",
+          "included_in_official_release": "daemon-v0.17.9"
         },
         {
           "number": 466,
@@ -432,7 +488,25 @@
           "head_sha": "6bab33387831e9cc7fb3b463ff5c7085ab78f241",
           "draft": false
         }
-      ]
+      ],
+      "previous_stable_releases": [
+        {
+          "tag_name": "daemon-v0.17.8",
+          "html_url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-v0.17.8",
+          "published_at": "2026-10-19T14:24:43Z",
+          "prerelease": false,
+          "head_sha": "942e58e3aa6dbb28e7037203fff11866122c7567"
+        }
+      ],
+      "pull_request_tracking_note": "The legacy pending_pull_requests list retains merged entries with explicit state and merged_at for historical monitoring.",
+      "stable_release_comparison": {
+        "from_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+        "to_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+        "fixed_url": "https://github.com/pollen-robotics/microduck/compare/942e58e3aa6dbb28e7037203fff11866122c7567...96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+        "commit_count": 8,
+        "file_count": 12,
+        "replica_runtime_or_image_updated": false
+      }
     },
     "pollen-robotics/microduck_rl": {
       "default_branch": "develop",
@@ -577,32 +651,36 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-26T10:55:04Z",
+  "checked_at_utc": "2026-10-26T12:59:56Z",
   "latest_review": {
-    "default_branch_changes": false,
-    "new_stable_release": false,
-    "previous_tracked_prs_merged": false,
-    "new_development_release": null,
-    "newly_tracked_existing_development_releases": {
+    "default_branch_changes": true,
+    "new_stable_release": true,
+    "stable_release_tag": "daemon-v0.17.9",
+    "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+    "previous_tracked_prs_merged": true,
+    "merged_pull_requests": {
       "pollen-robotics/microduck": [
-        "daemon-dev-demo_antoine"
+        467,
+        468,
+        469
       ]
     },
     "new_pull_requests": {
       "pollen-robotics/microduck": [
-        467
-      ],
-      "pollen-robotics/elec_RPI_Robot_HAT": [
-        8
+        468,
+        469
       ]
     },
+    "new_development_releases": [
+      "daemon-dev-main",
+      "daemon-dev-prepare-release-0.17.9"
+    ],
     "changed_pull_request_heads": {},
-    "changed_pull_request_review_states": {},
     "official_blog_new_articles": false,
     "runtime_code_changed": false,
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "Documentation-only fixed-diff review. PR467 separates IMX219/GC2093 exposure ownership and only changes the official webclient reconnect logic; it is not a deployed Studio fix. HAT PR8 only changes PCB source pad widths; no complete DRC clearance, regenerated production artifacts, paste or physical validation is certified. No runtime/EDA/downloaded implementation was executed."
+    "notes": "Official stable 0.17.9 now includes three PR467 fixes and PR468 endurance/plotting, plus version bump PR469; upstream API stays44. PR455-466 remain unmerged. This check only reads sources and maintains documentation; it does not change the isolated 0.17.8 migration target, run endurance, connect hardware, install software or update any replica runtime/image."
   }
 }
