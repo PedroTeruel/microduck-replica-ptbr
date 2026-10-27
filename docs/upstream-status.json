@@ -543,6 +543,36 @@
       },
       "pending_pull_requests": [
         {
+          "number": 85,
+          "url": "https://github.com/pollen-robotics/microduck_rl/pull/85",
+          "title": "The head camera looks forward in the MJCF, not in a load-time patch",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-27T05:11:36Z",
+          "updated_at": "2026-10-27T05:11:36Z",
+          "head_sha": "94abc5a6d7a3647c58705e0827b62eb7b7b1f2ab",
+          "base_sha": "b02fdea4902c2b93b7d34a83a6f05da4ececb7d3",
+          "base_branch": "develop",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck_rl/compare/b02fdea4902c2b93b7d34a83a6f05da4ececb7d3...94abc5a6d7a3647c58705e0827b62eb7b7b1f2ab",
+          "scope_note": "Moves the head_camera orientation fix from sim/camera.py into eight generated MJCF camera elements and seven generation configurations: quat 0 0 -1 0 to 0 0 0 1; removes the load-time 180-degree turn. Keeps the raw sideways image and existing quarter-turn display convention. No lens FoV, exposure, physics, policy weights or real-camera parameters changed.",
+          "priority": "medium_for_vision_simulation_and_training_studio_integration",
+          "adoption_requirement": "Pair updated MJCF and generation configs with removal of the old load-time camera quaternion overwrite; otherwise a second turn can point backwards. Review any additional consumer overrides separately and retain Feetech dynamics/models.",
+          "replica_integration": "not_integrated_or_executed; existing replica training MJCF/config source still contains the old camera quaternion; published image and documented local runtime checkpoint unchanged",
+          "submitter_validation": {
+            "camera_regression_cases_passed": 24,
+            "old_models_reported_failures": 15,
+            "random_head_posture_equivalence_cases": 6,
+            "rendered_image_size": "640x360",
+            "reported_differing_pixels": 0,
+            "full_pytest_suite_run": false,
+            "duck_sim_with_mediad_run": false,
+            "onshape_to_robot_regenerated": false,
+            "verified_by_this_tracker": false
+          },
+          "this_review": "Read-only inspection of all 17 changed files and existing replica training camera/config text. No downloaded source/test execution, MuJoCo rendering, CAD regeneration, model replacement or robot connection."
+        },
+        {
           "number": 84,
           "url": "https://github.com/pollen-robotics/microduck_rl/pull/84",
           "title": "gui: skip joystick sliders for near-zero velocity command ranges (Roulade, fixes #79)",
@@ -703,7 +733,7 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-27T02:39:01.492102Z",
+  "checked_at_utc": "2026-10-27T05:43:26.773974Z",
   "latest_review": {
     "default_branch_changes": false,
     "new_stable_release": false,
@@ -711,11 +741,8 @@
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
     "previous_tracked_prs_merged": false,
     "new_pull_requests": {
-      "pollen-robotics/microduck": [
-        471
-      ],
       "pollen-robotics/microduck_rl": [
-        84
+        85
       ]
     },
     "new_development_releases": [],
@@ -726,7 +753,7 @@
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "Two new open PRs reviewed: official console pointer/blur cleanup and Roulade Viser near-zero slider handling. Four default heads, stable/development tag SHAs and prior PR states remain unchanged. Blog still lists three articles, latest October23. Submitter tests are attributed and were not rerun; existing local 0.17.9 migration and published image state preserved."
+    "notes": "New open RL PR85 moves the head-camera forward orientation into MJCF/config source and removes the compensating load-time turn. Pairing and raw-sideways convention recorded; submitter tests not rerun. Four default heads, stable/dev tag SHAs, prior PR states and the three-article blog remain unchanged. No runtime/model/image or local migration state changed."
   },
   "replica_migration": {
     "recorded_on": "2026-10-26",
