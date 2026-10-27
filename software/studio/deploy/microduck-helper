@@ -3293,14 +3293,19 @@ def native_update_conflict(op):
     """Other helper control verbs also respect interrupted native updates."""
     directory = OPLOG_DIR + '/native-update'
     path = directory + '/journal.json'
-    active = exists(op.ctx,directory+'/active')
+    exclusions = [directory+'/active',HELPER_DIR+'/native-update-restore',
+                  '/etc/systemd/system/robotd.service.d/zzzzzzz-microduck-native-update.conf']
+    exclusions += ['/etc/systemd/system/'+u+'.service.d/zzzzzzz-microduck-native-update.conf'
+                   for u in ('padd',GAMESIR,'duck-echo')]
+    active = any(exists(op.ctx,path) for path in exclusions)
     if not active and exists(op.ctx,path):
         try:
             if os.lstat(op.ctx.p(path)).st_size>65536:raise ValueError('oversized native state')
             m=json.loads(imu_profile_safe_file(op,path))
             if (m.get('schema')!='microduck-native-update/1' or type(m.get('active')) is not bool
-                    or type(m.get('restore_pending',False)) is not bool):raise ValueError('invalid native state')
-            active=m['active'] or m.get('restore_pending',False)
+                    or type(m.get('restore_pending',False)) is not bool
+                    or type(m.get('cleanup_pending',False)) is not bool):raise ValueError('invalid native state')
+            active=m['active'] or m.get('restore_pending',False) or m.get('cleanup_pending',False)
         except (OSError,ValueError,TypeError,AttributeError,Stop):active=True
     if active:raise Stop(EXIT_STATE,'native_update_active','主程序更新尚未完成：先完成或恢复更新，再操作总线 / 标定')
 

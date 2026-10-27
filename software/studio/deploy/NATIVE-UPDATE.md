@@ -40,15 +40,20 @@ saved file blocks restoration to normal operation and is never overwritten.
 `/var/lib/microduck-helper/native-update/journal.json` is root-owned 0644 under
 0755 public parents. It contains bounded status, hashes and process identities,
 not user-file bytes. Its transaction backup directory is 0700 and files 0600.
-The persistent `active` marker and journal `restore_pending` also mean busy.
-Unreadable, malformed or missing journals with an active marker fail closed.
+The persistent `active` marker and journal `restore_pending` / `cleanup_pending`
+also mean busy. Any remaining owned exclusion file keeps the public reader busy,
+including interruption after the active marker was removed. Unreadable,
+malformed or missing journals with an exclusion file fail closed.
 Studio integration can read `helper.native_update_state()`; app and standalone
 voice integration must honor the same bounded, fail-closed guard semantics.
 
 The helper holds its operation lock, service-management lock and the updater's
 exclusive motion lease. It queries app/voice readiness before creating its own
-busy state. It records controller states, prevents their startup with owned
-fixed unit conditions, stops them and repeats the physical gate. A persistent
+busy state. It records known controller load/active/substates and refuses
+transitional or unknown states before mutation. Optional absent units are
+recorded separately. It prevents controller startup with owned fixed unit
+conditions, stops active services, confirms terminal inactive/failed states,
+and repeats that exclusion check during the physical and runtime gates. A persistent
 commissioning override is fsynced before replacing the binary atomically.
 Verification uses the newly running process and actual deployment-info, then
 confirms unchanged user files and unloaded feedback before normal mode.
@@ -57,7 +62,12 @@ Controller exclusion survives reboot even while normal robotd is being
 verified. A boot-local restore permit allows only the verified transaction to
 restore its recorded controller states while persistent exclusion stays in
 place. Completion and the owned protected-service baseline are durable before
-the exclusion is removed. A reboot loses the permit and requires a fresh
+the exclusion is removed. Cleanup remains journaled as pending through every
+unlink, directory fsync and service reload; the final record clears it only
+after all exclusion files are gone. Recovery also recognizes owned leftovers
+from an earlier cleanup without an active marker, verifies real process,
+unloaded state and unchanged user files, then finishes cleanup idempotently.
+A reboot loses the permit and requires a fresh
 process/unload verification. Missing `/run` health baseline is admitted only
 after a changed boot identity and owned lifecycle proof; same-boot foreign
 identity/baseline changes refuse.

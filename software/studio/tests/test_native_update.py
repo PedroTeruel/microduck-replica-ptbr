@@ -42,6 +42,7 @@ class NativeWorld(RedoWorld):
         self.boot = 'test-boot'
         self.fail = None
         self.hook = None
+        self.absent_units=set()
         self.units['duck-echo'] = 'active'
         self.exec_override = ' '.join(ARGS)
         self.path(TARGET).parent.mkdir(parents=True)
@@ -61,7 +62,8 @@ class NativeWorld(RedoWorld):
         self.effective_commissioning=self.path(GUARD).exists() or self.path(H.COMMISSIONING_DROPIN).exists()
         self.live_mode='commissioning' if self.effective_commissioning else 'motion'
         self.robotd='active';self.publish_process()
-        for unit in N.CONTROLLERS:self.units[unit]='inactive' if self.path(N.ACTIVE).exists() else 'active'
+        for unit in N.CONTROLLERS:
+            self.units[unit]='inactive' if self.path(N.ACTIVE).exists() or unit in self.absent_units else 'active'
 
     def _rpc(self, method, params=None):
         if method == 'robot.health': return {'battery':{'volts':7.7,'percent':60}}
@@ -83,6 +85,11 @@ class NativeWorld(RedoWorld):
             values += '\nDropInPaths=/etc/systemd/system/robotd.service.d/zzzz-r17-0151.conf ' + (GUARD if self.path(GUARD).exists() else '') + '\n'
         if unit == 'padd':
             values += '\nMainPID=20\nInvocationID=pad-generation\nExecMainStartTimestampMonotonic=20\n'
+        if unit in N.CONTROLLERS:
+            state=self.units.get(unit,'inactive')
+            sub={'active':'running','inactive':'dead','failed':'failed','activating':'start-pre',
+                 'deactivating':'stop-sigterm','reloading':'reload'}.get(state,'unknown')
+            values+='\nLoadState='+('not-found' if unit in self.absent_units else 'loaded')+'\nSubState='+sub+'\n'
         return values
 
     def run(self, argv):
@@ -508,6 +515,114 @@ class NativeTest(unittest.TestCase):
         with self.assertRaises(OSError):self.update()
         self.assertFalse(self.w.path(N.JOURNAL).exists())
 
+    def test_controller_transitions_and_unknown_states_refuse_before_journal_or_binary_mutation(self):
+        for state in ('activating','deactivating','reloading','unknown',''):
+            with self.subTest(state=state):
+                self.w.units['padd']=state
+                with self.assertRaises(H.Stop):self.update()
+                self.assertFalse(self.w.path(N.JOURNAL).exists())
+                self.assertFalse(self.w.path(GUARD).exists())
+                self.assertEqual(self.w.path(TARGET).read_bytes(),OLD)
+
+    def test_optional_not_found_controller_is_recorded_without_start_or_stop(self):
+        self.w.absent_units.add('gamesir-xboxd')
+        self.w.units['gamesir-xboxd']='inactive'
+        self.assertEqual(self.update(),0)
+        self.assertEqual(self.journal().get('controller_states',{}).get('gamesir-xboxd'),'absent')
+        self.assertFalse(any(call[:2]==['systemctl','stop'] and call[-1]=='gamesir-xboxd' for call in self.w.calls))
+        self.assertFalse(any(call[:2]==['systemctl','start'] and call[-1]=='gamesir-xboxd' for call in self.w.calls))
+
+    def test_controller_stop_must_confirm_terminal_state(self):
+        original=self.w.run
+        def run(argv):
+            result=original(argv)
+            if argv==['systemctl','stop','padd']:self.w.units['padd']='deactivating'
+            return result
+        self.w.run=run
+        self.assertEqual(self.update(),5)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),OLD)
+        self.assertTrue(self.journal()['active'])
+
+    def test_inflight_controller_after_exclusion_cannot_pass_final_physical_gate(self):
+        original=self.w.bus_mutate
+        def bus(status):
+            original(status)
+            if self.w.path(N.ACTIVE).exists():self.w.units['padd']='activating'
+        self.w.bus_mutate=bus
+        self.assertEqual(self.update(),5)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),OLD)
+        self.assertTrue(self.journal()['active'])
+
+    def test_unknown_controller_appearing_after_binary_replace_never_resumes_normal(self):
+        original=self.w.run
+        def run(argv):
+            result=original(argv)
+            if argv==['systemctl','start','robotd']:self.w.units['padd']='unknown'
+            return result
+        self.w.run=run
+        self.assertEqual(self.update(),5)
+        self.assertEqual(self.w.live_mode,'commissioning')
+        self.assertTrue(self.w.path(GUARD).exists())
+        self.assertTrue(self.journal()['active'])
+
+    def test_legacy_owned_cleanup_artifacts_recover_when_active_marker_already_removed(self):
+        remove=H.remove
+        def cut(ctx,path):
+            result=remove(ctx,path)
+            if path==N.ACTIVE:raise PowerCut()
+            return result
+        with mock.patch.object(H,'remove',side_effect=cut),self.assertRaises(PowerCut):self.update()
+        m=self.journal();m.pop('cleanup_pending',None)
+        self.w.path(N.JOURNAL).write_text(json.dumps(m),encoding='utf-8')
+        self.w.reboot();self.op=H.Op(self.ctx,'robotd-update')
+        self.assertEqual(self.update('recover'),0)
+        self.assertFalse(any(self.w.path(p).exists() for p in N.Transaction(H,self.op,self.release).controller_guard_paths()))
+        self.assertEqual(self.update('recover'),0)
+
+    def test_cleanup_recovery_preserves_a_foreign_controller_guard(self):
+        remove=H.remove
+        def cut(ctx,path):
+            result=remove(ctx,path)
+            if path==N.ACTIVE:raise PowerCut()
+            return result
+        with mock.patch.object(H,'remove',side_effect=cut),self.assertRaises(PowerCut):self.update()
+        path=N.Transaction(H,self.op,self.release).controller_guard_paths()[0]
+        self.w.path(path).write_bytes(b'# later foreign guard')
+        self.w.reboot();self.op=H.Op(self.ctx,'robotd-update')
+        self.assertEqual(self.update('recover'),5)
+        self.assertEqual(self.w.path(path).read_bytes(),b'# later foreign guard')
+        self.assertTrue(self.journal()['active'])
+
+    def test_cleanup_recovery_refuses_later_user_file_changes_before_controller_restore(self):
+        remove=H.remove
+        def cut(ctx,path):
+            result=remove(ctx,path)
+            if path==N.ACTIVE:raise PowerCut()
+            return result
+        with mock.patch.object(H,'remove',side_effect=cut),self.assertRaises(PowerCut):self.update()
+        self.w.reboot();self.op=H.Op(self.ctx,'robotd-update')
+        later=b'# later changed calibration'
+        self.w.path(H.CALIB).write_bytes(later)
+        first=len(self.w.calls)
+        self.assertEqual(self.update('recover'),5)
+        self.assertEqual(self.w.path(H.CALIB).read_bytes(),later)
+        self.assertFalse(any(call[:2]==['systemctl','start'] and call[-1] in N.CONTROLLERS for call in self.w.calls[first:]))
+        self.assertTrue(self.journal()['active'])
+
+    def test_cleanup_recovery_refuses_foreign_lifecycle_without_restoring_controllers(self):
+        remove=H.remove
+        def cut(ctx,path):
+            result=remove(ctx,path)
+            if path==N.ACTIVE:raise PowerCut()
+            return result
+        with mock.patch.object(H,'remove',side_effect=cut),self.assertRaises(PowerCut):self.update()
+        self.w.reboot();self.op=H.Op(self.ctx,'robotd-update')
+        self.w.exec_override=' '.join(ARGS).replace('/run/robotd.sock','/tmp/foreign.sock')
+        first=len(self.w.calls)
+        self.assertEqual(self.update('recover'),5)
+        self.assertFalse(any(call[:2]==['systemctl','start'] and call[-1] in N.CONTROLLERS for call in self.w.calls[first:]))
+        self.assertTrue(self.journal()['active'])
+
 
 class PowerCut(BaseException):pass
 
@@ -540,6 +655,49 @@ def boundary_test(boundary):
 for _boundary in ('prepared','guarding','guard_file','guarded','replacing','binary_replace','replaced',
                   'verified_commissioning','restoring_normal','verified_motion','completed'):
     setattr(NativeTest,'test_reboot_after_'+_boundary,boundary_test(_boundary))
+
+
+def cleanup_boundary_test(boundary,after_sync=False):
+    def test(self):
+        t=N.Transaction(H,self.op,self.release)
+        paths=[N.ACTIVE]+t.controller_guard_paths()+[N.RESTORE_PERMIT]
+        target=paths[boundary]
+        fired=[]
+        if not after_sync:
+            remove=H.remove
+            def cut(ctx,path):
+                result=remove(ctx,path)
+                if path==target and not fired:
+                    fired.append(True);raise PowerCut()
+                return result
+            patch=mock.patch.object(H,'remove',side_effect=cut)
+        else:
+            sync=N.Transaction.sync_dir
+            def cut(transaction,path):
+                result=sync(transaction,path)
+                m=transaction.load()
+                if (m and m.get('completion')=='completed' and m.get('restore_pending') is False
+                        and not transaction.present(N.ACTIVE) and not transaction.present(N.RESTORE_PERMIT)
+                        and not any(transaction.present(p) for p in transaction.controller_guard_paths()) and not fired):
+                    fired.append(True);raise PowerCut()
+                return result
+            patch=mock.patch.object(N.Transaction,'sync_dir',cut)
+        with patch,self.assertRaises(PowerCut):self.update()
+        from studio import helper
+        self.assertTrue(helper.native_update_state(root=self.tmp)['active'],'cleanup must remain publicly busy')
+        self.w.reboot();self.op=H.Op(self.ctx,'robotd-update')
+        self.assertEqual(self.update('recover'),0)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),NEW)
+        self.assertFalse(any(self.w.path(p).exists() for p in paths))
+        self.assertFalse(helper.native_update_state(root=self.tmp)['active'])
+        self.assertEqual(self.update('recover'),0)
+        self.assertTrue(all(self.w.path(p).read_bytes()==v for p,v in self.saved.items()))
+    return test
+
+
+for _index in range(5):
+    setattr(NativeTest,'test_cleanup_reboot_after_unlink_'+str(_index),cleanup_boundary_test(_index))
+setattr(NativeTest,'test_cleanup_reboot_after_final_directory_fsync',cleanup_boundary_test(0,after_sync=True))
 
 
 if __name__=='__main__':unittest.main()

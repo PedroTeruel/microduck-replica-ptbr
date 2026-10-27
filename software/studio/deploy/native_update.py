@@ -135,7 +135,8 @@ class Transaction:
         try:
             m = json.loads(self.read(JOURNAL, 65536))
             if (m.get('schema') != SCHEMA or type(m.get('active')) is not bool
-                    or type(m.get('restore_pending',False)) is not bool or m.get('phase') not in PHASES
+                    or type(m.get('restore_pending',False)) is not bool
+                    or type(m.get('cleanup_pending',False)) is not bool or m.get('phase') not in PHASES
                     or (m.get('reason') is not None and (not isinstance(m['reason'],str) or len(m['reason'])>300))
                     or (os.name=='posix' and m.get('binary_mode') not in (0o755,0o555))
                     or not re.fullmatch('[0-9a-f]{32}', m.get('transaction_id', ''))
@@ -144,9 +145,12 @@ class Transaction:
                     or m.get('mode') not in ('motion', 'startup', 'commissioning')
                     or set(m.get('controllers', {})) != set(CONTROLLERS)
                     or any(type(v) is not bool for v in m['controllers'].values())
+                    or ('controller_states' in m and (set(m['controller_states'])!=set(CONTROLLERS)
+                        or any(state not in ('active','inactive','failed','absent') for state in m['controller_states'].values())
+                        or any(m['controllers'][u]!=(state=='active') for u,state in m['controller_states'].items())))
                     or [row.get('path') for row in m.get('files', [])] != list(USER_FILES)):
                 raise ValueError('journal schema mismatch')
-            if m['active'] or m.get('restore_pending') or self.present(ACTIVE):
+            if m['active'] or m.get('restore_pending') or m.get('cleanup_pending') or self.has_exclusion():
                 directory = STATE + '/' + m['transaction_id']
                 if sha(self.read(directory+'/robotd')) != m['old_sha256']:
                     raise ValueError('binary backup changed')
@@ -284,14 +288,23 @@ class Transaction:
                 or not self.numeric(battery.get('percent')) or battery['percent']<25): self.refuse('电量不足或无法确认供电')
         if shutil.disk_usage(self.ctx.p('/var/lib')).free<512*1024*1024: self.refuse('磁盘可用空间不足 512 MiB')
 
+    def controller_state(self,unit):
+        status=self.unit(unit)
+        load,active,sub=(status.get(key) for key in ('LoadState','ActiveState','SubState'))
+        if (load,active,sub)==('not-found','inactive','dead'):return 'absent'
+        if load=='loaded' and (active,sub) in (('active','running'),('inactive','dead'),('failed','failed')):
+            return active
+        self.refuse('控制服务处于过渡 / 未知状态，未确认停止：'+unit)
+
     def stop_controllers(self):
-        for unit in CONTROLLERS:
-            if self.h.is_active(self.op, unit):
+        states={unit:self.controller_state(unit) for unit in CONTROLLERS}
+        for unit,state in states.items():
+            if state=='active':
                 if self.ctx.run(['systemctl','stop',unit])[0]: self.refuse('控制服务未停下')
-        if any(self.h.is_active(self.op, unit) for unit in CONTROLLERS): self.refuse('控制服务仍在运行')
+        self.assert_controllers_stopped()
 
     def assert_controllers_stopped(self):
-        if any(self.h.is_active(self.op,u) for u in CONTROLLERS): self.refuse('事务期间控制服务被外部启动')
+        if any(self.controller_state(u)=='active' for u in CONTROLLERS): self.refuse('事务期间控制服务被外部启动')
 
     def guard(self, m):
         return ('# Owned by microduck-helper robotd-update: '+m['transaction_id']+'\n[Service]\nExecStart=\nExecStart='
@@ -299,6 +312,9 @@ class Transaction:
 
     def controller_guard_paths(self):
         return ['/etc/systemd/system/'+u+'.service.d/zzzzzzz-microduck-native-update.conf' for u in CONTROLLERS]
+
+    def has_exclusion(self):
+        return any(self.present(p) for p in [ACTIVE,RESTORE_PERMIT,GUARD]+self.controller_guard_paths())
 
     def controller_guard(self, m):
         # Trigger conditions are ORed: a boot-local permit lets this verified
@@ -358,6 +374,7 @@ class Transaction:
         deadline = self.ctx.now()+40
         while True:
             try:
+                self.assert_controllers_stopped()
                 identity = self.process(expected, ARGS+(['--commissioning'] if mode=='commissioning' else []))
                 hello = self.ctx.rpc('hello')
                 if hello.get('api_version')!=40: self.refuse('主程序 IPC 版本不匹配')
@@ -366,6 +383,7 @@ class Transaction:
                     if rc or json.loads(out)!={'build':BUILD,'model_api':2,'official_version':'0.15.1'}:
                         self.refuse('主程序 deployment-info 与已审核构建不一致')
                 if self.gate()!=mode: self.refuse('主程序没有进入预期模式')
+                self.assert_controllers_stopped()
                 self.unchanged(m)
                 if self.process(expected,ARGS+(['--commissioning'] if mode=='commissioning' else []))!=identity:
                     self.refuse('验证期间主程序进程被替换')
@@ -380,13 +398,13 @@ class Transaction:
         identities = {}
         for unit, was in m['controllers'].items():
             if was:
-                if self.ctx.run(['systemctl','start',unit])[0] or not self.h.is_active(self.op,unit):
+                if self.ctx.run(['systemctl','start',unit])[0] or self.controller_state(unit)!='active':
                     self.refuse('控制服务恢复失败')
                 identities[unit] = self.unit(unit)
         return identities
 
     def finish_mode(self, m, expected):
-        self.unchanged(m); self.owned(m)
+        self.unchanged(m); self.owned(m);self.assert_controllers_stopped()
         if m['mode']=='motion':
             self.save(m,'restoring_normal')
             self.stop()
@@ -411,7 +429,7 @@ class Transaction:
         # Keep the public busy guard through controller restoration, including
         # the narrow interval where active=false is already durable.
         self.save(m,phase,active=False,restore_pending=True,completion=phase,commit_sha256=expected,
-                  running_verified=True,installed_sha256=expected,reason=reason)
+                  cleanup_pending=True,running_verified=True,installed_sha256=expected,reason=reason)
         self.unchanged(m)
         identity=self.process(expected,ARGS+(['--commissioning'] if m['mode']!='motion' else []))
         self.directory(os.path.dirname(RESTORE_PERMIT))
@@ -434,6 +452,7 @@ class Transaction:
                 self.write(PROTECTED,json.dumps(baseline).encode(),0o600)
         self.save(m,phase,restore_pending=False)
         self.remove_controller_exclusion(m)
+        self.save(m,phase,cleanup_pending=False)
 
     def factory(self, m):
         return ('# Owned by microduck-helper robotd-update factory handoff: '+m['transaction_id']+'\n[Service]\nExecStart=\nExecStart='
@@ -456,7 +475,7 @@ class Transaction:
     def status(self):
         m = self.load()
         data = {key:m.get(key) for key in PUBLIC if key in m} if m else {'active':False,'phase':'idle','running_verified':False}
-        data['active']=data['active'] or bool(m and m.get('restore_pending')) or self.present(ACTIVE)
+        data['active']=data['active'] or bool(m and (m.get('restore_pending') or m.get('cleanup_pending'))) or self.has_exclusion()
         payload = self.payload()
         data['available'] = payload is not None
         data['target_sha256'] = REVIEWED_SHA256 if payload else None
@@ -491,12 +510,13 @@ class Transaction:
             m = self.load()
             if action=='recover':
                 if not m:
-                    if self.present(ACTIVE):self.refuse('保护标记存在但记录缺失','native_tampered')
+                    if self.has_exclusion():self.refuse('保护文件存在但记录缺失','native_tampered')
                     return self.op.finish(0,'native_recovered',detail={'active':False})
-                if not m['active'] and not m.get('restore_pending') and not self.present(ACTIVE):
+                pending=m.get('restore_pending') or m.get('cleanup_pending') or self.has_exclusion()
+                if not m['active'] and not pending:
                     return self.op.finish(0,'native_recovered',detail={'active':False})
                 try:
-                    if not m['active'] and (m.get('restore_pending') or self.present(ACTIVE)):
+                    if not m['active'] and pending:
                         self.owned(m);self.exclude_controller_starts(m);self.stop_controllers()
                         expected=m['commit_sha256']
                         if expected not in (m['old_sha256'],m['target_sha256']):self.refuse('完成记录的主程序摘要不匹配')
@@ -507,8 +527,9 @@ class Transaction:
                 except Exception as error:
                     self.save(m,'recovery_required',active=True,reason=str(error)[:300])
                     return self.op.finish(5,'native_recovery_required',detail={k:m.get(k) for k in PUBLIC})
-            if m and (m['active'] or m.get('restore_pending')): self.refuse('上次主程序更新尚未恢复', 'native_recovery_required')
-            if self.present(GUARD) or self.present(ACTIVE) or any(self.present(p) for p in self.controller_guard_paths()):
+            if m and (m['active'] or m.get('restore_pending') or m.get('cleanup_pending')):
+                self.refuse('上次主程序更新尚未恢复', 'native_recovery_required')
+            if self.has_exclusion():
                 self.refuse('存在未归属的主程序更新保护文件', 'native_tampered')
             payload = self.payload()
             if payload is None: self.refuse('本软件包没有主程序更新', 'native_unavailable')
@@ -522,6 +543,7 @@ class Transaction:
             process = self.process(old_hash,args)
             if old_hash==REVIEWED_SHA256: return self.op.finish(0,'native_current',detail={'active':False,'running_verified':True})
             mode = self.gate(allow_startup=True)
+            controller_states={unit:self.controller_state(unit) for unit in CONTROLLERS}
             factory = self.present(self.h.COMMISSIONING_DROPIN)
             if (args==ARGS+['--commissioning']) != factory: self.refuse('标定启动状态与持久模式文件不一致')
             protected = json.loads(self.read(PROTECTED,65536)) if self.present(PROTECTED) else None
@@ -540,7 +562,7 @@ class Transaction:
             m = {'schema':SCHEMA,'active':True,'transaction_id':ident,'mode':mode,
                  'available':True,'old_sha256':old_hash,'target_sha256':REVIEWED_SHA256,'installed_sha256':old_hash,
                  'running_verified':False,'binary_mode':stat.S_IMODE(os.lstat(self.ctx.p(TARGET)).st_mode),
-                 'files':rows,'controllers':{u:self.h.is_active(self.op,u) for u in CONTROLLERS},
+                 'files':rows,'controllers':{u:state=='active' for u,state in controller_states.items()},'controller_states':controller_states,
                  'original_process':process,'protected':protected,
                  'factory_sha256':sha(self.read(self.h.COMMISSIONING_DROPIN,65536)) if factory else None}
             self.save(m,'prepared')
@@ -548,6 +570,7 @@ class Transaction:
                 self.exclude_controller_starts(m)
                 self.stop_controllers()
                 if self.gate(allow_startup=mode!='motion')!=mode: self.refuse('最终检查时主程序模式已改变')
+                self.assert_controllers_stopped()
                 if self.process(old_hash,args)!=process: self.refuse('最终检查时主程序代次已改变')
                 self.unchanged(m)
                 self.save(m,'guarding')

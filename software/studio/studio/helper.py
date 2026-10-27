@@ -41,6 +41,10 @@ LAST_RESULT = "/run/microduck-helper/last-result.json"
 IMU_REDO_MANIFEST = "/var/lib/microduck-helper/imu-recalibrate/manifest.json"
 NATIVE_UPDATE_JOURNAL = "/var/lib/microduck-helper/native-update/journal.json"
 NATIVE_UPDATE_ACTIVE = "/var/lib/microduck-helper/native-update/active"
+NATIVE_UPDATE_EXCLUSIONS = (NATIVE_UPDATE_ACTIVE, "/run/microduck-helper/native-update-restore",
+    "/etc/systemd/system/robotd.service.d/zzzzzzz-microduck-native-update.conf", *(
+        "/etc/systemd/system/"+unit+".service.d/zzzzzzz-microduck-native-update.conf"
+        for unit in ("padd", "gamesir-xboxd", "duck-echo")))
 
 _avail = None
 
@@ -266,6 +270,7 @@ def native_update_state(*, root="/"):
     """Bounded persistent motion guard. Malformed/unreadable state fails closed."""
     empty = {"active": False, "phase": "idle", "running_verified": False}
     path = os.path.join(root, NATIVE_UPDATE_JOURNAL.lstrip("/"))
+    exclusions = any(os.path.lexists(os.path.join(root,p.lstrip('/'))) for p in NATIVE_UPDATE_EXCLUSIONS)
     try:
         parts = NATIVE_UPDATE_JOURNAL.strip("/").split("/")
         for index in range(1, len(parts)+1):
@@ -282,6 +287,7 @@ def native_update_state(*, root="/"):
         if (not isinstance(value, dict) or value.get("schema") != "microduck-native-update/1"
                 or type(value.get("active")) is not bool
                 or type(value.get("restore_pending", False)) is not bool
+                or type(value.get("cleanup_pending", False)) is not bool
                 or not re.fullmatch(r"[0-9a-f]{32}", value.get("transaction_id", ""))
                 or value.get("phase") not in ("prepared","guarding","guarded","replacing","replaced","verified_commissioning",
                     "restoring_normal","verified_motion","factory_handoff_pending","completed","rolled_back",
@@ -290,10 +296,10 @@ def native_update_state(*, root="/"):
             raise ValueError("更新记录格式不正确")
         public = ("active", "phase", "transaction_id", "available", "installed_sha256", "target_sha256", "running_verified", "mode", "reason")
         result = {key:value.get(key) for key in public if key in value}
-        result['active'] = result['active'] or value.get('restore_pending') is True or os.path.lexists(os.path.join(root,NATIVE_UPDATE_ACTIVE.lstrip('/')))
+        result['active'] = result['active'] or value.get('restore_pending') is True or value.get('cleanup_pending') is True or exclusions
         return result
     except FileNotFoundError:
-        if os.path.lexists(os.path.join(root,NATIVE_UPDATE_ACTIVE.lstrip('/'))):
+        if exclusions:
             return {**empty,"active":True,"phase":"recovery_required","reason":"主程序更新保护标记存在，记录缺失"}
         return empty
     except (OSError, ValueError, TypeError, AttributeError):
