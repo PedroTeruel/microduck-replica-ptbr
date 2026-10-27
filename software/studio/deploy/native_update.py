@@ -458,10 +458,42 @@ class Transaction:
         return ('# Owned by microduck-helper robotd-update factory handoff: '+m['transaction_id']+'\n[Service]\nExecStart=\nExecStart='
                 +' '.join(self.h.imu_redo_quote(a) for a in ARGS+['--commissioning'])+'\n').encode()
 
+    def protect_failure(self,m):
+        """Attempt every fixed safety action, even when an earlier one fails.
+
+        A controller may have passed its start condition before a restore
+        timed out. Conditions do not stop it: protect and stop robotd first,
+        then independently stop each controller. Unknown query results never
+        skip a stop attempt, and errors forbid normal-mode restoration.
+        """
+        errors=[]
+        def attempt(label,action):
+            try:action()
+            except Exception:errors.append(label)
+        attempt('journal',lambda:self.save(m,'recovering',active=True,restore_pending=False,running_verified=False))
+        attempt('controller_exclusion',lambda:self.exclude_controller_starts(m))
+        attempt('commissioning_guard',lambda:self.install_guard(m))
+        attempt('robotd_stop',self.stop)
+        for unit in CONTROLLERS:
+            try:state=self.controller_state(unit)
+            except Exception:state=None
+            if state!='absent':
+                def stop_controller(unit=unit):
+                    if self.ctx.run(['systemctl','stop',unit],timeout=20)[0]:self.refuse('控制服务停止失败：'+unit)
+                attempt(unit+'_stop',stop_controller)
+        for unit in CONTROLLERS:
+            def confirm_controller(unit=unit):
+                if self.controller_state(unit)=='active':self.refuse('控制服务仍在运行：'+unit)
+            attempt(unit+'_terminal',confirm_controller)
+        def confirm_robotd():
+            if self.unit('robotd').get('ActiveState') not in ('inactive','failed'):self.refuse('保护期间主程序重新出现')
+        attempt('robotd_terminal',confirm_robotd)
+        return errors
+
     def rollback(self, m):
-        self.save(m,'recovering',active=True,restore_pending=False,running_verified=False)
-        self.owned(m);self.exclude_controller_starts(m);self.stop_controllers();self.install_guard(m)
-        self.stop()
+        errors=self.protect_failure(m)
+        if errors:self.refuse('已独立尝试全部保护和停止操作，仍需恢复：'+','.join(errors),'native_recovery_required')
+        self.owned(m);self.assert_controllers_stopped()
         # Never restore config/calibration from backups. A later user change
         # blocks normal mode and remains untouched even when binary restore works.
         old = self.read(STATE+'/'+m['transaction_id']+'/robotd')
@@ -525,7 +557,8 @@ class Transaction:
                     else:self.rollback(m)
                     return self.op.finish(0,'native_recovered',detail={k:m.get(k) for k in PUBLIC})
                 except Exception as error:
-                    self.save(m,'recovery_required',active=True,reason=str(error)[:300])
+                    self.protect_failure(m)
+                    self.save(m,'recovery_required',active=True,running_verified=False,reason=str(error)[:300])
                     return self.op.finish(5,'native_recovery_required',detail={k:m.get(k) for k in PUBLIC})
             if m and (m['active'] or m.get('restore_pending') or m.get('cleanup_pending')):
                 self.refuse('上次主程序更新尚未恢复', 'native_recovery_required')
@@ -588,6 +621,7 @@ class Transaction:
             except Exception as error:
                 try: self.rollback(m)
                 except Exception as rollback_error:
+                    self.protect_failure(m)
                     self.save(m,'recovery_required',active=True,running_verified=False,reason=str(rollback_error)[:300])
                 return self.op.finish(5,'native_failed',reason=str(error)[:300],detail={k:m.get(k) for k in PUBLIC})
         finally:

@@ -78,6 +78,15 @@ guards stay recoverable. `recover` is idempotent and validates persisted backup
 hashes and ownership; it never infers completion from a version file. Existing
 webpage/voice rollback covers that software layer only.
 
+Failure protection also handles a partial controller restore. It independently
+attempts the busy journal, owned controller exclusions and commissioning guard,
+then stops robotd before waiting on individual controller stops. A failed or
+unknown controller query never skips its fixed stop command or the remaining
+services. Every controller and robotd must subsequently be confirmed terminal
+before rollback can continue. Stop/query/guard errors retain recovery state;
+they never allow restoration to normal mode. A later recovery verifies a new
+actual process and unloaded feedback before restoring the recorded controllers.
+
 Qinmo hardware remains experimental. These tests exercise simulated services,
 real temporary files/permissions and publisher input. They do not constitute
 device deployment, standing, walking or physical-board acceptance.

@@ -623,6 +623,124 @@ class NativeTest(unittest.TestCase):
         self.assertFalse(any(call[:2]==['systemctl','start'] and call[-1] in N.CONTROLLERS for call in self.w.calls[first:]))
         self.assertTrue(self.journal()['active'])
 
+    def partial_restore_failure(self,mode='activating',stop_error=None,query_error=False):
+        original_run,original_show=self.w.run,self.w.show
+        faults={'restore':True,'failed':False,'stop':stop_error,'query':query_error}
+        starts=[]
+        def run(argv):
+            if argv==['systemctl','start','duck-echo'] and faults['restore']:
+                self.w.calls.append(list(argv));self.w.units['duck-echo']='activating';faults['failed']=True
+                if mode=='timeout':raise subprocess.TimeoutExpired(argv,20)
+                return (1 if mode=='nonzero' else 0),'','injected echo start failure'
+            if argv==['systemctl','stop','padd'] and faults['failed'] and faults['stop']:
+                self.w.calls.append(list(argv))
+                if faults['stop']=='exception':raise OSError('injected padd stop exception')
+                return 1,'','injected padd stop failure'
+            if argv==['systemctl','start','robotd']:
+                starts.append('commissioning' if self.w.effective_commissioning else 'motion')
+            return original_run(argv)
+        def show(unit,props):
+            if unit=='padd' and faults['failed'] and faults['query']:raise OSError('injected padd state query failure')
+            return original_show(unit,props)
+        self.w.run,self.w.show=run,show
+        return faults,starts
+
+    def test_partial_restore_stop_failure_does_not_skip_other_units_or_robotd(self):
+        faults,_=self.partial_restore_failure('activating',stop_error='nonzero')
+        self.assertEqual(self.update(),5)
+        echo_failure=next(i for i,call in enumerate(self.w.calls) if call==['systemctl','start','duck-echo'])
+        attempted=self.w.calls[echo_failure+1:]
+        for unit in (*N.CONTROLLERS,'robotd'):
+            self.assertIn(['systemctl','stop',unit],attempted)
+        self.assertLess(attempted.index(['systemctl','stop','robotd']),attempted.index(['systemctl','stop','padd']))
+        self.assertEqual(self.w.robotd,'inactive')
+        self.assertEqual(self.w.units['duck-echo'],'inactive')
+        self.assertTrue(self.w.path(GUARD).exists())
+        self.assertTrue(self.journal()['active'])
+        faults.update(restore=False,stop=None)
+        self.assertEqual(self.update('recover'),0)
+
+    def test_partial_restore_stop_exception_does_not_skip_remaining_protection(self):
+        self.partial_restore_failure('timeout',stop_error='exception')
+        self.assertEqual(self.update(),5)
+        self.assertEqual(self.w.robotd,'inactive')
+        self.assertEqual(self.w.units['duck-echo'],'inactive')
+        self.assertTrue(self.w.path(GUARD).exists())
+        self.assertTrue(self.journal()['active'])
+
+    def test_partial_restore_unknown_query_still_stops_all_controllers_and_robotd(self):
+        faults,_=self.partial_restore_failure('nonzero',query_error=True)
+        self.assertEqual(self.update(),5)
+        self.assertTrue(all(self.w.units[unit]=='inactive' for unit in N.CONTROLLERS))
+        self.assertEqual(self.w.robotd,'inactive')
+        self.assertTrue(self.w.path(GUARD).exists())
+        self.assertTrue(self.journal()['active'])
+        faults.update(restore=False,query=False)
+        self.assertEqual(self.update('recover'),0)
+
+    def test_partial_restore_recovery_requires_fresh_actual_unloaded_runtime(self):
+        faults,starts=self.partial_restore_failure()
+        self.assertEqual(self.update(),5)
+        faults['restore']=False
+        original=self.w.bus_mutate
+        def unknown_torque(bus):
+            original(bus)
+            if bus['mode']=='commissioning':bus['torque_state']='unknown'
+        self.w.bus_mutate=unknown_torque
+        before=len(self.w.calls)
+        self.assertEqual(self.update('recover'),5)
+        self.assertFalse(any(call[:2]==['systemctl','start'] and call[-1] in N.CONTROLLERS for call in self.w.calls[before:]))
+        self.assertTrue(self.w.path(GUARD).exists())
+        self.assertTrue(self.journal()['active'])
+        self.w.bus_mutate=original
+        before_pid=self.w.pid;before_starts=len(starts)
+        self.assertEqual(self.update('recover'),0)
+        self.assertGreater(self.w.pid,before_pid)
+        self.assertEqual(starts[before_starts:],['commissioning','motion'])
+        self.assertFalse(self.journal()['active'])
+
+    def test_partial_restore_guard_write_error_cannot_skip_fixed_stop_attempts(self):
+        faults,_=self.partial_restore_failure('nonzero')
+        original=H.write_atomic
+        def write(ctx,path,data,*args,**kwargs):
+            if path==GUARD and faults['failed']:raise OSError('injected guard write failure')
+            return original(ctx,path,data,*args,**kwargs)
+        with mock.patch.object(H,'write_atomic',side_effect=write):self.assertEqual(self.update(),5)
+        self.assertEqual(self.w.robotd,'inactive')
+        self.assertTrue(all(self.w.units[unit]=='inactive' for unit in N.CONTROLLERS))
+        self.assertTrue(self.journal()['active'])
+        self.assertEqual(self.w.path(TARGET).read_bytes(),NEW)
+
+    def test_partial_restore_foreign_guard_is_preserved_while_services_are_stopped(self):
+        faults,_=self.partial_restore_failure('nonzero')
+        original=self.w.run
+        foreign=b'# later foreign commissioning guard'
+        def run(argv):
+            result=original(argv)
+            if faults['failed'] and argv==['systemctl','start','duck-echo']:self.w.path(GUARD).write_bytes(foreign)
+            return result
+        self.w.run=run
+        self.assertEqual(self.update(),5)
+        self.assertEqual(self.w.path(GUARD).read_bytes(),foreign)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),NEW)
+        self.assertEqual(self.w.robotd,'inactive')
+        self.assertTrue(all(self.w.units[unit]=='inactive' for unit in N.CONTROLLERS))
+        self.assertTrue(self.journal()['active'])
+
+    def test_failure_protection_rechecks_robotd_after_all_controller_stops(self):
+        faults,_=self.partial_restore_failure('nonzero')
+        original=self.w.run
+        def run(argv):
+            result=original(argv)
+            if faults['failed'] and argv==['systemctl','stop','duck-echo']:
+                original(['systemctl','start','robotd'])
+            return result
+        self.w.run=run
+        self.assertEqual(self.update(),5)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),NEW,'cannot replace a binary after main process reappeared')
+        self.assertTrue(self.w.path(GUARD).exists())
+        self.assertTrue(self.journal()['active'])
+
 
 class PowerCut(BaseException):pass
 
@@ -698,6 +816,33 @@ def cleanup_boundary_test(boundary,after_sync=False):
 for _index in range(5):
     setattr(NativeTest,'test_cleanup_reboot_after_unlink_'+str(_index),cleanup_boundary_test(_index))
 setattr(NativeTest,'test_cleanup_reboot_after_final_directory_fsync',cleanup_boundary_test(0,after_sync=True))
+
+
+def partial_restore_test(mode):
+    def test(self):
+        faults,starts=self.partial_restore_failure(mode)
+        self.assertEqual(self.update(),5)
+        self.assertTrue(faults['failed'])
+        self.assertEqual(self.w.robotd,'inactive')
+        self.assertTrue(all(self.w.units[unit]=='inactive' for unit in N.CONTROLLERS))
+        self.assertTrue(self.w.path(GUARD).exists())
+        self.assertTrue(self.w.path(N.ACTIVE).exists())
+        self.assertFalse(self.w.path(N.RESTORE_PERMIT).exists())
+        self.assertTrue(self.journal()['active'])
+        self.assertFalse(self.journal()['running_verified'])
+        self.assertTrue(all(self.w.path(p).read_bytes()==v for p,v in self.saved.items()))
+        before_pid=self.w.pid;before_starts=len(starts)
+        faults['restore']=False
+        self.assertEqual(self.update('recover'),0)
+        self.assertGreater(self.w.pid,before_pid)
+        self.assertEqual(starts[before_starts:],['commissioning','motion'])
+        self.assertEqual(self.w.path(TARGET).read_bytes(),OLD)
+        self.assertFalse(self.journal()['active'])
+    return test
+
+
+for _mode in ('activating','nonzero','timeout'):
+    setattr(NativeTest,'test_partial_restore_'+_mode+'_failure_leaves_guard_and_stopped_services',partial_restore_test(_mode))
 
 
 if __name__=='__main__':unittest.main()
