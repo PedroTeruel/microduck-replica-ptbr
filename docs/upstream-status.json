@@ -7,9 +7,9 @@
     "pollen-robotics/microduck": {
       "default_branch": "main",
       "head": {
-        "sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
-        "committed_at": "2026-10-26T11:19:18Z",
-        "subject": "Merge pull request #469 from pollen-robotics/prepare-release-0.17.9"
+        "sha": "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
+        "committed_at": "2026-10-27T09:31:45Z",
+        "subject": "Merge pull request #476 from pollen-robotics/limp-fall-arm"
       },
       "latest_stable_release": {
         "tag_name": "daemon-v0.17.9",
@@ -20,20 +20,25 @@
       },
       "tracked_development_releases": [
         {
-          "tag": "daemon-dev-main",
-          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-main",
-          "published_at": "2026-10-26T11:29:24Z",
-          "head_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "tag": "daemon-dev-codex/robot-diagnostics-design",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-codex/robot-diagnostics-design",
+          "published_at": "2026-10-27T10:47:43Z",
+          "version": "daemon 0.17.9-dev.1450.38d0331 (codex/robot-diagnostics-design)",
+          "head_sha": "38d033109e94caef12634d6787d1d842c8a42a9b",
           "prerelease": true,
-          "scope_note": "Development release tracked separately from daemon-v0.17.9; not installed in the replica."
+          "related_pull_request": 473,
+          "change": "Draft all-motor local raw maintenance sessions, diagnostic snapshots, selective torque/RAM PID/absolute position, connection lease and denied BLE/WebRTC transport.",
+          "priority": "evaluate_after_HD1910_backend_mapping_and_local_authorization_review",
+          "replica_integration": "not_integrated; no robot deployment or full native15-motor readback in submitter report"
         },
         {
-          "tag": "daemon-dev-prepare-release-0.17.9",
-          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-prepare-release-0.17.9",
-          "published_at": "2026-10-26T11:23:42Z",
-          "head_sha": "9897704dfdc998e1908646695264abae5f9d3d30",
+          "tag": "daemon-dev-main",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-main",
+          "published_at": "2026-10-27T10:24:30Z",
+          "head_sha": "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
           "prerelease": true,
-          "scope_note": "Development release tracked separately from daemon-v0.17.9; not installed in the replica."
+          "scope_note": "Moving development release now contains merged PR476, ahead of stable0.17.9; not integrated into replica migration or image.",
+          "previous_head_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f"
         },
         {
           "tag": "daemon-dev-ground-grasp-x",
@@ -84,6 +89,104 @@
         }
       ],
       "pending_pull_requests": [
+        {
+          "number": 476,
+          "title": "limp-fall: arm the fall predictor only from standing",
+          "state": "closed",
+          "draft": false,
+          "merged_at": "2026-10-27T09:31:45Z",
+          "created_at": "2026-10-27T09:17:52Z",
+          "updated_at": "2026-10-27T09:31:48Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/476",
+          "head_sha": "024e12510120030dcddec04dbf97774d50258932",
+          "base_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...024e12510120030dcddec04dbf97774d50258932",
+          "scope_note": "FallPredictor arms only after uninterrupted gravity_z<=limp_fall_tilt_z for new default200ms limp_fall_arm_ms; disarms on trigger/reset. Stops repeated limp-pose-limp during get-up. Tradeoff: a fall within200ms of becoming upright is not early-limped.",
+          "priority": "high_review_before_HD1910_getup_acceptance; mergedmain but notlateststable orlocalmigration",
+          "replica_integration": "not_integrated_by_tracker_or_existing_migration; no release/image/device update",
+          "submitter_validation": {
+            "submitter_recording_replay": "Keeps1 walking fall, suppresses4 get-up false triggers on recorded data",
+            "submitter_software_checks": "fall/control/params/robotd tests,clippy,board build reported",
+            "new_logic_tested_on_physical_robot": false,
+            "verified_by_tracker": false
+          },
+          "this_review": "Read-only fixed patch and local provenance inspection; no downloaded source execution, new tests, robot or service operation.",
+          "merge_commit_sha": "2091d42286fa29a1e24ea4f072191a4836fd1a6e"
+        },
+        {
+          "number": 475,
+          "title": "nfc: read NFC Type 5 (ISO 15693) tags too",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-27T08:24:08Z",
+          "updated_at": "2026-10-27T08:24:08Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/475",
+          "head_sha": "c1b5d419cfef26595188ecac593e0e17176b203e",
+          "base_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...c1b5d419cfef26595188ecac593e0e17176b203e",
+          "scope_note": "ST25R100 SPI reader adds ISO15693/NFC Type5 alongside Type2, protocol/receiver settings and addressed block reads; shared NDEF TLV parsing and trace/bench helper. Existing CLRC663 serial branch remains Type2.",
+          "priority": "conditional_when_ST25R100_NFC_hardware_adopted; lower_for_current_nonNFC_workflow",
+          "replica_integration": "not_integrated_by_tracker_or_existing_migration; no release/image/device update",
+          "submitter_validation": {
+            "nfc_tests_reported_passed": 28,
+            "submitter_hardware": "beta ST25R100 plusST25TV andNTAG; Type5 pairing11-17s reported",
+            "replica_hardware_tested": false,
+            "verified_by_tracker": false
+          },
+          "this_review": "Read-only fixed patch and local provenance inspection; no downloaded source execution, new tests, robot or service operation."
+        },
+        {
+          "number": 474,
+          "title": "configd: re-page a bonded pad whose link dropped, and sweep for the rest",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-27T08:23:52Z",
+          "updated_at": "2026-10-27T08:23:52Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/474",
+          "head_sha": "b8f8571eeebf8152355af18e55ad0269a3c392d1",
+          "base_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...b8f8571eeebf8152355af18e55ad0269a3c392d1",
+          "scope_note": "Classic bonded trusted gamepads get2s settle and up to3 reconnect attempts with8s call bound; background sweep sleeps12s, skips pairing lock contention and all candidates while any paired pad is connected. LE/untrusted/non-gamepad excluded.",
+          "priority": "high_candidate_for_classic_pad_link_drop; pendingPR does not prove padd HID/key recognition fixed",
+          "replica_integration": "not_integrated_by_tracker_or_existing_migration; no release/image/device update",
+          "submitter_validation": {
+            "configd_tests_reported_passed": 63,
+            "submitter_hardware": "beta board plus8BitDo Pro2 NES mode; reconnection/pairing reported",
+            "replica_hardware_tested": false,
+            "verified_by_tracker": false
+          },
+          "this_review": "Read-only fixed patch and local provenance inspection; no downloaded source execution, new tests, robot or service operation."
+        },
+        {
+          "number": 473,
+          "title": "Add all-motor raw maintenance sessions and diagnostics",
+          "state": "open",
+          "draft": true,
+          "merged_at": null,
+          "created_at": "2026-10-27T08:17:49Z",
+          "updated_at": "2026-10-27T10:52:26Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/473",
+          "head_sha": "38d033109e94caef12634d6787d1d842c8a42a9b",
+          "base_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...38d033109e94caef12634d6787d1d842c8a42a9b",
+          "scope_note": "All15 motors incl mouth, local-only connection-bound raw maintenance; explicit torques/PID/goals, lease/expiry/priority stop and inhibited handoff. Only DynamixelIo/FakeIo implement native register ops; default unsupported_backend refuses others. Draft IPC45 adds robot.diagnostics.*, unlike this migration custom API45. Does not establish HD1910 compatibility.",
+          "priority": "medium_reference_only; assess nativeHD1910 registers/scaling/IDs, policy/HOME ownership, restore path and IPC semantic collision before any adoption",
+          "replica_integration": "not_integrated_by_tracker_or_existing_migration; no release/image/device update",
+          "submitter_validation": {
+            "workspace_tests_reported_passed": 1758,
+            "host": "macOS excluding nfc; CI reported separately",
+            "physical_torque_or_movement_tested": false,
+            "deployment_started": false,
+            "verified_by_tracker": false
+          },
+          "this_review": "Read-only fixed patch and local provenance inspection; no downloaded source execution, new tests, robot or service operation."
+        },
         {
           "number": 472,
           "url": "https://github.com/pollen-robotics/microduck/pull/472",
@@ -551,7 +654,7 @@
           "head_sha": "942e58e3aa6dbb28e7037203fff11866122c7567"
         }
       ],
-      "pull_request_tracking_note": "The legacy pending_pull_requests list retains merged entries with explicit state and merged_at for historical monitoring.",
+      "pull_request_tracking_note": "List retains tracked merged/closed entries as well as pending PRs to prevent re-reporting them as new; latest fields retain original UTC timestamps.",
       "stable_release_comparison": {
         "from_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
         "to_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
@@ -559,7 +662,32 @@
         "commit_count": 8,
         "file_count": 12,
         "replica_runtime_or_image_updated": false
-      }
+      },
+      "main_since_latest_stable": {
+        "from_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+        "to_sha": "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
+        "fixed_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...2091d42286fa29a1e24ea4f072191a4836fd1a6e",
+        "commit_count": 2,
+        "file_count": 6,
+        "merged_pull_requests": [
+          476
+        ],
+        "release_status": "main and moving development tag only; not in daemon-v0.17.9",
+        "replica_integration": "not_integrated; isolated migration remains pinned to stable96b89d8613f06722c1d64ce75ab0d7124fed9d8f"
+      },
+      "retired_development_releases": [
+        {
+          "tag": "daemon-dev-prepare-release-0.17.9",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-prepare-release-0.17.9",
+          "published_at": "2026-10-26T11:23:42Z",
+          "head_sha": "9897704dfdc998e1908646695264abae5f9d3d30",
+          "prerelease": true,
+          "scope_note": "Development release tracked separately from daemon-v0.17.9; not installed in the replica.",
+          "tracking_status": "retired_tag_and_release_not_found",
+          "last_checked_at_utc": "2026-10-27T10:52:46.202773+00:00",
+          "availability_note": "Both Git ref and release-by-tag returned HTTP404; retain last known SHA as history, not a current downloadable release."
+        }
+      ]
     },
     "pollen-robotics/microduck_rl": {
       "default_branch": "develop",
@@ -760,71 +888,158 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-27T06:47:37.030496Z",
+  "checked_at_utc": "2026-10-27T10:52:46.202773+00:00",
   "latest_review": {
-    "default_branch_changes": false,
+    "default_branch_changes": {
+      "pollen-robotics/microduck": {
+        "before": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+        "after": "2091d42286fa29a1e24ea4f072191a4836fd1a6e"
+      }
+    },
     "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
-    "previous_tracked_prs_merged": false,
     "new_pull_requests": {
       "pollen-robotics/microduck": [
-        472
+        473,
+        474,
+        475,
+        476
       ]
     },
-    "new_development_releases": [],
-    "changed_pull_request_heads": {},
+    "newly_seen_merged_pull_requests": {
+      "pollen-robotics/microduck": [
+        476
+      ]
+    },
+    "previous_tracked_prs_merged": false,
+    "new_development_releases": [
+      "daemon-dev-codex/robot-diagnostics-design"
+    ],
+    "moved_development_tags": [
+      "daemon-dev-main"
+    ],
+    "retired_development_tags": [
+      "daemon-dev-prepare-release-0.17.9"
+    ],
     "official_blog_new_articles": false,
+    "official_blog_article_count": 3,
+    "official_blog_latest_on": "2026-10-23",
     "runtime_code_changed_by_heartbeat": false,
-    "human_authorized_local_integration_recorded": false,
+    "human_authorized_local_integration_recorded": true,
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "New open runtime PR472 fixes NDEF Text UTF-16 decoding for NFC-triggered Bluetooth pairing addresses. Conditional relevance if NFC hardware/workflow is adopted; it does not repair ordinary Studio pairing or key reads. Four official default heads, stable/development tag SHAs, prior PR states and blog remain unchanged. Submitter-only standalone parser test report; no tracker execution or deployment. Existing user-published replica changes were preserved before this documentation-only update."
+    "notes": "Main gained merged fall-predictor arming PR476; stable remains0.17.9/96b89. New pending classic reconnect PR474, NFC Type5 PR475 and draft raw-maintenance PR473/dev release; none automatically integrated. Retired prepare-release tag/release404 retained as history. Separate human-authorized published-image-to17 software integration is now recorded with exact local checkpoints, not deployed."
   },
   "replica_migration": {
-    "recorded_on": "2026-10-26",
-    "scope": "Human-authorized local isolated integration; not the published image or running robot.",
+    "recorded_on": "2026-10-27",
+    "scope": "Human-authorized local isolated feature migration and software evidence; not a migrated image or physical acceptance.",
     "runtime_branch": "codex/runtime-0178-feetech",
-    "runtime_source_sha": "59d95132b6bc13b4acf5772afad7cf974a5d5aba",
+    "runtime_source_sha": "c615e500a58bbc932f8d70b9345ba8cadc1ecc5f",
+    "runtime_production_source_sha": "59d95132b6bc13b4acf5772afad7cf974a5d5aba",
+    "runtime_new_changes_are_test_only": true,
+    "project_branch": "codex/replica-0178-migration",
+    "project_checkpoint_sha": "5a70e6ae9e83a0cf0101efb06d89aac2f7e4a799",
+    "project_code_sha": "de33f94e2057b8d7d6338e448dba6ce86480c202",
     "upstream_tag": "daemon-v0.17.9",
     "upstream_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
-    "previous_runtime_checkpoint": "b1c2d8bd5a9b980b59792b080ed56c024dae94fa",
-    "replica_documentation_commit": "6df47576f2f64751183786cd9223d4352b390ddb",
+    "new_upstream_main_PR476_integrated": false,
+    "published_feature_source_sha": "85636b8aa60780f8efe4d344eedc5cc794a003aa",
+    "published_image_tag": "microduck-replica-image-20261027",
+    "image_runtime_family": "0.15.1/API40",
     "migration_api": 45,
     "local_only": true,
     "runtime_branch_pushed": false,
-    "broad_tests": {
-      "passed": 1345,
-      "failed": 0,
-      "ignored": 65,
-      "rust": "1.94.1"
+    "project_branch_pushed": false,
+    "software_matrix": {
+      "full_project_source": "339f1385eb1850bfe5304d3b5b8cdf6979c3fb5e",
+      "studio_run": 1222,
+      "studio_skipped": 72,
+      "voice_passed": 160,
+      "image_passed": 128,
+      "latest_updater_passed": 37,
+      "latest_component_subset_passed": 11,
+      "windows_browser_passed": 70,
+      "arm_updater_checks": 26,
+      "runtime_groups": "runtime-final-summary.json",
+      "counting": "Commands overlap; no combined grand total."
     },
     "actual_ort_tests": {
-      "daemon_passed": 406,
-      "core_ignored_subset_passed": 15,
+      "daemon_passed": 409,
+      "core_passed": 15,
       "version": "1.28.0",
       "overlapping_groups_not_summed": true
     },
-    "official_console_offline_cases_passed": 9,
+    "broad_tests": {
+      "passed": 1345,
+      "ignored": 68,
+      "failed": 0,
+      "rust": "1.94.1"
+    },
     "arm_binaries": {
       "count": 16,
-      "source_mode": "git_archive",
-      "target": "aarch64-unknown-linux-gnu.2.31",
+      "source_mode": "immutable git archive",
       "hashes_reverified": true,
       "installed": false,
-      "executed": false,
+      "executed": "updaterd only under QEMU0.17.9/API45;26checks, notboard",
       "board_dependencies_verified": false
     },
-    "media_limit": "ARM compile only; native media tests blocked by unavailable offline async-stream and native GStreamer/GLib development metadata; no real camera, exposure, ICE or live Studio test.",
-    "endurance_limit": "Not invoked. Feetech HOME/enable readiness must be satisfied; imported enable timeout can continue logging without the intended workload. Guard retained.",
     "pending": [
-      "Full Studio and configuration integration",
-      "Separate test image",
-      "Hardware acceptance"
+      "Separate17testimage/P3",
+      "Hardware/media/acoustic/newcardacceptance/P4",
+      "Stablepublication/P5"
     ],
+    "unsupported_inplace_legacy_bootstrap": "Live legacycurrent or active/uncertain updater services are refused before writes; offline assembly supported.",
     "published_image_updated": false,
     "online_services_updated": false,
-    "robot_connected": false
+    "robot_connected": false,
+    "evidence_local_root": "F:/chengshenzhilu/Robot/Microduck/artifacts/image15-to0179-20261027",
+    "verification_document_in_local_branch": "docs/superpowers/verification/2026-10-27-image15-to0179.md",
+    "previous_local_migration_checkpoint": {
+      "recorded_on": "2026-10-26",
+      "scope": "Human-authorized local isolated integration; not the published image or running robot.",
+      "runtime_branch": "codex/runtime-0178-feetech",
+      "runtime_source_sha": "59d95132b6bc13b4acf5772afad7cf974a5d5aba",
+      "upstream_tag": "daemon-v0.17.9",
+      "upstream_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+      "previous_runtime_checkpoint": "b1c2d8bd5a9b980b59792b080ed56c024dae94fa",
+      "replica_documentation_commit": "6df47576f2f64751183786cd9223d4352b390ddb",
+      "migration_api": 45,
+      "local_only": true,
+      "runtime_branch_pushed": false,
+      "broad_tests": {
+        "passed": 1345,
+        "failed": 0,
+        "ignored": 65,
+        "rust": "1.94.1"
+      },
+      "actual_ort_tests": {
+        "daemon_passed": 406,
+        "core_ignored_subset_passed": 15,
+        "version": "1.28.0",
+        "overlapping_groups_not_summed": true
+      },
+      "official_console_offline_cases_passed": 9,
+      "arm_binaries": {
+        "count": 16,
+        "source_mode": "git_archive",
+        "target": "aarch64-unknown-linux-gnu.2.31",
+        "hashes_reverified": true,
+        "installed": false,
+        "executed": false,
+        "board_dependencies_verified": false
+      },
+      "media_limit": "ARM compile only; native media tests blocked by unavailable offline async-stream and native GStreamer/GLib development metadata; no real camera, exposure, ICE or live Studio test.",
+      "endurance_limit": "Not invoked. Feetech HOME/enable readiness must be satisfied; imported enable timeout can continue logging without the intended workload. Guard retained.",
+      "pending": [
+        "Full Studio and configuration integration",
+        "Separate test image",
+        "Hardware acceptance"
+      ],
+      "published_image_updated": false,
+      "online_services_updated": false,
+      "robot_connected": false
+    }
   }
 }
