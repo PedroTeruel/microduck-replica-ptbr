@@ -45,7 +45,7 @@ try{
   report.uploaded=(await state()).ready;
   for(const width of [1440,390,320]){
     await send('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:width<500});
-    await js(`document.querySelector('[data-updates]').scrollIntoView();new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    await js(`window.scrollTo(0,0);new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
     if(await js('document.documentElement.scrollWidth>innerWidth+2'))throw Error(`layout overflows at ${width}`);
     const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(`${shots}/updates-${width}.png`,Buffer.from(shot.data,'base64'));report.layouts.push(width);
   }
