@@ -47,7 +47,7 @@ from .state import summarize
 from .pad import Refused as PadRefused, robot_view  # 手柄页
 from .ai_connections import AiError
 from .ai_service import AiService
-from .updates import Updates, UpdateError, handle as handle_updates
+from .updates import Updates, UpdateError, handle as handle_updates, safe_during_update
 
 VERSION = "0.1.0-dev"
 RUNTIME_ROOT = Path(__file__).resolve().parents[2]
@@ -1126,9 +1126,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 elif t == "cmd":
                     name, cid = msg.get("name"), msg.get("id")
                     args = msg.get('args') or {}
-                    emergency = name == 'relax' or (name == 'pad.op' and isinstance(args,dict)
-                        and args.get('op') in {'stop','estop','relax','record_stop','play_stop','idle_stop'})
-                    if updates.installing() and not emergency and name != 'servo.ports':
+                    if updates.installing() and not safe_during_update(name,args):
                         await send({'t':'result','id':cid,'ok':False,'reason':'软件更新正在进行，请等待完成；急停仍可使用'})
                         continue
                     if name not in COMMANDS:

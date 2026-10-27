@@ -8,6 +8,15 @@ class UpdatesHttp(unittest.IsolatedAsyncioTestCase):
     asyncSetUp=ai_http.AiHttp.asyncSetUp
     asyncTearDown=ai_http.AiHttp.asyncTearDown
     call=ai_http.AiHttp.call
+    def test_emergency_gate_uses_real_pad_stop_and_motion_protocol(self):
+        from studio.updates import safe_during_update
+        for name,args in [('relax',{}),('pad.op',{'op':'stop'}),('pad.op',{'op':'action_stop'}),
+                ('pad.op',{'op':'motion','action':'stop'}),('pad.op',{'op':'motion','action':'idle_stop'}),
+                ('pad.op',{'op':'audio','listening':False,'music':False})]:
+            self.assertTrue(safe_during_update(name,args),(name,args))
+        for args in ({'op':'motion','action':'play'},{'op':'audio','listening':True},
+                {'op':'audio','listening':False,'music':True},{'op':'drive','x':1}):
+            self.assertFalse(safe_during_update('pad.op',args),args)
     async def test_updates_require_password_login_csrf_host_and_no_store(self):
         for method in ('GET','POST'):
             status,headers,_=await self.call(method,'/api/updates',{'op':'check'} if method=='POST' else None)

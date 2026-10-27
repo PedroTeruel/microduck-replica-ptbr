@@ -7,6 +7,16 @@ from pathlib import Path
 MAX_UPLOAD=160*1024*1024
 OPS={'check','download','validate','install','rollback'}
 
+def safe_during_update(name,args):
+    if name in {'relax','servo.ports'}:return True
+    if name!='pad.op' or not isinstance(args,dict):return False
+    if args.get('op') in {'stop','action_stop','walk_stop'}:return True
+    if args.get('op')=='motion' and args.get('action') in {'stop','idle_stop','record_finish'}:return True
+    if args.get('op')=='audio':
+        switches={key:value for key,value in args.items() if key!='op'}
+        return bool(switches) and set(switches)<={'listening','music'} and all(value is False for value in switches.values())
+    return False
+
 class UpdateError(Exception):
     def __init__(self,code,message,status=400): super().__init__(message); self.code,self.status=code,status
 
