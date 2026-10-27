@@ -85,6 +85,33 @@
       ],
       "pending_pull_requests": [
         {
+          "number": 472,
+          "url": "https://github.com/pollen-robotics/microduck/pull/472",
+          "title": "fix(nfc): decode UTF-16 NDEF text records",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-27T06:18:08Z",
+          "updated_at": "2026-10-27T06:18:08Z",
+          "head_sha": "98777d776addf6351e1b0918401c58d3f469b7e3",
+          "base_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...98777d776addf6351e1b0918401c58d3f469b7e3",
+          "scope_note": "Only nfc/src/ndef.rs changes. NDEF Text status bit selects UTF-8 or UTF-16; UTF-16 honors LE/BE BOM, defaults to BE without BOM, rejects odd byte counts, and decodes units lossily so a valid Bluetooth MAC survives text decoding. Two new pure parser tests cover three endian/BOM forms, non-BMP text and incomplete code units. No Bluetooth transport, ordinary Studio pairing, key input, motor or sensor implementation change.",
+          "priority": "conditional_when_using_nfc_tag_triggered_bluetooth_pairing; lower_for_current_non_nfc_workflows",
+          "replica_integration": "not_integrated_by_this_tracker; no official release or documented replica migration/image integration of this pending PR",
+          "submitter_validation": {
+            "standalone_ndef_module_tests_passed": 7,
+            "new_regression_tests": 2,
+            "reported_pairing_regression_failed_before_fix": true,
+            "host": "Windows; standalone rustc --edition=2021 --test module",
+            "full_workspace_run": false,
+            "physical_pairing_tested": false,
+            "verified_by_this_tracker": false
+          },
+          "this_review": "Read-only fixed diff and test inspection; no downloaded source/test execution, NFC/Bluetooth access or robot connection."
+        },
+        {
           "number": 471,
           "url": "https://github.com/pollen-robotics/microduck/pull/471",
           "title": "console: stop joystick commands when the window loses focus",
@@ -733,7 +760,7 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-27T05:43:26.773974Z",
+  "checked_at_utc": "2026-10-27T06:47:37.030496Z",
   "latest_review": {
     "default_branch_changes": false,
     "new_stable_release": false,
@@ -741,8 +768,8 @@
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
     "previous_tracked_prs_merged": false,
     "new_pull_requests": {
-      "pollen-robotics/microduck_rl": [
-        85
+      "pollen-robotics/microduck": [
+        472
       ]
     },
     "new_development_releases": [],
@@ -753,7 +780,7 @@
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "New open RL PR85 moves the head-camera forward orientation into MJCF/config source and removes the compensating load-time turn. Pairing and raw-sideways convention recorded; submitter tests not rerun. Four default heads, stable/dev tag SHAs, prior PR states and the three-article blog remain unchanged. No runtime/model/image or local migration state changed."
+    "notes": "New open runtime PR472 fixes NDEF Text UTF-16 decoding for NFC-triggered Bluetooth pairing addresses. Conditional relevance if NFC hardware/workflow is adopted; it does not repair ordinary Studio pairing or key reads. Four official default heads, stable/development tag SHAs, prior PR states and blog remain unchanged. Submitter-only standalone parser test report; no tracker execution or deployment. Existing user-published replica changes were preserved before this documentation-only update."
   },
   "replica_migration": {
     "recorded_on": "2026-10-26",
