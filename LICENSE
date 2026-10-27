@@ -10,6 +10,8 @@
                            Microduck Studio web console code (except vendored
                            third-party libraries and the 3D mesh, see below)
      software/image/       复刻镜像的构建脚本和开机脚本 / replica image build and boot scripts
+     software/updater/     签名软件包、网页升级协调与引导工具 / signed software update tooling
+     software/duck-echo/   本地语音与音频互动代码 / local voice and audio interaction code
 
    Apache-2.0 全文 / full text: https://www.apache.org/licenses/LICENSE-2.0
 

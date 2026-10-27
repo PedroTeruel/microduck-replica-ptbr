@@ -1,0 +1,36 @@
+[Unit]
+Description=Microduck local voice and music listening on R3
+After=sound.target aic3104-init.service alsa-restore.service
+
+[Service]
+Type=simple
+User=radxa
+SupplementaryGroups=audio input
+Environment=PYTHONUNBUFFERED=1
+Environment=ECHO_CAPTURE=plughw:CARD=aic3104,DEV=0
+Environment=ECHO_PLAYBACK=plughw:CARD=aic3104,DEV=0
+Environment=ECHO_CHANNEL=1
+Environment=ECHO_PITCH=1.25
+Environment=ECHO_VOICE_MODE=off
+Environment=ECHO_TRIGGER_MODE=toggle
+Environment=ECHO_REPLY_MODE=duck
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1
+EnvironmentFile=-/etc/default/duck-echo
+RuntimeDirectory=duck-echo
+RuntimeDirectoryMode=0700
+ExecStart=/usr/bin/python3 /opt/duck-echo/duck_echo.py daemon --capture-device ${ECHO_CAPTURE} --playback-device ${ECHO_PLAYBACK} --channel ${ECHO_CHANNEL} --pitch ${ECHO_PITCH} --voice-mode ${ECHO_VOICE_MODE} --trigger-mode ${ECHO_TRIGGER_MODE} --reply-mode ${ECHO_REPLY_MODE} --control-socket /run/duck-echo/control.sock
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=5
+KillMode=control-group
+Nice=10
+MemoryMax=640M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

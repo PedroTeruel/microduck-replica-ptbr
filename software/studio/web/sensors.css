@@ -13,9 +13,22 @@
 .sensor-actions button:disabled { opacity: .42; cursor: default; }
 .sensor-error { color: var(--danger); margin: 0; font-size: 14px; }
 .camera-screen { position: relative; width: 100%; max-height: 72vh; overflow: hidden; border-radius: 18px; background: #111922; }
-.camera-video { position: absolute; top: 50%; left: 50%; object-fit: contain; }
-.camera-screen[data-playing="false"] .camera-video { visibility: hidden; }
+.camera-video, .inline-camera-video { position: absolute; top: 50%; left: 50%; object-fit: contain; }
+.camera-screen[data-playing="false"] video { visibility: hidden; }
 .camera-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: #D7E0EB; font-size: 15px; line-height: 1.6; }
+.pd-page .inline-camera { padding: 10px 12px; min-width: 0; }
+.inline-camera-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.inline-camera-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.inline-camera-head .sensor-pill { font-size: 12px; padding: 4px 8px; }
+.pd-page .inline-camera-head .inline-camera-retry { margin-left: auto; min-height: 44px; height: auto; padding: 6px 12px; font-size: 13px; }
+.inline-camera .camera-screen { height: clamp(160px, 26vh, 300px); max-height: none; border-radius: 12px; }
+.inline-camera .camera-screen[data-playing="false"] { background: #EDEFF3; }
+.inline-camera .camera-placeholder { color: var(--text-2); font-size: 14px; }
+.inline-camera-meta { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 10px; color: var(--text-2); font-size: 12px; line-height: 1.5; }
+.inline-camera-meta a { white-space: nowrap; }
+@media (min-width: 1101px) {
+  .pd-page .inline-camera .camera-screen { height: clamp(150px, calc((var(--pd-view-height) - 220px) * .44), 300px); }
+}
 .sensor-metrics { display: flex; flex-wrap: wrap; gap: 18px 36px; }
 .sensor-metrics > div { display: flex; flex-direction: column; gap: 6px; }
 .sensor-metrics span { font-size: 13px; color: var(--text-2); }

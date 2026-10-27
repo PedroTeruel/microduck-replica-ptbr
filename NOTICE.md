@@ -44,6 +44,8 @@ Microduck 是 Pollen Robotics 的商业产品，硬件**部分开源**：
 | `tools/stl_viewer.html` | 零依赖 WebGL STL 查看器 | **Apache-2.0** |
 | `software/studio/` 的代码 | Microduck Studio 网页中控（不含 `web/vendor/`、`deps/`、`web/model/`） | **Apache-2.0** |
 | `software/image/` | 复刻镜像的构建脚本、首次开机和配网脚本 | **Apache-2.0** |
+| `software/updater/` | 签名组件包构建、原更新引擎适配、网页升级协调与首次引导工具 | **Apache-2.0**；原updaterd来自Pollen Robotics，来源1fa8438 |
+| `software/duck-echo/` 的代码 | 本地R3语音、录音和音乐互动；不包含构建机私钥或用户录音 | **Apache-2.0**；外置Vosk模型及ARM64依赖按各自许可，清单保留来源和hash |
 | `docs/*.md`、`*.md` | 全部文档与逆向分析文本 | **CC BY-NC-SA 4.0** |
 | `build-log/` 照片 | 实物构建照片 | **CC BY-NC-SA 4.0**，由本项目参与者拍摄并授权 |
 | `assets/` 中的项目原创素材 | 封面、交流群二维码与项目预览图；不含下列官方板卡图片 | 同上 |

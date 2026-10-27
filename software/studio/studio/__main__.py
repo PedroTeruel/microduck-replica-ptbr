@@ -165,7 +165,8 @@ def main(argv=None):
         url = f"http://{host or '127.0.0.1'}:{port}/#/servos"
         log.info(f"台架模式：不连主程序，浏览器打开 {url}，在舵机页选 COM 口连接", cat="系统", dedup=False)
         threading.Timer(1.5, webbrowser.open, args=(url,)).start()
-    uvicorn.run(app, host=host or "0.0.0.0", port=int(port), ws="wsproto", http="h11", lifespan="on",
+    from .ws_protocol import MusicWebSocketProtocol
+    uvicorn.run(app, host=host or "0.0.0.0", port=int(port), ws=MusicWebSocketProtocol, http="h11", lifespan="on",
                 log_level="warning", server_header=False, proxy_headers=False, access_log=False)
 
 

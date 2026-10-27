@@ -63,6 +63,7 @@ class Robotd:
         self.estop = EStop()
         self.viewers = 0             # 可见的页面数
         self.force_subscribe = False
+        self.background_music = False  # 内部动作消费者；不伪装成可见页面
         self.stream_open = False
         self._last_viewer_at = 0.0
         self._tasks = []
@@ -154,6 +155,12 @@ class Robotd:
         if self.viewers and not n:
             self._last_viewer_at = time.monotonic()
         self.viewers = n
+
+    def set_background_music(self, on):
+        on = bool(on)
+        if on != self.background_music:
+            self.background_music = on
+            self._wake_stream.set()
 
     # ---- 卸力 ----
 
@@ -414,7 +421,7 @@ class Robotd:
     def _want_stream(self):
         if self.paused:
             return False
-        if self.force_subscribe or self.viewers > 0:
+        if self.force_subscribe or self.background_music or self.viewers > 0:
             return True
         return time.monotonic() - self._last_viewer_at < STREAM_LINGER_S
 

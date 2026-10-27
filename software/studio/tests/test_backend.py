@@ -435,6 +435,31 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0.05)
         self.assertEqual(self.fake.subscribers, 0)
 
+    async def test_background_music_keeps_real_telemetry_after_last_viewer_leaves(self):
+        setter = getattr(self.rd, "set_background_music", None)
+        self.assertTrue(callable(setter), "background music needs its own telemetry subscriber")
+        setter(True)
+        for _ in range(60):
+            if self.fake.subscribers and self.rd.state.at:
+                break
+            await asyncio.sleep(.05)
+        self.assertEqual(self.rd.viewers, 0)
+        self.assertEqual(self.fake.subscribers, 1)
+        before = self.rd.state.at
+        self.rd._last_viewer_at = time.monotonic() - 11.
+        await asyncio.sleep(.25)
+        self.assertEqual(self.fake.subscribers, 1)
+        self.assertGreater(self.rd.state.at, before)
+        setter(False)
+        for _ in range(60):
+            if not self.fake.subscribers:
+                break
+            await asyncio.sleep(.05)
+        self.assertEqual(self.fake.subscribers, 0)
+        before = self.rd.state.at
+        await asyncio.sleep(.15)
+        self.assertEqual(self.rd.state.at, before, "no synthetic freshness after unsubscribing")
+
     async def test_robotd_gone_and_back(self):
         self.fake.restart(1.5)                                         # 真重启：现有连接也断
         for _ in range(60):

@@ -63,6 +63,7 @@ robot.init 直线回 HOME，网页走 sit_toggle（sitstand 网络起身，更�
 stop + enable off（直接给 HOME 目标）。
 """
 import itertools
+from contextlib import nullcontext
 import json
 import math
 import os
@@ -350,7 +351,8 @@ class DriveMixin:
 
     def executor_for(self, args):
         """app 用：move / sticks / keys 这些快的走单独的小线程池（审查二 一般 4、三 V13）；None = 默认线程池。"""
-        return self._fast_pool if (args or {}).get("op") in FAST_OPS else None
+        fast_motion = (args or {}).get("op") == "motion" and (args or {}).get("action") in ("heartbeat", "stop", "pause", "record_pause", "idle_stop")
+        return self._fast_pool if (args or {}).get("op") in FAST_OPS or fast_motion else None
 
     # ================= 谁在开 =================
 
@@ -479,9 +481,14 @@ class DriveMixin:
             q["stop"] = max(q["stop"], top)                  # 离开之前发出的摇杆帧都作废
             q["hi"] = max(q["hi"], top)
             mine = self._driver is not None and self._driver["conn"] == conn
-            if mine:
+            background_music = self.motion_studio.background_music(conn)
+            if mine and not background_music:
                 self._driver = None
-        if mine:
+        if background_music:
+            # The drive area closes and late manual frames stay fenced, while
+            # standalone music remains owned by this still-connected socket.
+            pass
+        elif mine:
             self._halt("离开了手柄区", conn)            # 里面排清理、发
         else:
             self._request_clear(conn, "离开了手柄区")
@@ -501,6 +508,7 @@ class DriveMixin:
             if conn in self._gone:
                 return False
             self._remember(self._gone, conn)
+            self.motion_studio.invalidate("页面断开了", conn)
             self._closed.pop(conn, None)
             self._seq_of(conn)["stop"] = INF
             mine = self._driver is not None and self._driver["conn"] == conn
@@ -536,6 +544,8 @@ class DriveMixin:
         clear_all：头 / 身体、按住的键、模式不管是哪个页面的都清（点「停下（站好）」：三 V1 第 7 条）。
         镜像时（实体手柄连着）网页没在开就不发 move 0，免得打断实体手柄（审查二 一般 2）；头 / 身体的清理镜像时也发（三 V1）。
         发不出去也没关系：robotd 0.5 秒收不到自己停。"""
+        self.motion_studio.invalidate(why, None if clear_all else conn)
+        self.motion_studio.tick()
         self._action_stop(conn, why)
         self._request_clear(None if clear_all else conn, why)
         if self.robot is None:
@@ -554,7 +564,7 @@ class DriveMixin:
                     self.virtual.update(last=[0.0, 0.0, 0.0], at=now)
             if send:
                 try:
-                    self.robot.notify("robot.move", {"vx": 0.0, "vy": 0.0, "vyaw": 0.0})
+                    self._notify_output("robot.move", {"vx": 0.0, "vy": 0.0, "vyaw": 0.0})
                 except (Unreachable, Timeout) as e:
                     self.log.warn("「停」没发出去", cat="安全", step="robot.move", raw=str(e),
                                   hint="鸭子 0.5 秒收不到指令也会自己停（robotd 的 deadman）")
@@ -623,7 +633,7 @@ class DriveMixin:
                         sends.append((kind, method, params, hit, lat))
             for kind, method, params, req, lat in sends:
                 try:
-                    self.robot.notify(method, dict(params))
+                    self._notify_output(method, dict(params))
                     self.log.info(("头回正" if kind == "head" else "身体回到标称、退出身体模式") + f"（{req['why']}）",
                                   cat="手柄", raw=f"{method} {json.dumps(params)}", dedup=False)
                 except (Unreachable, Timeout) as e:
@@ -647,6 +657,8 @@ class DriveMixin:
         now = self.clock()
         stop_first = False
         with self._lk:
+            if not self.motion_studio.request_current():
+                return {"dropped": "动作会话已经改变，旧模式请求已丢弃", "mode": self._mode_of(conn)}
             if conn in self._gone:
                 raise Refused("这个页面已经断开了")
             cur = self._mode_of(conn)
@@ -708,6 +720,7 @@ class DriveMixin:
             with self._lk:
                 self._relax_at = self.clock()
                 self._relax_noted += 1
+                self.motion_studio.invalidate(why)
                 a = self._action
                 if a is not None:
                     a["why"] = a["why"] or why
@@ -741,10 +754,13 @@ class DriveMixin:
     def _drive_feed(self, view):
         """feed_robot 里调（拿着锁，事件循环里：只改内存）：Studio 第一次看到主程序在 → 排一次 pose 复位；
         姿势离开「准备好走」→ 退出模式、清掉头 / 身体（三 V1 第 8 条、V12）。"""
+        self.motion_studio.policy_feed(view)
         if self._pose_reset == "pending" and view.get("present") is True:
             self._pose_reset = "due"
             self._tick_evt.set()
         drv = self._posture() in DRIVING
+        if not drv and not self.motion_studio.posture_allowed():
+            self.motion_studio.invalidate("策略离开准备好走的状态")
         left = self._was_driving and not drv
         self._was_driving = drv
         if left and (self._modes or self._latch["head"] is not None or self._latch["body"] is not None):
@@ -840,7 +856,10 @@ class DriveMixin:
         检查和发送在 _send_lk 里，robotd 收到的顺序就是这里定的顺序。mode：头 / 身体帧发之前再看一眼模式没变（三 V6）。
         返回 (结果 dict, 发出去了吗)。"""
         now = self.clock()
+        motion_epoch = self.motion_studio.epoch
         with self._lk:
+            if not self.motion_studio.request_current():
+                return {"dropped": "动作会话已经改变，旧指令已丢弃"}, False
             g = self._gate(conn, now)
             if g:
                 return g, False
@@ -864,13 +883,13 @@ class DriveMixin:
         with self._send_lk:
             with self._lk:
                 d, q = self._driver, self._seq_of(conn)
-                if (conn in self._gone or conn in self._closed or seq != q["latest"].get(chan) or seq <= q["stop"]
+                if (not self.motion_studio.request_current() or motion_epoch != self.motion_studio.epoch or conn in self._gone or conn in self._closed or seq != q["latest"].get(chan) or seq <= q["stop"]
                         or d is None or d["conn"] != conn or (mode is not None and self._mode_of(conn) != mode)):
                     return {"dropped": "被更新的指令替掉了，或者已经松手"}, False
                 q["sent"][chan] = seq
                 self._last_sent_at[chan] = self.clock()
             try:
-                self.robot.notify(method, params)
+                self._notify_output(method, params)
             except (Unreachable, Timeout) as e:
                 raise Refused(f"没发出去：{e}") from None
             with self._lk:
@@ -922,6 +941,8 @@ class DriveMixin:
         now = self.clock()
         with self._lk:
             cur = self._mode_of(conn)
+            if not self.motion_studio.request_current():
+                return {"dropped": "动作会话已经改变，旧摇杆请求已丢弃", "mode": cur}
             if conn in self._gone or conn in self._closed:
                 return {"dropped": "页面已经离开", "mode": cur}
             if mode != cur:
@@ -956,6 +977,8 @@ class DriveMixin:
         args = args or {}
         with self._send_lk:
             with self._lk:
+                if not self.motion_studio.request_current():
+                    return {"dropped": "动作会话已经改变，旧停止请求已丢弃"}
                 now = self.clock()
                 q = self._seq_of(conn)
                 seq = self._seq(args)
@@ -977,12 +1000,12 @@ class DriveMixin:
                     lat.update(nonzero=False, at=now)
             if send:
                 try:
-                    self.robot.notify("robot.move", {"vx": 0.0, "vy": 0.0, "vyaw": 0.0})
+                    self._notify_output("robot.move", {"vx": 0.0, "vy": 0.0, "vyaw": 0.0})
                 except (Unreachable, Timeout) as e:
                     raise Refused(f"「停」没发出去（鸭子 0.5 秒收不到也会自己停）：{e}") from None
             if center is not None:
                 try:
-                    self.robot.notify(center[0], dict(center[1]))
+                    self._notify_output(center[0], dict(center[1]))
                 except (Unreachable, Timeout) as e:
                     with self._lk:
                         lat.update(nonzero=True)            # 看门狗 0.6 秒后再试
@@ -1008,6 +1031,8 @@ class DriveMixin:
         seq = self._seq(args)
         now = self.clock()
         with self._lk:
+            if not self.motion_studio.request_current():
+                return {"dropped": "动作会话已经改变，旧按键请求已丢弃", "held": []}
             if conn in self._gone or conn in self._closed:
                 return {"dropped": "页面已经离开", "held": []}
             st = self._keys.get(conn)
@@ -1244,7 +1269,7 @@ class DriveMixin:
     # ================= 后台线程：按住的键、看门狗、清理（25 Hz，没事做就睡） =================
 
     def _tick_work(self):
-        return bool(self._keys or self._clears or self._modes or self._pose_reset == "due"
+        return bool(self.motion_studio.session or self.motion_studio._pending_cleanup or self._keys or self._clears or self._modes or self._pose_reset == "due"
                     or (self._latch["head"] or {}).get("nonzero") or (self._latch["body"] or {}).get("nonzero"))
 
     def _tick_loop(self):
@@ -1266,6 +1291,7 @@ class DriveMixin:
                 self._tick_evt.clear()
 
     def _tick_once(self):
+        self.motion_studio.tick()
         self._flush_clears()                       # 它自己拿 _send_lk：放在下面那把锁之前（Lock 不能重入）
         sends, logs = [], []                       # sends：(方法, 参数, 标记 None / "pose_reset" / "watchdog")
         # 决定和发送在同一把 _send_lk 里（审查 R2，跟 _flush_clears、_stop_move 一个写法）：看门狗决定「回中（active:true）」
@@ -1293,7 +1319,7 @@ class DriveMixin:
                 self._keys_plan(now, sends, logs)
             for method, params, tag in (sends if self.robot is not None else []):
                 try:
-                    self.robot.notify(method, params)
+                    self._notify_output(method, params)
                 except (Unreachable, Timeout) as e:
                     if tag == "pose_reset":
                         with self._lk:
@@ -1320,6 +1346,7 @@ class DriveMixin:
         t = self._tick_thread
         if t is not None and t is not threading.current_thread():
             t.join(0.5)       # 等它这一拍发完：不然它排好的「张嘴」可能落在下面的「合嘴」后面，嘴一直张着（审查 R8）
+        self.motion_studio.close()
         try:
             self._request_clear(None, "Studio 关了")
             self._flush_clears(force=True)
@@ -1335,7 +1362,7 @@ class DriveMixin:
                 with self._send_lk:
                     for method, params in sends:
                         try:
-                            self.robot.notify(method, params)
+                            self._notify_output(method, params)
                         except (Unreachable, Timeout):
                             pass
         except Exception:  # noqa: BLE001 —— 关的路上尽力而为
@@ -1627,28 +1654,81 @@ class DriveMixin:
 
     # ================= 站起来 / 开始走 / 坐下 / 技能 / 声音：按 =================
 
-    def _call(self, what, method, params, by, ctx=None):
+    def _call(self, what, method, params, by, ctx=None, posture_target=None, ordered=False):
+        if posture_target is None:
+            return self._call_rpc(what, method, params, by, ctx)
+        motion = self.motion_studio
+        with (nullcontext() if ordered else self._send_lk):
+            with self._lk:
+                if not motion.request_current():
+                    raise Refused("动作会话已经改变，旧命令请求已丢弃")
+                recording = motion.session and motion.state == "recording"
+                # Old robotd/manual fixtures without state evidence retain their
+                # original control path. Automation always requires complete data.
+                legacy = (not recording and not ordered and not motion.posture.pending
+                          and "state" not in (self._robot or {}))
+                if recording:
+                    motion._boundary(record=True)
+                    motion._refresh_request()
+            if legacy:
+                return self._call_rpc(what, method, params, by, ctx)
+            if recording:
+                motion._flush_outputs()
+            with self._lk:
+                if recording and (not motion.session or motion.session.get("invalid")):
+                    raise Refused("动作会话已经结束，坐站请求已取消")
+                token = motion.begin_posture(posture_target, manual=not recording and not ordered)
+                origin = motion.recording_origin()
+            if not token["command"]:
+                with self._lk:
+                    motion.posture.accepted(token, self.clock())
+                return {"accepted": True, "reason": "已经达到目标姿态"}
+            return self._call_rpc(what, method, params, by, ctx, posture_token=token, record_origin=origin)
+
+    def _call_rpc(self, what, method, params, by, ctx=None, posture_token=None, record_origin=None):
         """一个要回话的请求：记「发出 → 回执 · 耗时」（log_cmd，分类「命令」），拒绝的原因翻成人话抛 Refused。"""
         if self.robot is None:
             raise Refused("这只鸭子没配主程序的地址")
+        with self._lk:
+            if not self.motion_studio.request_current():
+                raise Refused("动作会话已经改变，旧命令请求已丢弃")
+        if method == "robot.sound":
+            record_origin = self.motion_studio.recording_origin()
+        skill_fence = self.motion_studio.note_skill() if method == "robot.do" and posture_token is None else None
         with log_cmd(self.log, what, method, who=by, args=params or None, ctx=ctx) as t:
             try:
                 r = self.robot.call(method, params, CMD_TIMEOUT_S)
             except Unreachable as e:
+                if posture_token:
+                    self.motion_studio.posture_reply(posture_token, None, reason="连接中断")
                 t.fail(f"没发出去：{e}", hint="主程序 robotd 不在？看总览页")
                 raise Refused(f"没发出去：{e}") from None
             except Timeout:
+                if posture_token:
+                    self.motion_studio.posture_reply(posture_token, None, reason="回执超时")
                 t.fail(f"主程序 {CMD_TIMEOUT_S:g} 秒没回话", hint="它可能卡住了：看日志里 robotd 那几行，必要时卸力")
                 raise Refused(f"主程序 {CMD_TIMEOUT_S:g} 秒没回话：它可能卡住了") from None
             except RpcError as e:
+                if posture_token:
+                    self.motion_studio.posture_reply(posture_token, False)
                 why = plain_refusal(e.message)
                 t.fail(f"主程序报错：{e.message}", raw={"code": e.code, "message": e.message}, hint=why)
                 raise Refused(why) from None
             if isinstance(r, dict) and r.get("accepted") is False:
+                if posture_token:
+                    self.motion_studio.posture_reply(posture_token, False)
+                self.motion_studio.rejected_skill(skill_fence)
                 why = plain_refusal(r.get("reason"))
                 t.fail(f"主程序没接受：{r.get('reason')}", raw=r, hint=why)
                 raise Refused(why)
+            if posture_token:
+                if not isinstance(r, dict) or r.get("accepted") is not True:
+                    self.motion_studio.posture_reply(posture_token, None, reason="回执格式不明确")
+                    raise Refused(self.motion_studio.posture.error)
+                self.motion_studio.posture_reply(posture_token, True, origin=record_origin)
             t.ok(r, note=(r.get("reason") or "") if isinstance(r, dict) else "")
+        if method == "robot.sound":
+            self.motion_studio.accepted_from(record_origin, method, params)
         return r
 
     def _motion_cmd(self, op, args, conn, by, label=None):  # noqa: C901
@@ -1659,6 +1739,8 @@ class DriveMixin:
         urgent = op == "walk_stop"
         exclusive = op not in ("walk_stop", "sound")
         with self._lk:
+            if not self.motion_studio.request_current():
+                return {"dropped": "动作会话已经改变，旧命令请求已丢弃"}
             if self._cmd_busy and exclusive:
                 raise Refused("上一个指令还没回话，等一下")
             mv = self._motion_view(now)
@@ -1703,7 +1785,7 @@ class DriveMixin:
                 if stand_call == "robot.init":
                     r = self._call(what, "robot.init", {}, by, ctx)
                 else:
-                    r = self._call(what + "（坐着：sit_toggle）", "robot.do", {"skill": "sit_toggle"}, by, ctx)
+                    r = self._call(what + "（坐着：sit_toggle）", "robot.do", {"skill": "sit_toggle"}, by, ctx, posture_target="stand")
             elif op == "walk":
                 r = self._call(what, "robot.enable", {"on": True, "toggle": False}, by, ctx)
             elif op == "walk_stop":
@@ -1720,7 +1802,7 @@ class DriveMixin:
                     self._cancel_wait(0.05)
                 r = self._call(what, "robot.enable", {"on": False, "toggle": False}, by, ctx)
             elif op == "sit":
-                r = self._call(what, "robot.do", {"skill": "sit_toggle"}, by, ctx)
+                r = self._call(what, "robot.do", {"skill": "sit_toggle"}, by, ctx, posture_target="sit")
             elif op == "skill":
                 r = self._call(what, "robot.do", {"skill": args.get("name")}, by, ctx)
             else:
@@ -1756,6 +1838,8 @@ class DriveMixin:
         press = self._seq({"seq": args.get("press")})
         now = self.clock()
         with self._lk:
+            if not self.motion_studio.request_current():
+                return {"dropped": "动作会话已经改变，旧动作请求已丢弃"}
             a = self._action
             if a is not None:
                 if a["conn"] == conn and a["id"] == cid:
@@ -1769,7 +1853,8 @@ class DriveMixin:
                 raise Refused((row or {}).get("why") or "现在做不了")
             self._take_lease(conn, by, now)          # 离开了手柄页的连接拿不到（三 V5：不再有 action 的口子）
             a = {"id": cid, "name": combo["name"], "conn": conn, "by": by, "started": now, "hold": now, "press": press,
-                 "stop": threading.Event(), "why": None, "step": 0, "steps": list(combo["steps"])}
+                 "stop": threading.Event(), "why": None, "step": 0, "steps": list(combo["steps"]),
+                 "motion_epoch": self.motion_studio.epoch}
             self._action = a
         self.log.info(f"开始做动作「{combo['name']}」（{by or '页面'}）", cat="手柄", raw=C.describe(combo["steps"]), dedup=False)
         threading.Thread(target=self._run_action, args=(a,), name="pad-action", daemon=True).start()
@@ -1822,9 +1907,21 @@ class DriveMixin:
                 return "策略停了"
         return None
 
-    def _notify_quiet(self, method, params):
+    def _notify_output(self, method, params):
+        if method == "robot.do":
+            self.motion_studio.note_skill()
+        self.robot.notify(method, params)
+        self.motion_studio.accepted(method, params)
+
+    def _notify_quiet(self, method, params, action=None, cleanup=False):
         with self._send_lk:
-            self.robot.notify(method, params)
+            with self._lk:
+                if action is not None and (self._action is not action
+                        or action.get("motion_epoch") != self.motion_studio.epoch
+                        or (action["stop"].is_set() and not cleanup)):
+                    return False
+            self._notify_output(method, params)
+            return True
 
     def _run_action(self, a):  # noqa: C901
         steps, needs = a["steps"], C.needs_policy(a["steps"])
@@ -1864,9 +1961,9 @@ class DriveMixin:
                         break
                     h, m = C.head_at(step, t), C.mouth_at(step, t)
                     if h is not None:
-                        self._notify_quiet("robot.head", dict(zip(("neck_pitch", "head_pitch", "head_yaw", "head_roll"), h)))
+                        self._notify_quiet("robot.head", dict(zip(("neck_pitch", "head_pitch", "head_yaw", "head_roll"), h)), action=a)
                     if m is not None:
-                        self._notify_quiet("robot.mouth", {"open": m})
+                        self._notify_quiet("robot.mouth", {"open": m}, action=a)
                     a["stop"].wait(C.TICK_S)
         except _Abort as e:
             result, level = f"停了：{e}", "info"
@@ -1885,7 +1982,7 @@ class DriveMixin:
                                          (moves_mouth, "robot.mouth", {"open": 0.0})):
                 if used and self.robot is not None:
                     try:
-                        self._notify_quiet(method, params)
+                        self._notify_quiet(method, params, action=a, cleanup=True)
                     except (Unreachable, Timeout) as e:
                         self.log.warn("动作结束时没能回正 / 合嘴", cat="手柄", step=method, raw=str(e),
                                       hint="头可能还歪着、嘴可能还张着：再按一次那个动作，或者让它坐下再站起来")

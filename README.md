@@ -104,7 +104,9 @@
 
 ## 💻 软件 · 复刻镜像与 Microduck Studio
 
-**复刻镜像 20261023c 已发布。** 烧卡后，用手机或电脑浏览器完成配网、舵机与 IMU 标定、手柄遥控和模型管理，出问题可导出诊断日志。
+**复刻镜像 20261027：网页软件升级与本地坐站语音。** 设置页可检查、下载或上传签名软件包，安装失败可回退；R3 单击开关监听，识别“坐下／站起来”，附带中文模型，无需云端账号。保留网页录制回放、灵动及模型管理。已有卡先通过 SSH 安装一次升级入口，之后日常软件更新不用重烧。
+
+本版保留 20261023c 的主程序、步态模型与总线 ID 200 IMU 自动识别。软件、签名事务、浏览器及镜像只读验证通过；本版新卡首次使用、旧卡升级/回退和真人声学仍待实物验收。音乐头身跟拍仍待修复，自由 AI 人声对话尚未接入。[镜像与校验值](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261027) · [软件升级包](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-software-v2026.10.27) · [更新与语音用法](docs/软件更新与语音使用说明-20261027.md) · [验证范围](docs/superpowers/verification/2026-10-27-web-updates.md)
 
 <p align="center"><a href="software/studio/README.md"><img src="assets/studio-overview-20261025-demo.jpg" alt="Microduck Studio 当前界面演示，设备读数为模拟数据" width="920"></a><br><sub>Studio 界面演示，设备读数为模拟数据</sub></p>
 

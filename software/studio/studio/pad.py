@@ -36,6 +36,7 @@ from collections import deque
 from . import helper as helper_api
 from .estop import STARTING_PHASES, relaxed, torque_off
 from .pad_combo import Refused
+from .motion_studio import MotionStudio, _digest
 from .pad_drive import (DRIVING, FAST_WORKERS, MAX_V, MAX_W, RELAX_CLEAR_DELAY_S, RELAX_GUARD_S,  # noqa: F401 —— MAX_V / MAX_W 给别处 import
                         DriveMixin, parse_speed_limits)
 from .rpc import LINE_LIMIT, RpcError, Timeout, Unreachable, parse_addr
@@ -117,7 +118,8 @@ FAILS = {
     "not_connected": ("配上了，但没连上", "按一下手柄的 Home / Xbox 键把它打开，它会自己连上"),
     "padd_down": ("手柄连上了，但 padd 没在跑", "padd 只在主程序 robotd 跑着时才起。先让主程序跑起来；还不行看日志里 padd 那几行"),
     "no_input": ("连上了，但 padd 没认到这个手柄（读不到按键）",
-                 "常见于先连接、后配对的经典蓝牙手柄：点「忘掉」，让手柄重新进配对状态再配。有模式开关的手柄（安卓 / Switch / X-input）换成 Switch 或 X-input 再试"),
+                 "先按 Home / Xbox 键唤醒手柄，网页会尝试恢复连接。仍读不到按键时检查手柄模式和日志；提示钥匙不匹配时再忘掉重配"),
+    "wrong_input": ("padd 打开的是另一只手柄", "先断开另一只手柄，再唤醒这次选择的手柄；不会替你切断另一只正在用的手柄"),
     "no_robotctl": ("鸭子上没有官方 robotctl（/usr/local/bin/robotctl）",
                     "重装官方固件 / robotctl，确认它装着；或者在鸭子上运行 sudo robotctl pad pair。新版小助手靠它停 btd、重开蓝牙"),
     "weird_ble": ("这块板配新手柄前要先暂停 btd、重启一下蓝牙", "新版小助手会调官方 robotctl pad pair 做这件事。没有新版小助手就重装它，或者在鸭子上运行 sudo robotctl pad pair"),
@@ -360,9 +362,10 @@ def _torque_on(bus):
 class PadOps(DriveMixin):
     def __init__(self, log, configd=None, bt=None, tap=None, robot=None, *, helper=None, clock=time.monotonic,
                  exists=os.path.exists, read_text=None, robotd_toml=ROBOTD_TOML, weird_ble=WEIRD_BLE, waits=None,
-                 state_dir=None):
+                 state_dir=None, audio=None):
         self.log = log
         self.configd, self.bt, self.tap, self.robot = configd, bt, tap, robot
+        self.audio = audio
         self.helper = helper_api if helper is None else helper
         self._helper_pad_ok = None       # None 没试过；True 新版小助手认 pad-pair；False 旧版 / 没小助手
         self.clock = clock
@@ -373,6 +376,7 @@ class PadOps(DriveMixin):
              "readback": TEST_READBACK_S, "torque": TEST_TORQUE_WAIT_S, "press": TEST_PRESS_WAIT_S,
              "lease": WATCH_LEASE_S, "scan_tick": 0.5, "pair_window": PAIR_WINDOW_S, "scan_min": 3,
              "pad_timeout": PAD_PAIR_TIMEOUT_S,
+             "reconnect_after": 2.0, "reconnect_interval": 4.0, "reconnect_timeout": 5.0,
              "probe": TEST_PROBE_S, "shutdown_hold": SHUTDOWN_HOLD_S, "select_long": SELECT_LONG_S,
              "relax_guard": RELAX_GUARD_S, "files": 10.0, "bindings": 10.0}
         w.update(waits or {})
@@ -413,6 +417,7 @@ class PadOps(DriveMixin):
         self._attach_said = None             # 旁路 attached 只在换了设备时记一行（审查 O16：滚出去 6 秒再滚回来就是一行）
         self._pad_config = robotd_toml       # padd 读 [netpad]、[pad_imu_head_control] 的文件：padd.service 的 --config（_refresh_files）
         self._drive_init(state_dir)
+        self.motion_studio = MotionStudio(self)
         # move / sticks / keys / stop 走自己的小线程池，不跟 configd、蓝牙、一次性请求这些慢调用挤（审查二 一般 4）；
         # 第三轮多了摇杆、按键、模式的心跳，开到 4 条，「停」和回正不用排队（三 V13）
         self._fast_pool = concurrent.futures.ThreadPoolExecutor(max_workers=FAST_WORKERS, thread_name_prefix="pad-fast")
@@ -425,11 +430,35 @@ class PadOps(DriveMixin):
     # ================= 对外 =================
 
     def handle(self, args, by=None, conn=None):
+        with self.motion_studio.request():
+            return self._handle_request(args, by=by, conn=conn)
+
+    def _handle_request(self, args, by=None, conn=None):
         """页面的指令（在线程里跑）。返回给页面的 dict；不能做就抛 Refused（原因给页面看）。
         by：「电脑 192.168.1.5」这种给人看的；conn：哪一个页面连接（同一台电脑开两个标签页也分得开）。"""
         op = args.get("op")
         if conn is not None and conn in self._gone and op not in ("watch", "stop", "action_stop", "drive"):
             raise Refused("这个页面已经断开了")      # 线程池里晚到的指令（审查二 S1）
+        if op == "motion":
+            return self.motion_studio.handle(args, conn, by)
+        if op == "audio":
+            values = {key:value for key,value in args.items() if key != "op"}
+            if not values or set(values)-{"listening","music"} or any(type(value) is not bool for value in values.values()):
+                raise Refused("语音只支持监听和音乐两个开关")
+            if conn is None or conn in self._gone or conn in self._closed:
+                raise Refused("请先回到手柄遥控区操作语音")
+            if self.audio is None:
+                raise Refused("语音服务尚未配置，请检查 duck-echo")
+            if values.get("listening") is False or values.get("music") is False:
+                with self._lk:
+                    if (self.motion_studio.session or {}).get("idle_kind") == "music":
+                        self.motion_studio.invalidate("监听或音乐模式已关闭")
+            try:
+                return {"audio":self.audio.set(**values)}
+            except (OSError,ValueError,TypeError):
+                raise Refused("连接不到语音服务，请检查 duck-echo") from None
+        if self.motion_studio.before(args, conn, by) is False:
+            return {"dropped": "动作会话已经改变，旧请求已丢弃"}
         if op == "watch":
             self._watch()
             return {}
@@ -566,6 +595,8 @@ class PadOps(DriveMixin):
                        "latch": {k: v is not None for k, v in self._latch.items()}}
             return {"t": "pad", "status": status, "estop": self._estop_checks(now, status), "live": live,
                     "wizard": wiz, "estop_test": test, "virtual": virtual, "motion": self._motion_view(now),
+                    "motion_studio": self.motion_studio.snapshot(conn, now),
+                    "audio": self.audio.snapshot() if self.audio is not None else {"available":False,"why":"语音服务尚未配置"},
                     "bindings": self.bindings}
 
     def safe_snapshot(self, conn=None):
@@ -646,6 +677,8 @@ class PadOps(DriveMixin):
         self._test_evt.set()
         self._action_stop(None, "Studio 关了")
         self._drive_close()                 # 头 / 身体回正、按住的键松开（三 V1 第 9 条，尽力发）
+        if self.audio is not None:
+            self.audio.close()
         self._files_stop.set()
         try:
             self._fast_pool.shutdown(wait=False, cancel_futures=True)
@@ -701,8 +734,10 @@ class PadOps(DriveMixin):
             inputs, cfg = self._inputs, None
         path = cfg or self.robotd_toml
         imu_head, imu_why = None, None
+        config_text = None
         try:
-            data = tomllib.loads(self.read_text(path))
+            config_text = self.read_text(path)
+            data = tomllib.loads(config_text)
             netpad, why = bool((data.get("netpad") or {}).get("enabled", False)), None
             ih = data.get("pad_imu_head_control") or {}
             imu_head = bool(ih.get("enabled", False)) if isinstance(ih, dict) else None
@@ -721,6 +756,7 @@ class PadOps(DriveMixin):
             self._netpad, self._netpad_why, self._limits = netpad, why, limits
             self._inputs, self._pad_config = inputs, path
             self._imu_head, self._imu_head_why = imu_head, imu_why
+            self._motion_config_digest = _digest({"padd": texts, "path": path, "config": config_text})
 
     def _files_loop(self):
         while not self._files_stop.wait(self.w["files"]):
@@ -974,6 +1010,11 @@ class PadOps(DriveMixin):
         if kind == "attached":
             self._action_stop(None, "实体手柄连上了")
             self._request_clear(None, "实体手柄连上了")     # 三 V1 第 6 条：网页置过的头 / 身体镜像时也清
+            with self._lk:
+                error = self.wiz.get("error") or {}
+                if (self.wiz.get("state") == "failed" and error.get("code") in ("no_input", "not_connected")
+                        and self._pair_input_matches(self.wiz.get("mac")) and self._mine(self._job_id)):
+                    self._pair_keys_ready(self._job_id, self.wiz.get("mac"))
 
     # ================= 配对向导 =================
 
@@ -1507,16 +1548,59 @@ class PadOps(DriveMixin):
             self._step(jid, "trust", "fail", FAILS["not_trusted"][0] + "：" + FAILS["not_trusted"][1])
         else:
             self._step(jid, "trust", "ok")
+        # helper/configd 会把已绑定但 Connect 还忙的设备返回；补连有次数和时间上限，不删钥匙、不重开蓝牙。
+        tries, retry_at = 0, self.clock() + self.w["reconnect_after"]
+
+        def reconnect(end):
+            nonlocal tries, retry_at
+            with self._lk:
+                if not self._mine(jid):
+                    self._fail(jid, None, "cancelled")
+                    return False
+                if self.tap_state == "attached" and not self._pair_input_matches(mac):
+                    self._fail(jid, "padd", "wrong_input")
+                    return False
+                drv = (self._status or {}).get("driver") if isinstance(self._status, dict) else None
+                if drv is not None and drv != "active":
+                    self._fail(jid, "padd", "padd_down", f"padd 是 {drv}")
+                    return False
+                bus = (self._robot or {}).get("bus")
+                if self._posture() in DRIVING or (isinstance(bus, dict) and bus.get("policy_enabled") is True):
+                    self._fail(jid, None, "driving")
+                    return False
+                now = self.clock()
+                if (tries >= 2 or now < retry_at or end <= now or not MAC_RE.fullmatch(mac)
+                        or pad.get("trusted") is False or not callable(getattr(self.bt, "reconnect", None))):
+                    return True
+                tries += 1
+                stage = self.wiz.get("phase")
+            self._step(jid, stage, "doing", f"等待按键设备，尝试恢复连接（{tries}/2）…")
+            try:
+                self.bt.reconnect(mac, timeout=min(self.w["reconnect_timeout"], end - now))
+            except BtError as e:
+                self.log.info("手柄补连还未完成，继续等实际按键设备", cat="手柄", raw=e.raw)
+            retry_at = self.clock() + self.w["reconnect_interval"]
+            return True
+
         # 连接：configd 回 paired 时可能还没连上（「bonded; it will connect on its own」，robotctl main.rs:4238-4247）
         self._step(jid, "connect", "doing", "等它连上…")
-        connected = bool(pad.get("connected"))
+        with self._lk:
+            connected = bool(pad.get("connected")) or self._pair_input_matches(mac)
         end = self.clock() + self.w["connect"]
         while not connected and self.clock() < end:
             if self._sleep(self.w["status_job"]):
                 self._fail(jid, "connect", "cancelled")
                 return
             self._poll_status()
-            connected = bool((self._pad_in_status(mac) or {}).get("connected"))
+            with self._lk:
+                connected = bool((self._pad_in_status(mac) or {}).get("connected")) or self._pair_input_matches(mac)
+            if not connected and not reconnect(end):
+                return
+            with self._lk:
+                connected = connected or self._pair_input_matches(mac)
+            if not self._mine(jid):
+                self._fail(jid, "connect", "cancelled")
+                return
         if not connected:
             self._fail(jid, "connect", "not_connected", f"{name} {mac}：pad.status 里 {self.w['connect']:g} 秒都没连上",
                        retry={"op": "pair", "mac": mac} if mac else None)
@@ -1533,30 +1617,69 @@ class PadOps(DriveMixin):
             drv = (self._status or {}).get("driver") if isinstance(self._status, dict) else None
             with self._lk:
                 attached = self.tap_state == "attached"
+                matching = self._pair_input_matches(mac)
                 tap_dead = self.tap is None or self.tap_state in ("absent", "denied", "error")
             if drv is not None and drv != "active":
                 self._fail(jid, "padd", "padd_down", f"padd 是 {drv}")
                 return
             if attached:
+                if not matching:
+                    self._fail(jid, "padd", "wrong_input")
+                    return
                 break
             if tap_dead and drv == "active":
                 self._step(jid, "padd", "ok", "padd 在跑；按键读不到（旁路没开），没法再核对")
                 break
+            if not reconnect(end):
+                return
             if self._sleep(self.w["status_job"]):
                 self._fail(jid, "padd", "cancelled")
                 return
         else:
-            self._fail(jid, "padd", "no_input", f"{self.w['padd']:g} 秒里 padd 旁路没出现 attached（{self.tap_state}：{self.tap_why}）",
-                       retry={"op": "pair", "mac": mac} if mac else None)
-            return
+            # 最后一轮 connect / sleep 期间收到的真实 attached 也有效，不能被稍晚的计时器覆盖。
+            with self._lk:
+                matching = self._pair_input_matches(mac)
+            if not matching:
+                actual = self._pad_in_status(mac) or {}
+                if not self._mine(jid):
+                    code = "cancelled"
+                else:
+                    code = "not_connected" if actual.get("connected") is False else "no_input"
+                self._fail(jid, "padd", code, f"{self.w['padd']:g} 秒里 padd 旁路没出现 attached（{self.tap_state}：{self.tap_why}）",
+                           retry={"op": "pair", "mac": mac} if mac else None)
+                return
+            tap_dead = False
+        self._pair_keys_ready(jid, mac, unverified=tap_dead)
+
+    def _pair_input_matches(self, mac):
+        """只用本次手柄的旁路确认成功，另一只已连接手柄不算。调用方持有 _lk。"""
+        unique = str((self.live.device or {}).get("unique") or "").upper()
+        return self.tap_state == "attached" and bool(mac) and unique == mac.upper()
+
+    def _pair_keys_ready(self, jid, mac, *, unverified=False):
         with self._lk:
-            dev = (self.live.device or {}).get("name")
+            if not self._mine(jid):
+                self._fail(jid, None, "cancelled")
+                return
             if self.tap_state == "attached":
+                if not self._pair_input_matches(mac):
+                    self._fail(jid, "padd", "wrong_input")
+                    return
+                unverified = False
+            elif unverified and self.tap is not None and self.tap_state not in ("absent", "denied", "error"):
+                self._fail(jid, "padd", "no_input")
+                return
+            if not unverified and not self._pair_input_matches(mac):
+                self._fail(jid, "padd", "no_input")
+                return
+            dev = (self.live.device or {}).get("name")
+            self._step(jid, "connect", "ok")
+            if not unverified:
                 self._step(jid, "padd", "ok", dev)
             self.live.seen = set()
-            self.wiz.update(phase="keys", state="waiting")
+            self.wiz.update(phase="keys", state="waiting", error=None, retry=None)
         self._step(jid, "keys", "doing")
-        self.log.info(f"手柄配好、padd 也认到了：{name}", cat="手柄", dedup=False)
+        self.log.info(f"手柄配好、进入按键测试：{dev or mac}", cat="手柄", dedup=False)
 
     def _keys_tick(self):
         with self._lk:
@@ -1848,6 +1971,8 @@ def robot_view(rd, posture=None):
     applied = ((st or {}).get("move") or {}).get("applied") if isinstance(st, dict) else None
     batt = ((health or {}).get("battery") or {}).get("percent") if isinstance(health, dict) else None
     return {"present": rd.present, "bus": rd.bus.value, "bus_at": rd.bus.at, "posture": posture,
+            "state": st if isinstance(st, dict) else None, "state_at": rd.state.at,
+            "policies_at": rd.policies.at,
             "policies": pol if isinstance(pol, dict) else None, "applied": applied, "battery_pct": batt,
             "estop_active": rd.estop.active, "estop_presses": rd.estop.press_count, "paused": rd.paused,
             "pad_status": rd.pad.value, "pad_status_at": rd.pad.at, "pad_status_error": rd.pad.error}
@@ -2443,6 +2568,15 @@ class BluetoothCtl:
             return {}
         return device_from_props(mac, parse_props(out))
 
+    def reconnect(self, mac, timeout=5.0):
+        """只恢复已配对目标的连接；不注册配对代理、不扫描或删除已有绑定。"""
+        if not isinstance(mac, str) or not MAC_RE.fullmatch(mac):
+            raise BtError("other", "手柄地址不对")
+        if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+            raise BtError("timeout", "没有剩余的重连时间")
+        return self._simple(rf"Connection successful|AlreadyConnected|Device {re.escape(mac)} Connected: yes",
+                            "connect", mac, timeout=min(timeout, self.t["connect"]))
+
     def _open(self):
         with self._lk:
             if self._session is None or self._session.closed:
@@ -2590,5 +2724,6 @@ def default_pad(log, configd_addr="unix:/run/configd.sock", robotd_addr="unix:/r
                 tap_addr="unix:/run/padd/pad.sock", bt_prefix=(), state_dir=None):
     """鸭子上的默认接法（app.py / __main__.py 用）。没有 bluetoothctl 的机器（电脑）不给蓝牙端口。"""
     bt = BluetoothCtl(prefix=bt_prefix) if shutil.which("bluetoothctl") else None
+    from .audio_interaction import AudioClient
     return PadOps(log, configd=ConfigdPort(configd_addr), bt=bt, tap=PaddTap(tap_addr, log=log),
-                  robot=RobotPort(robotd_addr), state_dir=state_dir)
+                  robot=RobotPort(robotd_addr), state_dir=state_dir, audio=AudioClient())

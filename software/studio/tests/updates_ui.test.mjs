@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+const source=await fs.readFile(new URL('../web/updates-ui-state.js',import.meta.url),'utf8');
+const {updateMessage,updateActions}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+assert.match(updateMessage({available:false}),/尚未安装/);
+assert.match(updateMessage({available:true,source_state:'no_release'}),/尚无发布/);
+assert.match(updateMessage({available:true,source_state:'network_error'}),/网络/);
+assert.match(updateMessage({available:true,job:{phase:'rolled_back',error:'health failed'}}),/已恢复旧版/);
+assert.match(updateMessage({available:true,job:{phase:'waiting_validation'}}),/待停稳验证/);
+assert.equal(updateActions({available:true,busy:true,ready:true}).install,false);
+assert.equal(updateActions({available:true,busy:false,ready:false,staged:{version:'2026.10.27'}}).install,false);
+assert.equal(updateActions({available:true,busy:false,ready:true}).install,true);
+assert.equal(updateActions({available:true,busy:false,candidate:{version:'2026.10.27'},source_state:'available'}).download,true);
+console.log('updates UI state checks passed');

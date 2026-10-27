@@ -27,6 +27,9 @@
 // 虚拟手柄：网页发整帧、实体手柄连着就让位，代码是自己写的。
 import { html, useState, useEffect, useRef, useCallback } from './vendor/preact-htm.module.js';
 import { Duck3D } from './duck3d.js';
+import { InlineCamera } from './sensors.js';
+import { MotionStudio } from './motion-studio.js';
+import { AudioInteraction } from './audio-interaction.js';
 
 const SEND_MS = 100;        // 摇杆按住时每秒发 10 次；松手发一次 0，鸭子 0.5 秒收不到也会自己停（robotd 的 deadman）
 const WATCH_MS = 2000;
@@ -1128,6 +1131,9 @@ function Remote({ st, pad, link, vp }) {
       ${last ? html`<p class=${cx('pd-small-p', !last.ok && 'pd-bad-t')}>${last.ok ? '✓' : '×'} ${last.what}${last.by ? `（${last.by}）` : ''}：${last.ok ? (last.reason || '主程序收到了') : last.reason}</p>` : null}
     </div>
 
+    <${AudioInteraction} pad=${pad} link=${link} activity=${padActivity} />
+    <${MotionStudio} pad=${pad} link=${link} activity=${padActivity} />
+
     <div class="pd-sec">
       <div class="pd-sec-h">技能<small>点一下做一次（官方的动作）</small></div>
       ${why(skWhy)}
@@ -1162,7 +1168,7 @@ function Remote({ st, pad, link, vp }) {
 }
 
 // ---------------- 手柄区的 3D 鸭子（用户 10-18：「摇杆的左边应该是 3D 视图、右边是摇杆控制，这样控制着也能看见鸭子的状态」） ----------------
-// 宽屏：手柄图卡下面，sticky 贴在顶栏下面，往下滚到手柄图时一直在它左边；≤ 1100 px：在遥控卡上面、矮一点、不 sticky。
+// 宽屏左侧是 3D 与摄像头上下两张卡，空间够时整体吸在仪表带下面；窄屏按顺序放在遥控上面。
 // 跟总览舞台一样：实时关节、不缩放、单指滚页面两指转（duck3d 的 pageScroll，touch-action 也写在 CSS 里），不在视口就不画（duck3d 的 IO）；
 // 模型几何体是 duck3d 模块里共用的缓存，不会加载两次。数据旧了去色（class，不用 style 字符串：代码审查 C6）。
 // 下面一行小字：姿势 · 电量 · 现在的前后 / 平移 / 转弯（跟遥控卡的读数同一套公式、同一份摇杆状态）
@@ -1204,10 +1210,11 @@ const TABBAR_PX = 83;       // 手机底栏（styles.css .tabbar）
 // 总览重排（方案 §1.2、审查 O11）：顺序是 页头 → 手柄图（按键表默认折起）+ 遥控 → 配对向导 / 测急停 / 配过的手柄。
 // 不再有单独的手柄页：#/pad 是总览上的锚点（app.js 打开就滚到这里，id="pad-block"）。
 // 这一块一直挂着，「在不在」看 padActivity（路由 + 页面可见 + 这一块在视口里）：watch、drive open / off、全部松开都挂在它上面
-export function PadPage({ st, pad, link, live: duckLive = true }) {
+export function PadPage({ st, pad, link, api, previewActive = false, live: duckLive = true }) {
   const [msg, setMsg] = useState(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [kind, setKind] = useState('xbox');
+  const [visualFits, setVisualFits] = useState(true);
   const rootRef = useRef(null);
   const s = pad?.status || {};
   const live = pad?.live || {};
@@ -1218,6 +1225,27 @@ export function PadPage({ st, pad, link, live: duckLive = true }) {
   const vp = useVpad({ pad, st, link });
   // 图上显示什么：实体手柄连着（镜像）或者在配对的按键测试 → 实体手柄的；否则 → 网页上按着的
   const shown = vp.mirror || live.state === 'attached' ? live : vp.liveWeb;
+
+  // 顶部提示换行时也按实际高度判断；放不下就随页面滚，不能把摄像头固定在屏幕外。
+  useEffect(() => {
+    const left = rootRef.current?.querySelector('.pd-left');
+    if (!left) return;
+    let frame = null;
+    const measure = () => {
+      frame = null;
+      const height = left.getBoundingClientRect().height;
+      const top = parseFloat(getComputedStyle(left).top);
+      if (height > 0 && Number.isFinite(top)) setVisualFits(height + top + 16 <= innerHeight);
+    };
+    const schedule = () => { if (frame == null) frame = requestAnimationFrame(measure); };
+    const observer = new ResizeObserver(schedule);
+    for (const el of [left, document.querySelector('.band'), document.querySelector('.sticky-bar')]) {
+      if (el) observer.observe(el);
+    }
+    window.addEventListener('resize', schedule);
+    schedule();
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); window.removeEventListener('resize', schedule); };
+  }, []);
 
   const op = useCallback(async (args, timeout = 15000) => {
     const r = await link.cmd('pad.op', args, timeout);
@@ -1317,7 +1345,8 @@ export function PadPage({ st, pad, link, live: duckLive = true }) {
           <${Legend} kind=${activeKind} live=${shown} bindings=${pad?.bindings} imuHead=${pad?.virtual?.pad_imu_head} />
         </details>
       </section>
-      <div class="pd-left"><${PadDuck} st=${st} pad=${pad} vp=${vp} live=${duckLive} /></div>
+      <div class=${cx('pd-left', !visualFits && 'pd-left-overflow')}><${PadDuck} st=${st} pad=${pad} vp=${vp} live=${duckLive} />
+        <${InlineCamera} api=${api} active=${previewActive} /></div>
       <${Remote} st=${st} pad=${pad} link=${link} vp=${vp} />
     </div>
     <div class="pd-more">

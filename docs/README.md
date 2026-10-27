@@ -19,6 +19,7 @@
 |---|---|
 | [Studio 网页中控](../software/studio/README.md) | 标定、遥控、设备状态与模型管理 |
 | [镜像构建与发布](../software/image/README.md) | 镜像构建方式与发布说明 |
+| [软件更新与本地语音](软件更新与语音使用说明-20261027.md) | 旧卡一次性引导、网页签名升级/回退、R3坐下与站起来 |
 | [训练平台](../software/training-studio/README.md) | 网页实验管理、评估与模型导出 |
 | [训练工程](../software/training/README.md) | 训练环境与运行方法 |
 | [训练前数据清单](HD-1910训练前数据清单.md) | 几何、舵机、IMU 与实测项 |

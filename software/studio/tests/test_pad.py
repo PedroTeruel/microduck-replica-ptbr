@@ -110,6 +110,8 @@ class FakeBt:
         self.on_pair = None
         self.removed = None
         self.pairable_ok = False
+        self.on_reconnect = None
+        self.reconnect_errors = []
 
     def adapter(self):
         return dict(self.state)
@@ -141,6 +143,13 @@ class FakeBt:
 
     def info(self, mac):
         return dict(self.infos.get(mac, {}))
+
+    def reconnect(self, mac, timeout=5.0):
+        self.calls.append(("reconnect", mac, timeout))
+        if self.reconnect_errors:
+            raise self.reconnect_errors.pop(0)
+        if self.on_reconnect:
+            self.on_reconnect(mac)
 
     def pair_device(self, mac, classic, cancel, step):
         self.calls.append(("pair_device", mac, classic))
@@ -619,6 +628,179 @@ class PairTest(PadTestBase):
         wait_until(lambda: self.wiz()["phase"] == "keys", what="进入按键测试")
         self.ops.handle({"op": "keys_done"})
         self.assertEqual(self.wiz()["state"], "done")
+
+    def recovery_pair(self, connected=True):
+        self.watch()
+        self.ops.w.update(reconnect_after=0.03, reconnect_interval=0.03, reconnect_timeout=0.05)
+        self.helper.is_available = True
+        self.helper.pair_result = self.helper_paired(connected=connected)
+        self.helper.on_pair = lambda mac: self.cfg.connect_pad(PRO, "Pro Controller", connected=False)
+
+    def reconnect_ready(self, mac):
+        self.cfg.connect_pad(mac, "Pro Controller")
+        self.tap.attach(PRO_DEV)
+
+    def test_helper_stale_connected_recovers_until_matching_input_is_ready(self):
+        """主路配完回过 Connected，但链路已掉；补一次 connect 后才有 event/attached。"""
+        self.recovery_pair()
+        self.bt.on_reconnect = self.reconnect_ready
+        self.ops.handle({"op": "pair", "mac": PRO})
+        wait_until(lambda: self.wiz()["phase"] == "keys" or self.wiz()["state"] == "failed")
+        self.assertEqual(self.wiz()["phase"], "keys", self.wiz())
+        self.assertEqual([x[1] for x in self.bt.calls if isinstance(x, tuple) and x[0] == "reconnect"], [PRO])
+        self.assertEqual(self.helper.forget_calls, [])
+        self.assertFalse(set(self.robot.methods()) - {"pad.bindings"})
+
+    def test_helper_bonded_but_disconnected_also_recovers(self):
+        self.recovery_pair(connected=False)
+        self.bt.on_reconnect = self.reconnect_ready
+        self.ops.handle({"op": "pair", "mac": PRO})
+        wait_until(lambda: self.wiz()["phase"] == "keys" or self.wiz()["state"] == "failed")
+        self.assertEqual(self.wiz()["phase"], "keys", self.wiz())
+
+    def test_matching_input_wins_over_stale_disconnected_configd(self):
+        self.recovery_pair(connected=False)
+        self.bt.on_reconnect = lambda mac: self.tap.attach(PRO_DEV)
+        self.ops.handle({"op": "pair", "mac": PRO})
+        wait_until(lambda: self.wiz()["phase"] == "keys" or self.wiz()["state"] == "failed")
+        self.assertEqual(self.wiz()["phase"], "keys", self.wiz())
+        self.assertEqual(len([x for x in self.bt.calls if isinstance(x, tuple) and x[0] == "reconnect"]), 1)
+
+    def test_matching_input_received_during_last_reconnect_is_not_lost_at_deadline(self):
+        self.recovery_pair()
+        clock, offset = self.ops.clock, [0]
+        self.ops.clock = lambda: clock() + offset[0]
+        def ready_then_timeout(mac):
+            self.tap.attach(PRO_DEV)
+            offset[0] += 1.0
+        self.bt.on_reconnect = ready_then_timeout
+        self.ops.handle({"op": "pair", "mac": PRO})
+        wait_until(lambda: self.wiz()["phase"] == "keys" or self.wiz()["state"] == "failed")
+        self.assertEqual(self.wiz()["phase"], "keys", self.wiz())
+
+    def test_reconnect_attempts_are_bounded_and_do_not_count_as_input_success(self):
+        self.recovery_pair()
+        self.helper.on_pair = lambda mac: self.cfg.connect_pad(PRO, "Pro Controller")
+        self.bt.reconnect_errors = [P.BtError("busy", "br-connection-busy")] * 5
+        self.ops.handle({"op": "pair", "mac": PRO})
+        w = self.wait_wiz("failed")
+        self.assertEqual(w["error"]["code"], "no_input")
+        calls = [x for x in self.bt.calls if isinstance(x, tuple) and x[0] == "reconnect"]
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(0 < x[2] <= 0.05 for x in calls))
+
+    def test_cancel_while_reconnecting_cannot_advance_or_retry(self):
+        self.recovery_pair()
+        def cancel(mac):
+            self.ops.handle({"op": "cancel"})
+            self.reconnect_ready(mac)
+        self.bt.on_reconnect = cancel
+        self.ops.handle({"op": "pair", "mac": PRO})
+        w = self.wait_wiz("failed")
+        self.assertEqual(w["error"]["code"], "cancelled")
+        self.assertEqual(len([x for x in self.bt.calls if isinstance(x, tuple) and x[0] == "reconnect"]), 1)
+
+    def test_cancel_on_final_connection_deadline_keeps_cancelled_reason(self):
+        self.recovery_pair(connected=False)
+        clock, offset = self.ops.clock, [0]
+        self.ops.clock = lambda: clock() + offset[0]
+        def cancel_then_timeout(mac):
+            self.ops.handle({"op": "cancel"})
+            offset[0] += 1.0
+            raise P.BtError("timeout", "connect deadline")
+        self.bt.on_reconnect = cancel_then_timeout
+        self.ops.handle({"op": "pair", "mac": PRO})
+        w = self.wait_wiz("failed")
+        wait_until(lambda: not self.ops._job[1].is_alive())
+        self.assertEqual(self.wiz()["error"]["code"], "cancelled", w)
+
+    def test_another_attached_controller_is_not_pairing_success_or_reconnect_target(self):
+        self.recovery_pair()
+        self.tap.attach(XBOX_DEV)
+        self.ops.handle({"op": "pair", "mac": PRO})
+        w = self.wait_wiz("failed")
+        self.assertEqual(w["error"]["code"], "wrong_input")
+        self.assertFalse(any(isinstance(x, tuple) and x[0] == "reconnect" for x in self.bt.calls))
+
+    def test_driver_failure_while_disconnected_does_not_start_reconnect(self):
+        self.recovery_pair(connected=False)
+        def failed(mac):
+            self.cfg.connect_pad(mac, "Pro Controller", connected=False)
+            self.cfg.status["driver"] = "failed"
+        self.helper.on_pair = failed
+        self.ops.handle({"op": "pair", "mac": PRO})
+        self.assertEqual(self.wait_wiz("failed")["error"]["code"], "padd_down")
+        self.assertFalse(any(isinstance(x, tuple) and x[0] == "reconnect" for x in self.bt.calls))
+
+    def test_policy_start_while_waiting_does_not_start_reconnect(self):
+        self.recovery_pair()
+        def driving(mac):
+            self.cfg.connect_pad(mac, "Pro Controller", connected=False)
+            self.robot_ok(posture="policy", bus=bus(policy_enabled=True))
+        self.helper.on_pair = driving
+        self.ops.handle({"op": "pair", "mac": PRO})
+        self.assertEqual(self.wait_wiz("failed")["error"]["code"], "driving")
+        self.assertFalse(any(isinstance(x, tuple) and x[0] == "reconnect" for x in self.bt.calls))
+
+    def test_unavailable_tap_keeps_explicit_unverified_compatibility_path(self):
+        self.recovery_pair()
+        def no_tap(mac):
+            self.cfg.connect_pad(mac, "Pro Controller")
+            self.tap.on_state("denied", "permission")
+        self.helper.on_pair = no_tap
+        self.ops.handle({"op": "pair", "mac": PRO})
+        wait_until(lambda: self.wiz()["phase"] == "keys" or self.wiz()["state"] == "failed")
+        self.assertEqual(self.wiz()["phase"], "keys", self.wiz())
+        padd = next(s for s in self.wiz()["steps"] if s["key"] == "padd")
+        self.assertIn("没法再核对", padd["note"])
+        self.assertFalse(any(isinstance(x, tuple) and x[0] == "reconnect" for x in self.bt.calls))
+
+    def test_controller_arriving_during_unverified_fallback_is_checked_again(self):
+        for device, expected in ((XBOX_DEV, "failed"), (PRO_DEV, "waiting")):
+            with self.subTest(device=device["name"]):
+                self.ops.handle({"op": "wizard_reset"})
+                self.ops._tap_report({"report": "detached", "why": "test"})
+                self.recovery_pair()
+                def no_tap(mac):
+                    self.cfg.connect_pad(mac, "Pro Controller")
+                    self.tap.on_state("denied", "permission")
+                self.helper.on_pair = no_tap
+                step = self.ops._step
+                def late_input(jid, key, state, note=None):
+                    step(jid, key, state, note)
+                    if key == "padd" and state == "ok" and "没法再核对" in (note or ""):
+                        self.tap.attach(device)
+                with mock.patch.object(self.ops, "_step", side_effect=late_input):
+                    self.ops.handle({"op": "pair", "mac": PRO})
+                    wait_until(lambda: self.wiz()["phase"] == "keys" or self.wiz()["state"] == "failed")
+                w = self.wiz()
+                self.assertEqual(w["state"], expected, w)
+                if expected == "failed":
+                    self.assertEqual(w["error"]["code"], "wrong_input")
+                else:
+                    padd = next(s for s in w["steps"] if s["key"] == "padd")
+                    self.assertEqual(padd["note"], PRO_DEV["name"])
+
+    def test_matching_late_input_clears_readiness_failure_but_not_cancel(self):
+        for cancelled in (False, True):
+            with self.subTest(cancelled=cancelled):
+                self.ops.handle({"op": "wizard_reset"})
+                self.ops._tap_report({"report": "detached", "why": "test"})
+                self.recovery_pair()
+                self.ops.handle({"op": "pair", "mac": PRO})
+                self.wait_wiz("failed")
+                if cancelled:
+                    self.ops.handle({"op": "cancel"})
+                self.tap.attach(PRO_DEV)
+                w = self.wiz()
+                if cancelled:
+                    self.assertEqual(w["state"], "failed")
+                else:
+                    self.assertEqual(w["phase"], "keys", w)
+                    self.assertIsNone(w["error"])
+                    self.assertEqual(self.steps()["connect"], "ok")
+                    self.assertEqual(self.steps()["padd"], "ok")
+                self.ops._tap_report({"report": "detached", "why": "test"})
 
     def test_helper_failures_in_plain_words(self):
         cases = [
@@ -2352,6 +2534,25 @@ class FakeProc:
 
 
 class BluetoothctlTest(unittest.TestCase):
+    def test_reconnect_uses_only_requested_mac_and_remaining_time(self):
+        calls = []
+        def run(argv, timeout):
+            calls.append((argv, timeout))
+            return 0, "Connection successful\n"
+        bt = P.BluetoothCtl(run=run, prefix=("sudo", "-n"), stdbuf=False)
+        bt.reconnect(PRO, timeout=0.25)
+        self.assertEqual(calls, [(["sudo", "-n", "bluetoothctl", "connect", PRO], 0.25)])
+        with self.assertRaises(P.BtError):
+            bt.reconnect("--help")
+        with self.assertRaises(P.BtError):
+            bt.reconnect(PRO, timeout=0)
+        self.assertEqual(len(calls), 1)
+
+    def test_reconnect_does_not_accept_another_devices_connection_event(self):
+        bt = P.BluetoothCtl(run=lambda argv, timeout: (0, f"[CHG] Device {XBOX} Connected: yes\n"))
+        with self.assertRaises(P.BtError):
+            bt.reconnect(PRO)
+
     PROMPT = "\x01\x1b[0;94m\x02[bluetooth]\x01\x1b[0m\x02# "
     T = {"pair": 1.0, "connect": 1.0, "trust": 1.0, "find": 0.3}
 

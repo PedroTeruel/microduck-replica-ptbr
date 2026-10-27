@@ -10,6 +10,15 @@ const frame = () => ({ state: 'ready', connected: true, sensor: 'VL53L5CX', rows
   hz: 10, seq: 3, age_ms: 0, simulated: false, distance_mm: Array(64).fill(500), status: Array(64).fill(5) });
 const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve(); };
 
+test('inline camera only starts a configured camera with a live service', () => {
+  assert.equal(typeof ui.inlineCameraPolicy, 'function');
+  assert.equal(ui.inlineCameraPolicy({ source: 'camera', service_state: 'online' }).play, true);
+  assert.equal(ui.inlineCameraPolicy({ source: 'test', service_state: 'online' }).state, 'test');
+  assert.equal(ui.inlineCameraPolicy({ source: 'camera', service_state: 'offline' }).state, 'offline');
+  assert.equal(ui.inlineCameraPolicy({ source: 'unknown', service_state: 'online' }).state, 'unknown');
+  assert.equal(ui.inlineCameraPolicy(null).play, false);
+});
+
 test('ToF keeps valid ranges, no target and unusable readings distinct', () => {
   assert.equal(typeof ui.tofSnapshot, 'function');
   const f = frame();
