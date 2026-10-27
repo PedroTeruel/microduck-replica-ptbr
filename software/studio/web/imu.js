@@ -68,7 +68,8 @@ function chipLabel(imu) {
 }
 function imuContext(mode, imu) {
   return JSON.stringify([mode, imu?.source, imu?.source === 'bus' ? imu.imu_bus || null : null,
-    imu?.configured_imu_profile ?? null, imu?.redo?.session_id || null, !!imu?.redo?.active]);
+    imu?.configured_imu_profile ?? null, imu?.metadata_error ?? null, imu?.profile_error ?? null,
+    imu?.redo?.session_id || null, !!imu?.redo?.active]);
 }
 
 // ---------------- 小算术（跟 imu_calib.py 同一套） ----------------

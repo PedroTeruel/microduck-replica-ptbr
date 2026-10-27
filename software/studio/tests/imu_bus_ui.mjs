@@ -93,6 +93,18 @@ try {
   await js(`props.imu = {...props.imu, imu_bus:{...props.imu.imu_bus, identity:[8,8,8]}}; draw()`);
   await wait('!document.querySelector(".imu-big.rec")', 'standing collection reset');
   assert.equal(await js(`document.querySelector('.imu-big').textContent.trim()`), '开始采集');
+  // A conflicting secondary diagnostic leaves the chosen board unchanged, but
+  // its validity transition must discard collection and stay discarded on recovery.
+  await js(`clickText('开始采集')`);
+  await wait('document.querySelector(".imu-big.rec")', 'collection before diagnostic conflict');
+  await js(`props.imu={...props.imu,metadata_error:'主程序报告了不一致的 IMU 类型',
+    profile_error:'主程序报告了不一致的 IMU 类型',mount:{...props.imu.mount,verified:false}}; draw()`);
+  await wait('!document.querySelector(".imu-big.rec")', 'conflicting metadata resets collection');
+  await js(`props.imu={...props.imu,metadata_error:null,profile_error:null,
+    mount:{...props.imu.mount,verified:true}}; draw()`);
+  await pause(120);
+  assert.equal(await js(`!!document.querySelector('.imu-big.rec')`),false);
+  assert.equal(await js(`document.querySelector('.imu-big').textContent.trim()`),'开始采集');
   // Same wire and identity, different explicitly configured data profile.
   await js(`props.imu = {...props.imu, configured_imu_profile:'qinmo', profile_selection:{can_start:true},
     imu_bus:{protocol:'feetech',board:'qinmo',identity:[],profile:'qinmo',gyro_dps_per_lsb:1/16.4,identification:'configured_profile'}}; draw()`);

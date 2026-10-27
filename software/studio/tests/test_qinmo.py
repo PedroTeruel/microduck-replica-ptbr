@@ -38,6 +38,108 @@ INVALID_METADATA = [
 
 
 class QinmoBackendTest(ImuBackendTest):
+    def test_conflicting_shadow_metadata_invalidates_result_without_resurrection(self):
+        bus, cal = commissioning_bus(), factory_calib()
+        bus['native'].update(imu_bus={'protocol':'feetech','profile':'legacy','board':'ft6','identity':[1]},
+                             configured_imu_profile='legacy')
+        backend = self.backend(bus=bus,calib=cal)
+        projected = backend.view()['imu_bus']
+        backend.last_result = {'ok':True,'mount':[1,0,0,0]}
+        backend.job = {'done':True}
+        bus['imu_bus'] = copy.deepcopy(INFO)
+        view = backend.view()
+        self.assertEqual(view['imu_bus'],projected)
+        self.assertTrue(view['metadata_error'])
+        self.assertIsNone(backend.last_result)
+        self.assertIsNone(backend.job)
+        del bus['imu_bus']
+        self.assertIsNone(backend.view()['metadata_error'])
+        self.assertIsNone(backend.last_result)
+
+    def test_conflicting_shadow_metadata_discards_inflight_solve(self):
+        bus, cal = commissioning_bus(), factory_calib()
+        bus['native'].update(imu_bus={'protocol':'feetech','profile':'legacy','board':'ft6','identity':[1]},
+                             configured_imu_profile='legacy')
+        backend = self.backend(bus=bus,calib=cal)
+        def solve(*args,**kwargs):
+            bus['imu_bus'] = copy.deepcopy(INFO)
+            return {'ok':True,'mount':[1,0,0,0],'mode':'full','quality':{}}
+        with mock.patch('studio.imu.imu_calib.solve',side_effect=solve):
+            with self.assertRaises(Refused):
+                asyncio.run(backend.handle({'op':'solve','mode':'full','samples':[{'g':[0,0,-1]}]}))
+        self.assertIsNone(commit.load_pending(self.tmp.name))
+        del bus['imu_bus']
+        backend.view()
+        self.assertIsNone(backend.last_result)
+
+    def test_conflict_then_recovery_discards_inflight_solve(self):
+        bus, cal = commissioning_bus(), factory_calib()
+        bus['native'].update(imu_bus={'protocol':'feetech','profile':'legacy','board':'ft6','identity':[1]})
+        backend = self.backend(bus=bus,calib=cal)
+        def solve(*args,**kwargs):
+            bus['imu_bus'] = copy.deepcopy(INFO)
+            backend.view()
+            del bus['imu_bus']
+            backend.view()
+            return {'ok':True,'mount':[1,0,0,0],'mode':'full','quality':{}}
+        with mock.patch('studio.imu.imu_calib.solve',side_effect=solve):
+            with self.assertRaises(Refused):
+                asyncio.run(backend.handle({'op':'solve','mode':'full','samples':[{'g':[0,0,-1]}]}))
+        self.assertIsNone(commit.load_pending(self.tmp.name))
+        self.assertIsNone(backend.last_result)
+
+    def test_conflict_then_recovery_discards_awaited_verifier_reply(self):
+        bus, cal = commissioning_bus(), factory_calib()
+        bus['native'].update(imu_bus={'protocol':'feetech','profile':'legacy','board':'ft6','identity':[1]})
+        backend = self.backend(bus=bus,calib=cal)
+        backend.view()
+        backend.last_result = {'ok':True,'mode':'coarse','mount':[.5]*4}
+        async def scenario():
+            started, release = asyncio.Event(), asyncio.Event()
+            original = backend._rpc_once
+            async def delayed(method,params,timeout,name):
+                if params.get('action') == 'verify-imu':
+                    started.set()
+                    await release.wait()
+                return await original(method,params,timeout,name)
+            with mock.patch.object(backend,'_rpc_once',side_effect=delayed):
+                task = asyncio.create_task(backend.handle({'op':'verify','confirmed':True,'mount_wxyz':[.5]*4}))
+                await started.wait()
+                bus['imu_bus'] = copy.deepcopy(INFO)
+                backend.view()
+                del bus['imu_bus']
+                backend.view()
+                release.set()
+                with self.assertRaises(Refused):
+                    await task
+        asyncio.run(scenario())
+        self.assertIsNone(backend.last_result)
+        self.assertFalse((backend.job or {}).get('done'))
+
+    def test_conflict_then_recovery_discards_awaited_capture_reply(self):
+        bus, cal = commissioning_bus(), factory_calib()
+        bus['native'].update(imu_bus={'protocol':'feetech','profile':'legacy','board':'ft6','identity':[1]})
+        backend = self.backend(bus=bus,calib=cal)
+        backend.view()
+        async def scenario():
+            started, release = asyncio.Event(), asyncio.Event()
+            async def delayed():
+                started.set()
+                await release.wait()
+                return bus
+            with mock.patch.object(backend,'_bus_once',side_effect=delayed):
+                task = asyncio.create_task(backend.handle({'op':'coarse-capture','phase':'still','seconds':.5}))
+                await started.wait()
+                bus['imu_bus'] = copy.deepcopy(INFO)
+                backend.view()
+                del bus['imu_bus']
+                backend.view()
+                release.set()
+                with self.assertRaisesRegex(Refused,'改变'):
+                    await task
+        asyncio.run(scenario())
+        self.assertFalse((backend.job or {}).get('done'))
+
     def test_raw_metadata_presence_is_validated_before_projection_and_actions(self):
         for raw in INVALID_METADATA:
             for native in (False, True):

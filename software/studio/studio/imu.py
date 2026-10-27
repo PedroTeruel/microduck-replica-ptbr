@@ -106,7 +106,7 @@ def calibration_context(bus, source, redo):
     metadata_error = imu_bus_metadata(bus)[2] if source in (None, "bus") else None
     info = bus_imu_of(bus) if source == "bus" else None
     transport = (info["protocol"], info["board"], tuple(info["identity"] or []),
-                 info.get("profile", "legacy"), configured_profile(bus)) if info else (
+                 info.get("profile", "legacy"), configured_profile(bus), metadata_error) if info else (
                      (None, configured_profile(bus), metadata_error)
                      if configured_profile(bus) is not None or metadata_error else None)
     return source, transport, bus.get("mode"), redo.get("session_id"), bool(redo.get("active"))
@@ -147,6 +147,7 @@ class ImuBackend:
         self.rd, self.log, self.state_dir = robotd, log, state_dir
         self.root = root
         self._seen_context = None
+        self._context_generation = 0
         self._redo_busy = False
         self.job = None              # 粗校采数 / 交给主程序验证的进度
         self.detected = None         # 最近一次识别芯片的结果（这一步还没有）
@@ -166,6 +167,7 @@ class ImuBackend:
         redo = self._redo_view(bus, source)
         context = calibration_context(bus, source, redo)
         if self._seen_context is not None and context != self._seen_context:
+            self._context_generation += 1
             self.last_result = None
             if context[1] != self._seen_context[1] and self.job and (self.job.get("done") or self.job.get("failed")):
                 self.job = None
@@ -381,6 +383,7 @@ class ImuBackend:
             raise Refused("采数时间要在 0.5–8 秒之间")
         out, t0, last_tilt = [], time.monotonic(), None
         capture_context = None
+        capture_generation = self._context_generation
         label = {"still": "摆正，别动", "fwd": "往前低头", "back": "往后仰"}[phase]
         self.job = {"kind": "coarse", "title": "粗校采数", "msg": f"{label}：{float(seconds):g} 秒",
                     "target_deg": 20 if phase == "fwd" else 0, "hold": 0.0}
@@ -396,7 +399,8 @@ class ImuBackend:
             source, _ = mount_of(bus, fresh_calib(self.rd))
             redo = helper.imu_redo_state(root=self.root)
             context = calibration_context(bus, source, redo)
-            if capture_context is not None and context != capture_context:
+            if (self._context_generation != capture_generation
+                    or (capture_context is not None and context != capture_context)):
                 self.last_result = None
                 raise Refused("粗校采数期间 IMU 来源 / 总线板卡 / 模式 / 会话改变：重新采数")
             capture_context = context
@@ -409,6 +413,9 @@ class ImuBackend:
             self.job.update({"hold": min(1.0, (time.monotonic() - t0) / float(seconds)),
                              "tilt_deg": last_tilt})
             await asyncio.sleep(0.1)
+        if self._context_generation != capture_generation:
+            self.last_result = None
+            raise Refused("粗校采数期间 IMU 上下文已改变：重新采数")
         if len(out) < 15:
             self.job = {"kind": "coarse", "title": "粗校采数", "failed": True,
                         "msg": f"只采到 {len(out)} 个有效读数"}
@@ -483,6 +490,7 @@ class ImuBackend:
         self.view()  # invalidate a result from a different mode/source/session before consuming it
         source, _ = mount_of(bus, fresh_calib(self.rd))
         context = calibration_context(bus, source, redo)
+        generation = self._context_generation
         verified_info = bus_imu_of(bus)
         verified_bus = {"imu_bus": verified_info} if verified_info is not None else {}
         if self._seen_context != context:
@@ -509,7 +517,7 @@ class ImuBackend:
             raise Refused(msg) from e
         # A verifier reply alone is not success: read the exact active source and normalized mount back.
         try:
-            status = await self._verified_readback(source, mount, transport=context[1])
+            status = await self._verified_readback(source, mount, transport=context[1], generation=generation)
             current_redo = helper.imu_redo_state(root=self.root)
             if redo.get("active"):
                 if not current_redo.get("active") or current_redo.get("session_id") != redo.get("session_id"):
@@ -552,9 +560,11 @@ class ImuBackend:
             raise Refused("IMU 四元数读回无效")
         return [x/norm for x in quat]
 
-    async def _verified_readback(self, source, mount, motion=False, transport=None):
+    async def _verified_readback(self, source, mount, motion=False, transport=None, generation=None):
         status = await self._rpc_once("robot.busCommand", {"action": "calibration-status"}, 5.0, "重读标定状态")
         bus = await self._bus_once()
+        if generation is not None and self._context_generation != generation:
+            raise Refused("IMU 验证期间上下文已改变：重新采数再验证")
         if calibration_context(bus, source, {})[1] != transport:
             raise Refused("IMU 验证期间总线板卡已改变：重新采数再验证")
         if not isinstance(status, dict) or status.get("imu_source") != source:
@@ -601,6 +611,7 @@ class ImuBackend:
             if view.get("profile_error"):
                 raise Refused(view["profile_error"])
             context = self._seen_context
+            generation = self._context_generation
             redo = helper.imu_redo_state(root=self.root)
             if redo.get("active") and mode != "coarse":
                 raise Refused("重做初次 IMU 校准期间用静止 / 前倾粗校，保持失能")
@@ -611,7 +622,7 @@ class ImuBackend:
             res = await asyncio.to_thread(lambda: imu_calib.solve(
                 samples, frame="body", old_mount=old, mode=mode, old_verified=old_verified))
             self.view()
-            if self._seen_context != context:
+            if self._seen_context != context or self._context_generation != generation:
                 self.last_result = None
                 raise Refused("采数后 IMU 来源 / 总线板卡 / 模式 / 会话已改变：重新采数再算")
             self.last_result = res
