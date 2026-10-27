@@ -632,6 +632,15 @@ STUDIO=$(cd "$STUDIO_ARG" && pwd -P)
 [ -d "$OVERLAY_ARG" ] || fail "OVERLAY_DIR 不存在：$OVERLAY_ARG" "指向本目录下的 overlay。"
 OVERLAY=$(cd "$OVERLAY_ARG" && pwd -P)
 HERE=$(cd "$(dirname "$0")" && pwd -P)
+SOFTWARE_COMPONENTS_REQUESTED=0
+if [ -n "${SOFTWARE_UPDATE_PACKAGE:-}${SOFTWARE_UPDATE_PUBLIC_KEY:-}${SOFTWARE_UPDATE_ENGINE:-}${VOICE_RESOURCES_DIR:-}" ]; then
+    SOFTWARE_COMPONENTS_REQUESTED=1
+    [ -f "${SOFTWARE_UPDATE_PACKAGE:-}" ] && [ -f "${SOFTWARE_UPDATE_PUBLIC_KEY:-}" ] && \
+        [ -f "${SOFTWARE_UPDATE_ENGINE:-}" ] && [ -f "${VOICE_RESOURCES_DIR:-}/resources-manifest.json" ] || \
+        fail "软件升级组件输入不完整" "同时提供 SOFTWARE_UPDATE_PACKAGE、SOFTWARE_UPDATE_PUBLIC_KEY、SOFTWARE_UPDATE_ENGINE 和 VOICE_RESOURCES_DIR，且文件必须存在。"
+    [ -f "$HERE/software_components.py" ] && [ -f "$HERE/../updater/bootstrap.py" ] || \
+        fail "软件升级组件输入缺少共享安装器" "使用包含 software/updater 与 software/image 的完整冻结源码。"
+fi
 CAL_SRC=$HERE/calib/hd1910-calibration.option-a.toml
 
 if [ -z "$IMAGE_VERSION" ]; then
@@ -1609,6 +1618,21 @@ if [ "$AIC_MODE" != "755" ]; then
     fi
 fi
 echo "    官方声卡初始化已保留：aic3104-init.service、multi-user.target.wants 链接、aic3104-init.sh（0755）"
+
+if [ "$SOFTWARE_COMPONENTS_REQUESTED" -eq 1 ]; then
+    STEP="安装签名软件包与离线语音资源"
+    echo "==> 安装与在线升级相同的签名组件包"
+    "$PYTHON" "$HERE/software_components.py" --root "$ROOT" \
+        --package "$SOFTWARE_UPDATE_PACKAGE" --public-key "$SOFTWARE_UPDATE_PUBLIC_KEY" \
+        --engine "$SOFTWARE_UPDATE_ENGINE" --resources "$VOICE_RESOURCES_DIR" \
+        --engine-command-json "${SOFTWARE_UPDATE_ENGINE_COMMAND_JSON:-[]}" || \
+        fail "签名软件组件安装失败" "查看共享升级器的签名、资源hash或安装报错；不要绕过验证。"
+    printf '\n软件升级与本地语音：已使用共享签名组件安装器；详情见 software-components.json。\n' >> "$MANIFEST"
+    printf '%s\n' '本地中文坐站语音：Vosk small-cn-0.22（Apache-2.0）；来源 https://alphacephei.com/vosk/models 。' \
+        'ARM64/cp313依赖及许可证随 /opt/microduck/resources/asr-deps 一并保留；资源hash见 resources-manifest.json。' \
+        '默认R3单击开关；监听默认关闭，开启后识别明确坐下/站起口令，不是自由AI对话。' > "$DOC_DIR/语音资源说明.txt"
+    chmod 0644 "$DOC_DIR/语音资源说明.txt"
+fi
 
 STEP="完成"
 echo "==> 完成"
