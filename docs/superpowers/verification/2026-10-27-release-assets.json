@@ -1,0 +1,162 @@
+{
+  "frozen_runtime": "e382f0741d7dfe4e972605e2843474df7219cade",
+  "source_publication_commit": "762b0d44b784104aeb73c7b6bad10a25713daa44",
+  "releases": {
+    "microduck-replica-image-20261027": {
+      "id": 425090056,
+      "url": "https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261027",
+      "draft": false,
+      "prerelease": false,
+      "published_at": "2026-10-27T06:48:08Z",
+      "assets": [
+        {
+          "id": 680650113,
+          "name": "microduck-replica-20261027-licenses.txt",
+          "size": 13349,
+          "digest": "sha256:c9fd6c1726d93014905c5ceeb320b62e6bb65849b46815473529eb97f0f40e8c",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-replica-image-20261027/microduck-replica-20261027-licenses.txt"
+        },
+        {
+          "id": 680650135,
+          "name": "microduck-replica-20261027-manifest.txt",
+          "size": 9734,
+          "digest": "sha256:50609044b6cf0bf92e519717b4cbee33f2c4ddb95204ccd0572d3a763275c3af",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-replica-image-20261027/microduck-replica-20261027-manifest.txt"
+        },
+        {
+          "id": 680650115,
+          "name": "microduck-replica-20261027-models.txt",
+          "size": 7477,
+          "digest": "sha256:539a03996c0f4bd446b78b508eea0a70eda21f55067586eccc77881775f40e4d",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-replica-image-20261027/microduck-replica-20261027-models.txt"
+        },
+        {
+          "id": 680650229,
+          "name": "microduck-replica-20261027-third-party.txt",
+          "size": 4931,
+          "digest": "sha256:42f1f6c68cbb1ac2dc684b323909858389962677685bd0516296c37ad4bc109b",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-replica-image-20261027/microduck-replica-20261027-third-party.txt"
+        },
+        {
+          "id": 680650260,
+          "name": "microduck-replica-20261027-voice.txt",
+          "size": 345,
+          "digest": "sha256:fb0e9dd923163e556fb177982707f385994e7bf5dfe0a803158b4d8f74626bbc",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-replica-image-20261027/microduck-replica-20261027-voice.txt"
+        },
+        {
+          "id": 680650117,
+          "name": "microduck-replica-20261027.img.xz",
+          "size": 741604104,
+          "digest": "sha256:91ab5550e0f409d634722718a638d6e9615412b779b5d26c0af5c777056d0194",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-replica-image-20261027/microduck-replica-20261027.img.xz"
+        },
+        {
+          "id": 680650118,
+          "name": "microduck-replica-20261027.img.xz.sha256",
+          "size": 100,
+          "digest": "sha256:5665833142b39dec04a1c9181bb8f0558abfa9802a21041c5c458170f3941c27",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-replica-image-20261027/microduck-replica-20261027.img.xz.sha256"
+        },
+        {
+          "id": 680650328,
+          "name": "README.txt",
+          "size": 1159,
+          "digest": "sha256:cd15233d0696ed4df7250c08c6ecfeac9c0c38e721d9d45c2974380227a04a3f",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-replica-image-20261027/README.txt"
+        }
+      ],
+      "assets_verified": 8,
+      "tag_commit": "e382f0741d7dfe4e972605e2843474df7219cade"
+    },
+    "microduck-software-v2026.10.27": {
+      "id": 425089356,
+      "url": "https://github.com/fanhao375/microduck-replica/releases/tag/microduck-software-v2026.10.27",
+      "draft": false,
+      "prerelease": false,
+      "published_at": "2026-10-27T06:15:55Z",
+      "assets": [
+        {
+          "id": 680647641,
+          "name": "2026.10.27.manifest.json",
+          "size": 677,
+          "digest": "sha256:e8f63f75548e5e19591c17ce5532c1f69f790cf518d6db6c44aeb3504a0a6b08",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-software-v2026.10.27/2026.10.27.manifest.json"
+        },
+        {
+          "id": 680647638,
+          "name": "2026.10.27.manifest.json.minisig",
+          "size": 319,
+          "digest": "sha256:55dd8718f37a0361c73456f81cbb61d67a3f0bacd0571f76ee697443cd2b947f",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-software-v2026.10.27/2026.10.27.manifest.json.minisig"
+        },
+        {
+          "id": 680647648,
+          "name": "2026.10.27.software-update.tar",
+          "size": 5683200,
+          "digest": "sha256:b6543c9f3a2ad6477106410dbed9753be9fa37c61b79ea0350767a18229d0e55",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-software-v2026.10.27/2026.10.27.software-update.tar"
+        },
+        {
+          "id": 680647653,
+          "name": "2026.10.27.software-update.tar.sha256",
+          "size": 97,
+          "digest": "sha256:9ef73a9183e565e651e41b3478152246ba6894016a01967421b009e97f006310",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-software-v2026.10.27/2026.10.27.software-update.tar.sha256"
+        },
+        {
+          "id": 680647747,
+          "name": "LICENSE-Apache-2.0.txt",
+          "size": 11358,
+          "digest": "sha256:c95bae1d1ce0235ecccd3560b772ec1efb97f348a79f0fbe0a634f0c2ccefe2c",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-software-v2026.10.27/LICENSE-Apache-2.0.txt"
+        },
+        {
+          "id": 680647649,
+          "name": "microduck-bootstrap-20261027.tar.gz",
+          "size": 57811043,
+          "digest": "sha256:866f8d49e3097133ab911debda9c4fdc66b9f02b867a789aadfb9793b99b3610",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-software-v2026.10.27/microduck-bootstrap-20261027.tar.gz"
+        },
+        {
+          "id": 680647728,
+          "name": "microduck-bootstrap-20261027.tar.gz.sha256",
+          "size": 102,
+          "digest": "sha256:62fd4ad0045fbeb2c257f31abfce08312e7e0449f3b79edf00abe976ec806ef1",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-software-v2026.10.27/microduck-bootstrap-20261027.tar.gz.sha256"
+        },
+        {
+          "id": 680647730,
+          "name": "microduck-release-20261027.pub",
+          "size": 113,
+          "digest": "sha256:0878853a92b10c9196c5b63e02087664923c576e6bc2e064d3bbdcc1be056bf5",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-software-v2026.10.27/microduck-release-20261027.pub"
+        },
+        {
+          "id": 680647825,
+          "name": "microduck-software-20261027-voice.txt",
+          "size": 345,
+          "digest": "sha256:fb0e9dd923163e556fb177982707f385994e7bf5dfe0a803158b4d8f74626bbc",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-software-v2026.10.27/microduck-software-20261027-voice.txt"
+        },
+        {
+          "id": 680647834,
+          "name": "README.txt",
+          "size": 1453,
+          "digest": "sha256:1c571835e3cf9d063cf0117831e878b90afc160445f162bf0026ae3370844f72",
+          "browser_download_url": "https://github.com/fanhao375/microduck-replica/releases/download/microduck-software-v2026.10.27/README.txt"
+        }
+      ],
+      "assets_verified": 10,
+      "tag_commit": "e382f0741d7dfe4e972605e2843474df7219cade"
+    }
+  },
+  "server_asset_hashes": true,
+  "publisher_private_key_absent_from_assets": true,
+  "public_master_commit": "762b0d44b784104aeb73c7b6bad10a25713daa44",
+  "latest_image_verified": true,
+  "anonymous_catalog_download_and_signatures": true,
+  "public_image_checksum_and_xz_header": true,
+  "physical_acceptance_pending": true,
+  "client_record_date": "2026-10-27"
+}

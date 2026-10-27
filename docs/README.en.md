@@ -19,6 +19,7 @@ Find resources by task. Start with first use and assembly; detailed investigatio
 |---|---|
 | [Studio web console](../software/studio/README.md) | Calibration, control, device status and model management |
 | [Image build and release](../software/image/README.md) | Image construction and release notes |
+| [Software updates and local voice (Chinese)](软件更新与语音使用说明-20261027.md) | One-time bootstrap, signed web updates/rollback and R3 sit/stand commands |
 | [Training workbench](../software/training-studio/README.md) | Browser-based experiment management, evaluation and export |
 | [Training project](../software/training/README.md) | Training environment and commands |
 | [Pre-training data checklist](HD-1910训练前数据清单.md) | Geometry, actuators, IMU and measurements |
