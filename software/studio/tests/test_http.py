@@ -1304,7 +1304,10 @@ class ServoSessionBatch3Test(unittest.IsolatedAsyncioTestCase):
         c = await self.client()
         await self.open_holding(c)
         sim = self.servo.sim_serial
-        self.assertTrue(await self.until(lambda: self.servo.state == "closed", timeout=12))
+        # close() publishes the port state in a worker before the async watcher
+        # finishes dropping its marker, unpausing robotd and reporting conflict.
+        self.assertTrue(await self.until(lambda: self.servo.state == "closed" and not self.rd.paused
+                                        and not self.marker.exists() and bool(self.logs("主程序被手动起来了")), timeout=12))
         self.assertEqual([sim._by_id(i).r[40] for i in (20, 21)], [1, 1])      # 没写舵机（robotd 自己会全部松开）
         self.assertFalse(self.marker.exists())
         self.assertFalse(self.rd.paused)

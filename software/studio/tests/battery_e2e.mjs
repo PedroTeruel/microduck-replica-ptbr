@@ -87,9 +87,13 @@ async function restart(battery) {
 const out = { errors, steps: {} };
 
 // ---- 1. 总览：静置 7.62 V ----
-await fakeSet({ battery: { v: 7.62, sag: 0, gone: false } });
+// Studio may have accumulated the recorded fixture's 7.54 V while Edge was
+// starting. Explicitly clear that history before testing the scripted 7.62 V.
+await fakeSet({ battery: { gone: true } });
 await open('#/');
 await waitFor(`!!document.querySelector('.bat-cell') && !!document.querySelector('.band-cpu')`, '总览出来');
+await waitFor(mode('no_data'), '清空启动时的电池样本', 8000);
+await fakeSet({ battery: { v: 7.62, sag: 0, gone: false } });
 await waitFor(mode('calm'), '电池格出数');
 await sleep(400);
 out.steps.calm = { text: await cellText(), cls: await js(`document.querySelector('.bat-cell').className`) };
