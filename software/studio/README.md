@@ -116,7 +116,7 @@ py -3.13 -I run.py --bench
 
 1. 拷贝：把 `software/studio` 整个目录拷到鸭子的 `/home/radxa/studio-dev`（`scp -r`、U 盘解压包都行）。
 2. 自检：在鸭子上运行 `python3 -I run.py --selfcheck`（只读：打印版本，对 robotd / configd / padd 各问一次）。
-3. 装 root 小助手：`cd deploy && sudo sh install.sh radxa`。0.7.1 的小助手负责舵机总线交接、手柄配对、热点开关、`calib-read` / `calib-commit`（把标定写进主程序、切运动模式）、`ssh-status` / `ssh-password`（「更多」页的 SSH 开关），以及 `imu-recalibrate`（重新校验已保存的 IMU 安装方向）；关热点前会写 `/run/microduck/studio-connecting.json`，让 netcheck 在连接期间别插手。从舵机页交还时，标定模式的实时快照也算主程序起来了（0.5.1 只认运动模式的 `control`，标定模式下每次都等满 30 秒判「起不来」）。步骤、卸载和上机核对见 `deploy/INSTALL.md`。
+3. 装 root 小助手：`cd deploy && sudo sh install.sh radxa`。0.7.2 的小助手负责舵机总线交接、手柄配对、热点开关、`calib-read` / `calib-commit`（把标定写进主程序、切运动模式）、`ssh-status` / `ssh-password`（「更多」页的 SSH 开关），以及 `imu-recalibrate`（重新校验已保存的 IMU 安装方向）；关热点前会写 `/run/microduck/studio-connecting.json`，让 netcheck 在连接期间别插手。从舵机页交还时，标定模式的实时快照也算主程序起来了（0.5.1 只认运动模式的 `control`，标定模式下每次都等满 30 秒判「起不来」）。步骤、卸载和上机核对见 `deploy/INSTALL.md`。
 4. 开机服务：照 `deploy/microduck-studio.service` 文件头的命令装：
 
    ```bash
@@ -142,6 +142,8 @@ py -3.13 -I run.py --bench
 IMU 页的「IMU 安装方向」始终保留入口：已经保存并验证过的安装四元数，也能点「重新标定方向」。先扶住鸭子并卸力，二次确认后，运动模式通过新版 root 小助手暂时回到标定模式；已经在标定模式的直接重新采集。沿用原来的静止 3 秒、整个躯干前倾 15–30° 采 3 秒、计算方向和主程序验证。**点击「交给主程序验证」前，先把实物回正并停住**，再按提示前倾。小助手的重标定恢复会话保持卸力；出厂标定模式也支持下述站姿采数，站着精校流程不变。
 
 总线 ID 200 的 IMU 由主程序启动时自动识别，支持 FT6、IMU-to-DXL（Feetech）；SFLP 124/12（Dynamixel 2.0）。标定、运动模式的 IMU 页都显示实际协议和板卡。板卡名称表示识别到的寄存器布局，不证明厂商。需要手动指定时改主程序配置 `bus.imu_protocol = "auto" / "feetech" / "dxl2"`，网页没有运行中切换协议的按钮。I²C 的 BNO085、LSM6DSV16X 流程不变。
+
+Qinmo 的一次性网页选择、受控重连和必须完成的安装方向验证见[使用指南](../../docs/Qinmo-IMU-网页使用.md)。配置类型与实际连接分别显示；Qinmo 明确标为已配置，不能凭 ID200 或布局自动认证厂商。新版 helper 0.7.2 还保留 `imu_bus_profile`（缺省 legacy），同为 Feetech 的类型变化也会使旧方向和待写结果失效。本地软件验证不代表实物验收，未部署或更新已发布镜像。
 
 总线安装方向的 `imu_bus_protocol` 由主程序验证成功后写入；旧标定没有这个字段时只兼容 Feetech。检测到的协议不匹配时，页面提示重新标定，跳过第 2 步也不能把旧方向当成已验证。主程序通过运动模式的失能状态保留重做入口。第 3 步与小助手 0.7.1 保留并读回该字段；重做完成可采用新绑定，取消恢复原文件。协议、板卡布局或原始身份字节改变，会作废当前采集、在途计算和旧的站姿校准结果。DXL2 板卡不提供采样序号、状态位、传感器读数年龄；主程序使用主机接收新鲜度和原始字节冻结检查，页面不填造这些诊断值。
 

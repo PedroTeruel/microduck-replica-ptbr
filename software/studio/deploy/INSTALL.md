@@ -4,6 +4,14 @@
 
 ## 重做初次 IMU 校准（imu-recalibrate）
 
+0.7.2 在同一个固定动词的 `enter` 增加可选 `profile="legacy"|"qinmo"`，供 IMU 页一次选择后保存。参数不接受命令、路径或服务。需要新 robotd 的 `configured_imu_profile` 明确能力证据；不按 API 版本号一刀切。Qinmo 标记为已配置，支持 Feetech，角速度 raw/16.4 °/s；原有板卡默认自动识别，raw×0.0175 °/s。用户流程见[网页使用指南](../../../docs/Qinmo-IMU-网页使用.md)。
+
+类型事务同时持有 helper 与 `/run/microduck-service-management.lock`，拒绝更新 / 总线 / 旧 redo 竞争，暂停手柄及固定的 duck-echo 语音服务，安全落地后恢复原服务状态；网页亦拒绝会话期间的控制动作，卸力与必要的标定操作保留。仅操作实际直接 robotd ExecStart 的固定 `--params /etc/robot/feetech-ft5/robotd.toml`、`--socket /run/robotd.sock`，已知服务覆盖，以及该配置的 saved 文件和已知标定文件。逐级拒绝软链接、非 root 属主或其他用户可写目录 / 文件；拒绝 read-only、外来覆盖、I²C 来源、不支持的协议与标定路径。主 / saved 配置只改 `bus.imu_profile` 和兼容的 `bus.imu_protocol`，解析前后比较确保其余值保持，包括镜像带引号的键与内联策略数组。原始字节、属主 / 权限、摘要和模式先持久备份；标定仅清除总线安装方向 verified，避免复用历史同类型方向。
+
+正常控制使用原来的两次新鲜失能 / 无策略 / 增益已恢复门槛。`configuring_bus` / `waiting_for_bus` 的受支持预控制启动恢复依据当前守护进程生命周期和配置能力，不伪称已知物理扭矩关闭，始终进入 commissioning。原出厂 commissioning 可选择类型，验证结束后保留出厂流程。启动恢复的取消先安装已知的出厂标定模式，再移除自己的 redo 模式文件，恢复原配置 / 标定并结束会话；仍保持标定模式，可重新选择，避免留下永久阻塞的终止会话。普通控制取消精确恢复原配置 / 标定和模式。
+
+完成要求磁盘主 / saved 类型配置仍匹配写入摘要、运行配置和实际发现类型一致、新方向的 protocol + profile 绑定与 verified 均读回一致。失败恢复原文件；无法恢复则保留 `recovery_required` 和原备份，保持可恢复现场。普通 commit、redo 与取消保留可选 `imu_bus_profile`，缺省仍是 legacy；类型变化会使待采样 / 计算 / 待写结果失效。Qinmo 未经主程序验证不能由“跳过”或普通写入提升为 verified。当前没有实物验收；此改动不更新公开镜像、不自动部署 robotd。
+
 新版小助手增加固定动词 `imu-recalibrate`，stdin 只接受 `enter/status/finish/cancel` 四种 action，不能指定命令、路径或服务。运动模式下已有 `verified=true` 和已保存四元数也可以重新验证：先扶稳、卸力，`enter` 两次读取新状态，要求 `motion/control`、`policy_enabled=false`、无起身、原生扭矩明确为 false、无卸力待确认、HD1910 临时增益已恢复。手柄服务先停，随后再次检查门槛；任何不明确的状态都拒绝。
 
 - 进入：`{"by":"Studio","action":"enter","confirmed":true}`。保留实际生效的直接 robotd 启动参数，只增加 `--commissioning`；包装命令或有歧义的 ExecStart 拒绝。不会使用或删除出厂 `zzzz-zz-microduck-commissioning.conf`。

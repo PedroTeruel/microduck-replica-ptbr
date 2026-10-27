@@ -166,7 +166,8 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         motion = getattr(pad,'motion_studio',None)
         if (busy or (servo is not None and servo.state != 'closed')
             or (motion is not None and (motion.state != 'idle' or motion.session is not None))
-            or (imu is not None and getattr(imu,'_redo_busy',False))):
+            or (imu is not None and (getattr(imu,'_redo_busy',False)
+                or getattr(imu,'blocks_updates',lambda:False)()))):
             return {'ready':False,'error':'请结束舵机、标定、录制、回放和动作会话后重试'}
         return {'ready':True}
     if imu is not None and commit is not None:
@@ -1128,6 +1129,12 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     args = msg.get('args') or {}
                     if updates.installing() and not safe_during_update(name,args):
                         await send({'t':'result','id':cid,'ok':False,'reason':'软件更新正在进行，请等待完成；急停仍可使用'})
+                        continue
+                    if (imu is not None and getattr(imu, 'blocks_updates', lambda: False)()
+                            and name in {'pad.op', 'tune.op', 'servo.open', 'servo.op', 'calib.op'}
+                            and not safe_during_update(name, args)):
+                        await send({'t':'result','id':cid,'ok':False,
+                                    'reason':'IMU 标定 / 类型切换会话未结束：先验证完成或取消；卸力仍可使用'})
                         continue
                     if name not in COMMANDS:
                         await send({"t": "result", "id": cid, "ok": False, "reason": f"这一版还不支持「{name}」"})

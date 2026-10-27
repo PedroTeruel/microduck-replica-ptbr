@@ -58,7 +58,7 @@ DEFAULT_MOUNTS = {
     "lsm6dsv16x": [0.7071067811865476, 0.0, 0.7071067811865476, 0.0],
 }
 DEFAULT_HOW = {"bus": "官方装法", "bno08x": "fork 的默认装法", "lsm6dsv16x": "复刻推荐装法，模块 x 朝下、z 朝前"}
-TOP_KEYS = ("motion_enabled", "imu_mount_verified", "imu_mount_quat", "imu_bus_protocol", "current_ma_per_count", "units_verified")
+TOP_KEYS = ("motion_enabled", "imu_mount_verified", "imu_mount_quat", "imu_bus_protocol", "imu_bus_profile", "current_ma_per_count", "units_verified")
 TAU = 2.0 * math.pi
 
 SERVO_CENTERED = "servo-centered.json"
@@ -176,6 +176,10 @@ def build_calibration(current, joints, imu):
         if protocol not in ("feetech", "dxl2"):
             raise CalibError("imu_bus_protocol 只能是 feetech 或 dxl2（由主程序验证后写入）")
         out["imu_bus_protocol"] = protocol
+    if "imu_bus_profile" in current:
+        if current["imu_bus_profile"] not in ("legacy", "qinmo"):
+            raise CalibError("imu_bus_profile 只能是 legacy 或 qinmo")
+        out["imu_bus_profile"] = current["imu_bus_profile"]
 
     raw_mounts = current.get("imu_mounts")
     if isinstance(raw_mounts, dict):
@@ -220,6 +224,10 @@ def validate_calibration(cal, source=None):
         raise CalibError("imu_mount_verified 要是 true / false")
     if "imu_bus_protocol" in cal and cal["imu_bus_protocol"] not in ("feetech", "dxl2"):
         raise CalibError("imu_bus_protocol 只能是 feetech 或 dxl2")
+    if "imu_bus_profile" in cal and cal["imu_bus_profile"] not in ("legacy", "qinmo"):
+        raise CalibError("imu_bus_profile 只能是 legacy 或 qinmo")
+    if cal.get("imu_bus_profile") == "qinmo" and cal.get("imu_bus_protocol", "feetech") != "feetech":
+        raise CalibError("Qinmo 只支持 Feetech")
     if not _is_num(cal.get("current_ma_per_count")):
         raise CalibError("current_ma_per_count 要是有限数")
     if not isinstance(cal.get("units_verified"), bool):
@@ -321,6 +329,10 @@ def render_calibration(cal):
         if cal["imu_bus_protocol"] not in ("feetech", "dxl2"):
             raise CalibError("imu_bus_protocol 只能是 feetech 或 dxl2")
         lines.append(f'imu_bus_protocol = "{cal["imu_bus_protocol"]}"')
+    if "imu_bus_profile" in cal:
+        if cal["imu_bus_profile"] not in ("legacy", "qinmo"):
+            raise CalibError("imu_bus_profile 只能是 legacy 或 qinmo")
+        lines.append(f'imu_bus_profile = "{cal["imu_bus_profile"]}"')
     mounts = cal.get("imu_mounts") or {}
     for kind in ("bno08x", "lsm6dsv16x"):
         mount = mounts.get(kind)
@@ -458,15 +470,20 @@ def clear_pending(state_dir):
 
 def pending_matches(pending, source, bus):
     """旧站姿结果只兼容 Feetech；新结果要跟采数时的总线板卡完全相同。"""
-    from .imu import bus_imu_of
+    from .imu import bus_imu_of, configured_profile
     if not pending or pending.get("source") != source:
         return False
     if source != "bus":
         return True
     actual, saved = bus_imu_of(bus), pending.get("imu_bus")
     if saved is None:
-        return actual is None or actual["protocol"] == "feetech"
-    return actual == saved
+        return ((actual is None and not configured_profile(bus)) or
+                (actual is not None and actual["protocol"] == "feetech" and actual.get("profile", "legacy") == "legacy"))
+    if not isinstance(actual, dict) or not isinstance(saved, dict):
+        return False
+    return (all(actual.get(key) == saved.get(key) for key in ("protocol", "board", "identity"))
+            and actual.get("profile", "legacy") == saved.get("profile", "legacy")
+            and saved.get("profile", "legacy") in ("legacy", "qinmo"))
 
 
 def forget_centered(state_dir, ids):
@@ -627,6 +644,8 @@ class CommitService:
         按默认装法写这颗、标成已确认（任务 17）。回 {source, quat, label, how, mark}；不该用默认的回 None。
         有 pending（站着校过）照旧用 pending；方向已确认照旧用主程序的；芯片不知道的不猜。"""
         if self.pending or source not in IMU_SOURCES or (mount or {}).get("verified") is True:
+            return None
+        if source == "bus" and (cal or {}).get("imu_bus_profile") == "qinmo":
             return None
         mark = self._user_mark("imu") if mark is None else mark
         if mark not in ("done", "skip"):

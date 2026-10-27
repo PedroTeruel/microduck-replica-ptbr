@@ -93,8 +93,48 @@ try {
   await js(`props.imu = {...props.imu, imu_bus:{...props.imu.imu_bus, identity:[8,8,8]}}; draw()`);
   await wait('!document.querySelector(".imu-big.rec")', 'standing collection reset');
   assert.equal(await js(`document.querySelector('.imu-big').textContent.trim()`), '开始采集');
+  // Same wire and identity, different explicitly configured data profile.
+  await js(`props.imu = {...props.imu, configured_imu_profile:'qinmo', profile_selection:{can_start:true},
+    imu_bus:{protocol:'feetech',board:'qinmo',identity:[],profile:'qinmo',gyro_dps_per_lsb:1/16.4,identification:'configured_profile'}}; draw()`);
+  await wait('document.querySelector(".imu-side").innerText.includes("Qinmo")', 'Qinmo label');
+  await pause(120); // let the configured-profile state synchronize before user input
+  assert.match(await js('document.body.innerText'), /已配置.*Qinmo|Qinmo.*已配置/);
+  assert.match(await js('document.body.innerText'), /16\.4/);
+  assert.match(await js('document.body.innerText'), /唯一.*身份|身份.*唯一/);
+  assert.match(await js('document.body.innerText'), /配置类型/);
+  assert.match(await js('document.body.innerText'), /实际连接/);
+  await js(`const select=document.querySelector('select[aria-label="总线 IMU 类型"]'); select.value='legacy'; select.dispatchEvent(new Event('change',{bubbles:true}));`);
+  await pause(100);
+  await js(`clickText('保存类型并重新连接')`);
+  await pause(750);
+  await js(`clickText('已扶稳，确认重连并重新标定')`);
+  await wait('calls.some(c=>c.args.op==="profile-select")', 'profile selection command');
+  assert.deepEqual(await js(`calls.find(c=>c.args.op==='profile-select').args`), {op:'profile-select',profile:'legacy',confirmed:true});
+  await js(`replies.shift()({ok:true,data:{}})`);
+  await pause(100);
+  // Failed discovery still leaves the selector available through configured diagnostics.
+  await js(`props.imu={...props.imu,imu_bus:null}; draw()`);
+  await wait(`document.body.innerText.includes('尚未连接')`, 'configured versus effective missing');
+  await js(`props.imu={...props.imu, configured_imu_profile:null,profile_selection:{can_start:false,reason:'主程序尚不支持网页选择类型'}}; draw()`);
+  await wait(`document.body.innerText.includes('主程序尚不支持网页选择类型')`, 'old daemon fallback');
   await js(`props.imu = {...props.imu, source:'lsm6dsv16x', imu_bus:null}; draw()`);
   await wait('document.querySelector(".sv-metrics").innerText.includes("LSM6DSV16X（I²C）")', 'I2C label');
+  // Exercise the actual global Space handler used beside the IMU page. Keep its
+  // real component source, with only the link transport supplied by this fixture.
+  await js(`(async()=>{
+    const source=await (await fetch('/app.js')).text();
+    const component=source.slice(source.indexOf('const TEXT_TYPES'),source.indexOf('function TopBar'));
+    const {html,h,render,useState,useEffect,useCallback}=await import('/vendor/preact-htm.module.js');
+    const EStop=Function('html','useState','useEffect','useCallback','link',component+';return EStop;')(
+      html,useState,useEffect,useCallback,props.link);
+    const root=document.createElement('aside');document.body.append(root);
+    render(h(EStop,{st:{mode:'commissioning'},live:true,open:true}),root);
+  })()`);
+  await pause(120);
+  await js(`window.dispatchEvent(new KeyboardEvent('keydown',{code:'Space',key:' ',bubbles:true}));`);
+  await wait(`calls.some(c=>c.name==='relax')`, 'Space emergency relax retained');
+  assert.deepEqual(await js(`calls.find(c=>c.name==='relax').args`), {});
+  await js(`replies.shift()({ok:true,data:{}})`);
   assert.deepEqual(errors, []);
   process.stdout.write('IMU bus browser assertions passed\n');
 } finally {

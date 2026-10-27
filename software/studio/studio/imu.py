@@ -38,20 +38,37 @@ def bus_imu_of(bus):
     info = native.get("imu_bus") or bus.get("imu_bus")
     if not isinstance(info, dict) or info.get("protocol") not in ("feetech", "dxl2"):
         return None
-    return {"protocol": info["protocol"], "board": info.get("board"),
-            "identity": list(info["identity"]) if isinstance(info.get("identity"), list) else None}
+    if info.get("profile", "legacy") not in ("legacy", "qinmo"):
+        return None
+    out = {"protocol": info["protocol"], "board": info.get("board"),
+           "identity": list(info["identity"]) if isinstance(info.get("identity"), list) else None}
+    for key in ("profile", "gyro_dps_per_lsb", "identification"):
+        if key in info:
+            out[key] = info[key]
+    return out
+
+
+def configured_profile(bus):
+    native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
+    return native.get("configured_imu_profile", bus.get("configured_imu_profile"))
 
 
 def bus_protocol_mismatch(bus, calib, source="bus"):
     info = bus_imu_of(bus) if source == "bus" else None
     calib = calib if isinstance(calib, dict) else {}
     cal = calib.get("calibration") if isinstance(calib.get("calibration"), dict) else calib
-    return bool(info and info["protocol"] != cal.get("imu_bus_protocol", "feetech"))
+    configured = configured_profile(bus) if source == "bus" else None
+    return bool((source == "bus" and configured is not None and not info)
+                or (info and (info["protocol"] != cal.get("imu_bus_protocol", "feetech")
+                    or info.get("profile", "legacy") != cal.get("imu_bus_profile", "legacy")
+                    or (configured is not None and configured != info.get("profile", "legacy")))))
 
 
 def calibration_context(bus, source, redo):
     info = bus_imu_of(bus) if source == "bus" else None
-    transport = (info["protocol"], info["board"], tuple(info["identity"] or [])) if info else None
+    transport = (info["protocol"], info["board"], tuple(info["identity"] or []),
+                 info.get("profile", "legacy"), configured_profile(bus)) if info else (
+                     (None, configured_profile(bus)) if configured_profile(bus) is not None else None)
     return source, transport, bus.get("mode"), redo.get("session_id"), bool(redo.get("active"))
 
 
@@ -121,6 +138,8 @@ class ImuBackend:
         return {
             "t": "imu", "mode": bus.get("mode"), "source": source, "chip_setting": None, "mount": mount,
             "imu_bus": bus_imu_of(bus) if source == "bus" else None,
+            "configured_imu_profile": configured_profile(bus),
+            "profile_selection": self._profile_view(bus, source, redo),
             "mount_protocol_mismatch": bus_protocol_mismatch(bus, calib, source),
             "reader": reader, "age_ms": native.get("imu_age_ms", s_imu.get("age_ms")),
             "ready": native.get("imu_ready", s_imu.get("ready")),
@@ -150,6 +169,31 @@ class ImuBackend:
         elif helper.flag_present():
             reason = "舵机页占着总线：先交还主程序"
         return {**redo, "can_start": reason is None, "reason": reason}
+
+    def _profile_view(self, bus, source, redo):
+        native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
+        hd = native.get("hd1910") if isinstance(native.get("hd1910"), dict) else {}
+        reason = None
+        if configured_profile(bus) not in ("legacy", "qinmo"):
+            reason = "主程序尚不支持网页选择类型：请先由维护者更新主程序"
+        elif source not in (None, "bus"):
+            reason = "当前使用 I²C IMU，无需选择总线板类型"
+        elif redo.get("active") or self._redo_busy:
+            reason = "先完成或取消当前安装方向标定会话"
+        elif helper.flag_present():
+            reason = "舵机页占着总线：先交还主程序"
+        elif bus.get("mode") == "motion" and bus.get("phase") == "control":
+            if (bus.get("policy_enabled") is not False or bus.get("home_recovery")
+                    or native.get("torque_state_confirmed") is not False or bus.get("torque_off_pending") is True
+                    or hd.get("restore_pending") is not False or hd.get("temporary_gains_applied") is not False):
+                reason = "先扶稳并卸力，等主程序确认全部失能、临时增益已恢复"
+        elif bus.get("mode") not in ("motion", "commissioning") or bus.get("phase") not in (
+                "configuring_bus", "waiting_for_bus", "ready"):
+            reason = "先扶稳并卸力，等待主程序处于可重连状态"
+        return {"can_start": reason is None, "reason": reason}
+
+    def blocks_updates(self):
+        return self._redo_busy or helper.imu_redo_state(root=self.root).get("active", False)
 
     def _coarse_guard(self, bus):
         redo = helper.imu_redo_state(root=self.root)
@@ -183,11 +227,16 @@ class ImuBackend:
             raise Refused("要先确认扶稳鸭子、已卸力，再重做或取消初次 IMU 校准")
         if self._redo_busy:
             raise Refused("初次 IMU 校准正在切换：等这一步结束")
-        action = "enter" if args["op"] == "redo-start" else "cancel"
+        selecting = args["op"] == "profile-select"
+        if selecting and (set(args) - {"op", "profile", "confirmed"} or args.get("profile") not in ("legacy", "qinmo")):
+            raise Refused("IMU 类型只认自动识别现有板卡或 Qinmo")
+        action = "enter" if args["op"] in ("redo-start", "profile-select") else "cancel"
         redo = helper.imu_redo_state(root=self.root)
         if action == "enter":
             bus = await self._bus_once()
-            if bus.get("mode") != "motion":
+            if selecting and configured_profile(bus) not in ("legacy", "qinmo"):
+                raise Refused("主程序尚不支持网页选择类型：请先由维护者更新主程序")
+            if not selecting and bus.get("mode") != "motion":
                 raise Refused("出厂标定模式直接做粗校；只有运动模式需要进入重做会话")
             if redo.get("active"):
                 raise Refused("初次 IMU 校准重做会话已经开着：继续或取消")
@@ -200,14 +249,21 @@ class ImuBackend:
         self.job = {"kind": "coarse", "title": "切换初次 IMU 校准", "msg": "保持扶稳和失能，等待主程序切换"}
         try:
             kw = {"confirmed": True}
+            if selecting:
+                kw["profile"] = args["profile"]
             if action == "cancel":
                 kw["session_id"] = redo["session_id"]
             ok, result, detail = await asyncio.to_thread(helper.imu_recalibrate, by or "Studio", action, **kw)
             if not ok:
                 raise Refused(helper.friendly(result, detail, "imu-recalibrate"))
+            if selecting:
+                from .commit import clear_pending
+                clear_pending(self.state_dir)
             self.job = None
             self.view()
-            return {"ok": True, "result": result, "redo": detail}
+            note = ("已恢复原类型和方向，保持标定模式；可重新选择并验证"
+                    if action == "cancel" and (detail or {}).get("original_mode") in ("startup", "commissioning") else None)
+            return {"ok": True, "result": result, "redo": detail, "note": note}
         except Refused as err:
             self.job = {"kind": "coarse", "title": "初次 IMU 校准切换没完成", "failed": True, "msg": str(err)}
             raise
@@ -404,7 +460,8 @@ class ImuBackend:
                     source=source, quat=self._normalized_quat(mount))
                 if not ok:
                     raise Refused(helper.friendly(result, detail, "imu-recalibrate"))
-                status = await self._verified_readback(source, mount, motion=True, transport=context[1])
+                status = await self._verified_readback(source, mount,
+                    motion=redo.get("original_mode") != "commissioning", transport=context[1])
             elif current_redo.get("active"):
                 raise Refused("IMU 验证期间出现另一份重做会话：未完成")
             from .commit import clear_pending, load_pending, pending_matches
@@ -467,7 +524,7 @@ class ImuBackend:
 
     async def handle(self, args, by=None):
         op = args.get("op")
-        if op in ("redo-start", "redo-cancel"):
+        if op in ("redo-start", "redo-cancel", "profile-select"):
             return await self._redo_op(args, by)
         if op == "solve":
             samples = args.get("samples")

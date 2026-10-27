@@ -70,7 +70,7 @@ import sys
 import time
 import tomllib
 
-VERSION = "0.7.1"
+VERSION = "0.7.2"
 VERBS = ("bus-take", "bus-give-back", "bus-abort", "pad-pair", "pad-forget",
          "wifi-hotspot-down", "wifi-hotspot-up", "calib-read", "calib-commit", "ssh-status", "ssh-password",
          "imu-recalibrate")
@@ -108,6 +108,8 @@ IMU_REDO_DIR = OPLOG_DIR + "/imu-recalibrate"
 IMU_REDO_MANIFEST = IMU_REDO_DIR + "/manifest.json"
 IMU_REDO_DROPIN = "/etc/systemd/system/robotd.service.d/zzzzzz-studio-imu-recalibrate.conf"
 IMU_REDO_SCHEMA = "microduck-imu-recalibrate/1"
+IMU_CONFIG = "/etc/robot/feetech-ft5/robotd.toml"
+IMU_CONFIG_SAVED = "/etc/robot/feetech-ft5/robotd.saved.toml"
 CALIB_RESTART_WAIT = 40.0
 CALIB_MOTION_WAIT = 30.0
 CALIB_STATUS_INTERVAL = 0.5
@@ -436,6 +438,7 @@ class Op:
         self.stdout_dead = False
         self.lines = []
         self.lock_handle = None
+        self.service_lock_handle = None
         self.request_id = ctx.env.get(REQUEST_ENV) if ctx.env.get(DETACH_ENV) == "1" else None
 
     def ms(self):
@@ -491,6 +494,9 @@ class Op:
             raise Stop(EXIT_BUSY, "busy", f"小助手正在跑另一个{what}，等它跑完")
 
     def release_lock(self):
+        if self.service_lock_handle is not None:
+            self.ctx.unlock(self.service_lock_handle)
+            self.service_lock_handle = None
         if self.lock_handle is not None:
             self.ctx.unlock(self.lock_handle)
             self.lock_handle = None
@@ -690,7 +696,7 @@ LIMITS_DEG = {
 IMU_SOURCES = ("bus", "bno08x", "lsm6dsv16x")
 CHIP_CN = {"bus": "总线小板（ID 200）", "bno08x": "BNO085（I²C）", "lsm6dsv16x": "LSM6DSV16X（I²C）"}
 DEFAULT_BUS_QUAT = [math.sqrt(0.5), 0.0, math.sqrt(0.5), 0.0]     # fork imu.rs: SflpDecoder::DEFAULT_MOUNT
-TOP_KEYS = ("motion_enabled", "imu_mount_verified", "imu_mount_quat", "imu_bus_protocol", "current_ma_per_count", "units_verified")
+TOP_KEYS = ("motion_enabled", "imu_mount_verified", "imu_mount_quat", "imu_bus_protocol", "imu_bus_profile", "current_ma_per_count", "units_verified")
 TAU = 2.0 * math.pi
 
 SERVO_CENTERED = "servo-centered.json"
@@ -806,6 +812,10 @@ def build_calibration(current, joints, imu):
         if protocol not in ("feetech", "dxl2"):
             raise CalibError("imu_bus_protocol 只能是 feetech 或 dxl2（由主程序验证后写入）")
         out["imu_bus_protocol"] = protocol
+    if "imu_bus_profile" in current:
+        if current["imu_bus_profile"] not in ("legacy", "qinmo"):
+            raise CalibError("imu_bus_profile 只能是 legacy 或 qinmo")
+        out["imu_bus_profile"] = current["imu_bus_profile"]
 
     raw_mounts = current.get("imu_mounts")
     if isinstance(raw_mounts, dict):
@@ -850,6 +860,10 @@ def validate_calibration(cal, source=None):
         raise CalibError("imu_mount_verified 要是 true / false")
     if "imu_bus_protocol" in cal and cal["imu_bus_protocol"] not in ("feetech", "dxl2"):
         raise CalibError("imu_bus_protocol 只能是 feetech 或 dxl2")
+    if "imu_bus_profile" in cal and cal["imu_bus_profile"] not in ("legacy", "qinmo"):
+        raise CalibError("imu_bus_profile 只能是 legacy 或 qinmo")
+    if cal.get("imu_bus_profile") == "qinmo" and cal.get("imu_bus_protocol", "feetech") != "feetech":
+        raise CalibError("Qinmo 只支持 Feetech")
     if not _is_num(cal.get("current_ma_per_count")):
         raise CalibError("current_ma_per_count 要是有限数")
     if not isinstance(cal.get("units_verified"), bool):
@@ -951,6 +965,10 @@ def render_calibration(cal):
         if cal["imu_bus_protocol"] not in ("feetech", "dxl2"):
             raise CalibError("imu_bus_protocol 只能是 feetech 或 dxl2")
         lines.append(f'imu_bus_protocol = "{cal["imu_bus_protocol"]}"')
+    if "imu_bus_profile" in cal:
+        if cal["imu_bus_profile"] not in ("legacy", "qinmo"):
+            raise CalibError("imu_bus_profile 只能是 legacy 或 qinmo")
+        lines.append(f'imu_bus_profile = "{cal["imu_bus_profile"]}"')
     mounts = cal.get("imu_mounts") or {}
     for kind in ("bno08x", "lsm6dsv16x"):
         mount = mounts.get(kind)
@@ -1501,7 +1519,7 @@ def readback_mismatches(expected, calibration):
         if not _same_field(a, b):
             out.append(f"{label}：写 {a!r}，读回 {b!r}")
 
-    for key in ("motion_enabled", "imu_mount_verified", "imu_bus_protocol"):
+    for key in ("motion_enabled", "imu_mount_verified", "imu_bus_protocol", "imu_bus_profile"):
         one(key, exp.get(key), got.get(key))
     one("imu_mount_quat", exp.get("imu_mount_quat"), got.get("imu_mount_quat"))
     ejs, gjs = exp.get("joints") if isinstance(exp.get("joints"), list) else [], got.get("joints") if isinstance(got.get("joints"), list) else []
@@ -1706,6 +1724,22 @@ def verb_calib_commit(op, args, raw):
     why = calib_gate(op, mode)
     data, st = read_calibration(op)
     rows = data.get("joints") if isinstance(data.get("joints"), list) else []
+    if imu["source"] == "bus":
+        live, err = robotd_bus_status(op)
+        native = (live or {}).get("native") or {}
+        info = native.get("imu_bus") or (live or {}).get("imu_bus")
+        configured = imu_profile_configured(live or {})
+        if configured is not None or data.get("imu_bus_profile") == "qinmo":
+            if (not isinstance(info, dict) or info.get("profile", "legacy") != data.get("imu_bus_profile", "legacy")
+                    or configured != info.get("profile", "legacy")
+                    or info.get("protocol") != data.get("imu_bus_protocol", "feetech")):
+                raise Stop(EXIT_STATE, "readback_mismatch", "总线 IMU 类型与已验证方向不一致：先到 IMU 页重新标定")
+            status, err = calibration_status(op)
+            top = (status or {}).get("imu_mount")
+            if (status is None or imu_redo_source(live, status) != "bus"
+                    or (configured == "qinmo" and (data.get("imu_mount_verified") is not True
+                        or (isinstance(top, dict) and top.get("verified") is not True)))):
+                raise Stop(EXIT_STATE, "readback_mismatch", "Qinmo 安装方向还未由主程序验证，不能跳过")
     file_ids = {r.get("id") for r in rows if isinstance(r, dict)}
     given = {r["id"] for r in joints}
     if file_ids != given:
@@ -1858,12 +1892,17 @@ def imu_redo_load(op):
             raise ValueError("备份清单格式不对")
         if m.get("override_sha256") != _sha256(imu_redo_override(m)):
             raise ValueError("模式文件摘要不对")
+        if "profile" in m:
+            if (m["profile"] not in ("legacy", "qinmo") or m.get("original_mode") not in ("motion", "commissioning", "startup")
+                    or tuple(row.get("path") for row in m.get("config_files", [])) != (IMU_CONFIG, IMU_CONFIG_SAVED)
+                    or tuple(row.get("name") for row in m.get("config_files", [])) != ("config.toml", "config-saved.toml")):
+                raise ValueError("类型备份清单格式不对")
         if m["active"]:
             directory = IMU_REDO_DIR + "/" + m["session_id"]
             st = os.lstat(op.ctx.p(directory))
             if not stat.S_ISDIR(st.st_mode) or (op.ctx.check_owner and (st.st_uid != 0 or st.st_mode & 0o022)):
                 raise ValueError("备份目录不安全")
-            for row in m["files"]:
+            for row in m["files"] + m.get("config_files", []):
                 if row.get("existed") and _sha256(imu_redo_file(op, directory + "/" + row["name"])) != row.get("sha256"):
                     raise ValueError("备份摘要不对")
             raw = imu_redo_file(op, directory + "/calibration.json")
@@ -1946,8 +1985,12 @@ def imu_redo_readback(op, expected, source, quat=None):
         native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
         info = native.get("imu_bus") or bus.get("imu_bus")
         if (source == "bus" and isinstance(info, dict)
-                and info.get("protocol") != cal.get("imu_bus_protocol", "feetech")):
-            raise Stop(EXIT_STATE, "readback_mismatch", "当前总线 IMU 协议与已验证的安装方向标定不匹配")
+                and (info.get("protocol") != cal.get("imu_bus_protocol", "feetech")
+                     or info.get("profile", "legacy") != cal.get("imu_bus_profile", "legacy")
+                     or info.get("profile", "legacy") not in ("legacy", "qinmo"))):
+            raise Stop(EXIT_STATE, "readback_mismatch", "当前总线 IMU 协议 / 类型与已验证的安装方向标定不匹配")
+        if source == "bus" and imu_profile_configured(bus) is not None and not isinstance(info, dict):
+            raise Stop(EXIT_STATE, "readback_mismatch", "当前总线 IMU 还未连接，不能确认安装方向")
         mount = ({"quat": cal.get("imu_mount_quat"), "verified": cal.get("imu_mount_verified")}
                  if source == "bus" else (cal.get("imu_mounts") or {}).get(source) or {})
         top = status.get("imu_mount")
@@ -1996,6 +2039,8 @@ def imu_redo_restart(op, mode, expected, source):
 
 
 def imu_redo_restore_original(op, m):
+    if "profile" in m:
+        return imu_profile_restore(op, m)
     errors = []
     directory = IMU_REDO_DIR + "/" + m["session_id"]
     for row in m["files"]:
@@ -2012,14 +2057,300 @@ def imu_redo_restore_original(op, m):
     return status
 
 
+def imu_profile_configured(bus):
+    native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
+    return native.get("configured_imu_profile", bus.get("configured_imu_profile"))
+
+
+def imu_profile_controllers_stop(op):
+    pads_stop(op)
+    # R3 listening can remain latched after padd stops and issue direct sit/stand.
+    # Pin this one known service; no caller-supplied service names are accepted.
+    if is_active(op, "duck-echo"):
+        op.ctx.run(["systemctl", "stop", "duck-echo"])
+    if any(is_active(op, unit) for unit in ("padd", GAMESIR, "duck-echo")):
+        raise Stop(EXIT_STATE, "refused", "手柄 / 语音控制服务未停下，未切换类型")
+
+
+def imu_profile_controllers_restore(op, was):
+    pads_restore(op, was)
+    if was.get("duck_echo"):
+        op.ctx.run(["systemctl", "start", "--no-block", "duck-echo"])
+
+
+def imu_profile_safe_file(op, path):
+    # Check every ancestor: lstat on the leaf alone still follows a symlinked parent.
+    parts = path.strip("/").split("/")
+    for index in range(1, len(parts)):
+        st = os.lstat(op.ctx.p("/" + "/".join(parts[:index])))
+        if not stat.S_ISDIR(st.st_mode) or (op.ctx.check_owner and (st.st_uid != 0 or st.st_mode & 0o022)):
+            raise Stop(EXIT_STATE, "unsafe_config", "主程序配置目录的属主 / 权限不安全，未修改")
+    return imu_redo_file(op, path)
+
+
+def imu_profile_config(op, argv):
+    values = [argv[i + 1] for i, arg in enumerate(argv[:-1]) if arg == "--params"]
+    sockets = [argv[i + 1] for i, arg in enumerate(argv[:-1]) if arg == "--socket"]
+    if (values != [IMU_CONFIG] or sockets != [SOCK]
+            or any(a.startswith(("--params=", "--socket=")) or a in ("--read-only", "--config", "--fake") for a in argv)):
+        raise Stop(EXIT_STATE, "unsupported_config", "主程序未使用受支持的固定配置路径，未修改")
+    dropins = show(op, "robotd", ["DropInPaths"]).get("DropInPaths", "").split()
+    allowed = {"/etc/systemd/system/robotd.service.d/zzzz-r17-0151.conf",
+               "/etc/systemd/system/robotd.service.d/zzzz-studio-bus.conf", COMMISSIONING_DROPIN, IMU_REDO_DROPIN}
+    if not dropins or set(dropins) - allowed:
+        raise Stop(EXIT_STATE, "unsupported_exec", "主程序存在未支持的服务覆盖，未修改")
+    # The executable and its ancestors are also pinned to safe root-owned files.
+    if op.ctx.check_owner:
+        imu_profile_safe_file(op, argv[0])
+    result = []
+    for path in (IMU_CONFIG, IMU_CONFIG_SAVED):
+        raw = imu_profile_safe_file(op, path)
+        try:
+            data = tomllib.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeError) as err:
+            raise Stop(EXIT_STATE, "bad_toml", "主程序配置读不回，未修改") from err
+        bus = data.get("bus") or {}
+        if (bus.get("protocol") != "feetech" or bus.get("imu_protocol", "auto") not in ("auto", "feetech", "dxl2")
+                or bus.get("imu_profile", "legacy") not in ("legacy", "qinmo")
+                or (data.get("trunk_imu") or {}).get("source", "bus") != "bus"
+                or data.get("feetech_calibration") != CALIB):
+            raise Stop(EXIT_STATE, "unsupported_config", "类型选择只支持 Feetech 舵机总线的 IMU；当前配置不匹配")
+        result.append((path, raw, data))
+    return result
+
+
+def imu_profile_text(raw, profile):
+    """Patch only two scalar keys, including the image's quoted TOML spelling.
+
+    Parsing before and after is authoritative. Ambiguous syntax is refused rather
+    than reserializing policy tables or making a general configuration editor.
+    """
+    import copy
+    text = raw.decode("utf-8")
+    data = tomllib.loads(text)
+    expected = copy.deepcopy(data)
+    expected["bus"].update(imu_profile=profile, imu_protocol="feetech" if profile == "qinmo" else "auto")
+    lines = text.splitlines(keepends=True)
+    headers = [i for i, line in enumerate(lines) if re.fullmatch(r'\s*\[\s*(?:bus|"bus"|\x27bus\x27)\s*\]\s*(?:#[^\n]*)?\n?', line)]
+    if len(headers) != 1:
+        raise Stop(EXIT_STATE, "bad_toml", "bus 段没有唯一的受支持写法，未修改")
+    start = headers[0] + 1
+    end = next((i for i in range(start, len(lines)) if re.match(r"\s*\[", lines[i])), len(lines))
+    block = lines[start:end]
+    for key in ("imu_profile", "imu_protocol"):
+        pattern = re.compile(r'\s*(?:' + key + '|"' + key + '"|\x27' + key + r'\x27)\s*=')
+        matches = [i for i, line in enumerate(block) if pattern.match(line)]
+        replacement = key + ' = "' + expected["bus"][key] + '"\n'
+        if len(matches) > 1:
+            raise Stop(EXIT_STATE, "bad_toml", "类型字段重复，未修改")
+        if matches:
+            block[matches[0]] = replacement
+        else:
+            block.insert(0, replacement)
+    if start and not lines[start-1].endswith("\n"):
+        lines[start-1] += "\n"
+    result = "".join(lines[:start] + block + lines[end:]).encode()
+    if not imu_redo_same(tomllib.loads(result.decode()), expected):
+        raise Stop(EXIT_STATE, "bad_toml", "类型修改会改变其他配置，未修改")
+    return result
+
+
+def imu_profile_unverify(raw):
+    import copy
+    data = tomllib.loads(raw.decode("utf-8"))
+    expected = copy.deepcopy(data)
+    expected["imu_mount_verified"] = False
+    text, count = re.subn(r'(?m)^\s*(?:imu_mount_verified|"imu_mount_verified"|\x27imu_mount_verified\x27)\s*=\s*(?:true|false)\s*(?:#[^\n]*)?$',
+                          'imu_mount_verified = false', raw.decode("utf-8"))
+    if count != 1 or not imu_redo_same(tomllib.loads(text), expected):
+        raise Stop(EXIT_STATE, "bad_toml", "安装方向确认字段没有唯一的安全写法，未修改")
+    return text.encode()
+
+
+def imu_profile_gate(op):
+    """Control uses the existing strict gate; pre-control proves lifecycle only."""
+    for index in range(2):
+        if index:
+            op.ctx.sleep(GATE_GAP)
+        bus, err = robotd_bus_status(op)
+        profile = imu_profile_configured(bus or {})
+        if profile not in ("legacy", "qinmo"):
+            raise Stop(EXIT_STATE, "unsupported_daemon", "主程序版本尚不支持网页选择 IMU 类型：请先由维护者更新主程序")
+        mode, phase = bus.get("mode"), bus.get("phase")
+        if mode == "motion" and phase == "control":
+            imu_redo_gate(op, "motion")
+        elif (mode in ("motion", "commissioning") and phase in ("configuring_bus", "waiting_for_bus")
+              and not bus.get("policy_enabled") and not bus.get("policy_motion_enabled")
+              and not bus.get("motion") and not bus.get("home_recovery") and not bus.get("hold")):
+            if not running(robotd_state(op)):
+                raise Stop(EXIT_STATE, "refused", "主程序启动状态无法确认，未修改")
+        elif mode == "commissioning" and phase in COMMISSIONING_UP:
+            imu_redo_gate(op, "commissioning")
+        else:
+            raise Stop(EXIT_STATE, "refused", "主程序处于未知 / 活动状态：先扶稳并卸力，未修改类型")
+    return bus
+
+
+def imu_profile_readback(op, profile, require_discovery=False):
+    bus, err = robotd_bus_status(op)
+    if bus is None or imu_profile_configured(bus) != profile:
+        raise Stop(EXIT_STATE, "readback_mismatch", "主程序配置类型没有准确读回，会话保留")
+    native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
+    info = native.get("imu_bus") or bus.get("imu_bus")
+    if ((isinstance(info, dict) and (info.get("profile", "legacy") != profile
+                                    or (profile == "qinmo" and info.get("protocol") != "feetech")))
+            or (require_discovery and not isinstance(info, dict))):
+        raise Stop(EXIT_STATE, "readback_mismatch", "实际连接的 IMU 类型未读回一致，不能完成")
+    return bus
+
+
+def imu_profile_restart(op, profile):
+    if not restart_robotd(op) or not wait_robotd(op)[0]:
+        raise Stop(EXIT_FAIL, "restart_failed", "重连主程序失败，可取消恢复原参数")
+    deadline = op.ctx.now() + CALIB_MOTION_WAIT
+    while True:
+        bus = imu_profile_readback(op, profile)
+        if bus.get("mode") == "commissioning" and bus.get("phase") in (*COMMISSIONING_UP, "configuring_bus", "waiting_for_bus"):
+            break
+        if op.ctx.now() >= deadline:
+            raise Stop(EXIT_FAIL, "restart_failed", "尚未回到标定模式，可取消恢复原参数")
+        op.ctx.sleep(CALIB_STATUS_INTERVAL)
+    imu_profile_gate(op)
+    return bus
+
+
+def imu_profile_restore(op, m):
+    imu_redo_owned(op, m, allow_missing=True)
+    errors = []
+    directory = IMU_REDO_DIR + "/" + m["session_id"]
+    for row in m["files"] + m["config_files"]:
+        imu_profile_safe_file(op, row["path"])
+        if not _restore_one(op, directory, row, errors):
+            raise Stop(EXIT_FAIL, "rollback_failed", "; ".join(errors))
+    # Startup recovery never returns to control automatically, even on cancellation.
+    if m["original_mode"] == "startup":
+        # Hand off to the same fixed factory commissioning flow used by firstboot.
+        # This permits a fresh selection / verification / normal firstboot commit.
+        recovery = ("# microduck-helper: recovered pre-control IMU selection\n[Service]\nExecStart=\nExecStart=" +
+                    " ".join(imu_redo_quote(a) for a in m["exec_args"] + ["--commissioning"]) + "\n").encode()
+        if exists(op.ctx, COMMISSIONING_DROPIN) and imu_profile_safe_file(op, COMMISSIONING_DROPIN) != recovery:
+            raise Stop(EXIT_STATE, "imu_session_tampered", "出厂标定模式文件已改变，保留会话")
+        write_atomic(op.ctx, COMMISSIONING_DROPIN, recovery, 0o644)
+        remove(op.ctx, IMU_REDO_DROPIN)
+        if op.ctx.run(["systemctl", "daemon-reload"])[0] != 0 or imu_redo_arguments(exec_start(op)) != m["exec_args"] + ["--commissioning"]:
+            raise Stop(EXIT_FAIL, "rollback_failed", "安全标定启动参数未加载，会话保留")
+        imu_profile_restart(op, m["old_profile"])
+        imu_profile_controllers_restore(op, m["controllers"])
+        imu_redo_save(op, m, "cancelled", active=False, reason="已恢复原类型，保持标定模式；可重新选择并验证")
+        return {}
+    remove(op.ctx, IMU_REDO_DROPIN)
+    target = m.get("original_args", m["exec_args"])
+    if op.ctx.run(["systemctl", "daemon-reload"])[0] != 0 or imu_redo_arguments(exec_start(op)) != target:
+        raise Stop(EXIT_FAIL, "rollback_failed", "原启动参数未恢复，会话保留")
+    expected = _load_toml(op, CALIB)
+    mode = m["original_mode"]
+    if mode == "commissioning":
+        imu_profile_restart(op, m["old_profile"])
+        status = imu_redo_readback(op, expected, m["source"])
+    else:
+        status = imu_redo_restart(op, mode, expected, m["source"])
+    imu_profile_controllers_restore(op, m["controllers"])
+    imu_redo_save(op, m, "cancelled", active=False)
+    return status
+
+
+def imu_profile_enter(op, args, previous):
+    if (previous and previous["active"]) or exists(op.ctx, IMU_REDO_DROPIN):
+        raise Stop(EXIT_STATE, "imu_recalibrate_active", "标定会话已经开着：先完成或取消")
+    original_args = imu_redo_arguments(exec_start(op))
+    factory = exists(op.ctx, COMMISSIONING_DROPIN)
+    if ("--commissioning" in original_args) != factory or original_args.count("--commissioning") > 1:
+        raise Stop(EXIT_STATE, "foreign_commissioning", "外来标定启动参数，未修改")
+    argv = [a for a in original_args if a != "--commissioning"]
+    configs = imu_profile_config(op, argv)
+    # Build and validate every candidate before writing any file.
+    candidates = {path: imu_profile_text(raw, args["profile"]) for path, raw, data in configs}
+    bus = imu_profile_gate(op)
+    status, err = calibration_status(op)
+    if status is None or imu_redo_source(bus, status) != "bus":
+        raise Stop(EXIT_STATE, "imu_source_changed", "当前主程序 IMU 来源不是总线或无法确认，未修改")
+    if imu_profile_configured(bus) != configs[0][2]["bus"].get("imu_profile", "legacy"):
+        raise Stop(EXIT_STATE, "readback_mismatch", "文件类型与正在运行的主程序不一致，未修改")
+    data, _ = read_calibration(op)
+    imu_redo_readback(op, data, "bus")
+    mode = "commissioning" if factory else ("motion" if bus.get("phase") == "control" else "startup")
+    controllers = {"padd": is_active(op, "padd"), "gamesir": is_active(op, GAMESIR),
+                   "duck_echo": is_active(op, "duck-echo")}
+    ensure_dir(op.ctx, OPLOG_DIR, 0o755)
+    ensure_dir(op.ctx, IMU_REDO_DIR, 0o755)
+    session = secrets.token_hex(16)
+    directory = IMU_REDO_DIR + "/" + session
+    ensure_dir(op.ctx, directory, 0o700)
+    files, config_files = [], []
+    for path, name, rows in ((CALIB, "main.toml", files), (CALIB_SAVED, "saved.toml", files),
+                              (IMU_CONFIG, "config.toml", config_files), (IMU_CONFIG_SAVED, "config-saved.toml", config_files)):
+        contents = imu_profile_safe_file(op, path)
+        if rows is files:
+            candidates[path] = imu_profile_unverify(contents)
+        meta, _ = file_meta(op.ctx, path)
+        meta.update(path=path, name=name)
+        if rows is config_files:
+            meta["selected_sha256"] = _sha256(candidates[path])
+        write_atomic(op.ctx, directory + "/" + name, contents, 0o600)
+        rows.append(meta)
+    baseline = (json.dumps(data, sort_keys=True) + "\n").encode()
+    write_atomic(op.ctx, directory + "/calibration.json", baseline, 0o600)
+    m = {"schema": IMU_REDO_SCHEMA, "active": True, "session_id": session, "source": "bus",
+         "exec_args": argv, "original_args": original_args, "original_mode": mode, "profile": args["profile"],
+         "old_profile": imu_profile_configured(bus), "files": files, "config_files": config_files,
+         "controllers": controllers, "calibration_sha256": _sha256(baseline)}
+    m["override_sha256"] = _sha256(imu_redo_override(m))
+    imu_redo_save(op, m, "entering")
+    changed = False
+    try:
+        imu_profile_controllers_stop(op)
+        imu_profile_gate(op)
+        if imu_redo_arguments(exec_start(op)) != original_args:
+            raise Stop(EXIT_STATE, "readback_mismatch", "主程序启动参数已改变，未修改")
+        for row in files + config_files:
+            if _sha256(imu_profile_safe_file(op, row["path"])) != row["sha256"]:
+                raise Stop(EXIT_STATE, "readback_mismatch", "配置 / 标定在进入前改变，未修改")
+        changed = True
+        write_atomic(op.ctx, IMU_REDO_DROPIN, imu_redo_override(m), 0o644)
+        for row in config_files + files:
+            _write_preserving(op, row["path"], candidates[row["path"]], row, 0o644)
+            if imu_profile_safe_file(op, row["path"]) != candidates[row["path"]]:
+                raise Stop(EXIT_FAIL, "readback_mismatch", "类型配置写后读回不一致")
+        if op.ctx.run(["systemctl", "daemon-reload"])[0] != 0:
+            raise Stop(EXIT_FAIL, "restart_failed", "模式配置未加载")
+        imu_redo_owned(op, m)
+        imu_profile_restart(op, m["profile"])
+        imu_redo_save(op, m, "commissioning")
+        return op.finish(EXIT_OK, "imu_entered", "类型已保存，已重连到标定模式；请完成安装方向采集与主程序验证", m)
+    except Exception as err:
+        try:
+            if changed:
+                imu_profile_restore(op, m)
+            else:
+                imu_profile_controllers_restore(op, controllers)
+                imu_redo_save(op, m, "cancelled", active=False)
+        except Exception as rollback_error:
+            imu_redo_save(op, m, "recovery_required", reason=str(rollback_error))
+            return op.finish(EXIT_FAIL, "rollback_failed", "选择未完成，恢复也未完成；会话和备份仍在，可取消恢复", m)
+        return op.finish(err.code if isinstance(err, Stop) else EXIT_FAIL,
+                         err.result if isinstance(err, Stop) else "enter_failed", str(err), m)
+
+
 def check_imu_redo_args(args):
     action = args.get("action")
-    keys = {"enter": ("by", "action", "confirmed"), "status": ("by", "action"),
+    keys = {"enter": ("by", "action", "confirmed", "profile"), "status": ("by", "action"),
             "cancel": ("by", "action", "confirmed", "session_id"),
             "finish": ("by", "action", "session_id", "source", "quat")}
     if action not in keys:
         raise Stop(EXIT_ARGS, "bad_args", "imu-recalibrate 只认 enter / status / finish / cancel")
     check_keys(args, keys[action], "imu-recalibrate 的参数")
+    if "profile" in args and args["profile"] not in ("legacy", "qinmo"):
+        raise Stop(EXIT_ARGS, "bad_args", "profile 只能是 legacy 或 qinmo")
     by = check_by(args)
     if action in ("enter", "cancel") and args.get("confirmed") is not True:
         raise Stop(EXIT_ARGS, "bad_args", "先明确确认扶稳并卸力，再进入或取消")
@@ -2045,6 +2376,12 @@ def verb_imu_recalibrate(op, args, raw):
         return op.finish(EXIT_OK, "imu_status", "读到初次 IMU 校准会话", m or {"active": False, "phase": "idle"}, record=False)
     if flag_present(op.ctx):
         raise Stop(EXIT_STATE, "bus_held", "舵机页占着总线：先交还主程序")
+    if "profile" in args or (m and "profile" in m):
+        op.service_lock_handle = op.ctx.lock(SERVICE_LOCK)
+        if op.service_lock_handle is None:
+            raise Stop(EXIT_BUSY, "busy", "主程序管理 / 更新正在进行：稍后再试")
+    if action == "enter" and "profile" in args:
+        return imu_profile_enter(op, args, m)
     if action == "enter":
         if (m and m["active"]) or exists(op.ctx, IMU_REDO_DROPIN):
             raise Stop(EXIT_STATE, "imu_recalibrate_active", "初次 IMU 校准会话已经开着：继续或取消")
@@ -2117,7 +2454,10 @@ def verb_imu_recalibrate(op, args, raw):
     imu_redo_owned(op, m, allow_missing=(m["phase"] in ("entering", "finishing", "cancelling", "recovery_required")))
     # A reboot may have started pad services again while the persistent override
     # kept robotd in commissioning. Stop them again before returning to motion.
-    pads_stop(op)
+    if "profile" in m:
+        imu_profile_controllers_stop(op)
+    else:
+        pads_stop(op)
     if is_active(op, "padd") or is_active(op, GAMESIR):
         raise Stop(EXIT_STATE, "refused", "手柄服务没停下，会话保留")
     if action == "cancel":
@@ -2128,11 +2468,17 @@ def verb_imu_recalibrate(op, args, raw):
         mode = (live or {}).get("mode")
         if mode not in ("motion", "commissioning"):
             raise Stop(EXIT_STATE, "refused", f"取消前主程序的当前模式读不回：{err or mode}；会话保留")
-        imu_redo_gate(op, mode, m["source"])
+        if "profile" in m:
+            imu_profile_gate(op)
+        else:
+            imu_redo_gate(op, mode, m["source"])
         imu_redo_save(op, m, "cancelling")
         try:
             status = imu_redo_restore_original(op, m)
-            return op.finish(EXIT_OK, "imu_cancelled", "已取消重做，恢复原来的 IMU 标定和运动模式，保持失能", dict(m, calibration=status))
+            note = ("已恢复原类型和 IMU 标定，保持标定模式；可重新选择并验证"
+                    if m.get("original_mode") in ("startup", "commissioning") else
+                    "已取消重做，恢复原来的 IMU 标定和运动模式，保持失能")
+            return op.finish(EXIT_OK, "imu_cancelled", note, dict(m, calibration=status))
         except Exception as err:
             imu_redo_save(op, m, "recovery_required", reason=str(err))
             return op.finish(EXIT_FAIL, "cancel_failed", f"取消未完成，会话和备份仍在：{err}", m)
@@ -2144,6 +2490,12 @@ def verb_imu_recalibrate(op, args, raw):
     if not imu_redo_same(normalized_calibration(current), normalized_calibration(_load_toml(op, CALIB_SAVED))):
         raise Stop(EXIT_STATE, "readback_mismatch", "主标定与 saved 读回不一致")
     imu_redo_readback(op, current, source, quat)
+    if "profile" in m:
+        imu_profile_config(op, m["exec_args"])
+        for row in m["config_files"]:
+            if _sha256(imu_profile_safe_file(op, row["path"])) != row.get("selected_sha256"):
+                raise Stop(EXIT_STATE, "readback_mismatch", "已选类型的配置文件已改变，保留会话")
+        imu_profile_readback(op, m["profile"], require_discovery=True)
     directory = IMU_REDO_DIR + "/" + m["session_id"]
     baseline = json.loads(imu_redo_file(op, directory + "/calibration.json"))
     import copy
@@ -2154,6 +2506,7 @@ def verb_imu_recalibrate(op, args, raw):
             cal.pop("imu_mount_quat", None)
             cal.pop("imu_mount_verified", None)
             cal.pop("imu_bus_protocol", None)
+            cal.pop("imu_bus_profile", None)
         else:
             mount = (cal.get("imu_mounts") or {}).get(source)
             if isinstance(mount, dict):
@@ -2181,13 +2534,21 @@ def verb_imu_recalibrate(op, args, raw):
                 raise Stop(EXIT_FAIL, "readback_mismatch", "安装后文件读回不一致")
         imu_redo_owned(op, m)
         remove(op.ctx, IMU_REDO_DROPIN)
-        if op.ctx.run(["systemctl", "daemon-reload"])[0] != 0 or imu_redo_arguments(exec_start(op)) != m["exec_args"]:
+        target_args = m.get("original_args", m["exec_args"])
+        if op.ctx.run(["systemctl", "daemon-reload"])[0] != 0 or imu_redo_arguments(exec_start(op)) != target_args:
             raise Stop(EXIT_FAIL, "restart_failed", "原来的启动参数没有恢复")
-        status = imu_redo_restart(op, "motion", expected, source)
+        target_mode = "commissioning" if m.get("original_mode") == "commissioning" else "motion"
+        status = imu_redo_restart(op, target_mode, expected, source)
         imu_redo_readback(op, expected, source, quat)
-        pads_restore(op, m["controllers"])
+        if "profile" in m:
+            imu_profile_controllers_restore(op, m["controllers"])
+        else:
+            pads_restore(op, m["controllers"])
         imu_redo_save(op, m, "finished", active=False)
-        return op.finish(EXIT_OK, "imu_finished", "初次 IMU 校准已重新验证，原有舵机标定保持，已回运动模式并失能", dict(m, calibration=status))
+        note = ("IMU 方向已验证，类型已保存，继续出厂标定流程"
+                if target_mode == "commissioning" else
+                "初次 IMU 校准已重新验证，原有舵机标定保持，已回运动模式并失能")
+        return op.finish(EXIT_OK, "imu_finished", note, dict(m, calibration=status))
     except Exception as err:
         # Keep the successfully verified commissioning state, never the original unverified candidate.
         try:

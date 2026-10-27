@@ -216,10 +216,10 @@ def calib_read(by=None, timeout=10):
     return _call("calib-read", payload, timeout)
 
 
-def imu_recalibrate(by, action, *, confirmed=None, session_id=None, source=None, quat=None, timeout=180):
+def imu_recalibrate(by, action, *, confirmed=None, session_id=None, source=None, quat=None, profile=None, timeout=180):
     """Fixed root verb; commands, services and file paths are never accepted."""
     payload = {"by": by, "action": action}
-    for name, value in (("confirmed", confirmed), ("session_id", session_id), ("source", source), ("quat", quat)):
+    for name, value in (("confirmed", confirmed), ("session_id", session_id), ("source", source), ("quat", quat), ("profile", profile)):
         if value is not None:
             payload[name] = value
     return _call("imu-recalibrate", payload, timeout)
@@ -245,7 +245,7 @@ def imu_redo_state(*, root="/"):
             raise ValueError("会话文件内容不正确")
         if not m["active"]:
             return empty
-        return {key: m.get(key) for key in ("active", "phase", "session_id", "source", "reason", "expected_quat")}
+        return {key: m.get(key) for key in ("active", "phase", "session_id", "source", "reason", "expected_quat", "profile", "original_mode")}
     except FileNotFoundError:
         return empty
     except (OSError, ValueError, TypeError, AttributeError) as err:
