@@ -3,9 +3,11 @@ import asyncio
 import json
 import os
 from pathlib import Path
+from . import helper
 
 MAX_UPLOAD=160*1024*1024
 OPS={'check','download','validate','install','rollback'}
+NATIVE_OPS={'native_status','native_install','native_recover'}
 
 def safe_during_update(name,args):
     if name in {'relax','servo.ports'}:return True
@@ -20,13 +22,88 @@ def safe_during_update(name,args):
 class UpdateError(Exception):
     def __init__(self,code,message,status=400): super().__init__(message); self.code,self.status=code,status
 
+def neutral_robot_command(method,params):
+    """Only emergency/neutral output may cross a newly persisted update guard."""
+    if method in {'robot.stop','robot.relax'}:return True
+    if method=='robot.enable':return params.get('on') is False and params.get('toggle',False) is False
+    if method in {'robot.move','robot.head'}:
+        keys={'vx','vy','vyaw'} if method=='robot.move' else {'neck_pitch','head_pitch','head_yaw','head_roll'}
+        return bool(params) and set(params)<=keys and all(type(value) in (int,float) and value==0 for value in params.values())
+    if method=='robot.pose':return params=={'active':False}
+    if method=='robot.mouth':return params=={'open':0.0}
+    return method=='robot.sound' and params=={'tag':'wheee','hold':False}
+
 class Updates:
     def __init__(self,address='unix:/run/microduck-updater/control.sock',marker='/run/microduck-updater/installing',
-                 readiness='/run/microduck-studio/update.sock'):
+                 readiness='/run/microduck-studio/update.sock', *, native_call=None, native_state=None):
         self.address,self.marker,self.readiness=address,Path(marker),Path(readiness)
         self.server=None
+        # Explicit dependencies are for local fixtures; production always uses the fixed helper.
+        self.native_call=native_call or self._native_call
+        self.native_state=native_state or helper.native_update_state
+        self.native_task=None
+        self.native_gate=asyncio.Lock()
+        self.native_error=None
 
-    def installing(self): return self.marker.exists()
+    def installing(self): return self.marker.exists() or self.native_state().get('active') is True
+
+    def native_preparing(self): return self.native_gate.locked() or (self.native_task is not None and not self.native_task.done())
+
+    @staticmethod
+    def _native_call(by,action,**kwargs):
+        if not helper.available(): return False,'unavailable',None
+        return helper.robotd_update(by,action,**kwargs)
+
+    async def native_status(self):
+        persisted=self.native_state()
+        try: ok,code,detail=await asyncio.to_thread(self.native_call,'Studio','status',timeout=10)
+        except Exception: ok,code,detail=False,'unavailable',None
+        fields=('active','phase','transaction_id','available','installed_sha256','target_sha256','running_verified','mode','reason')
+        value={key:detail[key] for key in fields if isinstance(detail,dict) and key in detail} if ok else dict(persisted)
+        if persisted.get('active') is True:
+            value['active']=True
+            if persisted.get('phase')=='recovery_required':
+                value.update(phase='recovery_required',reason=persisted.get('reason'))
+        value['service_available']=ok is True
+        value['active']=value.get('active') is True
+        value['available']=ok is True and value.get('available') is True
+        value['supported']=ok is True and value.get('running_verified') is True
+        value['current']=(value['supported'] and not value['active'] and
+            isinstance(value.get('target_sha256'),str) and len(value['target_sha256'])==64 and
+            value.get('installed_sha256')==value['target_sha256'])
+        value['submitting']=self.native_preparing()
+        value['request_error']=self.native_error
+        if not ok and not value.get('reason'):
+            value['reason']='当前小助手未提供受信任的主程序更新服务，请先安装匹配的网页 / 语音软件包'
+        return value
+
+    async def snapshot(self):
+        result=await self.request()
+        return {**result,'native':await self.native_status()}
+
+    async def native_request(self,action,*,confirmed=None):
+        if action=='status': return {'ok':True,'native':await self.native_status()}
+        if action not in {'install','recover'} or confirmed is not True:
+            raise UpdateError('validation','主程序更新需要明确确认：已扶稳并卸力')
+        if self.native_preparing() or self.marker.exists():
+            raise UpdateError('busy','已有更新任务，请等待或重新读取状态',409)
+        # Do not add this task to readiness or to the motion guard. Root first
+        # queries app readiness, then writes the persistent exclusion itself.
+        async def run():
+            try:
+                ok,code,detail=await asyncio.to_thread(self.native_call,'Studio',action,confirmed=True)
+                if not ok:
+                    reason=(detail or {}).get('reason') or (detail or {}).get('note') or str(code)
+                    self.native_error=('请求未取得最终结果；请重新读取实际状态：'+str(reason))[:500]
+            except Exception:
+                self.native_error='请求连接中断；独立主程序任务可能仍在运行，请重新读取实际状态'
+        async with self.native_gate:
+            software=await self.request()
+            if software.get('busy') is True:
+                raise UpdateError('busy','网页 / 语音更新任务尚未结束',409)
+            self.native_error=None
+            self.native_task=asyncio.create_task(run())
+        return {'ok':True,'native':await self.native_status()}
 
     async def connect(self):
         from .rpc import open_conn
@@ -44,6 +121,8 @@ class Updates:
 
     async def request(self,operation='status'):
         if operation not in OPS|{'status'}: raise UpdateError('validation','不支持的更新操作')
+        if operation in {'install','rollback'} and (self.native_preparing() or self.native_state().get('active') is True):
+            raise UpdateError('busy','主程序更新尚未结束：先完成或恢复主程序更新',409)
         writer=None
         try:
             reader,writer=await self.connect()
@@ -75,6 +154,7 @@ class Updates:
         finally: writer.close()
 
     async def start_readiness(self,snapshot):
+        self.readiness_snapshot=snapshot
         if os.name!='posix' or not self.readiness.parent.is_dir(): return
         if self.readiness.exists(): self.readiness.unlink()
         async def serve(reader,writer):
@@ -99,13 +179,20 @@ async def handle(request,updates,session,has_password,local_dev,origin_ok):
     if request.method=='POST' and (not origin_ok or request.headers.get('x-csrf')!=session['csrf']):
         raise UpdateError('csrf','请求来源或登录令牌不正确',403)
     if request.url.path.endswith('/upload'): return await updates.upload(request)
-    if request.method=='GET': return await updates.request()
+    if request.method=='GET': return await updates.snapshot()
     data=bytearray()
     async for chunk in request.stream():
         data.extend(chunk)
         if len(data)>8192: raise UpdateError('oversize','更新请求过大',413)
     try: body=json.loads(data)
     except (ValueError,RecursionError): raise UpdateError('validation','更新请求不是有效 JSON') from None
-    if not isinstance(body,dict) or set(body)!={'op'} or not isinstance(body['op'],str) or body['op'] not in OPS:
+    if not isinstance(body,dict) or not isinstance(body.get('op'),str):
+        raise UpdateError('validation','不支持的更新操作或字段')
+    if body['op'] in NATIVE_OPS:
+        expected={'op'} if body['op']=='native_status' else {'op','confirmed'}
+        if set(body)!=expected or (body['op']!='native_status' and body.get('confirmed') is not True):
+            raise UpdateError('validation','主程序更新需要明确确认，且不接受额外字段')
+        return await updates.native_request(body['op'][7:],confirmed=body.get('confirmed'))
+    if set(body)!={'op'} or body['op'] not in OPS:
         raise UpdateError('validation','不支持的更新操作或字段')
     return await updates.request(body['op'])

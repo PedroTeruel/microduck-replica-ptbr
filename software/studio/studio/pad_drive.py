@@ -75,6 +75,7 @@ from .estop import STARTING_PHASES, relaxed, torque_off
 from .log import log_cmd
 from .pad_combo import Refused
 from .rpc import RpcError, Timeout, Unreachable
+from .updates import neutral_robot_command
 
 MAX_V = 0.3               # 满杆 m/s：padd 默认 --max-linear 0.3（padd main.rs:158-164），官方网页遥控同一个数
 MAX_W = 1.5               # 满杆 rad/s：padd 默认 --max-angular 1.5（padd main.rs:166-168）
@@ -1291,6 +1292,10 @@ class DriveMixin:
                 self._tick_evt.clear()
 
     def _tick_once(self):
+        if self._update_blocked():
+            with self._lk:
+                held=bool(self._modes or self._keys or self._latch['head'] or self._latch['body'])
+            if held:self._request_clear(None,'软件 / 主程序更新保护仍在',say=False)
         self.motion_studio.tick()
         self._flush_clears()                       # 它自己拿 _send_lk：放在下面那把锁之前（Lock 不能重入）
         sends, logs = [], []                       # sends：(方法, 参数, 标记 None / "pose_reset" / "watchdog")
@@ -1370,8 +1375,13 @@ class DriveMixin:
 
     # ================= 站起来 / 开始走 / 坐下 / 技能 / 声音：能不能按 =================
 
+    def _update_blocked(self):
+        try:return getattr(self,'update_guard',lambda:False)() is True
+        except Exception:return True
+
     def _base_block(self, now):
         """跟姿势无关、什么动作都不能做的情况（声音也挡：调试模式下主程序只读，fork main.rs:5379-5396）。"""
+        if self._update_blocked():return '软件 / 主程序更新保护仍在'
         r = self._robot or {}
         if self._robot_at is None or now - self._robot_at > 3:
             return "Studio 还没收到主程序的状态"
@@ -1689,6 +1699,8 @@ class DriveMixin:
         """一个要回话的请求：记「发出 → 回执 · 耗时」（log_cmd，分类「命令」），拒绝的原因翻成人话抛 Refused。"""
         if self.robot is None:
             raise Refused("这只鸭子没配主程序的地址")
+        if self._update_blocked() and not neutral_robot_command(method,params):
+            raise Refused('软件 / 主程序更新保护仍在，旧动作请求已取消')
         with self._lk:
             if not self.motion_studio.request_current():
                 raise Refused("动作会话已经改变，旧命令请求已丢弃")
@@ -1908,10 +1920,12 @@ class DriveMixin:
         return None
 
     def _notify_output(self, method, params):
+        if self._update_blocked() and not neutral_robot_command(method,params):return False
         if method == "robot.do":
             self.motion_studio.note_skill()
         self.robot.notify(method, params)
         self.motion_studio.accepted(method, params)
+        return True
 
     def _notify_quiet(self, method, params, action=None, cleanup=False):
         with self._send_lk:
@@ -1920,8 +1934,7 @@ class DriveMixin:
                         or action.get("motion_epoch") != self.motion_studio.epoch
                         or (action["stop"].is_set() and not cleanup)):
                     return False
-            self._notify_output(method, params)
-            return True
+            return self._notify_output(method, params)
 
     def _run_action(self, a):  # noqa: C901
         steps, needs = a["steps"], C.needs_policy(a["steps"])

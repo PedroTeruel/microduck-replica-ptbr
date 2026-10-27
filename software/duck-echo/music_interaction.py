@@ -8,6 +8,7 @@ import threading
 import time
 
 from music_feel import is_music_question, reaction_tag
+from voice_commands import updates_allowed
 
 LOG = logging.getLogger('duck-echo')
 QUESTION_GRAMMAR = [
@@ -26,9 +27,10 @@ class MusicInteraction:
     No text leaves the worker or survives its current partial. Generation changes
     invalidate in-flight results when input drops, modes change or listening ends.
     """
-    def __init__(self, recognizer_provider, feel, reply, channel=1, clock=time.monotonic):
+    def __init__(self, recognizer_provider, feel, reply, channel=1, clock=time.monotonic,guard=updates_allowed):
         self.provider, self.feel, self.reply = recognizer_provider, feel, reply
         self.channel, self.clock = channel, clock
+        self.guard=guard
         self.condition = threading.Condition()
         self.queue = deque(maxlen=32)
         self.history = deque(maxlen=64)
@@ -43,7 +45,7 @@ class MusicInteraction:
 
     def set_enabled(self, enabled):
         with self.condition:
-            self.enabled = enabled
+            self.enabled = bool(enabled) and self.guard()
             self.generation += 1
             self.queue.clear()
             self.history.clear()
@@ -76,7 +78,7 @@ class MusicInteraction:
 
     def _valid(self, generation):
         with self.condition:
-            return self.enabled and not self.closed and self.generation == generation
+            return self.guard() and self.enabled and not self.closed and self.generation == generation
 
     def _context(self, timestamp):
         with self.condition:

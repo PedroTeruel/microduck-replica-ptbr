@@ -472,6 +472,8 @@ class Op:
         done = {"exit": code, "result": result, **(detail or {})}
         if self.verb == "imu-recalibrate":
             done["reason"] = reason
+        elif self.verb == "robotd-update" and reason is not None:
+            done["reason"] = reason
         self.emit("done", level, reason or result, done)
         if record:                       # 探测用的坏动词（bus-nope）照样回 done，但不覆盖 last-result / oplog
             row = {"verb": self.verb, "version": VERSION, "result": result, "exit": code, "reason": reason,

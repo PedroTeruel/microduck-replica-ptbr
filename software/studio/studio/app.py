@@ -159,12 +159,14 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
     guard = OriginGuard(names=names)
     ai = AiService(state_dir)
     updates = updates or Updates()
+    if pad is not None:
+        pad.update_guard=updates.installing
     update_commands = set()
 
     def update_readiness():
         busy = any(not task.done() for task in update_commands) or model_upload_gate.locked()
         motion = getattr(pad,'motion_studio',None)
-        if (busy or (servo is not None and servo.state != 'closed')
+        if (updates.installing() or busy or (servo is not None and servo.state != 'closed')
             or (motion is not None and (motion.state != 'idle' or motion.session is not None))
             or (imu is not None and (getattr(imu,'_redo_busy',False)
                 or getattr(imu,'blocks_updates',lambda:False)()))):
@@ -1386,6 +1388,9 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         """Studio 起来时：上次退出时舵机会话开着（有标记）→ robotd 不在就重新接管总线（只读打开，不改扭矩），恢复会话
         和提示条；接管不上 → 记成 orphan（提示条、卸力按钮引导去舵机页）；robotd 在 → 它起来时已经全部松开，删标记（审查 D1）。"""
         if servo is None:
+            return
+        if updates.installing():
+            log.warn('主程序更新保护仍在：暂停自动恢复舵机会话，请先在软件更新页恢复主程序更新',cat='总线')
             return
         there, data = await asyncio.to_thread(marker_read)
         if not there:

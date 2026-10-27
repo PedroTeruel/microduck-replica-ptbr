@@ -50,7 +50,10 @@ class UpdatesBrowser(unittest.TestCase):
             self.assertEqual(report['errors'],[])
             self.assertEqual(report['layouts'],[1440,390,320])
             for name in ('no_release','downloaded_waiting','validated','installed','reloaded_task',
-                         'rollback','uploaded','invalid_package','privileged_fields_rejected'):
+                         'rollback','uploaded','invalid_package','privileged_fields_rejected','stage1_old_helper',
+                         'native_pending','native_no_automatic_call','native_schema','native_csrf_origin',
+                         'native_software_exclusion','native_reconnect_success','native_no_payload',
+                         'native_unsupported','native_failure','native_recovery'):
                 self.assertTrue(report[name],name)
             calls=[json.loads(line) for line in (output/'engine.jsonl').read_text().splitlines()]
             apply=[c['params'] for c in calls if c['method']=='update.apply']
@@ -60,6 +63,11 @@ class UpdatesBrowser(unittest.TestCase):
             self.assertTrue(all(p['target']=={'exact':'2026.10.27'} for p in apply))
             records=[json.loads(line) for line in record.read_text().splitlines()]
             self.assertFalse(any(c.get('method') in ('robot.enable','robot.do','robot.init') for c in records))
+            self.assertTrue(any(c.get('method')=='robot.relax' for c in records),'global Space must retain real emergency path')
+            native=[json.loads(line) for line in (output/'native.jsonl').read_text().splitlines()]
+            mutations=[row for row in native if row['action']!='status']
+            self.assertEqual([row['action'] for row in mutations],['install','install','recover'])
+            self.assertTrue(all(row['by']=='Studio' and row['confirmed'] is True for row in mutations))
         finally:
             for process in reversed(processes):harness._kill(process)
             for stream in streams:stream.close()

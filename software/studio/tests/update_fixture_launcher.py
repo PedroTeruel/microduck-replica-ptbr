@@ -6,6 +6,7 @@ from pathlib import Path
 import runpy
 import sys
 import threading
+import time
 
 root=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(root/'deps'),str(root)]
@@ -24,11 +25,65 @@ fixture.engine.call=record
 server=fixture.serve(int(os.environ['UPDATE_FIXTURE_PORT']))
 
 from studio import app as app_module
+from studio import helper
 from studio.updates import Updates
 original_build=app_module.build_app
+
+# Only this explicit local test launcher supplies a native backend. Production
+# never reads fixture files and always calls the installed trusted root helper.
+native_root=output/'native-root'
+native_path=native_root/helper.NATIVE_UPDATE_JOURNAL.lstrip('/')
+native_path.parent.mkdir(parents=True,exist_ok=True)
+native_lock=threading.Lock()
+native={'active':False,'phase':'idle','available':True,'running_verified':True,
+        'installed_sha256':'e'*64,'target_sha256':'f'*64,'mode':'motion'}
+native_failure=False
+def native_save(**values):
+    with native_lock:
+        native.update(values)
+        if native.get('transaction_id'):
+            value={'schema':'microduck-native-update/1',**native}
+            temporary=native_path.with_suffix('.tmp')
+            temporary.write_text(json.dumps(value),encoding='utf-8');temporary.replace(native_path)
+
+def native_call(by,action,**kwargs):
+    with native_lock,(output/'native.jsonl').open('a',encoding='utf-8') as stream:
+        stream.write(json.dumps({'by':by,'action':action,**kwargs})+'\n')
+    if action=='status':
+        with native_lock:
+            value=dict(native)
+        if fixture.engine.version in ('2026.10.26','2026.10.25'):
+            return False,'bad_verb',None
+        return True,'native_status',value
+    if by!='Studio' or kwargs!={'confirmed':True}:return False,'bad_args',None
+    if action=='install' and (not native['available'] or not native['running_verified']):return False,'native_unsupported',{'reason':'本机主程序不受支持'}
+    native_save(active=True,phase='replacing' if action=='install' else 'recovering',transaction_id='a'*32,reason=None)
+    time.sleep(2.5)
+    if action=='install' and native_failure:
+        native_save(active=True,phase='recovery_required',running_verified=False,reason='模拟启动核验失败；请恢复')
+    else:
+        native_save(active=False,phase='completed' if action=='install' else 'rolled_back',running_verified=True,
+                    installed_sha256='f'*64 if action=='install' else 'e'*64,reason=None)
+    return True,'native_complete',dict(native)
+
+base_handler=server.RequestHandlerClass
+class NativeControl(base_handler):
+    def handle(self):
+        global native_failure
+        first=self.rfile.peek(8193).split(b'\n',1)[0]
+        try: request=json.loads(first)
+        except ValueError:return super().handle()
+        if request.get('op')!='native_fixture':return super().handle()
+        self.rfile.readline(8193)
+        if 'software_version' in request:fixture.engine.version=request.pop('software_version')
+        if 'failure' in request:native_failure=request.pop('failure')
+        native_save(**{key:value for key,value in request.items() if key!='op'})
+        self.wfile.write(b'{"ok":true}\n')
+server.RequestHandlerClass=NativeControl
 def build(*args,**kwargs):
     kwargs['updates']=Updates(address=f'tcp:127.0.0.1:{server.server_address[1]}',
-        marker=output/'installing',readiness=output/'readiness.sock')
+        marker=output/'installing',readiness=output/'readiness.sock',native_call=native_call,
+        native_state=lambda:helper.native_update_state(root=str(native_root)))
     return original_build(*args,**kwargs)
 app_module.build_app=build
 runpy.run_path(str(root/'tests/audio_fixture_launcher.py'),run_name='__main__')

@@ -964,6 +964,16 @@ class ServoSessionBatch3Test(unittest.IsolatedAsyncioTestCase):
 
     # ---- D1：标记、Studio 退出不卸力、重启接着管 ----
 
+    async def test_native_persistent_guard_prevents_boot_servo_autorestore(self):
+        self.marker.write_text(json.dumps({'v':1,'sim':True,'at':1.7e9,'by':'x'}),encoding='utf-8')
+        with unittest.mock.patch('studio.helper.native_update_state',return_value={'active':True,'phase':'recovery_required'}), \
+             unittest.mock.patch('studio.app._bus_take',return_value=(True,None)) as take:
+            await self.start(robotd_up=False)
+            self.assertTrue(await self.until(lambda:self.logs('主程序更新保护'),timeout=2))
+            self.assertEqual(self.servo.state,'closed')
+            take.assert_not_called()
+            self.assertTrue(self.marker.exists())
+
     async def test_marker_kept_on_exit_and_session_restored_after_restart(self):
         await self.start(robotd_up=True)
         c = await self.client()

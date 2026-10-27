@@ -211,6 +211,32 @@ class MotionStudioTest(PadTestBase):
         self.ops.audio = Audio()
         return source
 
+    def test_update_guard_fences_motion_queued_before_journal_and_keeps_neutralization(self):
+        self.stop_background_tick()
+        blocked=[False];self.ops.update_guard=lambda:blocked[0]
+        self.music_source();self.motion('idle_start',kind='music')
+        studio=self.ops.motion_studio
+        original=self.robot.notify
+        def late(method,params):
+            original(method,params)
+            if method=='robot.pose' and params.get('active') is True:blocked[0]=True
+        with mock.patch.object(self.robot,'notify',side_effect=late):self.ops._tick_once()
+        self.assertTrue(blocked[0])
+        sent=self.sent()
+        self.assertEqual(sum(method=='robot.pose' and params.get('active') is True for method,params in sent),1)
+        self.assertFalse(any(method=='robot.head' and any(params.values()) for method,params in sent),sent)
+        self.ops._tick_once()
+        self.assertIsNone(studio.session)
+        self.assertTrue(any(method=='robot.pose' and params=={'active':False} for method,params in self.sent()))
+        for args in ({'op':'motion','action':'record_start'},{'op':'audio','listening':True},
+                     {'op':'skill','name':'roulade'}):
+            with self.assertRaises(Refused):self.ops.handle(args,conn=self.conn)
+        self.assertFalse(self.ops._notify_output('robot.head',{'head_pitch':.5}))
+        self.ops._call_rpc('停止','robot.stop',{},'test')
+        with self.assertRaises(Refused):self.ops._call_rpc('旧线程','robot.init',{},'test')
+        self.ops._tick_evt.clear();self.ops._tick_once()
+        self.assertFalse(self.ops._tick_evt.is_set(),'idle persistent guard must not spin the tick thread')
+
     def music_telemetry(self, now):
         self.feed(state={"policy": "walk"}, state_at=now, policies_at=now, bus_at=now,
                   pad_status={"driver": "active", "pads": []}, pad_status_at=now)

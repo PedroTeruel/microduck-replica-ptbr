@@ -430,6 +430,9 @@ class PadOps(DriveMixin):
     # ================= 对外 =================
 
     def handle(self, args, by=None, conn=None):
+        from .updates import safe_during_update
+        if self._update_blocked() and not safe_during_update('pad.op',args):
+            raise Refused('软件 / 主程序更新保护仍在，急停和关闭语音仍可使用')
         with self.motion_studio.request():
             return self._handle_request(args, by=by, conn=conn)
 

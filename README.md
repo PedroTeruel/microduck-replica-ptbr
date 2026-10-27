@@ -104,6 +104,8 @@
 
 ## 💻 软件 · 复刻镜像与 Microduck Studio
 
+**2026-10-28 · 软件包更新（不重烧 SD 卡）**：已有设置页升级入口的用户先安装 `2026.10.28` 网页 / 语音包，重连后可承托卸力并明确确认主程序更新，再在 IMU 页选择 `Qinmo · Feetech`、验证方向。主程序自动更新仅支持已知 20261027 基线；现有板卡继续默认自动识别。Qinmo 实物与本版整机升级仍待验收，音乐跟拍和自由 AI 人声对话仍未解决。[软件包与引导附件](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-software-v2026.10.28) · [现有用户更新步骤](docs/软件更新与Qinmo使用说明-20261028.md) · [Qinmo 网页使用](docs/Qinmo-IMU-网页使用.md)
+
 **复刻镜像 20261027：网页软件升级与本地坐站语音。** 设置页可检查、下载或上传签名软件包，安装失败可回退；R3 单击开关监听，识别“坐下／站起来”，附带中文模型，无需云端账号。保留网页录制回放、灵动及模型管理。已有卡先通过 SSH 安装一次升级入口，之后日常软件更新不用重烧。
 
 本版保留 20261023c 的主程序、步态模型与总线 ID 200 IMU 自动识别。软件、签名事务、浏览器及镜像只读验证通过；本版新卡首次使用、旧卡升级/回退和真人声学仍待实物验收。音乐头身跟拍仍待修复，自由 AI 人声对话尚未接入。[镜像与校验值](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261027) · [软件升级包](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-software-v2026.10.27) · [更新与语音用法](docs/软件更新与语音使用说明-20261027.md) · [验证范围](docs/superpowers/verification/2026-10-27-web-updates.md)

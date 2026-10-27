@@ -331,6 +331,9 @@ class MotionStudio:
                         self.last_result = s.get("invalid") or ("页面超过 500 毫秒没有动作心跳"
                             if self._heartbeat_expired(s, self.pad.clock()) else "回放完成")
                     continue
+                if not cleanup and self.pad._update_blocked():
+                    self.invalidate('软件 / 主程序更新保护仍在')
+                    continue
                 if not cleanup and (s is not target or s.get("invalid")
                                     or self._heartbeat_expired(s, self.pad.clock())):
                     continue
