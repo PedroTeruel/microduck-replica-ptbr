@@ -7,9 +7,9 @@
     "pollen-robotics/microduck": {
       "default_branch": "main",
       "head": {
-        "sha": "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
-        "committed_at": "2026-10-27T09:31:45Z",
-        "subject": "Merge pull request #476 from pollen-robotics/limp-fall-arm"
+        "sha": "e6ff9991534580bff5c932ca10b3f1b8da851ce2",
+        "committed_at": "2026-10-27T14:01:28Z",
+        "subject": "Merge pull request #478 from pollen-robotics/vetbook-gallery"
       },
       "latest_stable_release": {
         "tag_name": "daemon-v0.17.9",
@@ -19,6 +19,30 @@
         "head_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f"
       },
       "tracked_development_releases": [
+        {
+          "tag": "daemon-dev-vetbook-gallery",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-vetbook-gallery",
+          "published_at": "2026-10-27T14:08:13Z",
+          "version": "daemon 0.17.9-dev.1452.47d2a23 (vetbook-gallery)",
+          "head_sha": "47d2a239751154a8817294a036127d012853403a",
+          "prerelease": true,
+          "related_pull_request": 478,
+          "change": "Opt-in vetbook gallery; development tag contains feature commit47d2a23, main mergee6ff999.",
+          "replica_integration": "not_integrated; Space publication and robot sharing not verified by tracker"
+        },
+        {
+          "tag": "daemon-dev-codex/gamepad-connection",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-codex/gamepad-connection",
+          "published_at": "2026-10-27T14:08:17Z",
+          "version": "daemon 0.17.9-dev.1454.61f4ad5 (codex/gamepad-connection)",
+          "head_sha": "61f4ad5882243c1bcb34500a59974308684ada28",
+          "prerelease": true,
+          "related_pull_request": 477,
+          "change": "Combined targeted gamepad connection and native motor diagnostics, IPC46, replaces previous pure-gamepadAPI45 tag target.",
+          "priority": "review_candidate_only_not_stable",
+          "replica_integration": "not_integrated; no combined-build robot installation reported",
+          "previous_head_sha": "f169c3dc1fa042229461f7f3691245cfcdf48d19"
+        },
         {
           "tag": "daemon-dev-codex/robot-diagnostics-design",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-codex/robot-diagnostics-design",
@@ -89,6 +113,76 @@
         }
       ],
       "pending_pull_requests": [
+        {
+          "number": 478,
+          "title": "vetbook gallery: an opt-in social network of ducks on the Space",
+          "state": "closed",
+          "draft": false,
+          "merged_at": "2026-10-27T14:01:28Z",
+          "created_at": "2026-10-27T13:59:49Z",
+          "updated_at": "2026-10-27T14:04:04Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/478",
+          "head_sha": "47d2a239751154a8817294a036127d012853403a",
+          "base_sha": "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
+          "base_branch": "main",
+          "merge_commit_sha": "e6ff9991534580bff5c932ca10b3f1b8da851ce2",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/2091d42286fa29a1e24ea4f072191a4836fd1a6e...47d2a239751154a8817294a036127d012853403a",
+          "changed_file_count": 14,
+          "scope_note": "Opt-in vetbook Space gallery. Share asks listed each time; absent/null defaults unlisted. Dataset remains public regardless of listing; listing needs dataset tag plus share.listed true. Gallery search/sort/filter,5min refresh and API. API44to45 in main; no motor, motion policy, camera orHD1910 change.",
+          "priority": "medium_optional_cloud_sharing_reference; preserve explicit listing consent and distinguish public dataset from unlisted discovery",
+          "replica_integration": "not_integrated; stable, migration and current image unchanged",
+          "submitter_validation": {
+            "component_cargo_tests_clippy_and_board_build_reported": true,
+            "space_local_desktop_phone_existing_books_and_hub_checks_reported": true,
+            "real_robot_listed_share_tested": false,
+            "live_space_public_deployment_verified_by_tracker": false,
+            "verified_by_tracker": false
+          },
+          "this_review": "Read-only fixed14file diff; no sharing/upload, Space publication or execution."
+        },
+        {
+          "number": 477,
+          "title": "Combine targeted gamepad connection and motor diagnostics",
+          "state": "open",
+          "draft": true,
+          "merged_at": null,
+          "created_at": "2026-10-27T13:25:40Z",
+          "updated_at": "2026-10-27T14:02:34Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/477",
+          "head_sha": "61f4ad5882243c1bcb34500a59974308684ada28",
+          "base_sha": "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/2091d42286fa29a1e24ea4f072191a4836fd1a6e...61f4ad5882243c1bcb34500a59974308684ada28",
+          "replica_integration": "not_integrated_by_tracker; no migrated runtime, model, image or device update",
+          "this_review": "Read-only fixed patches and submitter evidence; no downloaded code/test execution, training, installation or robot connection.",
+          "scope_note": "Expanded draft combines targeted gamepad status/connect fromf169 with raw maintenance through38d0331, both sets of routes retained. IPC now46 because independent development branches used45; this is not a stable46 release. Hardware-native diagnostics remain XL330-specific, notHD1910 port.",
+          "changed_file_count": 34,
+          "priority": "high_contract_review_before_any_adoption; requiresHD1910_native_register_mapping and combined daemon release evaluation",
+          "comparison_with_PR474": "PR474 automatic classic re-page/background sweep remains separate pending work; PR477 provides exact targeted manual reconnect/status, not that background loop.",
+          "submitter_validation": {
+            "targeted_rust1941_checks_reported": true,
+            "strict_clippy_reported": true,
+            "macos_existing_concurrent_start_test_stalled_and_was_stopped": true,
+            "combined_build_installed_on_robot": false,
+            "positive_explicit_reconnect_from_disconnected_available_controller_tested": false,
+            "verified_by_tracker": false
+          },
+          "previous_head_sha": "f169c3dc1fa042229461f7f3691245cfcdf48d19",
+          "previous_bluetooth_only_validation": {
+            "workspace_tests_passed_excluding_nfcd_macos": 1744,
+            "nfc_library_tests_passed": 22,
+            "final_connection_source_subset_passed": 478,
+            "monitor_tests_passed": 60,
+            "host_and_linux_target_checks_reported": true,
+            "submitter_robot": "Temporary Linux binaries on graphite-boom; exact HID identity/Home reconnection/USB transitions reported",
+            "negative_reconnect_seconds": 10.404,
+            "negative_reconnect_error": "BlueZ Host is down; bond keys retained",
+            "positive_explicit_reconnect_from_disconnected_available_controller_tested": false,
+            "production_services_replaced": false,
+            "verified_by_tracker": false
+          },
+          "previous_scope": "Original pure gamepad draft used API45 and17files; current combined draft API46 and34files. Prior checkpoint preserved below."
+        },
         {
           "number": 476,
           "title": "limp-fall: arm the fall predictor only from standing",
@@ -169,7 +263,7 @@
           "draft": true,
           "merged_at": null,
           "created_at": "2026-10-27T08:17:49Z",
-          "updated_at": "2026-10-27T10:52:26Z",
+          "updated_at": "2026-10-27T13:32:03Z",
           "url": "https://github.com/pollen-robotics/microduck/pull/473",
           "head_sha": "38d033109e94caef12634d6787d1d842c8a42a9b",
           "base_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
@@ -180,12 +274,25 @@
           "replica_integration": "not_integrated_by_tracker_or_existing_migration; no release/image/device update",
           "submitter_validation": {
             "workspace_tests_reported_passed": 1758,
+            "host": "macOS excluding nfc; submitter reports final CI pass",
+            "deployment_started": true,
+            "installed_signed_development_version": "0.17.9-dev.1450.38d0331",
+            "robot": "graphite-boom (submitter robot)",
+            "all15_native_readbacks_and_selected_torque_off_outcomes_reported": true,
+            "cli_acquire_lease_stop_release_handoff_reported": true,
+            "physical_torque_on_or_movement_tested": false,
+            "physical_position_response_tested": false,
+            "verified_by_tracker": false,
+            "evidence_scope": "Updated PRbody reports only reads, unchangedRAM PID, torque-off, refusal without torque and lifecycle; not our hardware orHD1910 acceptance."
+          },
+          "this_review": "Read-only fixed patch and local provenance inspection; no downloaded source execution, new tests, robot or service operation.",
+          "previous_submitter_validation": {
+            "workspace_tests_reported_passed": 1758,
             "host": "macOS excluding nfc; CI reported separately",
             "physical_torque_or_movement_tested": false,
             "deployment_started": false,
             "verified_by_tracker": false
-          },
-          "this_review": "Read-only fixed patch and local provenance inspection; no downloaded source execution, new tests, robot or service operation."
+          }
         },
         {
           "number": 472,
@@ -665,15 +772,17 @@
       },
       "main_since_latest_stable": {
         "from_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
-        "to_sha": "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
-        "fixed_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...2091d42286fa29a1e24ea4f072191a4836fd1a6e",
-        "commit_count": 2,
-        "file_count": 6,
+        "to_sha": "e6ff9991534580bff5c932ca10b3f1b8da851ce2",
+        "fixed_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...e6ff9991534580bff5c932ca10b3f1b8da851ce2",
+        "commit_count": 4,
+        "file_count": 20,
         "merged_pull_requests": [
-          476
+          476,
+          478
         ],
-        "release_status": "main and moving development tag only; not in daemon-v0.17.9",
-        "replica_integration": "not_integrated; isolated migration remains pinned to stable96b89d8613f06722c1d64ce75ab0d7124fed9d8f"
+        "release_status": "Main contains fall arming and opt-in gallery; stable0.17.9 remains96b89/API44. Local API45 and combined draftAPI46 are distinct contracts.",
+        "replica_integration": "not_integrated; isolated migration remains pinned to stable96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+        "main_api_version": 45
       },
       "retired_development_releases": [
         {
@@ -697,6 +806,35 @@
         "subject": "Merge branch 'improve_standup_velstand' into develop"
       },
       "pending_pull_requests": [
+        {
+          "number": 86,
+          "title": "feat(tasks): add stationary vertical jump task (Mjlab-Jump-Flat-Micro…",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-27T13:51:14Z",
+          "updated_at": "2026-10-27T13:51:14Z",
+          "url": "https://github.com/pollen-robotics/microduck_rl/pull/86",
+          "head_sha": "9ec2b8cc83991873acf02885a3853b621d117a13",
+          "base_sha": "b02fdea4902c2b93b7d34a83a6f05da4ececb7d3",
+          "base_branch": "develop",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck_rl/compare/b02fdea4902c2b93b7d34a83a6f05da4ececb7d3...9ec2b8cc83991873acf02885a3853b621d117a13",
+          "replica_integration": "not_integrated_by_tracker; no migrated runtime, model, image or device update",
+          "this_review": "Read-only fixed patches and submitter evidence; no downloaded code/test execution, training, installation or robot connection.",
+          "scope_note": "Unmerged additive stationary symmetric two-foot jump task and backlash variant, new config776lines, mdp184 appended helpers, registry14lines and tests285lines. Actor61D/critic76D term parity claimed and tested by submitter; both-feet flight/height/takeoff rewards, single-foot/drift penalties, symmetry, settle gate and landing/fall terminations. Uses upstream MICRODUCK_WALK_ROBOT_CFG; no HD1910-specific motor/BAM adaptation or bundledONNX policy in four-file diff.",
+          "changed_file_count": 4,
+          "priority": "medium_research_reference; adaptHD1910_BAM/weights/observation_and_joint_contract/action_scale/landing_before_adoption",
+          "submitter_validation": {
+            "tests_reported_passed": 274,
+            "training_iterations_reported": "6000+",
+            "parallel_envs_reported": 4096,
+            "rollout_demo_seconds_reported": 70,
+            "rollout_demo_no_terminations": true,
+            "physical_jump_test_reported": false,
+            "verified_by_tracker": false
+          },
+          "deployment_contract_note": "Matching61D/76D dimensions alone do not establish joint ordering, normalizer, action scaling, dynamics, policy bytes or HD1910 physical compatibility."
+        },
         {
           "number": 85,
           "url": "https://github.com/pollen-robotics/microduck_rl/pull/85",
@@ -888,49 +1026,61 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-27T10:52:46.202773+00:00",
+  "checked_at_utc": "2026-10-27T14:12:07.031148+00:00",
   "latest_review": {
     "default_branch_changes": {
       "pollen-robotics/microduck": {
-        "before": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
-        "after": "2091d42286fa29a1e24ea4f072191a4836fd1a6e"
+        "before": "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
+        "after": "e6ff9991534580bff5c932ca10b3f1b8da851ce2"
       }
     },
     "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+    "previous_tracked_prs_merged": false,
     "new_pull_requests": {
       "pollen-robotics/microduck": [
-        473,
-        474,
-        475,
-        476
+        477,
+        478
+      ],
+      "pollen-robotics/microduck_rl": [
+        86
       ]
     },
-    "newly_seen_merged_pull_requests": {
-      "pollen-robotics/microduck": [
-        476
-      ]
-    },
-    "previous_tracked_prs_merged": false,
     "new_development_releases": [
-      "daemon-dev-codex/robot-diagnostics-design"
+      "daemon-dev-codex/gamepad-connection",
+      "daemon-dev-vetbook-gallery"
     ],
-    "moved_development_tags": [
-      "daemon-dev-main"
-    ],
-    "retired_development_tags": [
-      "daemon-dev-prepare-release-0.17.9"
-    ],
+    "changed_pull_request_heads": {
+      "pollen-robotics/microduck": {
+        "477": {
+          "before": "f169c3dc1fa042229461f7f3691245cfcdf48d19",
+          "after": "61f4ad5882243c1bcb34500a59974308684ada28"
+        }
+      }
+    },
     "official_blog_new_articles": false,
     "official_blog_article_count": 3,
     "official_blog_latest_on": "2026-10-23",
     "runtime_code_changed_by_heartbeat": false,
-    "human_authorized_local_integration_recorded": true,
+    "human_authorized_local_integration_recorded": false,
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "Main gained merged fall-predictor arming PR476; stable remains0.17.9/96b89. New pending classic reconnect PR474, NFC Type5 PR475 and draft raw-maintenance PR473/dev release; none automatically integrated. Retired prepare-release tag/release404 retained as history. Separate human-authorized published-image-to17 software integration is now recorded with exact local checkpoints, not deployed."
+    "notes": "During this check main also merged opt-in galleryPR478/API45. Draft477 expanded from pure-gamepadf169/API45 to combined diagnostics61f4ad5/API46; moving dev tag verified at combinedhead, gallery dev at47d2a23, dev-main still2091. New jumpPR86 remains unmerged. PR473 updated submitter-only hardware read/torqueoff evidence recorded. Stable remains0.17.9/96b89; no runtime/model/image/device action.",
+    "newly_seen_merged_pull_requests": {
+      "pollen-robotics/microduck": [
+        478
+      ]
+    },
+    "changed_submitter_evidence": [
+      473
+    ],
+    "moved_development_tags": [
+      "daemon-dev-codex/gamepad-connection"
+    ],
+    "main_api_version": 45,
+    "combined_gamepad_draft_api_version": 46
   },
   "replica_migration": {
     "recorded_on": "2026-10-27",
