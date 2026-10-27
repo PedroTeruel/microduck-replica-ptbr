@@ -29,6 +29,14 @@ class FakeExecutor:
 
 
 class SpeechTests(unittest.TestCase):
+    def test_update_marker_invalidates_inflight_and_queued_recognition(self):
+        entered,release=threading.Event(),threading.Event();blocked=[False]
+        control=self.make(FakeRecognizer(entered=entered,release=release),guard=lambda:not blocked[0])
+        control.submit(b'inflight');self.assertTrue(entered.wait(1));control.submit(b'queued')
+        blocked[0]=True;release.set();self.assertTrue(control.idle.wait(1))
+        self.assertEqual(self.executor.commands,[]);self.assertEqual(self.echoed,[])
+        self.assertEqual(len(control.queue),0)
+
     def make(self, recognizer=None, **kwargs):
         self.echoed = []
         self.executor = FakeExecutor()

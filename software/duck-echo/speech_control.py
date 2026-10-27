@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 
-from voice_commands import parse_command
+from voice_commands import parse_command,updates_allowed
 
 LOG = logging.getLogger('duck-echo')
 
@@ -62,10 +62,11 @@ class MandarinRecognizer:
 
 class VoiceControl:
     def __init__(self, recognizer_factory, executor, fallback, execute_commands=True,
-                 cue=None, ttl=6, clock=time.monotonic, recognize_speech=True):
+                 cue=None, ttl=6, clock=time.monotonic, recognize_speech=True,guard=updates_allowed):
         self.factory, self.executor, self.fallback = recognizer_factory, executor, fallback
         self.execute_commands, self.cue = execute_commands, cue
         self.recognize_speech = recognize_speech
+        self.guard=guard
         self._recognizer = None
         self.ttl, self.clock = ttl, clock
         self.condition = threading.Condition()
@@ -84,6 +85,8 @@ class VoiceControl:
 
     def submit(self, pcm):
         with self.condition:
+            if not self.guard():
+                self.cancel();return
             if self.closed:
                 return
             self.queue.append((self.generation, self.clock(), pcm))
@@ -97,6 +100,8 @@ class VoiceControl:
 
     def valid(self, job):
         with self.condition:
+            if not self.guard():
+                self.cancel();return False
             return not self.closed and job[0] == self.generation and self.clock() - job[1] <= self.ttl
 
     def _echo(self, job):

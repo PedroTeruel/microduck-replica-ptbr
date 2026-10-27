@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from voice_commands import updates_allowed,motion_lease,UpdateLocked
 
 LOG = logging.getLogger('duck-echo')
 RATE, FRAME_BYTES = 48000, 4
@@ -126,8 +127,9 @@ class ContinuousAudio:
     """
     def __init__(self, backend, capture_device=None, channel=None, maximum=None,
                  silence=.6, minimum=.25, tail=.35, clock=time.monotonic, observer=None,
-                 threshold=-42):
+                 threshold=-42,guard=updates_allowed,lease=motion_lease):
         self.backend = backend
+        self.guard,self.lease=guard,lease
         self.capture_device = capture_device or backend.capture_device
         self.channel = backend.channel if channel is None else channel
         self.maximum = backend.maximum if maximum is None else maximum
@@ -162,6 +164,14 @@ class ContinuousAudio:
         self.worker.start()
 
     def start(self):
+        if not self.guard():self.stop(play=False);return
+        try:
+            with self.lease():
+                if not self.guard():self.stop(play=False);return
+                self._start()
+        except UpdateLocked:self.stop(play=False)
+
+    def _start(self):
         # Keep capture/play inactive until both consumers have invalidated old
         # work. Otherwise an old VoiceControl._echo can enqueue into this session.
         with self.dispatch_lock:
@@ -198,6 +208,7 @@ class ContinuousAudio:
             self.music.cancel()
 
     def set_music(self, enabled):
+        if enabled and not self.guard():self.stop(play=False);return
         # Changing consumers must not invalidate the generation owned by the
         # still-running capture process. Each recognizer cancels its own work.
         with self.dispatch_lock:
@@ -225,7 +236,7 @@ class ContinuousAudio:
 
     def _valid(self, generation, mode_generation=None):
         with self.condition:
-            return (self.active and generation == self.generation and not self.closed and
+            return (self.guard() and self.active and generation == self.generation and not self.closed and
                     not self.music_mode and (mode_generation is None or mode_generation == self.mode_generation))
 
     def _cancel_voice(self, generation, stop_music=False):
@@ -281,6 +292,7 @@ class ContinuousAudio:
 
     def feed(self, data, generation=None):
         """Feed captured PCM; this is also the future single-source analysis hook."""
+        if not self.guard():self.stop(play=False);return
         with self.condition:
             if not self.active or (generation is not None and generation != self.generation):
                 return
@@ -301,6 +313,7 @@ class ContinuousAudio:
                 LOG.exception('PCM observer failed')
 
     def play(self, data):
+        if not self.guard():return
         with self.condition:
             if self.active and not self.closed:
                 self.output_pending = True
@@ -309,6 +322,7 @@ class ContinuousAudio:
                 self.condition.notify_all()
 
     def command_cue(self, callback, accepted, duration=1, allowed=None):
+        if not self.guard():return
         with self.condition:
             if not self.active or self.closed or (allowed is not None and not allowed()):
                 return
@@ -328,7 +342,7 @@ class ContinuousAudio:
 
     def _activation_valid(self, generation):
         with self.condition:
-            return self.active and not self.closed and generation == self.generation
+            return self.guard() and self.active and not self.closed and generation == self.generation
 
     def _deactivation_valid(self, generation):
         with self.condition:
@@ -381,7 +395,7 @@ class ContinuousAudio:
                 with self.dispatch_lock:
                     with self.condition:
                         valid = self.active and generation == self.generation
-                    if valid and not self.music_mode and mode_generation == self.mode_generation:
+                    if valid and self.guard() and not self.music_mode and mode_generation == self.mode_generation:
                         self.voice.submit(data)
                 continue
             with self.condition:

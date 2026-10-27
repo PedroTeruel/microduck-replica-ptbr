@@ -258,6 +258,17 @@ class CaptureProcess:
 
 
 class ContinuousTests(unittest.TestCase):
+    def test_update_blocks_r3_activation_and_cancels_active_feed(self):
+        blocked=[True];self.audio.guard=lambda:not blocked[0]
+        button=continuous.ToggleButton(self.audio);button.event(1)
+        self.assertFalse(self.audio.active);self.assertEqual(self.processes,[])
+        blocked[0]=False;button.event(0);button.event(1)
+        self.assertTrue(eventually(lambda:len(self.processes)==1))
+        blocked[0]=True;self.audio.feed(pcm(.1))
+        self.assertFalse(self.audio.active);self.assertFalse(self.audio.music_mode)
+        self.assertIsNone(self.audio.pending)
+        button.event(0);button.event(1);self.assertFalse(self.audio.active)
+
     def setUp(self):
         self.assertTrue(hasattr(continuous, 'ContinuousAudio'), 'ContinuousAudio is missing')
         self.backend = FakeAudio()

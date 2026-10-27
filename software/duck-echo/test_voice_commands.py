@@ -1,4 +1,7 @@
 import unittest
+import os
+import tempfile
+from pathlib import Path
 
 import voice_commands as voice
 
@@ -48,6 +51,30 @@ class FakeRobot:
 
 
 class MotionTests(unittest.TestCase):
+    @unittest.skipUnless(os.name=='posix','Linux updater motion lease')
+    def test_motion_lease_refuses_root_exclusive_even_before_marker_observed(self):
+        import fcntl
+        with tempfile.TemporaryDirectory() as tmp:
+            lock=Path(tmp)/'motion.lock';lock.touch();marker=Path(tmp)/'installing'
+            with lock.open('rb') as root:
+                fcntl.flock(root,fcntl.LOCK_EX)
+                with self.assertRaises(voice.UpdateLocked):
+                    with voice.motion_lease(marker):self.fail('exclusive lease was bypassed')
+            with voice.motion_lease(marker):pass
+
+    def test_update_appearing_between_state_and_dispatch_prevents_enable_and_toggle(self):
+        blocked=[False]
+        class Late(FakeRobot):
+            def call(self,method,params=None):
+                result=super().call(method,params)
+                if method=='robot.stop':blocked[0]=True
+                return result
+        robot=Late(enabled=False)
+        result=voice.PostureCommands(robot,guard=lambda:not blocked[0]).execute('sit')
+        self.assertFalse(result['accepted'])
+        self.assertNotIn('robot.enable',[method for method,_ in robot.calls])
+        self.assertNotIn('robot.do',[method for method,_ in robot.calls])
+
     def test_sit_from_standing_and_repeated_sit_is_idempotent(self):
         robot = FakeRobot()
         motion = voice.PostureCommands(robot)

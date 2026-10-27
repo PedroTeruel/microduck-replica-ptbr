@@ -171,6 +171,10 @@ class Controller:
         self.engine=engine or Engine(); self.preflight=preflight or (lambda:None); self.catalog=catalog or self.remote_catalog
         self.fetcher=fetcher; self.can_rollback=False
         self.marker=Path(marker) if marker else self.root/'installing'
+        self.motion_descriptor=None
+        self.marker.parent.mkdir(parents=True,exist_ok=True,mode=0o755)
+        descriptor=os.open(self.marker.parent/'motion.lock',os.O_CREAT|os.O_RDWR|getattr(os,'O_NOFOLLOW',0),0o644)
+        os.close(descriptor)
         self.lock=threading.Lock(); self.state_lock=threading.RLock(); self.busy=False
         self.job=read_json(self.root/'job.json'); self.staged=read_json(self.root/'staged.json')
         self.ready=False; self.candidate=None; self.source_state='unchecked'; self.engine_status=None;self.dispatched=False
@@ -293,11 +297,31 @@ class Controller:
         if progress.get('component')=='software':
             self.save(phase=str(progress.get('phase','applying'))[:50],percent=progress.get('percent'),detail=str(progress.get('detail') or '')[:500])
 
+    def enter_motion_gate(self,timeout=15):
+        if self.motion_descriptor is not None or os.name!='posix':return
+        import fcntl
+        descriptor=os.open(self.marker.parent/'motion.lock',os.O_RDWR|getattr(os,'O_NOFOLLOW',0))
+        deadline=time.monotonic()+timeout if timeout is not None else None
+        try:
+            while True:
+                try:fcntl.flock(descriptor,fcntl.LOCK_EX|fcntl.LOCK_NB);break
+                except BlockingIOError:
+                    if deadline is not None and time.monotonic()>deadline:
+                        raise UpdateError('preflight','语音动作尚未结束，请等待停稳后重试')
+                    time.sleep(.05)
+            self.motion_descriptor=descriptor
+        except Exception:os.close(descriptor);raise
+
+    def leave_motion_gate(self):
+        if self.motion_descriptor is not None:
+            os.close(self.motion_descriptor);self.motion_descriptor=None
+
     def run(self,operation):
         try:
             if operation in MUTATIONS:
                 self.marker.parent.mkdir(parents=True,exist_ok=True,mode=0o755)
                 self.marker.write_text(self.job['id']); os.chmod(self.marker,0o644)
+                self.enter_motion_gate()
             if operation=='check':
                 self.save(phase='checking'); self.refresh(); self.candidate=choose_release(self.catalog())
                 installed=(self.engine_status or {}).get('installed')
@@ -312,6 +336,7 @@ class Controller:
                     stream.seek(0); self.stage(stream)
                 self.marker.parent.mkdir(parents=True,exist_ok=True,mode=0o755)
                 self.marker.write_text(self.job['id']); os.chmod(self.marker,0o644)
+                self.enter_motion_gate()
                 self.validate()
             elif operation in {'validate','install'}: self.validate(apply=operation=='install')
             elif operation=='rollback':
@@ -333,7 +358,7 @@ class Controller:
                 if operation=='check': self.source_state='network_error'
                 self.save(phase='failed',error='更新服务未完成操作；请检查服务和网络后重试',code='service')
         finally:
-            self.refresh(); self.marker.unlink(missing_ok=True); self.busy=False; self.lock.release()
+            self.refresh();self.leave_motion_gate();self.marker.unlink(missing_ok=True);self.busy=False;self.lock.release()
 
     def recover(self,release=True):
         # A controller crash cannot cancel updaterd. Reconcile only the engine's
@@ -341,6 +366,7 @@ class Controller:
         try:
             self.marker.parent.mkdir(parents=True,exist_ok=True,mode=0o755)
             self.marker.write_text(self.job['id']);self.marker.chmod(0o644)
+            self.enter_motion_gate(timeout=None)
             while True:
                 self.refresh(); state=self.engine_status
                 if state and state.get('phase')=='idle':
@@ -356,4 +382,4 @@ class Controller:
                 time.sleep(1)
         finally:
             if release:
-                self.marker.unlink(missing_ok=True); self.busy=False; self.lock.release()
+                self.leave_motion_gate();self.marker.unlink(missing_ok=True);self.busy=False;self.lock.release()

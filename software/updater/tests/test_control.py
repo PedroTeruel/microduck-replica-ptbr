@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 import unittest
+import os
 from unittest import mock
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -27,6 +28,21 @@ def safe_bus():
             'position_rad':0,'velocity_rad_s':0,'volts':7.8} for n in range(15)]}}
 
 class Control(unittest.TestCase):
+    @unittest.skipUnless(os.name=='posix','Linux advisory lock contract')
+    def test_preflight_waits_for_prior_voice_lease_and_excludes_new_voice(self):
+        import fcntl,io
+        with tempfile.TemporaryDirectory() as tmp:
+            entered=threading.Event();controller=self.make(tmp,preflight=entered.set)
+            lock=Path(tmp)/'motion.lock';lock.touch()
+            with lock.open('rb') as voice:
+                fcntl.flock(voice,fcntl.LOCK_SH)
+                controller.upload(io.BytesIO(test_packages.Packages().outer()))
+                time.sleep(.1)
+                self.assertFalse(entered.is_set(),'preflight raced an already dispatched voice action')
+                self.assertTrue(controller.marker.exists())
+                fcntl.flock(voice,fcntl.LOCK_UN)
+            result=self.finish(controller);self.assertTrue(entered.is_set());self.assertTrue(result['ready'])
+
     def test_unknown_motion_low_power_and_audio_refused(self):
         check_robot(safe_bus(),{'battery':{'percent':70,'volts':7.8}},safe_bus())
         for key,value in (('mode','commissioning'),('phase','moving'),('homed',None),('policy_enabled',True),('all_joints_fresh',False)):

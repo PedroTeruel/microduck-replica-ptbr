@@ -67,7 +67,7 @@ WantedBy=multi-user.target
 VOICE='''[Unit]
 Description=Microduck local R3 voice
 Requires=microduck-voice-prepare.service
-After=sound.target microduck-voice-prepare.service
+After=sound.target microduck-voice-prepare.service microduck-update-control.service
 [Service]
 User=radxa
 SupplementaryGroups=audio input
@@ -138,6 +138,8 @@ RuntimeDirectory=microduck-updater
 RuntimeDirectoryMode=0755
 RuntimeDirectoryPreserve=yes
 UMask=0077
+ExecStartPre=/usr/bin/touch /run/microduck-updater/motion.lock
+ExecStartPre=/usr/bin/chmod 0644 /run/microduck-updater/motion.lock
 ExecStart=/usr/bin/python3 -I {STABLE}/run_control.py
 Restart=on-failure
 RestartSec=3
@@ -203,7 +205,8 @@ def bootstrap(root,package,public_key,engine,engine_command=None,offline=False):
             original.add(name); target=backup/name; target.parent.mkdir(parents=True,exist_ok=True)
             if source.is_dir(): shutil.copytree(source,target,symlinks=True)
             else: shutil.copy2(source,target,follow_symlinks=False)
-    stopped=False
+    stopped=False;gate_descriptor=None
+    live_marker=root/'run/microduck-updater/installing'
     try:
         if live:
             for legacy in ('home/radxa/studio-dev','opt/duck-echo'):
@@ -231,6 +234,11 @@ def bootstrap(root,package,public_key,engine,engine_command=None,offline=False):
         subprocess.run([*command,'--self-test'],check=True,env=engine_env)
         subprocess.run([*command,'install','--from',str(cache),'--component','software','--dry-run'],check=True,env=engine_env)
         if live:
+            import fcntl
+            live_marker.parent.mkdir(parents=True,exist_ok=True,mode=0o755)
+            live_marker.write_text('bootstrap');live_marker.chmod(0o644)
+            gate_descriptor=os.open(live_marker.parent/'motion.lock',os.O_CREAT|os.O_RDWR|getattr(os,'O_NOFOLLOW',0),0o644)
+            os.fchmod(gate_descriptor,0o644);fcntl.flock(gate_descriptor,fcntl.LOCK_EX|fcntl.LOCK_NB)
             # Existing browser processes are stopped before migration, so no legacy
             # recorder/servo command can begin between readiness and the first swap.
             if (root/'var/lib/microduck-studio/servo-session.json').exists() or (root/'home/radxa/studio-dev/state/servo-session.json').exists():
@@ -244,6 +252,8 @@ def bootstrap(root,package,public_key,engine,engine_command=None,offline=False):
                 raise ValueError('turn off voice/music before bootstrapping')
             atomic_json('/run/microduck-updater/protected-services.json',identities())
             subprocess.run(['systemctl','stop','microduck-studio','duck-echo'],check=True); stopped=True
+            before=robot.call('robot.busStatus');time.sleep(.3)
+            check_robot(robot.call('robot.busStatus'),robot.call('robot.health'),before)
             legacy=root/'home/radxa/studio-dev/state'; destination=root/'var/lib/microduck-studio'
             if legacy.is_dir():
                 shutil.copytree(legacy,backup/'legacy-state',symlinks=True)
@@ -261,9 +271,11 @@ def bootstrap(root,package,public_key,engine,engine_command=None,offline=False):
             if not link.exists() and not link.is_symlink(): link.symlink_to('../'+name)
         if live:
             subprocess.run(['systemctl','daemon-reload'],check=True)
-            subprocess.run(['systemctl','start','microduck-updater-engine','microduck-update-control','microduck-studio','duck-echo'],check=True)
+            subprocess.run(['systemctl','start','microduck-updater-engine','microduck-studio','duck-echo'],check=True)
             from health import wait_healthy
             wait_healthy(90)
+            os.close(gate_descriptor);gate_descriptor=None;live_marker.unlink(missing_ok=True)
+            subprocess.run(['systemctl','start','microduck-update-control'],check=True)
         return {'version':metadata['version'],'backup':str(backup),'offline':offline}
     except Exception:
         if live: subprocess.run(['systemctl','stop','microduck-studio','duck-echo','microduck-update-control','microduck-updater-engine'],check=False)
@@ -279,6 +291,9 @@ def bootstrap(root,package,public_key,engine,engine_command=None,offline=False):
             subprocess.run(['systemctl','daemon-reload'],check=False)
             if stopped: subprocess.run(['systemctl','start','microduck-studio','duck-echo'],check=False)
         raise
+    finally:
+        if gate_descriptor is not None:os.close(gate_descriptor)
+        if live:live_marker.unlink(missing_ok=True)
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)

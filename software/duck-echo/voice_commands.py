@@ -4,6 +4,35 @@ import math
 import re
 import socket
 import time
+import os
+from pathlib import Path
+from contextlib import contextmanager
+
+UPDATE_MARKER=Path('/run/microduck-updater/installing')
+
+class UpdateLocked(RuntimeError): pass
+
+def updates_allowed(): return not UPDATE_MARKER.exists()
+
+@contextmanager
+def motion_lease(marker=UPDATE_MARKER,lock=None):
+    """Finish existing actions before root's EX preflight; reject new actions."""
+    marker=Path(marker);lock=Path(lock) if lock else marker.parent/'motion.lock'
+    if marker.exists():raise UpdateLocked('software update in progress')
+    descriptor=None
+    try:
+        try:descriptor=os.open(lock,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0))
+        except FileNotFoundError:
+            # Legacy installation without the updater has no update lease yet.
+            if marker.exists():raise UpdateLocked('software update in progress')
+        if descriptor is not None:
+            import fcntl
+            try:fcntl.flock(descriptor,fcntl.LOCK_SH|fcntl.LOCK_NB)
+            except BlockingIOError:raise UpdateLocked('software update in progress') from None
+        if marker.exists():raise UpdateLocked('software update in progress')
+        yield
+    finally:
+        if descriptor is not None:os.close(descriptor)
 
 
 def parse_command(text, confidence):
@@ -51,8 +80,9 @@ class RobotClient:
 
 
 class PostureCommands:
-    def __init__(self, robot, timeout=4, sleep=time.sleep):
+    def __init__(self, robot, timeout=4, sleep=time.sleep,guard=updates_allowed,lease=motion_lease):
         self.robot, self.timeout, self.sleep = robot, timeout, sleep
+        self.guard,self.lease=guard,lease
 
     def state(self):
         policies = self.robot.call('robot.policies')
@@ -64,6 +94,13 @@ class PostureCommands:
         return policies, bus
 
     def execute(self, command, allowed=lambda: True):
+        try:
+            if not self.guard():raise UpdateLocked('software update in progress')
+            with self.lease():
+                return self._execute(command,lambda:allowed() and self.guard())
+        except UpdateLocked as error:return {'accepted':False,'reason':str(error)}
+
+    def _execute(self,command,allowed):
         if command not in ('sit', 'stand'):
             return {'accepted': False, 'reason': 'unknown command'}
         try:
