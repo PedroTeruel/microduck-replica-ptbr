@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "recorded_on": "2026-10-26",
+  "recorded_on": "2026-10-27",
   "display_timezone": "Asia/Tokyo",
   "scope": "Upstream documentation tracking; this snapshot does not certify integration into the replica image.",
   "repositories": {
@@ -84,6 +84,32 @@
         }
       ],
       "pending_pull_requests": [
+        {
+          "number": 471,
+          "url": "https://github.com/pollen-robotics/microduck/pull/471",
+          "title": "console: stop joystick commands when the window loses focus",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-27T01:50:52Z",
+          "updated_at": "2026-10-27T02:23:18Z",
+          "head_sha": "db22c24dde3658a0023c33b00c5c723d2179b34e",
+          "base_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...db22c24dde3658a0023c33b00c5c723d2179b34e",
+          "scope_note": "Official console wirePad releases joystick pointer ownership on window blur or lostpointercapture, centres each knob and zeros its intent, and ignores unrelated contacts until a fresh pointerdown. Its 10 Hz intent refresh previously kept the daemon deadman alive after focus loss. Studio is a separate client and already has blur/visibilitychange releaseAll handling in existing source; applicability must be checked independently.",
+          "priority": "higher_before_official_console_drive_acceptance",
+          "replica_integration": "not_integrated_or_executed; not included in official 0.17.9, published replica image, or documented local migration checkpoint",
+          "submitter_validation": {
+            "node_tests_passed": 5,
+            "original_page_failures": 3,
+            "reported_full_page_edge_blur_check": true,
+            "rust_workspace_run": false,
+            "physical_robot_tested": false,
+            "verified_by_this_tracker": false
+          },
+          "this_review": "Read-only fixed diff and source-context inspection; no downloaded source/test execution or hardware validation."
+        },
         {
           "number": 469,
           "url": "https://github.com/pollen-robotics/microduck/pull/469",
@@ -517,6 +543,32 @@
       },
       "pending_pull_requests": [
         {
+          "number": 84,
+          "url": "https://github.com/pollen-robotics/microduck_rl/pull/84",
+          "title": "gui: skip joystick sliders for near-zero velocity command ranges (Roulade, fixes #79)",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-26T16:25:32Z",
+          "updated_at": "2026-10-26T16:25:32Z",
+          "head_sha": "721bb0e3dbf2db4cb7b1fe9233b94770c6055ff8",
+          "base_sha": "b02fdea4902c2b93b7d34a83a6f05da4ececb7d3",
+          "base_branch": "develop",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck_rl/compare/b02fdea4902c2b93b7d34a83a6f05da4ececb7d3...721bb0e3dbf2db4cb7b1fe9233b94770c6055ff8",
+          "scope_note": "VelocityCommandCommandOnly.create_gui skips the complete joystick GUI when any velocity upper bound is below 0.1, otherwise delegates to the inherited implementation. Avoids Viser slider min=0.1 assertions for Roulade: x/y ranges +/-0.01, yaw +/-0.05 in the actual config. Viewer/UI change only; no reward, dynamics, training run, checkpoint download or new policy weights.",
+          "priority": "medium_when_using_roulade_viser_viewer",
+          "replica_integration": "not_integrated_or_executed; not included in official 0.17.9, published replica image, or documented local migration checkpoint",
+          "submitter_validation": {
+            "new_regression_tests_passed": 3,
+            "reported_full_suite_passed": 266,
+            "reported_full_suite_skipped": 1,
+            "training_run": false,
+            "checkpoint_downloads": false,
+            "verified_by_this_tracker": false
+          },
+          "this_review": "Read-only fixed diff and source-context inspection; no downloaded source/test execution or hardware validation."
+        },
+        {
           "number": 83,
           "url": "https://github.com/pollen-robotics/microduck_rl/pull/83",
           "title": "body_server: read-only `objects` op for viewers that mirror the world",
@@ -651,23 +703,30 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-26T14:13:26.759531Z",
+  "checked_at_utc": "2026-10-27T02:39:01.492102Z",
   "latest_review": {
     "default_branch_changes": false,
     "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
     "previous_tracked_prs_merged": false,
-    "new_pull_requests": {},
+    "new_pull_requests": {
+      "pollen-robotics/microduck": [
+        471
+      ],
+      "pollen-robotics/microduck_rl": [
+        84
+      ]
+    },
     "new_development_releases": [],
     "changed_pull_request_heads": {},
     "official_blog_new_articles": false,
     "runtime_code_changed_by_heartbeat": false,
-    "human_authorized_local_integration_recorded": true,
+    "human_authorized_local_integration_recorded": false,
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "25 read-only GitHub queries found no new upstream state since the previous baseline. Official Microduck blog still lists three articles, latest October23. This documentation update records the separately human-authorized local 0.17.9 integration and software checks, without publishing runtime branches or updating the image/online services."
+    "notes": "Two new open PRs reviewed: official console pointer/blur cleanup and Roulade Viser near-zero slider handling. Four default heads, stable/development tag SHAs and prior PR states remain unchanged. Blog still lists three articles, latest October23. Submitter tests are attributed and were not rerun; existing local 0.17.9 migration and published image state preserved."
   },
   "replica_migration": {
     "recorded_on": "2026-10-26",
