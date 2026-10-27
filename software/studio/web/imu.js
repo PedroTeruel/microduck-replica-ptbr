@@ -57,9 +57,11 @@ const DIRV = { fwd: [1, 0, 0], back: [-1, 0, 0], left: [0, 1, 0], right: [0, -1,
 const CHIP_CN = { bus: '总线小板（ID 200）', bno08x: 'BNO085（I²C）', lsm6dsv16x: 'LSM6DSV16X（I²C）' };
 const BUS_BOARD_CN = { ft6: 'FT6', imu_to_dxl: 'IMU-to-DXL', sflp_124_12: 'SFLP 124/12', qinmo: 'Qinmo（已配置）' };
 const BUS_PROTOCOL_CN = { feetech: 'Feetech', dxl2: 'Dynamixel 2.0' };
+const unsupportedProfile = info => info && info.profile !== undefined && !['legacy', 'qinmo'].includes(info.profile);
 function chipLabel(imu) {
   if (imu?.source !== 'bus') return CHIP_CN[imu?.source] || imu?.source || '—';
   const info = imu.imu_bus;
+  if (unsupportedProfile(info)) return `IMU 类型不支持（${String(info.profile)}）`;
   return info ? `${BUS_BOARD_CN[info.board] || info.board || '总线小板'} · ${BUS_PROTOCOL_CN[info.protocol] || info.protocol}（ID 200）`
     : CHIP_CN.bus;
 }
@@ -494,6 +496,7 @@ function DirPad({ W }) {
 function statusOf(st, imu, live) {
   const s = st?.imu?.status;
   const v = imu?.mount?.verified;
+  if (imu?.profile_error) return { word: 'IMU 类型无法确认', kind: 'bad', hint: imu.profile_error };
   if (imu?.mount_protocol_mismatch) return { word: '方向需重新标定', kind: 'warn',
     hint: '当前总线协议 / 类型与已存的安装方向不匹配：在下面重新标定，并交给主程序验证' };
   if (v === false) {
@@ -531,9 +534,12 @@ function StatusCard({ st, imu, live, age }) {
       <span></span><span class="sv-small">${S.hint}</span>
       <span>芯片</span><b>${chipLabel(imu)}</b>
       ${src === 'bus' ? html`<span>配置类型</span><b>${imu?.configured_imu_profile === 'qinmo' ? 'Qinmo（已配置）'
-        : imu?.configured_imu_profile === 'legacy' ? '现有板卡自动识别' : '现有板卡（旧版主程序）'}</b>
+        : imu?.configured_imu_profile === 'legacy' ? '现有板卡自动识别'
+        : unsupportedProfile(imu?.imu_bus) ? '未确认（实际类型不支持）'
+        : imu?.configured_imu_profile != null ? '不支持的类型（需确认）' : '现有板卡（旧版主程序）'}</b>
         <span>实际连接</span><b>${imu?.imu_bus ? chipLabel(imu) : '尚未连接'}</b>
-        <span>角速度单位</span><b class="num">${imu?.imu_bus?.profile === 'qinmo' ? '原始值 ÷ 16.4 °/s'
+        <span>角速度单位</span><b class="num">${unsupportedProfile(imu?.imu_bus) ? '待确认（类型不支持）'
+          : imu?.imu_bus?.profile === 'qinmo' ? '原始值 ÷ 16.4 °/s'
           : imu?.imu_bus ? '原始值 × 0.0175 °/s' : '连接后显示'}</b>` : null}
       <span>倾角</span><b class="num">${fmt(st?.tilt_deg)}°<small> 跟竖直比；主程序 ${guard?.tilt_tolerance_deg ?? 10}° 以内才让走</small></b>
       <span>站姿</span><b class="num">${st?.hold ? html`离 HOME 最多差 ${fmt(st.hold.max_error_deg)}°<small> 标定模式站姿使能${st.hold.stage === 'holding' ? '：站住了' : '：正在站起来'}</small>`
@@ -554,6 +560,7 @@ function ChipCard({ imu, link, live }) {
   useEffect(() => { setProfile(imu?.configured_imu_profile || 'legacy'); }, [imu?.configured_imu_profile]);
   const selection = imu?.profile_selection;
   const reason = live === false || link.status !== 'open' ? '连不上鸭子：等它回来'
+    : unsupportedProfile(imu?.imu_bus) ? imu?.profile_error || '主程序报告了不支持的 IMU 类型'
     : !selection?.can_start ? selection?.reason || '主程序尚不支持网页选择类型：请先由维护者更新主程序' : null;
   const select = async () => {
     setBusy(true); setMessage(null);
@@ -587,6 +594,7 @@ function ChipCard({ imu, link, live }) {
 function blockReason(st, imu, live) {
   if (!st) return '还没连上鸭子';
   if (live === false) return '连不上鸭子：等它回来';
+  if (imu?.profile_error) return imu.profile_error;
   if (imu?.redo?.active) return '正在重新标定安装方向：先完成主程序验证，或取消并恢复原参数';
   if (st.posture === 'servo_session') return '舵机页还占着总线（有舵机保持着时不会自动交还）：点顶上的「交还主程序」';
   if (st.posture === 'absent') return '鸭子主程序没在跑';
@@ -811,9 +819,9 @@ function CoarseCard({ st, imu, link, live }) {
   const commissioning = mode === 'commissioning';
   const verified = imu?.mount?.verified === true;
   const working = !!(imu?.job && !imu.job.done && !imu.job.failed);
-  const canCollect = commissioning && (!redo.active || ['commissioning', 'finish_failed'].includes(redo.phase));
+  const canCollect = commissioning && !imu?.profile_error && (!redo.active || ['commissioning', 'finish_failed'].includes(redo.phase));
   const showSteps = canCollect && (!verified || opened || redo.active);
-  const startWhy = !open ? '连不上鸭子：等它回来' : working ? '上一项操作还没结束'
+  const startWhy = !open ? '连不上鸭子：等它回来' : imu?.profile_error ? imu.profile_error : working ? '上一项操作还没结束'
     : commissioning ? null : !redo.can_start ? redo.reason || '暂时不能返回标定模式：先卸力并等待读数更新' : null;
   const run = async (op) => {
     setBusy(true); setMsg(null);

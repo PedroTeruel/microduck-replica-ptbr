@@ -1729,6 +1729,8 @@ def verb_calib_commit(op, args, raw):
         native = (live or {}).get("native") or {}
         info = native.get("imu_bus") or (live or {}).get("imu_bus")
         configured = imu_profile_configured(live or {})
+        if isinstance(info, dict) and info.get("profile", "legacy") not in ("legacy", "qinmo"):
+            raise Stop(EXIT_STATE, "readback_mismatch", "主程序报告了不支持的 IMU 类型，不能沿用旧标定")
         if configured is not None or data.get("imu_bus_profile") == "qinmo":
             if (not isinstance(info, dict) or info.get("profile", "legacy") != data.get("imu_bus_profile", "legacy")
                     or configured != info.get("profile", "legacy")
@@ -1981,9 +1983,11 @@ def imu_redo_readback(op, expected, source, quat=None):
     cal = status.get("calibration")
     if not imu_redo_same(normalized_calibration(expected), normalized_calibration(cal or {})):
         raise Stop(EXIT_STATE, "readback_mismatch", "主程序标定读回与文件逐项不一致：保留会话")
+    native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
+    info = native.get("imu_bus") or bus.get("imu_bus")
+    if source == "bus" and isinstance(info, dict) and info.get("profile", "legacy") not in ("legacy", "qinmo"):
+        raise Stop(EXIT_STATE, "readback_mismatch", "主程序报告了不支持的 IMU 类型，不能沿用旧标定或重做")
     if quat is not None:
-        native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
-        info = native.get("imu_bus") or bus.get("imu_bus")
         if (source == "bus" and isinstance(info, dict)
                 and (info.get("protocol") != cal.get("imu_bus_protocol", "feetech")
                      or info.get("profile", "legacy") != cal.get("imu_bus_profile", "legacy")
@@ -2176,6 +2180,10 @@ def imu_profile_gate(op):
         profile = imu_profile_configured(bus or {})
         if profile not in ("legacy", "qinmo"):
             raise Stop(EXIT_STATE, "unsupported_daemon", "主程序版本尚不支持网页选择 IMU 类型：请先由维护者更新主程序")
+        native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
+        info = native.get("imu_bus") or bus.get("imu_bus")
+        if isinstance(info, dict) and info.get("profile", "legacy") not in ("legacy", "qinmo"):
+            raise Stop(EXIT_STATE, "unsupported_daemon", "主程序报告了不支持的 IMU 类型，未修改配置")
         mode, phase = bus.get("mode"), bus.get("phase")
         if mode == "motion" and phase == "control":
             imu_redo_gate(op, "motion")

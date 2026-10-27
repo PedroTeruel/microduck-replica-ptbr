@@ -11,7 +11,7 @@ from tests.test_helper_imu_redo import ImuRedoTest, RedoWorld, OVERRIDE
 from tests.test_helper_calib import H, joints_payload, current_calibration
 from tests.test_helper_calib import CalibCtx
 from studio import commit
-from studio.imu import bus_imu_of, mount_of
+from studio.imu import bus_imu_of, mount_of, Refused, bus_protocol_mismatch
 from tests.test_http import HttpTest, WsClient
 
 CONFIG = "/etc/robot/feetech-ft5/robotd.toml"
@@ -21,6 +21,57 @@ INFO = {"protocol": "feetech", "board": "qinmo", "identity": [], "profile": "qin
 
 
 class QinmoBackendTest(ImuBackendTest):
+    def test_explicit_unknown_profile_is_not_absent_legacy_metadata(self):
+        for location in ("native", "top"):
+            bus, cal = commissioning_bus(), factory_calib()
+            info = {"protocol":"feetech", "board":"ft6", "identity":[1], "profile":"future"}
+            if location == "native":
+                bus["native"]["imu_bus"] = info
+            else:
+                bus["imu_bus"] = info
+            cal["calibration"]["imu_mount_verified"] = True
+            cal["imu_mount"] = {"quat":[1,0,0,0], "verified":True}
+            backend = self.backend(bus=bus,calib=cal)
+            info["profile"] = "legacy"
+            backend.view()
+            backend.last_result = {"ok":True,"mount":[1,0,0,0]}
+            info["profile"] = "future"
+            self.assertEqual(backend.view()["imu_bus"]["profile"], "future")
+            self.assertIsNone(backend.last_result)
+            self.assertFalse(backend.view()["mount"]["verified"])
+            self.assertTrue(backend.view()["mount_protocol_mismatch"])
+            self.assertIn("不支持", backend.view()["profile_error"])
+            self.assertFalse(commit.pending_matches({"source":"bus"}, "bus",bus))
+            self.assertFalse(commit.pending_matches({"source":"bus","imu_bus":info}, "bus",bus))
+            with self.assertRaises(Refused):
+                backend._coarse_guard(bus)
+            with mock.patch("studio.imu.imu_calib.solve",return_value={"ok":True,"mount":[1,0,0,0]}) as solve:
+                with self.assertRaises(Refused):
+                    asyncio.run(backend.handle({"op":"solve","mode":"full","samples":[{"g":[0,0,-1]}]}))
+                solve.assert_not_called()
+            cal["calibration"]["imu_bus_profile"] = "future"
+            self.assertTrue(bus_protocol_mismatch(bus,cal), "matching unknown strings cannot authenticate a binding")
+
+    def test_raw_qinmo_binding_never_promotes_without_discovery_or_effective_mount(self):
+        for include_source in (False, True):
+            for include_top in (False, True):
+                bus, cal = commissioning_bus(), factory_calib()
+                if not include_source:
+                    bus = {}
+                    cal.pop("imu_source")
+                cal["calibration"].update(imu_mount_verified=True,imu_bus_profile="qinmo")
+                if include_top:
+                    cal["imu_mount"] = {"quat":[1,0,0,0],"verified":True}
+                backend = self.backend(bus=bus,calib=cal)
+                self.assertFalse(backend.view()["mount"]["verified"])
+                self.assertTrue(backend.view()["mount_protocol_mismatch"])
+                self.assertIn("尚未连接", backend.view()["profile_error"])
+                with self.assertRaises(Refused):
+                    backend._coarse_guard(bus)
+                # Truly absent old-server profile fields retain legacy behavior.
+                del cal["calibration"]["imu_bus_profile"]
+                self.assertTrue(mount_of(bus,cal)[1]["verified"])
+
     def test_profile_metadata_binding_context_and_pending(self):
         bus, cal = commissioning_bus(), factory_calib()
         bus.update(imu_bus=copy.deepcopy(INFO), configured_imu_profile="qinmo")
@@ -209,6 +260,19 @@ class QinmoProfileTest(ImuRedoTest):
             self.path.write_text(H.render_calibration(cal), encoding="utf-8")
             code, _ = self.call(self.payload(dry=True), verb="calib-commit")
             self.assertEqual(code, H.EXIT_STATE, self.last())
+
+    def test_helper_commit_rejects_explicit_unknown_profile_without_configured_field(self):
+        self.w.capability = False
+        self.w.bus_mutate = lambda bus: bus.update(imu_bus={"protocol":"feetech","profile":"future","board":"ft6","identity":[1]})
+        code, _ = self.call(self.payload(dry=True),verb="calib-commit")
+        self.assertEqual(code,H.EXIT_STATE,self.last())
+
+    def test_helper_redo_rejects_explicit_unknown_profile_without_configured_field(self):
+        self.w.capability = False
+        self.w.bus_mutate = lambda bus: bus.update(imu_bus={"protocol":"feetech","profile":"future","board":"ft6","identity":[1]})
+        code, detail = self.call_redo()
+        self.assertEqual(code,H.EXIT_STATE,detail)
+        self.assertFalse(self.w.path(OVERRIDE).exists())
 
     def test_restart_failure_rolls_back_config(self):
         self.w.restart_failures = 1

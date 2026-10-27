@@ -117,6 +117,11 @@ try {
   await wait(`document.body.innerText.includes('尚未连接')`, 'configured versus effective missing');
   await js(`props.imu={...props.imu, configured_imu_profile:null,profile_selection:{can_start:false,reason:'主程序尚不支持网页选择类型'}}; draw()`);
   await wait(`document.body.innerText.includes('主程序尚不支持网页选择类型')`, 'old daemon fallback');
+  await js(`props.imu={...props.imu,imu_bus:{protocol:'feetech',board:'ft6',identity:[1],profile:'future'},
+    profile_error:'主程序报告了不支持的 IMU 类型',mount:{quat:[1,0,0,0],verified:false}}; draw()`);
+  await wait(`document.querySelector('.imu-side').innerText.includes('IMU 类型无法确认')`, 'unknown profile stays visible and unsafe');
+  assert.match(await js(`document.querySelector('.imu-side').innerText`), /不支持的 IMU 类型/);
+  assert.doesNotMatch(await js(`document.querySelector('.imu-side').innerText`), /原始值 × 0\.0175|方向已确认/);
   await js(`props.imu = {...props.imu, source:'lsm6dsv16x', imu_bus:null}; draw()`);
   await wait('document.querySelector(".sv-metrics").innerText.includes("LSM6DSV16X（I²C）")', 'I2C label');
   // Exercise the actual global Space handler used beside the IMU page. Keep its
