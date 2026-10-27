@@ -2,6 +2,8 @@
 
 > 用户看这份：[烧录和第一次使用](烧录和第一次使用.md)。下面是做镜像的人看的。
 
+> **2026-10-27本地交付：**软件2026.10.27、新镜像20261027已生成，预装网页签名更新/回退、匹配helper及本地R3坐站语音，包含中文ASR模型和ARM64依赖。运行来源e382f074，签名包与镜像使用同一个安装器。鸭子暂时关闭，未烧卡/上机/公开发布；[产物hash与验证边界](../../docs/superpowers/verification/2026-10-27-web-updates.md)、[软件更新与语音用法](../../docs/软件更新与语音使用说明-20261027.md)。下列10-25笔记保留为历史状态。
+
 > 2026-10-25：[软件功能与升级总账](../../docs/软件功能与升级总账.md)记录了源码、现机与镜像的差异，以及共用组件包的后续升级方向。今天的独立语音服务和选定频段保持尚未接入通用镜像构建；在线升级仍待实现。
 
 > 同日后续：网页录制回放与灵动已在 c18783c 实现并通过 SSH 部署到当前鸭子，内联摄像头预览和配对输入恢复也同步了匹配版本。没有重新构建现有镜像；冻结源码包及单机部署不能当作通用在线升级。见[本轮验收](../../docs/superpowers/verification/2026-10-25-web-motion-studio.md)。
@@ -25,7 +27,9 @@
 | 主程序 robotd、padd、mediad | `/opt/robot/feetech-ft5-r5/` | 我们的 fork（官方 0.15.1 + 飞特总线、I²C IMU 模块、陀螺融合、UDP 手柄），从调好的鸭子上拉 | Apache-2.0 |
 | ONNX Runtime 1.28.0 | `/opt/robot/feetech-ft5-r5/onnxruntime/` | Microsoft，原样 | MIT |
 | 走路和动作模型 10 个 | `/opt/robot/feetech-ft5-r5/models/`、`roller/` | 社区作者训练，从调好的鸭子上拉，删掉了训练归档 | 个人非商业 |
-| Microduck Studio | `/home/radxa/studio-dev/`，服务 `microduck-studio`，端口 8000 | [`../studio/`](../studio/)，只装运行文件 | Apache-2.0 |
+| Microduck Studio | 20261027起`/opt/microduck/software/current/studio/`，服务`microduck-studio`，端口8000；早期镜像为`/home/radxa/studio-dev/` | [`../studio/`](../studio/)，签名运行文件 | Apache-2.0 |
+| 本地坐站语音 | `/opt/microduck/software/current/duck-echo/`；资源在`/opt/microduck/resources/`，默认R3单击开关、鸭叫确认 | [`../duck-echo/`](../duck-echo/)，Vosk small-cn0.22及ARM64/cp313依赖 | Apache-2.0及依赖各自许可 |
+| 软件更新执行器 | `/usr/local/lib/microduck-updater/`，独立root服务；版本树`/opt/microduck/software/releases/` | [`../updater/`](../updater/)，原ARM updaterd0.15.1；内置自己的发行公钥，自动应用关闭 | Apache-2.0 |
 | 首次开机、配网、root 小助手 | `/usr/local/sbin/microduck-firstboot`、`microduck-netcheck`、`microduck-helper` | [`overlay/`](overlay/)、Studio 的 `deploy/` | Apache-2.0 |
 | 出厂标定 | `/etc/robot/feetech-ft5/hd1910-calibration.toml` | [`calib/hd1910-calibration.option-a.toml`](calib/hd1910-calibration.option-a.toml)：15 颗都是 2048 / −1 / 未标定 | — |
 
@@ -101,6 +105,19 @@ sudo apt install fdisk e2fsprogs xz-utils openssl python3.11
 装了 python3.11 以后让 `python3` 指向它，比如建一个只放这一个链接的目录、加到 `PATH` 最前面。
 
 ## 构建
+
+20261027的完整功能镜像还需四项成套输入，缺少任一项会在修改rootfs前拒绝。先从冻结Git提交生成签名包，使用`voice_resources.py`准备并校验官方中文模型及ARM64/cp313 wheel资源；不得把开发机Python依赖或个人语音/Key混入。发行私钥只供构建机签名，不作为镜像输入。
+
+```sh
+export SOFTWARE_UPDATE_PACKAGE=/path/to/2026.10.27.software-update.tar
+export SOFTWARE_UPDATE_PUBLIC_KEY=/path/to/software/updater/release.pub
+export SOFTWARE_UPDATE_ENGINE=/path/to/verified-arm64-updaterd
+export VOICE_RESOURCES_DIR=/path/to/verified-resources
+# x86构建机另需qemu-user，并给出已核验ARM64 loader/libs根目录；原生ARM构建机留空即可。
+export SOFTWARE_UPDATE_ENGINE_COMMAND_JSON='["qemu-aarch64","-L","/path/to/arm64-libs"]'
+```
+
+以下命令在root构建shell执行时保留上述环境；通过sudo调用时需显式传入这些固定输入，避免sudo清理环境后退回旧版构建。未设置整套组件输入只保留旧镜像构建行为，不包含新的升级/语音套件。最终镜像检查`/usr/share/doc/microduck/software-components.json`、语音资源说明与实际版本文件。
 
 ```sh
 sudo STUDIO_VERSION=<Studio 的提交号> IMAGE_VERSION=<本目录的提交号> \
