@@ -20,6 +20,43 @@
       },
       "tracked_development_releases": [
         {
+          "tag": "daemon-dev-codex/bluetooth-diagnostics-integration",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-codex/bluetooth-diagnostics-integration",
+          "published_at": "2026-10-27T16:17:25Z",
+          "version": "daemon 0.17.9-dev.1461.f72c19b (codex/bluetooth-diagnostics-integration)",
+          "head_sha": "f72c19bf7e58cf0d16e00591728b39f887d4c8e0",
+          "prerelease": true,
+          "replica_integration": "not_integrated; no downloaded code/package execution or robot operation",
+          "development_api_version": 46,
+          "change": "Historical combined diagnostics+Bluetooth source atf72c19b retained after PR split.",
+          "priority": "historical_reference_only",
+          "scope_note": "Does not include latest standalone9187d5e drive-mode guard or latestbcd2f70 source merely because API numbers overlap."
+        },
+        {
+          "tag": "daemon-dev-stress-test",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-stress-test",
+          "published_at": "2026-10-27T16:25:03Z",
+          "version": "daemon 0.17.8-dev.1463.7a72b45 (stress-test)",
+          "head_sha": "7a72b450386a270f3986518060fa4d33e8de41a3",
+          "prerelease": true,
+          "replica_integration": "not_integrated; no downloaded code/package execution or robot operation",
+          "change": "Prototype robotctl stress: scripted fall/getup/walk/sitstand laps and persistent metrics/plotting; policy disable0.5s deliberately provokes falls.",
+          "version_family": "0.17.8-development; not stable0.17.9/currentmain",
+          "priority": "deferred_controlled_bench_reference_only",
+          "comparison_to_recorded_main": {
+            "from_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
+            "to_sha": "7a72b450386a270f3986518060fa4d33e8de41a3",
+            "status": "diverged",
+            "ahead_by": 13,
+            "behind_by": 14,
+            "merge_base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+            "fixed_url": "https://github.com/pollen-robotics/microduck/compare/5def2f3e66501f0f365d4fb1183020b8ee875443...7a72b450386a270f3986518060fa4d33e8de41a3",
+            "scope_note": "Older diverged base; diff includes known endurance plumbing, not13clean additions atop currentmain."
+          },
+          "bounds": "Six provokedfalls/lap,7sgetup+2sreset+7s, then giveuprelax/logging; odometrysquare/forwardToF approximate; noToF continues.",
+          "verification": "Read-only specs/lap/guard/getup/control/test source; no execution including dryrun, nohardwareacceptance."
+        },
+        {
           "tag": "daemon-dev-vetbook-gallery-cards",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-vetbook-gallery-cards",
           "published_at": "2026-10-27T14:26:09Z",
@@ -34,31 +71,38 @@
         {
           "tag": "daemon-dev-codex/gamepad-connection",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-codex/gamepad-connection",
-          "published_at": "2026-10-27T14:35:37Z",
-          "version": "daemon 0.17.9-dev.1458.f72c19b (codex/gamepad-connection)",
-          "head_sha": "f72c19bf7e58cf0d16e00591728b39f887d4c8e0",
+          "published_at": "2026-10-27T16:34:38Z",
+          "version": "daemon 0.17.9-dev.1464.bcd2f70 (codex/gamepad-connection)",
+          "head_sha": "bcd2f70d3ad56a213bbaff88b433ac1bf1c012b1",
           "prerelease": true,
           "related_pull_request": 477,
-          "change": "Combined targeted gamepad connection and native motor diagnostics, IPC46, replaces previous pure-gamepadAPI45 tag target.",
+          "change": "Standalone Bluetooth status/exactMAC reconnect only, API46 with currentmain; diagnostics/session notes/temporary CI removed. Home is normal reconnect; connect does not guarantee remote wake, and HID match does not prove padd opened the input.",
           "priority": "review_candidate_only_not_stable",
-          "replica_integration": "not_integrated; no combined-build robot installation reported",
-          "previous_head_sha": "61f4ad5882243c1bcb34500a59974308684ada28",
+          "replica_integration": "not_integrated; standalone development branch, no tracker download/deployment",
+          "previous_head_sha": "f72c19bf7e58cf0d16e00591728b39f887d4c8e0",
           "head_history": [
             "f169c3dc1fa042229461f7f3691245cfcdf48d19",
-            "61f4ad5882243c1bcb34500a59974308684ada28"
-          ]
+            "61f4ad5882243c1bcb34500a59974308684ada28",
+            "f72c19bf7e58cf0d16e00591728b39f887d4c8e0"
+          ],
+          "development_api_version": 46
         },
         {
           "tag": "daemon-dev-codex/robot-diagnostics-design",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-codex/robot-diagnostics-design",
-          "published_at": "2026-10-27T10:47:43Z",
-          "version": "daemon 0.17.9-dev.1450.38d0331 (codex/robot-diagnostics-design)",
-          "head_sha": "38d033109e94caef12634d6787d1d842c8a42a9b",
+          "published_at": "2026-10-27T16:57:25Z",
+          "version": "daemon 0.17.9-dev.1466.9187d5e (codex/robot-diagnostics-design)",
+          "head_sha": "9187d5e3d8eff92b85c13ba7a82fdd3406e37be0",
           "prerelease": true,
           "related_pull_request": 473,
-          "change": "Draft all-motor local raw maintenance sessions, diagnostic snapshots, selective torque/RAM PID/absolute position, connection lease and denied BLE/WebRTC transport.",
+          "change": "Standalone raw maintenance reconciled with main, API47; no Bluetooth. New XL330 guard refuses unknown DriveMode or TorqueOnByGoalUpdate bit0x08 at admission and fresh goal-seeding recheck, zero writes on refusal and no EEPROM edits. HD1910 backend remains unported.",
           "priority": "evaluate_after_HD1910_backend_mapping_and_local_authorization_review",
-          "replica_integration": "not_integrated; no robot deployment or full native15-motor readback in submitter report"
+          "replica_integration": "not_integrated; standalone development branch, no tracker download/deployment",
+          "head_history": [
+            "38d033109e94caef12634d6787d1d842c8a42a9b"
+          ],
+          "previous_head_sha": "38d033109e94caef12634d6787d1d842c8a42a9b",
+          "development_api_version": 47
         },
         {
           "tag": "daemon-dev-main",
@@ -176,32 +220,32 @@
         },
         {
           "number": 477,
-          "title": "Combine targeted gamepad connection and motor diagnostics",
+          "title": "Improve gamepad connection status and add targeted reconnect",
           "state": "open",
-          "draft": true,
+          "draft": false,
           "merged_at": null,
           "created_at": "2026-10-27T13:25:40Z",
-          "updated_at": "2026-10-27T14:22:29Z",
+          "updated_at": "2026-10-27T16:44:38Z",
           "url": "https://github.com/pollen-robotics/microduck/pull/477",
-          "head_sha": "f72c19bf7e58cf0d16e00591728b39f887d4c8e0",
+          "head_sha": "bcd2f70d3ad56a213bbaff88b433ac1bf1c012b1",
           "base_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
           "base_branch": "main",
-          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/5def2f3e66501f0f365d4fb1183020b8ee875443...f72c19bf7e58cf0d16e00591728b39f887d4c8e0",
-          "replica_integration": "not_integrated_by_tracker; no migrated runtime, model, image or device update",
-          "this_review": "Read-only fixed patches and submitter evidence; no downloaded code/test execution, training, installation or robot connection.",
-          "scope_note": "Expanded draft combines targeted gamepad status/connect fromf169 with raw maintenance through38d0331, both sets of routes retained. IPC now46 because independent development branches used45; this is not a stable46 release. Hardware-native diagnostics remain XL330-specific, notHD1910 port.",
-          "changed_file_count": 35,
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/5def2f3e66501f0f365d4fb1183020b8ee875443...bcd2f70d3ad56a213bbaff88b433ac1bf1c012b1",
+          "replica_integration": "not_integrated; non-draft open PR is not merged or stable; no tracker code/model/image/device update",
+          "this_review": "Read-only currentbase fixed diff and relevant incremental changes; no downloaded implementation or tests executed.",
+          "scope_note": "Standalone Bluetooth status/exactMAC reconnect only, API46 with currentmain; diagnostics/session notes/temporary CI removed. Home is normal reconnect; connect does not guarantee remote wake, and HID match does not prove padd opened the input.",
+          "changed_file_count": 16,
           "priority": "high_contract_review_before_any_adoption; requiresHD1910_native_register_mapping and combined daemon release evaluation",
           "comparison_with_PR474": "PR474 automatic classic re-page/background sweep remains separate pending work; PR477 provides exact targeted manual reconnect/status, not that background loop.",
           "submitter_validation": {
-            "targeted_rust1941_checks_reported": true,
-            "strict_clippy_reported": true,
-            "macos_existing_concurrent_start_test_stalled_and_was_stopped": true,
-            "combined_build_installed_on_robot": false,
-            "positive_explicit_reconnect_from_disconnected_available_controller_tested": false,
+            "targeted_components_formatting_and_independent_review_reported": true,
+            "earlier_combined_build_Home_HID_idempotent_connect_reported": true,
+            "outgoing_attempt": "HCI Page Timeout; awake/connectable state not established",
+            "positive_explicit_reconnect_from_proven_awake_disconnected_controller": false,
+            "latest_standalone_deployed_during_review": false,
             "verified_by_tracker": false
           },
-          "previous_head_sha": "61f4ad5882243c1bcb34500a59974308684ada28",
+          "previous_head_sha": "f72c19bf7e58cf0d16e00591728b39f887d4c8e0",
           "previous_bluetooth_only_validation": {
             "workspace_tests_passed_excluding_nfcd_macos": 1744,
             "nfc_library_tests_passed": 22,
@@ -231,7 +275,24 @@
             "to_sha": "f72c19bf7e58cf0d16e00591728b39f887d4c8e0",
             "file": ".github/workflows/ci.yml",
             "change": "Run CI for direct pushes on codex/gamepad-connection as well as main. No additional gamepad/motor runtime behavior in this increment."
-          }
+          },
+          "revision_history": [
+            {
+              "head_sha": "f72c19bf7e58cf0d16e00591728b39f887d4c8e0",
+              "draft": true,
+              "title": "Combine targeted gamepad connection and motor diagnostics",
+              "scope_note": "Expanded draft combines targeted gamepad status/connect fromf169 with raw maintenance through38d0331, both sets of routes retained. IPC now46 because independent development branches used45; this is not a stable46 release. Hardware-native diagnostics remain XL330-specific, notHD1910 port.",
+              "submitter_validation": {
+                "targeted_rust1941_checks_reported": true,
+                "strict_clippy_reported": true,
+                "macos_existing_concurrent_start_test_stalled_and_was_stopped": true,
+                "combined_build_installed_on_robot": false,
+                "positive_explicit_reconnect_from_disconnected_available_controller_tested": false,
+                "verified_by_tracker": false
+              }
+            }
+          ],
+          "development_api_version": 46
         },
         {
           "number": 476,
@@ -310,39 +371,59 @@
           "number": 473,
           "title": "Add all-motor raw maintenance sessions and diagnostics",
           "state": "open",
-          "draft": true,
+          "draft": false,
           "merged_at": null,
           "created_at": "2026-10-27T08:17:49Z",
-          "updated_at": "2026-10-27T13:32:03Z",
+          "updated_at": "2026-10-27T16:48:42Z",
           "url": "https://github.com/pollen-robotics/microduck/pull/473",
-          "head_sha": "38d033109e94caef12634d6787d1d842c8a42a9b",
-          "base_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "head_sha": "9187d5e3d8eff92b85c13ba7a82fdd3406e37be0",
+          "base_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
           "base_branch": "main",
-          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...38d033109e94caef12634d6787d1d842c8a42a9b",
-          "scope_note": "All15 motors incl mouth, local-only connection-bound raw maintenance; explicit torques/PID/goals, lease/expiry/priority stop and inhibited handoff. Only DynamixelIo/FakeIo implement native register ops; default unsupported_backend refuses others. Draft IPC45 adds robot.diagnostics.*, unlike this migration custom API45. Does not establish HD1910 compatibility.",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/5def2f3e66501f0f365d4fb1183020b8ee875443...9187d5e3d8eff92b85c13ba7a82fdd3406e37be0",
+          "scope_note": "Standalone raw maintenance reconciled with main, API47; no Bluetooth. New XL330 guard refuses unknown DriveMode or TorqueOnByGoalUpdate bit0x08 at admission and fresh goal-seeding recheck, zero writes on refusal and no EEPROM edits. HD1910 backend remains unported.",
           "priority": "medium_reference_only; assess nativeHD1910 registers/scaling/IDs, policy/HOME ownership, restore path and IPC semantic collision before any adoption",
-          "replica_integration": "not_integrated_by_tracker_or_existing_migration; no release/image/device update",
+          "replica_integration": "not_integrated; non-draft open PR is not merged or stable; no tracker code/model/image/device update",
           "submitter_validation": {
-            "workspace_tests_reported_passed": 1758,
-            "host": "macOS excluding nfc; submitter reports final CI pass",
-            "deployment_started": true,
-            "installed_signed_development_version": "0.17.9-dev.1450.38d0331",
-            "robot": "graphite-boom (submitter robot)",
-            "all15_native_readbacks_and_selected_torque_off_outcomes_reported": true,
-            "cli_acquire_lease_stop_release_handoff_reported": true,
-            "physical_torque_on_or_movement_tested": false,
-            "physical_position_response_tested": false,
-            "verified_by_tracker": false,
-            "evidence_scope": "Updated PRbody reports only reads, unchangedRAM PID, torque-off, refusal without torque and lifecycle; not our hardware orHD1910 acceptance."
+            "targeted_rust1941_diagnostics_tests_reported": true,
+            "guard_regressions": "all15 selections with unknown/0x08 modes; zero goal/torque/PID attempts on refusal; fresh recheck",
+            "earlier_build_hardware_read_torqueoff_lifecycle_reported": true,
+            "new_guard_and_main_reconciliation_deployed": false,
+            "physical_torque_on_or_position_response_tested": false,
+            "submitter_robot_reported_build": "0.17.9-dev.1454.61f4ad5",
+            "verified_by_tracker": false
           },
-          "this_review": "Read-only fixed patch and local provenance inspection; no downloaded source execution, new tests, robot or service operation.",
+          "this_review": "Read-only currentbase fixed diff and relevant incremental changes; no downloaded implementation or tests executed.",
           "previous_submitter_validation": {
             "workspace_tests_reported_passed": 1758,
             "host": "macOS excluding nfc; CI reported separately",
             "physical_torque_or_movement_tested": false,
             "deployment_started": false,
             "verified_by_tracker": false
-          }
+          },
+          "revision_history": [
+            {
+              "head_sha": "38d033109e94caef12634d6787d1d842c8a42a9b",
+              "draft": true,
+              "title": "Add all-motor raw maintenance sessions and diagnostics",
+              "scope_note": "All15 motors incl mouth, local-only connection-bound raw maintenance; explicit torques/PID/goals, lease/expiry/priority stop and inhibited handoff. Only DynamixelIo/FakeIo implement native register ops; default unsupported_backend refuses others. Draft IPC45 adds robot.diagnostics.*, unlike this migration custom API45. Does not establish HD1910 compatibility.",
+              "submitter_validation": {
+                "workspace_tests_reported_passed": 1758,
+                "host": "macOS excluding nfc; submitter reports final CI pass",
+                "deployment_started": true,
+                "installed_signed_development_version": "0.17.9-dev.1450.38d0331",
+                "robot": "graphite-boom (submitter robot)",
+                "all15_native_readbacks_and_selected_torque_off_outcomes_reported": true,
+                "cli_acquire_lease_stop_release_handoff_reported": true,
+                "physical_torque_on_or_movement_tested": false,
+                "physical_position_response_tested": false,
+                "verified_by_tracker": false,
+                "evidence_scope": "Updated PRbody reports only reads, unchangedRAM PID, torque-off, refusal without torque and lifecycle; not our hardware orHD1910 acceptance."
+              }
+            }
+          ],
+          "previous_head_sha": "38d033109e94caef12634d6787d1d842c8a42a9b",
+          "changed_file_count": 21,
+          "development_api_version": 47
         },
         {
           "number": 472,
@@ -1144,51 +1225,38 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-27T15:00:36.501280+00:00",
+  "checked_at_utc": "2026-10-27T17:02:07.017189+00:00",
   "latest_review": {
-    "default_branch_changes": {
-      "pollen-robotics/microduck": {
-        "before": "e6ff9991534580bff5c932ca10b3f1b8da851ce2",
-        "after": "5def2f3e66501f0f365d4fb1183020b8ee875443"
-      },
-      "pollen-robotics/microduck_rl": {
-        "before": "b02fdea4902c2b93b7d34a83a6f05da4ececb7d3",
-        "after": "bae39f5900b318f7e87fc485c30a31213cfa14eb"
-      }
-    },
+    "default_branch_changes": false,
     "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
     "previous_tracked_prs_merged": false,
-    "new_pull_requests": {
-      "pollen-robotics/microduck": [
-        479
-      ]
-    },
-    "newly_seen_merged_pull_requests": {
-      "pollen-robotics/microduck": [
-        479
-      ]
-    },
+    "new_pull_requests": {},
     "new_development_releases": [
-      "daemon-dev-vetbook-gallery-cards"
-    ],
-    "moved_development_tags": [
-      "daemon-dev-main",
-      "daemon-dev-codex/gamepad-connection"
-    ],
-    "retired_development_tags": [
-      "daemon-dev-vetbook-gallery"
+      "daemon-dev-stress-test",
+      "daemon-dev-codex/bluetooth-diagnostics-integration"
     ],
     "changed_pull_request_heads": {
       "pollen-robotics/microduck": {
+        "473": {
+          "before": "38d033109e94caef12634d6787d1d842c8a42a9b",
+          "after": "9187d5e3d8eff92b85c13ba7a82fdd3406e37be0",
+          "draft": false,
+          "merged_at": null
+        },
         "477": {
-          "before": "61f4ad5882243c1bcb34500a59974308684ada28",
-          "after": "f72c19bf7e58cf0d16e00591728b39f887d4c8e0",
-          "increment_scope": "CI trigger only"
+          "before": "f72c19bf7e58cf0d16e00591728b39f887d4c8e0",
+          "after": "bcd2f70d3ad56a213bbaff88b433ac1bf1c012b1",
+          "draft": false,
+          "merged_at": null
         }
       }
     },
+    "moved_development_tags": [
+      "daemon-dev-codex/gamepad-connection",
+      "daemon-dev-codex/robot-diagnostics-design"
+    ],
     "official_blog_new_articles": false,
     "official_blog_article_count": 3,
     "official_blog_latest_on": "2026-10-23",
@@ -1196,7 +1264,7 @@
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "Japan date rolled toOct28. RLdevelop gained training bundle/provenance/Hub-teacher support via5commits13files; no new model bytes. Runtime main merged gallerycardsPR479; devmain caught up, combinedgamepadPR477/devtag advanced onlyCI. Stable0.17.9 unchanged. Retired gallerytag404 archived. All integration/hardware boundaries preserved; docs only."
+    "notes": "473/477 are standalone non-draft but unmerged: rawmaintenanceAPI47 adds implicit torque-on goal-update refusal; BluetoothAPI46 excludesdiagnostics. Historical combinedAPI46 retained. Stress0.17.8dev is an older divergent prototype. Heads/stable/otherPRs/blog unchanged. Docs only."
   },
   "replica_migration": {
     "recorded_on": "2026-10-27",
