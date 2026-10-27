@@ -3,11 +3,61 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import os
+import subprocess
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from bootstrap import profile, install_stable, verify_tree
+from bootstrap import profile, install_stable, verify_tree,copy_regular_tree,migrate_state
 from engine_systemctl import allowed
 
 class Bootstrap(unittest.TestCase):
+    @unittest.skipUnless(os.name=='posix' and getattr(os,'geteuid',lambda:1)()==0,'requires isolated Linux root permission probe')
+    def test_factory_state_and_logs_writable_by_actual_unprivileged_process(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);root.chmod(0o755);(root/'etc').mkdir()
+            (root/'etc/passwd').write_text('radxa:x:65534:65534:fixture:/nonexistent:/bin/false\n')
+            dropins=root/'etc/systemd/system/microduck-studio.service.d';dropins.mkdir(parents=True)
+            (dropins/'10-image.conf').write_text('[Service]\nExecStart=\nExecStart=/usr/bin/python3 -I run.py --listen 0.0.0.0:8000\n')
+            engine=root/'engine';engine.write_bytes(b'fixture');key=root/'key.pub';key.write_text('public')
+            install_stable(root,engine,key)
+            script='from pathlib import Path;import sys;sys.path.insert(0,'+repr(str(Path(__file__).resolve().parents[2]/'studio'))+');from studio.auth import Auth;from studio.log import Log;Auth(sys.argv[1]).set_password("fixture-password");log=Log(sys.argv[2],echo=False,background=False);log.info("startup");log.flush()'
+            def demote():os.setgroups([]);os.setgid(65534);os.setuid(65534)
+            subprocess.run([sys.executable,'-I','-c',script,str(root/'var/lib/microduck-studio'),str(root/'var/log/microduck-studio')],preexec_fn=demote,check=True)
+            self.assertTrue((root/'var/lib/microduck-studio/password.json').is_file())
+            self.assertTrue(list((root/'var/log/microduck-studio').glob('*.log')))
+            override=(root/'etc/systemd/system/microduck-studio.service.d/90-software-update.conf').read_text()
+            self.assertIn('--log-dir /var/log/microduck-studio',override)
+            effective=[line for conf in sorted(dropins.glob('*.conf')) for line in conf.read_text().splitlines() if line.startswith('ExecStart=')][-1]
+            self.assertIn('--state-dir /var/lib/microduck-studio --log-dir /var/log/microduck-studio',effective)
+
+    @unittest.skipUnless(os.name=='posix','no-follow Linux migration')
+    def test_legacy_symlink_and_swapped_entry_never_copy_root_secret(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);source=root/'legacy';source.mkdir();secret=root/'root-secret';secret.write_text('root-secret')
+            secret.chmod(0o600);(source/'link').symlink_to(secret)
+            with self.assertRaises(ValueError):copy_regular_tree(source,root/'snapshot',os.getuid())
+            self.assertFalse((root/'snapshot/link').exists())
+            (source/'link').unlink();(source/'safe').write_text('safe')
+            from unittest import mock
+            original=os.open
+            def raced(path,*args,**kwargs):
+                if path=='safe' and kwargs.get('dir_fd') is not None:
+                    (source/'safe').unlink();(source/'safe').symlink_to(secret)
+                return original(path,*args,**kwargs)
+            with mock.patch('bootstrap.os.open',side_effect=raced):
+                with self.assertRaises((ValueError,OSError)):copy_regular_tree(source,root/'race-snapshot',os.getuid())
+            self.assertFalse((root/'race-snapshot/safe').exists())
+            self.assertEqual(secret.read_text(),'root-secret')
+
+    @unittest.skipUnless(os.name=='posix','atomic Linux state migration')
+    def test_regular_state_promoted_and_existing_nonempty_state_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);source=root/'legacy';source.mkdir();(source/'password.json').write_text('legacy')
+            backup=root/'private';backup.mkdir(mode=0o700);destination=root/'state';destination.mkdir()
+            migrate_state(source,destination,backup,os.getuid(),os.getgid())
+            self.assertEqual((destination/'password.json').read_text(),'legacy')
+            (source/'password.json').write_text('changed')
+            migrate_state(source,destination,backup,os.getuid(),os.getgid())
+            self.assertEqual((destination/'password.json').read_text(),'legacy')
     def test_engine_service_boundary_disables_factory_host_and_unrelated_units(self):
         self.assertTrue(allowed('systemctl',['restart','microduck-studio','duck-echo']))
         for program,args,offline in [('systemd-run',['--','systemctl','restart','btd'],False),

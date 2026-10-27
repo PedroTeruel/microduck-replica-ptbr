@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import stat
 
 from package import unpack_outer
 from service import DEFAULT_CONFIG
@@ -53,8 +54,12 @@ User=radxa
 Group=radxa
 RuntimeDirectory=microduck-studio
 RuntimeDirectoryMode=0700
+StateDirectory=microduck-studio
+StateDirectoryMode=0700
+LogsDirectory=microduck-studio
+LogsDirectoryMode=0750
 WorkingDirectory=/opt/microduck/software/current/studio
-ExecStart=/usr/bin/python3 -I run.py --listen 0.0.0.0:8000 --state-dir /var/lib/microduck-studio
+ExecStart=/usr/bin/python3 -I run.py --listen 0.0.0.0:8000 --state-dir /var/lib/microduck-studio --log-dir /var/log/microduck-studio
 Restart=on-failure
 RestartSec=3
 Nice=10
@@ -149,6 +154,99 @@ WantedBy=multi-user.target
 '''
 UNITS={'microduck-studio.service':STUDIO,'duck-echo.service':VOICE,'microduck-voice-prepare.service':MIC,
        'microduck-updater-engine.service':ENGINE,'microduck-update-control.service':CONTROL}
+STUDIO_OVERRIDE='[Service]\nExecStart=\n'+next(line for line in STUDIO.splitlines() if line.startswith('ExecStart='))+'\n'
+
+def copy_regular_tree(source,destination,source_uid,target_uid=None,target_gid=None):
+    """Snapshot untrusted user state with pinned no-follow descriptors only.
+
+    Destination must be a new directory beneath the root-private backup. Never
+    chown or traverse an existing user tree, symlink, hardlink, or special file.
+    """
+    source,destination=Path(source),Path(destination)
+    flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW
+    source_fd=os.open(source,flags);destination_fd=None;created=False
+    count=0;total=0
+    try:
+        if os.fstat(source_fd).st_uid!=source_uid:raise ValueError('unexpected legacy directory owner')
+        destination.mkdir(mode=0o700);created=True;destination_fd=os.open(destination,flags)
+        def copy_directory(src,dst):
+            nonlocal count,total
+            for name in os.listdir(src):
+                count+=1
+                if count>20000:raise ValueError('legacy state has too many entries')
+                before=os.stat(name,dir_fd=src,follow_symlinks=False)
+                if stat.S_ISDIR(before.st_mode):
+                    child=os.open(name,flags,dir_fd=src)
+                    try:
+                        if os.fstat(child).st_uid!=source_uid:raise ValueError('unexpected legacy directory owner')
+                        os.mkdir(name,0o700,dir_fd=dst);out=os.open(name,flags,dir_fd=dst)
+                        try:
+                            copy_directory(child,out)
+                            if target_uid is not None:os.fchown(out,target_uid,target_gid)
+                        finally:os.close(out)
+                    finally:os.close(child)
+                elif stat.S_ISREG(before.st_mode):
+                    incoming=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=src)
+                    try:
+                        info=os.fstat(incoming)
+                        if not stat.S_ISREG(info.st_mode) or info.st_uid!=source_uid or info.st_nlink!=1:
+                            raise ValueError('unsafe legacy state file')
+                        total+=info.st_size
+                        if info.st_size>64*1024*1024 or total>512*1024*1024:raise ValueError('legacy state exceeds migration bounds')
+                        outgoing=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=dst)
+                        try:
+                            remaining=info.st_size
+                            while remaining:
+                                block=os.read(incoming,min(1024*1024,remaining))
+                                if not block:raise ValueError('legacy file changed during snapshot')
+                                view=memoryview(block)
+                                while view:view=view[os.write(outgoing,view):]
+                                remaining-=len(block)
+                            if os.read(incoming,1):raise ValueError('legacy file changed during snapshot')
+                            if target_uid is not None:os.fchown(outgoing,target_uid,target_gid)
+                            os.fsync(outgoing)
+                        finally:os.close(outgoing)
+                    finally:os.close(incoming)
+                else:raise ValueError('legacy state contains a link or special file')
+            os.fsync(dst)
+        copy_directory(source_fd,destination_fd)
+        if target_uid is not None:os.fchown(destination_fd,target_uid,target_gid)
+    except Exception:
+        if created:shutil.rmtree(destination)
+        raise
+    finally:
+        os.close(source_fd)
+        if destination_fd is not None:os.close(destination_fd)
+
+def migrate_state(source,destination,backup,uid,gid):
+    destination=Path(destination);backup=Path(backup)
+    if destination.is_symlink():raise ValueError('state directory cannot be a symbolic link')
+    if any(destination.iterdir()):return False
+    snapshot=backup/'legacy-state';staged=backup/'state-staging'
+    copy_regular_tree(source,snapshot,uid)
+    copy_regular_tree(snapshot,staged,os.getuid(),uid,gid)
+    # Parent /var/lib is root-owned: if a user filled the existing destination
+    # during our snapshot, replacing the nonempty directory fails safely.
+    os.replace(staged,destination)
+    return True
+
+def app_directories(root):
+    identity=None
+    if os.name=='posix':
+        try:
+            for line in (Path(root)/'etc/passwd').read_text().splitlines():
+                fields=line.split(':')
+                if fields[0]=='radxa':identity=(int(fields[2]),int(fields[3]));break
+        except FileNotFoundError:pass
+    for relative,mode in (('var/lib/microduck-studio',0o700),('var/log/microduck-studio',0o750)):
+        path=Path(root)/relative;path.mkdir(parents=True,exist_ok=True)
+        if os.name=='posix':
+            descriptor=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+            try:
+                # Only the directory itself; existing user files retain ownership.
+                if identity is not None:os.fchown(descriptor,*identity)
+                os.fchmod(descriptor,mode)
+            finally:os.close(descriptor)
 
 def write(root,path,text,mode=0o644):
     target=Path(root)/path.lstrip('/'); target.parent.mkdir(parents=True,exist_ok=True)
@@ -171,6 +269,8 @@ def install_stable(root,engine,public_key):
     write(root,'/etc/microduck-updater/updater.toml',profile('/'),0o600)
     write(root,'/etc/microduck-updater/control.json',json.dumps(DEFAULT_CONFIG,indent=2)+'\n',0o600)
     for name,content in UNITS.items(): write(root,'/etc/systemd/system/'+name,content)
+    write(root,'/etc/systemd/system/microduck-studio.service.d/90-software-update.conf',STUDIO_OVERRIDE)
+    app_directories(root)
     write(root,'/usr/local/sbin/microduck-helper','#!/bin/sh\nset -eu\nexec /opt/microduck/software/current/studio/deploy/microduck-helper "$@"\n',0o755)
     (root/'etc/sudoers.d').mkdir(parents=True,exist_ok=True)
     sudoers=root/'etc/sudoers.d/microduck-studio'
@@ -197,7 +297,8 @@ def bootstrap(root,package,public_key,engine,engine_command=None,offline=False):
     backup=state/('bootstrap-backup-'+str(time.time_ns())); backup.mkdir(mode=0o700)
     replaced=['etc/systemd/system/'+name for name in UNITS]+[
         'etc/systemd/system/multi-user.target.wants/'+name for name in UNITS]+[
-        'etc/microduck-updater','usr/local/sbin/microduck-helper','etc/sudoers.d/microduck-studio',STABLE.lstrip('/'),'opt/microduck/software']
+        'etc/microduck-updater','usr/local/sbin/microduck-helper','etc/sudoers.d/microduck-studio',STABLE.lstrip('/'),'opt/microduck/software',
+        'etc/systemd/system/microduck-studio.service.d/90-software-update.conf']
     original=set()
     for name in replaced:
         source=root/name
@@ -210,7 +311,13 @@ def bootstrap(root,package,public_key,engine,engine_command=None,offline=False):
     try:
         if live:
             for legacy in ('home/radxa/studio-dev','opt/duck-echo'):
-                if (root/legacy).is_dir():shutil.copytree(root/legacy,backup/'legacy-runtime'/legacy,symlinks=True)
+                # Legacy code remains untouched in place. Snapshot only the
+                # fixed user-owned source via no-follow descriptors as well.
+                if (root/legacy).is_dir():
+                    import pwd
+                    owner=pwd.getpwnam('radxa').pw_uid if legacy.startswith('home/') else os.stat(root/legacy).st_uid
+                    target=backup/'legacy-runtime'/legacy;target.parent.mkdir(parents=True,exist_ok=True)
+                    copy_regular_tree(root/legacy,target,owner)
         for unit_name in UNITS:
             for dropin in (root/'etc/systemd/system'/f'{unit_name}.d').glob('*.conf'):
                 for line in dropin.read_text(encoding='utf-8').splitlines():
@@ -219,6 +326,8 @@ def bootstrap(root,package,public_key,engine,engine_command=None,offline=False):
                     if line.startswith('ExecStart=') and line!='ExecStart=':
                         known=(unit_name=='microduck-studio.service' and dropin.name=='10-image.conf'
                             and line=='ExecStart=/usr/bin/python3 -I run.py --listen 0.0.0.0:8000')
+                        known=known or (unit_name=='microduck-studio.service' and dropin.name=='90-software-update.conf'
+                            and dropin.read_text()==STUDIO_OVERRIDE)
                         if not known:raise ValueError('custom service ExecStart requires migration: '+str(dropin))
         # Write stable operator-provided tools, never run anything from unverified
         # package members. The original engine verifies before the first swap.
@@ -251,15 +360,16 @@ def bootstrap(root,package,public_key,engine,engine_command=None,offline=False):
             if audio.get('ok') is not True or any(audio.get('status',{}).get(key) is not False for key in ('listening','music')):
                 raise ValueError('turn off voice/music before bootstrapping')
             atomic_json('/run/microduck-updater/protected-services.json',identities())
-            subprocess.run(['systemctl','stop','microduck-studio','duck-echo'],check=True); stopped=True
+            stopped=True
+            subprocess.run(['systemctl','stop','microduck-studio','duck-echo'],check=True)
             before=robot.call('robot.busStatus');time.sleep(.3)
             check_robot(robot.call('robot.busStatus'),robot.call('robot.health'),before)
             legacy=root/'home/radxa/studio-dev/state'; destination=root/'var/lib/microduck-studio'
             if legacy.is_dir():
-                shutil.copytree(legacy,backup/'legacy-state',symlinks=True)
-                if not any(destination.iterdir()): shutil.copytree(legacy,destination,dirs_exist_ok=True)
+                import pwd
+                account=pwd.getpwnam('radxa')
+                migrate_state(legacy,destination,backup,account.pw_uid,account.pw_gid)
             subprocess.run(['usermod','-a','-G','audio,input','radxa'],check=True)
-            subprocess.run(['chown','-R','radxa:radxa',str(destination)],check=True)
         subprocess.run([*command,'install','--from',str(cache),'--component','software'],check=True,env=engine_env)
         current=root/'opt/microduck/software/current'; metadata=verify_tree(current)
         if metadata['version']!=manifest['version']: raise ValueError('engine installed an unexpected version')
@@ -278,7 +388,7 @@ def bootstrap(root,package,public_key,engine,engine_command=None,offline=False):
             subprocess.run(['systemctl','start','microduck-update-control'],check=True)
         return {'version':metadata['version'],'backup':str(backup),'offline':offline}
     except Exception:
-        if live: subprocess.run(['systemctl','stop','microduck-studio','duck-echo','microduck-update-control','microduck-updater-engine'],check=False)
+        if live and stopped: subprocess.run(['systemctl','stop','microduck-studio','duck-echo','microduck-update-control','microduck-updater-engine'],check=False)
         for name in reversed(replaced):
             target=root/name
             if target.is_dir() and not target.is_symlink(): shutil.rmtree(target)
