@@ -13,14 +13,79 @@ from tests.test_helper_calib import CalibCtx
 from studio import commit
 from studio.imu import bus_imu_of, mount_of, Refused, bus_protocol_mismatch
 from tests.test_http import HttpTest, WsClient
+from studio import imu as imu_module
 
 CONFIG = "/etc/robot/feetech-ft5/robotd.toml"
 SAVED = "/etc/robot/feetech-ft5/robotd.saved.toml"
 INFO = {"protocol": "feetech", "board": "qinmo", "identity": [], "profile": "qinmo",
         "gyro_dps_per_lsb": 1/16.4, "identification": "configured_profile"}
 
+INVALID_METADATA = [
+    {"imu_bus":{"protocol":"future","profile":"future"}},
+    {"imu_bus":{"protocol":"future","profile":"legacy"}},
+    {"imu_bus":{"protocol":"feetech","profile":"future"}},
+    {"imu_bus":{"protocol":"feetech","profile":None}},
+    {"imu_bus":{"protocol":None,"profile":"legacy"}},
+    {"imu_bus":{}}, {"imu_bus":None}, {"imu_bus":[]},
+    {"configured_imu_profile":"future", "imu_bus":{"protocol":"feetech","profile":"legacy"}},
+    {"configured_imu_profile":None},
+    {"configured_imu_profile":[], "imu_bus":{"protocol":"feetech"}},
+    {"imu_bus":{"protocol":"dxl2","profile":"qinmo"}},
+    {"configured_imu_profile":"qinmo", "imu_bus":{"protocol":"feetech","profile":"legacy"}},
+    {"configured_imu_profile":"legacy", "imu_bus":None},
+    {"configured_imu_profile":"legacy", "imu_bus":{"protocol":"future","profile":"legacy"}},
+]
+
 
 class QinmoBackendTest(ImuBackendTest):
+    def test_raw_metadata_presence_is_validated_before_projection_and_actions(self):
+        for raw in INVALID_METADATA:
+            for native in (False, True):
+                with self.subTest(raw=raw,native=native):
+                    bus, cal = commissioning_bus(), factory_calib()
+                    cal['calibration']['imu_mount_verified'] = True
+                    backend = self.backend(bus=bus,calib=cal)
+                    backend.view()
+                    backend.last_result = {'ok':True,'mount':[1,0,0,0]}
+                    (bus['native'] if native else bus).update(copy.deepcopy(raw))
+                    view = backend.view()
+                    self.assertIsNone(backend.last_result)
+                    self.assertFalse(view['mount']['verified'])
+                    self.assertTrue(view['profile_error'])
+                    self.assertFalse(commit.pending_matches({'source':'bus'},'bus',bus))
+                    with self.assertRaises(Refused):
+                        backend._coarse_guard(bus)
+                    for args in ({'op':'solve','mode':'full','samples':[{'g':[0,0,-1]}]},
+                                 {'op':'coarse-capture','phase':'still','seconds':.5},
+                                 {'op':'verify','mount_wxyz':[1,0,0,0],'confirmed':True},
+                                 {'op':'profile-select','profile':'qinmo','confirmed':True}):
+                        with self.assertRaises(Refused):
+                            asyncio.run(backend.handle(args))
+
+    def test_metadata_validator_contract_matches_standalone_helper(self):
+        valid = [{}, {'imu_bus':{'protocol':'feetech'}}, {'imu_bus':{'protocol':'dxl2','profile':'legacy'}},
+                 {'configured_imu_profile':'qinmo'}, {'configured_imu_profile':'legacy'},
+                 {'configured_imu_profile':'qinmo','imu_bus':INFO}]
+        for raw in valid + INVALID_METADATA:
+            result = imu_module.imu_bus_metadata(raw)
+            self.assertEqual(result,H.imu_bus_metadata(raw))
+            self.assertEqual(bool(result[2]),raw in INVALID_METADATA)
+
+    def test_pending_present_malformed_metadata_does_not_use_old_absence_fallback(self):
+        bus = {'imu_bus':{'protocol':'feetech','board':'ft6','identity':[1]}}
+        self.assertTrue(commit.pending_matches({'source':'bus'},'bus',bus))
+        for info in (None, {}, [], {'protocol':'future','profile':'legacy'}, {'protocol':'feetech','profile':None}):
+            with self.subTest(info=info):
+                self.assertFalse(commit.pending_matches({'source':'bus','imu_bus':info},'bus',bus))
+
+    def test_i2c_redo_ignores_unused_bus_metadata(self):
+        from studio import helper
+        bus, cal = commissioning_bus(source='bno08x',mode='motion'), factory_calib('bno08x')
+        bus['native']['imu_bus'] = None
+        backend = self.backend(bus=bus,calib=cal)
+        with mock.patch.object(helper,'available',return_value=True), mock.patch.object(helper,'imu_recalibrate',return_value=(True,'imu_entered',{})):
+            self.assertTrue(asyncio.run(backend.handle({'op':'redo-start','confirmed':True}))['ok'])
+
     def test_explicit_unknown_profile_is_not_absent_legacy_metadata(self):
         for location in ("native", "top"):
             bus, cal = commissioning_bus(), factory_calib()
@@ -273,6 +338,51 @@ class QinmoProfileTest(ImuRedoTest):
         code, detail = self.call_redo()
         self.assertEqual(code,H.EXIT_STATE,detail)
         self.assertFalse(self.w.path(OVERRIDE).exists())
+
+    def test_helper_commit_and_readback_reject_all_malformed_present_metadata(self):
+        self.w.capability = False
+        for raw in INVALID_METADATA:
+            with self.subTest(raw=raw):
+                self.w.bus_mutate = lambda bus, raw=raw: bus.update(copy.deepcopy(raw))
+                code, _ = self.call(self.payload(dry=True),verb='calib-commit')
+                self.assertEqual(code,H.EXIT_STATE)
+                op = H.Op(CalibCtx(self.w,b'{}'),'imu-recalibrate')
+                with self.assertRaises(H.Stop):
+                    H.imu_redo_readback(op,self.baseline,'bus')
+                with self.assertRaises(H.Stop):
+                    H.imu_redo_readback(op,self.baseline,'bus',[1,0,0,0])
+
+    def test_ordinary_redo_entry_refuses_unknown_protocol_and_configured_profile(self):
+        self.w.capability = False
+        for raw in (INVALID_METADATA[1], INVALID_METADATA[8]):
+            with self.subTest(raw=raw):
+                self.w.bus_mutate = lambda bus, raw=raw: bus.update(copy.deepcopy(raw))
+                code, detail = self.call_redo()
+                if code == H.EXIT_OK:
+                    self.w.bus_mutate = None
+                    self.call_redo('cancel',session_id=detail['session_id'])
+                self.assertEqual(code,H.EXIT_STATE)
+                self.assertFalse(self.w.path(OVERRIDE).exists())
+
+    def test_ordinary_commit_readback_rejects_metadata_becoming_invalid_after_restart(self):
+        self.w.capability = False
+        def mutate(bus):
+            if any(call[:3] == ['systemctl','restart','robotd'] for call in self.w.calls):
+                bus.update(imu_bus={'protocol':'future','profile':'legacy'})
+        self.w.bus_mutate = mutate
+        code, _ = self.call(self.payload(dry=False),verb='calib-commit')
+        self.assertNotEqual(code,H.EXIT_OK,self.last())
+
+    def test_ordinary_redo_finish_refuses_invalid_raw_metadata_before_writes(self):
+        self.w.capability = False
+        session = self.enter()
+        self.verified()
+        before = self.path.read_bytes()
+        self.w.bus_mutate = lambda bus: bus.update(configured_imu_profile='future')
+        code, detail = self.call_redo('finish',session_id=session,source='bus',quat=[.5]*4)
+        self.assertEqual(code,H.EXIT_STATE,detail)
+        self.assertEqual(self.path.read_bytes(),before)
+        self.assertTrue(self.w.path(OVERRIDE).exists())
 
     def test_restart_failure_rolls_back_config(self):
         self.w.restart_failures = 1

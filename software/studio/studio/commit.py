@@ -470,11 +470,15 @@ def clear_pending(state_dir):
 
 def pending_matches(pending, source, bus):
     """旧站姿结果只兼容 Feetech；新结果要跟采数时的总线板卡完全相同。"""
-    from .imu import bus_imu_of, configured_profile
+    from .imu import bus_imu_of, configured_profile, imu_bus_metadata
     if not pending or pending.get("source") != source:
         return False
     if source != "bus":
         return True
+    if imu_bus_metadata(bus)[2]:
+        return False
+    if "imu_bus" in pending and imu_bus_metadata({"imu_bus": pending["imu_bus"]})[2]:
+        return False
     actual, saved = bus_imu_of(bus), pending.get("imu_bus")
     if saved is None:
         return ((actual is None and not configured_profile(bus)) or

@@ -58,10 +58,11 @@ const CHIP_CN = { bus: '总线小板（ID 200）', bno08x: 'BNO085（I²C）', l
 const BUS_BOARD_CN = { ft6: 'FT6', imu_to_dxl: 'IMU-to-DXL', sflp_124_12: 'SFLP 124/12', qinmo: 'Qinmo（已配置）' };
 const BUS_PROTOCOL_CN = { feetech: 'Feetech', dxl2: 'Dynamixel 2.0' };
 const unsupportedProfile = info => info && info.profile !== undefined && !['legacy', 'qinmo'].includes(info.profile);
+const unsupportedTransport = info => info && (!['feetech', 'dxl2'].includes(info.protocol) || unsupportedProfile(info));
 function chipLabel(imu) {
   if (imu?.source !== 'bus') return CHIP_CN[imu?.source] || imu?.source || '—';
   const info = imu.imu_bus;
-  if (unsupportedProfile(info)) return `IMU 类型不支持（${String(info.profile)}）`;
+  if (imu?.profile_error || unsupportedTransport(info)) return 'IMU 协议 / 类型待确认';
   return info ? `${BUS_BOARD_CN[info.board] || info.board || '总线小板'} · ${BUS_PROTOCOL_CN[info.protocol] || info.protocol}（ID 200）`
     : CHIP_CN.bus;
 }
@@ -535,10 +536,10 @@ function StatusCard({ st, imu, live, age }) {
       <span>芯片</span><b>${chipLabel(imu)}</b>
       ${src === 'bus' ? html`<span>配置类型</span><b>${imu?.configured_imu_profile === 'qinmo' ? 'Qinmo（已配置）'
         : imu?.configured_imu_profile === 'legacy' ? '现有板卡自动识别'
-        : unsupportedProfile(imu?.imu_bus) ? '未确认（实际类型不支持）'
+        : imu?.metadata_error || unsupportedTransport(imu?.imu_bus) ? '待确认（诊断数据不受支持）'
         : imu?.configured_imu_profile != null ? '不支持的类型（需确认）' : '现有板卡（旧版主程序）'}</b>
         <span>实际连接</span><b>${imu?.imu_bus ? chipLabel(imu) : '尚未连接'}</b>
-        <span>角速度单位</span><b class="num">${unsupportedProfile(imu?.imu_bus) ? '待确认（类型不支持）'
+        <span>角速度单位</span><b class="num">${imu?.profile_error || unsupportedTransport(imu?.imu_bus) ? '待确认（诊断数据不受支持）'
           : imu?.imu_bus?.profile === 'qinmo' ? '原始值 ÷ 16.4 °/s'
           : imu?.imu_bus ? '原始值 × 0.0175 °/s' : '连接后显示'}</b>` : null}
       <span>倾角</span><b class="num">${fmt(st?.tilt_deg)}°<small> 跟竖直比；主程序 ${guard?.tilt_tolerance_deg ?? 10}° 以内才让走</small></b>
@@ -560,7 +561,7 @@ function ChipCard({ imu, link, live }) {
   useEffect(() => { setProfile(imu?.configured_imu_profile || 'legacy'); }, [imu?.configured_imu_profile]);
   const selection = imu?.profile_selection;
   const reason = live === false || link.status !== 'open' ? '连不上鸭子：等它回来'
-    : unsupportedProfile(imu?.imu_bus) ? imu?.profile_error || '主程序报告了不支持的 IMU 类型'
+    : imu?.metadata_error || unsupportedTransport(imu?.imu_bus) ? imu?.metadata_error || imu?.profile_error || '主程序报告了不支持的 IMU 类型'
     : !selection?.can_start ? selection?.reason || '主程序尚不支持网页选择类型：请先由维护者更新主程序' : null;
   const select = async () => {
     setBusy(true); setMessage(null);
@@ -577,7 +578,7 @@ function ChipCard({ imu, link, live }) {
     ${imu?.source === 'bus' || imu?.source == null ? html`<label class="sv-small">总线 IMU 类型
       <select aria-label="总线 IMU 类型" value=${profile} disabled=${busy || !!imu?.redo?.active}
         onChange=${e => { setProfile(e.target.value); setMessage(null); }}>
-        <option value="legacy">现有板卡自动识别（默认）</option><option value="qinmo">Qinmo · Feetech · 原始值 ÷ 16.4 °/s</option>
+        <option value="legacy">自动识别（现有板卡）</option><option value="qinmo">Qinmo · Feetech · 原始值 ÷ 16.4 °/s</option>
       </select></label>
       <div class="imu-actions"><${TwoStep} key=${profile} label="保存类型并重新连接"
         ask="已扶稳，确认重连并重新标定" onConfirm=${select} disabled=${busy || !!reason}

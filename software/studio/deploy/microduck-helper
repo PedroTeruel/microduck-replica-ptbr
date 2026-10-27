@@ -1559,6 +1559,9 @@ def wait_motion(op, expected):
             status, cs_err = calibration_status(op)
             if status is not None:
                 mismatches = readback_mismatches(expected, status.get("calibration"))
+                metadata_error = imu_bus_metadata(last)[2]
+                if status.get("imu_source") in (None, "bus") and metadata_error:
+                    mismatches.append(metadata_error)
                 if not mismatches:
                     op.emit("wait", "info", "主程序进了运动模式，标定读回来逐项一致",
                             {"busStatus": status_summary(last), "readback_ok": True})
@@ -1726,11 +1729,9 @@ def verb_calib_commit(op, args, raw):
     rows = data.get("joints") if isinstance(data.get("joints"), list) else []
     if imu["source"] == "bus":
         live, err = robotd_bus_status(op)
-        native = (live or {}).get("native") or {}
-        info = native.get("imu_bus") or (live or {}).get("imu_bus")
-        configured = imu_profile_configured(live or {})
-        if isinstance(info, dict) and info.get("profile", "legacy") not in ("legacy", "qinmo"):
-            raise Stop(EXIT_STATE, "readback_mismatch", "主程序报告了不支持的 IMU 类型，不能沿用旧标定")
+        info, configured, metadata_error = imu_bus_metadata(live)
+        if metadata_error:
+            raise Stop(EXIT_STATE, "readback_mismatch", metadata_error)
         if configured is not None or data.get("imu_bus_profile") == "qinmo":
             if (not isinstance(info, dict) or info.get("profile", "legacy") != data.get("imu_bus_profile", "legacy")
                     or configured != info.get("profile", "legacy")
@@ -1983,10 +1984,9 @@ def imu_redo_readback(op, expected, source, quat=None):
     cal = status.get("calibration")
     if not imu_redo_same(normalized_calibration(expected), normalized_calibration(cal or {})):
         raise Stop(EXIT_STATE, "readback_mismatch", "主程序标定读回与文件逐项不一致：保留会话")
-    native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
-    info = native.get("imu_bus") or bus.get("imu_bus")
-    if source == "bus" and isinstance(info, dict) and info.get("profile", "legacy") not in ("legacy", "qinmo"):
-        raise Stop(EXIT_STATE, "readback_mismatch", "主程序报告了不支持的 IMU 类型，不能沿用旧标定或重做")
+    info, configured, metadata_error = imu_bus_metadata(bus)
+    if source == "bus" and metadata_error:
+        raise Stop(EXIT_STATE, "readback_mismatch", metadata_error)
     if quat is not None:
         if (source == "bus" and isinstance(info, dict)
                 and (info.get("protocol") != cal.get("imu_bus_protocol", "feetech")
@@ -2061,9 +2061,31 @@ def imu_redo_restore_original(op, m):
     return status
 
 
-def imu_profile_configured(bus):
+def imu_bus_metadata(bus):
+    """Validate raw presence before projection; mirrored in the standalone helper."""
+    bus = bus if isinstance(bus, dict) else {}
     native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
-    return native.get("configured_imu_profile", bus.get("configured_imu_profile"))
+    infos = [part["imu_bus"] for part in (native, bus) if "imu_bus" in part]
+    profiles = [part["configured_imu_profile"] for part in (native, bus) if "configured_imu_profile" in part]
+    error = None
+    for info in infos:
+        if (not isinstance(info, dict) or info.get("protocol") not in ("feetech", "dxl2")
+                or info.get("profile", "legacy") not in ("legacy", "qinmo")
+                or (info.get("profile") == "qinmo" and info.get("protocol") != "feetech")):
+            error = "主程序报告了不支持或不一致的 IMU 协议 / 类型：待确认，不能使用旧方向或继续标定"
+    if any(profile not in ("legacy", "qinmo") for profile in profiles):
+        error = "主程序报告了不支持或不一致的 IMU 协议 / 类型：待确认，不能使用旧方向或继续标定"
+    if not error:
+        bindings = [(info["protocol"], info.get("profile", "legacy")) for info in infos]
+        if (any(binding != bindings[0] for binding in bindings[1:])
+                or any(profile != profiles[0] for profile in profiles[1:])
+                or (bindings and profiles and bindings[0][1] != profiles[0])):
+            error = "主程序报告了不支持或不一致的 IMU 协议 / 类型：待确认，不能使用旧方向或继续标定"
+    return (infos[0] if infos and isinstance(infos[0], dict) else None,
+            profiles[0] if profiles else None, error)
+
+def imu_profile_configured(bus):
+    return imu_bus_metadata(bus)[1]
 
 
 def imu_profile_controllers_stop(op):
@@ -2177,13 +2199,11 @@ def imu_profile_gate(op):
         if index:
             op.ctx.sleep(GATE_GAP)
         bus, err = robotd_bus_status(op)
-        profile = imu_profile_configured(bus or {})
+        info, profile, metadata_error = imu_bus_metadata(bus)
+        if metadata_error:
+            raise Stop(EXIT_STATE, "unsupported_daemon", metadata_error)
         if profile not in ("legacy", "qinmo"):
             raise Stop(EXIT_STATE, "unsupported_daemon", "主程序版本尚不支持网页选择 IMU 类型：请先由维护者更新主程序")
-        native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
-        info = native.get("imu_bus") or bus.get("imu_bus")
-        if isinstance(info, dict) and info.get("profile", "legacy") not in ("legacy", "qinmo"):
-            raise Stop(EXIT_STATE, "unsupported_daemon", "主程序报告了不支持的 IMU 类型，未修改配置")
         mode, phase = bus.get("mode"), bus.get("phase")
         if mode == "motion" and phase == "control":
             imu_redo_gate(op, "motion")
@@ -2201,10 +2221,11 @@ def imu_profile_gate(op):
 
 def imu_profile_readback(op, profile, require_discovery=False):
     bus, err = robotd_bus_status(op)
-    if bus is None or imu_profile_configured(bus) != profile:
+    info, configured, metadata_error = imu_bus_metadata(bus)
+    if metadata_error:
+        raise Stop(EXIT_STATE, "readback_mismatch", metadata_error)
+    if bus is None or configured != profile:
         raise Stop(EXIT_STATE, "readback_mismatch", "主程序配置类型没有准确读回，会话保留")
-    native = bus.get("native") if isinstance(bus.get("native"), dict) else {}
-    info = native.get("imu_bus") or bus.get("imu_bus")
     if ((isinstance(info, dict) and (info.get("profile", "legacy") != profile
                                     or (profile == "qinmo" and info.get("protocol") != "feetech")))
             or (require_discovery and not isinstance(info, dict))):

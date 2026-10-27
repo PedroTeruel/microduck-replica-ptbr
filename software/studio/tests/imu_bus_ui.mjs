@@ -122,6 +122,18 @@ try {
   await wait(`document.querySelector('.imu-side').innerText.includes('IMU 类型无法确认')`, 'unknown profile stays visible and unsafe');
   assert.match(await js(`document.querySelector('.imu-side').innerText`), /不支持的 IMU 类型/);
   assert.doesNotMatch(await js(`document.querySelector('.imu-side').innerText`), /原始值 × 0\.0175|方向已确认/);
+  for (const raw of [
+    {imu_bus:{protocol:'future',profile:'legacy'},configured_imu_profile:'legacy'},
+    {imu_bus:{protocol:'feetech',profile:'legacy'},configured_imu_profile:'future'},
+    {imu_bus:null,configured_imu_profile:null},
+  ]) {
+    await js(`props.imu={...props.imu,...${JSON.stringify(raw)},profile_selection:{can_start:true},
+      metadata_error:'主程序报告了不支持的 IMU 协议 / 类型',profile_error:'主程序报告了不支持的 IMU 协议 / 类型'}; draw()`);
+    await pause(100);
+    assert.match(await js(`document.querySelector('.imu-side').innerText`), /待确认/);
+    assert.doesNotMatch(await js(`document.querySelector('.imu-side .imu-kv').innerText`), /原始值 × 0\.0175|原始值 ÷ 16\.4/);
+    assert.equal(await js(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='保存类型并重新连接').disabled`), true);
+  }
   await js(`props.imu = {...props.imu, source:'lsm6dsv16x', imu_bus:null}; draw()`);
   await wait('document.querySelector(".sv-metrics").innerText.includes("LSM6DSV16X（I²C）")', 'I2C label');
   // Exercise the actual global Space handler used beside the IMU page. Keep its
