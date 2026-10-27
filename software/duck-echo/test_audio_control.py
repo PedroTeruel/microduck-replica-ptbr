@@ -28,8 +28,15 @@ class ProtocolTests(unittest.TestCase):
 
     def test_starts_off_and_only_reports_bounded_public_state(self):
         status = self.hub.request({'method': 'status'})
-        self.assertEqual(set(status['status']), {'listening', 'music', 'rhythm', 'error'})
+        self.assertEqual(set(status['status']), {'listening', 'music', 'rhythm', 'error','runtime_root','voice_ready'})
         self.assertFalse(status['status']['listening'])
+        self.assertFalse(status['status']['voice_ready'])
+
+    def test_voice_health_requires_loaded_recognizer(self):
+        self.audio.voice=SimpleNamespace(ready=SimpleNamespace(is_set=lambda:True),recognizer=None)
+        self.assertFalse(self.hub.status()['voice_ready'])
+        self.audio.voice.recognizer=object()
+        self.assertTrue(self.hub.status()['voice_ready'])
 
     def test_music_enables_listening_off_cancels_both(self):
         status = self.hub.request({'method': 'set', 'music': True})['status']

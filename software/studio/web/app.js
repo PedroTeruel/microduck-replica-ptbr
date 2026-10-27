@@ -12,6 +12,7 @@ import { PadPage, padActivity, padGo } from './pad.js';
 import { BatteryCell } from './battery.js';
 import { BatterySettings } from './settings-battery.js';
 import { AiSettings } from './settings-ai.js';
+import { UpdateSettings } from './settings-updates.js';
 import { TuneSection, ModelSettings } from './tune.js';
 import { WifiCard, WifiSettings, DuckAddresses } from './wifi.js';
 import { TwoStep } from './confirm.js';
@@ -914,6 +915,7 @@ function Settings({ st, tune }) {
   const pick = (x) => { setV(x); applyStage(x); try { localStorage.setItem('studio.stage', x); } catch { /* 隐私模式 */ } };
   return html`<div style="display:flex;flex-direction:column;gap:16px;max-width:640px">
     <h1 style="margin:0;font-size:28px;font-weight:600">设置</h1>
+    <${UpdateSettings} api=${api} csrf=${csrf} />
     <${AiSettings} api=${api} />
     <div class="board" style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center">
       <span style="font-size:15px;font-weight:600;flex:1">日志和诊断</span>

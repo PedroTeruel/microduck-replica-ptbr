@@ -8,6 +8,7 @@ import threading
 
 MAX_REQUEST = 8192
 DEFAULT_SOCKET = '/run/duck-echo/control.sock'
+RUNTIME_ROOT = str(Path(__file__).resolve().parent.parent)
 
 
 def decode_request(raw):
@@ -25,11 +26,14 @@ class AudioControl:
         self.lock = threading.RLock()
 
     def status(self):
+        voice = getattr(self.audio,'voice',None)
+        voice_ready = bool(voice is not None and voice.ready.is_set() and voice.recognizer is not None)
         interaction = getattr(self.audio, 'music', None)
         error = getattr(interaction, 'error', None)
         if self.audio.failed:
             error = 'microphone capture unavailable; enable listening to retry'
         return {'listening': bool(self.audio.active), 'music': bool(self.audio.music_mode),
+                'runtime_root':RUNTIME_ROOT,'voice_ready':voice_ready,
                 'rhythm': self.feel.snapshot(), 'error': str(error)[:240] if error else None}
 
     def request(self, request):

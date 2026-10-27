@@ -47,8 +47,14 @@ from .state import summarize
 from .pad import Refused as PadRefused, robot_view  # 手柄页
 from .ai_connections import AiError
 from .ai_service import AiService
+from .updates import Updates, UpdateError, handle as handle_updates
 
 VERSION = "0.1.0-dev"
+RUNTIME_ROOT = Path(__file__).resolve().parents[2]
+try:
+    SUITE_VERSION = json.loads((RUNTIME_ROOT / 'suite-version.json').read_bytes())['version']
+except (OSError,ValueError,KeyError):
+    SUITE_VERSION = None
 MODEL_UPLOAD_LIMIT = 64 * 1024 * 1024
 MODEL_OP_LIMIT = 32768
 STATE_HZ = 10
@@ -72,7 +78,7 @@ class HostGuard:
         self.app, self.guard, self.log = app, guard, log
 
     async def __call__(self, scope, receive, send):
-        if scope['type'] == 'http' and scope.get('path') == '/api/ai':
+        if scope['type'] == 'http' and (scope.get('path') == '/api/ai' or scope.get('path','').startswith('/api/updates')):
             original_send = send
             async def private_send(message):
                 if message['type'] == 'http.response.start':
@@ -149,9 +155,20 @@ def _bus_give_back(by, servo=None):
 
 
 def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev_autologin=False, servo=None, imu=None, pad=None,
-              onboard=None, battery=None, tune=None, net=None, commit=None, ssh_home=None, models=None, sensors=None):
+              onboard=None, battery=None, tune=None, net=None, commit=None, ssh_home=None, models=None, sensors=None, updates=None):
     guard = OriginGuard(names=names)
     ai = AiService(state_dir)
+    updates = updates or Updates()
+    update_commands = set()
+
+    def update_readiness():
+        busy = any(not task.done() for task in update_commands) or model_upload_gate.locked()
+        motion = getattr(pad,'motion_studio',None)
+        if (busy or (servo is not None and servo.state != 'closed')
+            or (motion is not None and (motion.state != 'idle' or motion.session is not None))
+            or (imu is not None and getattr(imu,'_redo_busy',False))):
+            return {'ready':False,'error':'请结束舵机、标定、录制、回放和动作会话后重试'}
+        return {'ready':True}
     if imu is not None and commit is not None:
         imu.commit = commit                          # 标定模式「站姿使能」：跟写进主程序同一套方向
     if onboard is not None:
@@ -191,6 +208,17 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
 
     # ---- HTTP ----
 
+    async def api_updates(request):
+        try:
+            _,sess=session_of(request)
+            result=await handle_updates(request,updates,sess,auth.has_password(),
+                dev_autologin and request.client and request.client.host=='127.0.0.1',origin_ok(request))
+            return JSONResponse(result,headers={'Cache-Control':'no-store'})
+        except UpdateError as error:
+            return JSONResponse({'ok':False,'code':error.code,'error':str(error)},status_code=error.status,headers={'Cache-Control':'no-store'})
+        except Exception:
+            return JSONResponse({'ok':False,'code':'service','error':'更新服务未完成请求，请稍后重试'},status_code=503,headers={'Cache-Control':'no-store'})
+
     async def api_ai(request):
         def response(data, status=200):
             return JSONResponse(data, status_code=status, headers={'Cache-Control':'no-store'})
@@ -225,7 +253,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             return response({'ok':False,'code':'internal','error':'AI 请求未完成，请稍后重试'},500)
 
     async def healthz(request):
-        return JSONResponse({"ok": True, "version": VERSION})
+        return JSONResponse({"ok": True, "version": VERSION,"suite_version":SUITE_VERSION,"runtime_root":str(RUNTIME_ROOT)})
 
     async def api_session(request):
         token, sess = session_of(request)
@@ -480,6 +508,8 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             return model_response({"ok": False, "error": "先登录才能管理模型"}, 401)
         if write and (not origin_ok(request) or request.headers.get("x-csrf") != sess["csrf"]):
             return model_response({"ok": False, "error": "请求校验失败，刷新页面再试"}, 403)
+        if write and updates.installing():
+            return model_response({'ok':False,'error':'软件更新正在进行，请等待完成'},409)
         if models is None:
             return model_response({"ok": False, "error": "当前模式没有开启模型管理"}, 503)
         return None
@@ -529,7 +559,11 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             return model_response({"ok": False, "error": "操作请求过大"}, 413)
         except (ValueError, UnicodeError, RecursionError):
             return model_response({"ok": False, "error": "操作请求格式不正确"}, 400)
-        return await model_result(lambda: models.handle(body, by=_client_desc(request)))
+        task=asyncio.current_task();update_commands.add(task)
+        try:
+            if updates.installing():return model_response({'ok':False,'error':'软件更新正在进行，请等待完成'},409)
+            return await model_result(lambda: models.handle(body, by=_client_desc(request)))
+        finally:update_commands.discard(task)
 
     async def api_model_import(request):
         refused = model_access(request, write=True)
@@ -548,6 +582,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         async with model_upload_gate:
             temporary = None
             try:
+                if updates.installing():return model_response({'ok':False,'error':'软件更新正在进行，请等待完成'},409)
                 length = request.headers.get("content-length")
                 if length is not None and int(length) > MODEL_UPLOAD_LIMIT:
                     raise OverflowError()
@@ -1090,44 +1125,64 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                         update_viewers()
                 elif t == "cmd":
                     name, cid = msg.get("name"), msg.get("id")
+                    args = msg.get('args') or {}
+                    emergency = name == 'relax' or (name == 'pad.op' and isinstance(args,dict)
+                        and args.get('op') in {'stop','estop','relax','record_stop','play_stop','idle_stop'})
+                    if updates.installing() and not emergency and name != 'servo.ports':
+                        await send({'t':'result','id':cid,'ok':False,'reason':'软件更新正在进行，请等待完成；急停仍可使用'})
+                        continue
                     if name not in COMMANDS:
                         await send({"t": "result", "id": cid, "ok": False, "reason": f"这一版还不支持「{name}」"})
                         continue
                     if name == "imu.op":
                         task = asyncio.create_task(run_imu_op(cid, msg.get("args") or {}))
                         cmd_tasks.add(task)
+                        update_commands.add(task)
+                        task.add_done_callback(update_commands.discard)
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "calib.op":
                         task = asyncio.create_task(run_calib_op(cid, msg.get("args") or {}))
                         cmd_tasks.add(task)
+                        update_commands.add(task)
+                        task.add_done_callback(update_commands.discard)
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "tune.op":
                         task = asyncio.create_task(run_tune_op(cid, msg.get("args") or {}))
                         cmd_tasks.add(task)
+                        update_commands.add(task)
+                        task.add_done_callback(update_commands.discard)
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "pad.op":
                         task = asyncio.create_task(run_pad_op(cid, msg.get("args") or {}))
                         cmd_tasks.add(task)
+                        update_commands.add(task)
+                        task.add_done_callback(update_commands.discard)
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "onboard.op":
                         # 不在这里 await：写盘慢的时候也不能挡住后面来的卸力（代码审查 #6 同一个道理）
                         task = asyncio.create_task(run_onboard_op(cid, msg.get("args") or {}))
                         cmd_tasks.add(task)
+                        update_commands.add(task)
+                        task.add_done_callback(update_commands.discard)
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "net.op":
                         # 扫 WiFi 最坏约 10 秒、连 WiFi 在后台跑：都不挡住同一页面的卸力
                         task = asyncio.create_task(run_net_op(cid, msg.get("args") or {}))
                         cmd_tasks.add(task)
+                        update_commands.add(task)
+                        task.add_done_callback(update_commands.discard)
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "servo.op":
                         task = asyncio.create_task(run_servo_op(cid, msg.get("args") or {}))
                         cmd_tasks.add(task)
+                        update_commands.add(task)
+                        task.add_done_callback(update_commands.discard)
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "servo.ports":
@@ -1140,17 +1195,23 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     if name in ("servo.open", "servo.close"):
                         task = asyncio.create_task(run_servo(name, cid, msg.get("args") or {}))
                         cmd_tasks.add(task)
+                        update_commands.add(task)
+                        task.add_done_callback(update_commands.discard)
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "battery.op":
                         task = asyncio.create_task(run_battery_op(cid, msg.get("args") or {}))
                         cmd_tasks.add(task)
+                        update_commands.add(task)
+                        task.add_done_callback(update_commands.discard)
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "relax":
                         # 卸力不在这里 await（代码审查 #6）：同一页面连按不排队，页面断了也不会把它取消
                         task = asyncio.create_task(run_relax(cid))
                         cmd_tasks.add(task)
+                        update_commands.add(task)
+                        task.add_done_callback(update_commands.discard)
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     # 进了 COMMANDS 却忘了写分支：明说，别默认当卸力（手柄页审查：每秒 10 次的 move 会全变成卸力）
@@ -1453,6 +1514,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
 
     @contextlib.asynccontextmanager
     async def lifespan(app):
+        await updates.start_readiness(update_readiness)
         watch = asyncio.create_task(servo_watch())
         feed = asyncio.create_task(pad_feed()) if pad is not None else None
         ob_task = asyncio.create_task(onboard_loop()) if onboard is not None else None
@@ -1465,6 +1527,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         log.info(f"Studio {VERSION} 启动 · Python {platform.python_version()} · {platform.node()}", cat="系统",
                  dedup=False)
         yield
+        await updates.stop_readiness()
         restore.cancel()
         watch.cancel()
         if tune_task is not None:
@@ -1493,6 +1556,8 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         Route("/healthz", healthz),
         Route("/api/session", api_session),
         Route("/api/ai", api_ai, methods=["GET", "POST"]),
+        Route('/api/updates',api_updates,methods=['GET','POST']),
+        Route('/api/updates/upload',api_updates,methods=['POST']),
         Route("/api/login", api_login, methods=["POST"]),
         Route("/api/logout", api_logout, methods=["POST"]),
         Route("/api/password", api_password, methods=["POST"]),

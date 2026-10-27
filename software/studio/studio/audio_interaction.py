@@ -16,8 +16,12 @@ def _number(value, lo, hi):
 
 
 def validate_status(value):
-    if not isinstance(value, dict) or set(value)-{'listening','music','rhythm','error'}:
+    if not isinstance(value, dict) or set(value)-{'listening','music','rhythm','error','runtime_root','voice_ready'}:
         raise ValueError('invalid audio status fields')
+    if 'voice_ready' in value and type(value['voice_ready']) is not bool:
+        raise ValueError('invalid voice readiness')
+    if 'runtime_root' in value and (not isinstance(value['runtime_root'],str) or len(value['runtime_root'])>512):
+        raise ValueError('invalid voice runtime')
     if type(value.get('listening')) is not bool or type(value.get('music')) is not bool:
         raise ValueError('invalid audio switches')
     rhythm = value.get('rhythm')
