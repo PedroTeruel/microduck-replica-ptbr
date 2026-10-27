@@ -39,6 +39,8 @@ HELPER = "/usr/local/sbin/microduck-helper"
 FLAG = "/run/microduck-helper/bus-held"       # 接管期间立着：robotd 的 drop-in 看到它就不肯起来
 LAST_RESULT = "/run/microduck-helper/last-result.json"
 IMU_REDO_MANIFEST = "/var/lib/microduck-helper/imu-recalibrate/manifest.json"
+NATIVE_UPDATE_JOURNAL = "/var/lib/microduck-helper/native-update/journal.json"
+NATIVE_UPDATE_ACTIVE = "/var/lib/microduck-helper/native-update/active"
 
 _avail = None
 
@@ -250,6 +252,52 @@ def imu_redo_state(*, root="/"):
         return empty
     except (OSError, ValueError, TypeError, AttributeError) as err:
         return {**empty, "active": True, "phase": "recovery_required", "reason": f"初次 IMU 校准会话读不回：{err}"}
+
+
+def robotd_update(by, action, *, confirmed=None, timeout=180):
+    """Separate fixed native update stage; no caller paths, binaries or commands."""
+    payload = {"by": by, "action": action}
+    if confirmed is not None:
+        payload["confirmed"] = confirmed
+    return _call("robotd-update", payload, timeout)
+
+
+def native_update_state(*, root="/"):
+    """Bounded persistent motion guard. Malformed/unreadable state fails closed."""
+    empty = {"active": False, "phase": "idle", "running_verified": False}
+    path = os.path.join(root, NATIVE_UPDATE_JOURNAL.lstrip("/"))
+    try:
+        parts = NATIVE_UPDATE_JOURNAL.strip("/").split("/")
+        for index in range(1, len(parts)+1):
+            target = os.path.join(root, *parts[:index])
+            st = os.lstat(target)
+            if ((index < len(parts) and not stat.S_ISDIR(st.st_mode))
+                    or (index == len(parts) and not stat.S_ISREG(st.st_mode))
+                    or (root == "/" and (st.st_uid != 0 or st.st_mode & 0o022))):
+                raise ValueError("更新记录的属主 / 权限不安全")
+        if st.st_size > 65536:
+            raise ValueError("更新记录超出大小限制")
+        with open(path, encoding="utf-8") as stream:
+            value = json.load(stream)
+        if (not isinstance(value, dict) or value.get("schema") != "microduck-native-update/1"
+                or type(value.get("active")) is not bool
+                or type(value.get("restore_pending", False)) is not bool
+                or not re.fullmatch(r"[0-9a-f]{32}", value.get("transaction_id", ""))
+                or value.get("phase") not in ("prepared","guarding","guarded","replacing","replaced","verified_commissioning",
+                    "restoring_normal","verified_motion","factory_handoff_pending","completed","rolled_back",
+                    "recovering","old_restored","recovery_required")
+                or (value.get("reason") is not None and (not isinstance(value["reason"], str) or len(value["reason"]) > 300))):
+            raise ValueError("更新记录格式不正确")
+        public = ("active", "phase", "transaction_id", "available", "installed_sha256", "target_sha256", "running_verified", "mode", "reason")
+        result = {key:value.get(key) for key in public if key in value}
+        result['active'] = result['active'] or value.get('restore_pending') is True or os.path.lexists(os.path.join(root,NATIVE_UPDATE_ACTIVE.lstrip('/')))
+        return result
+    except FileNotFoundError:
+        if os.path.lexists(os.path.join(root,NATIVE_UPDATE_ACTIVE.lstrip('/'))):
+            return {**empty,"active":True,"phase":"recovery_required","reason":"主程序更新保护标记存在，记录缺失"}
+        return empty
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {**empty, "active": True, "phase": "recovery_required", "reason": "主程序更新记录读不回；先恢复主程序更新"}
 
 
 def ssh_status(timeout=10):

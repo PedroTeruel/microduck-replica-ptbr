@@ -1,0 +1,63 @@
+"""Publisher injection is optional, fixed and part of signed suite provenance."""
+import hashlib
+import importlib.util
+import io
+import json
+from pathlib import Path
+import sys
+import tarfile
+import tempfile
+import unittest
+from unittest import mock
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+import build_package as B
+
+
+class NativePackage(unittest.TestCase):
+    def frozen(self):
+        buffer=io.BytesIO()
+        with tarfile.open(fileobj=buffer,mode='w') as archive:
+            for name,data in {'software/studio/deploy/microduck-helper':b'helper','software/studio/deploy/native_update.py':b'module'}.items():
+                info=tarfile.TarInfo(name);info.size=len(data);archive.addfile(info,io.BytesIO(data))
+        return buffer.getvalue()
+
+    def build(self,native=None):
+        self.assertIn('native_robotd',__import__('inspect').signature(B.build).parameters,'missing optional native publisher input')
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);binary=root/'native';binary.write_bytes(native or b'')
+            def run(argv,**kwargs):
+                if argv[0]=='fake-zstd': kwargs['stdout'].write(kwargs['input'])
+                if '-S' in argv: Path(argv[argv.index('-x')+1]).write_bytes(b'signature')
+            with mock.patch.object(B.subprocess,'check_output',side_effect=['a'*40,self.frozen()]), mock.patch.object(B.subprocess,'run',side_effect=run), mock.patch.object(B.shutil,'which',return_value='fake-zstd'):
+                B.build(root,'HEAD','2026.10.28',root,'secret','public',zstd='fake-zstd',native_robotd=binary if native else None)
+            with tarfile.open(root/'2026.10.28.tar.zst') as archive:
+                return {item.name:archive.extractfile(item).read() for item in archive}
+
+    def test_no_native_input_retains_no_payload(self):
+        files=self.build()
+        self.assertNotIn('studio/deploy/native/robotd',files)
+        self.assertNotIn('studio/deploy/native/manifest.json',files)
+
+    def test_reviewed_actual_arm64_pie_is_injected_with_hash_bound_manifest(self):
+        artifact=Path('F:/chengshenzhilu/Robot/Microduck/artifacts/qinmo-imu-20261027/robotd-qinmo-arm64')
+        if not artifact.exists():
+            artifact=Path('/mnt/f/chengshenzhilu/Robot/Microduck/artifacts/qinmo-imu-20261027/robotd-qinmo-arm64')
+        if not artifact.exists(): self.skipTest('reviewed local release input not present')
+        files=self.build(artifact.read_bytes())
+        suite=json.loads(files['suite-version.json']);manifest=json.loads(files['studio/deploy/native/manifest.json'])
+        for name in ('studio/deploy/native/robotd','studio/deploy/native/manifest.json'):
+            self.assertEqual(suite['files'][name],hashlib.sha256(files[name]).hexdigest())
+        self.assertEqual(manifest['sha256'],'febf44e2e5d4e573f4513f25a1ae6480b976c3988dd3d5e7cdfcf84d2a2d5063')
+        self.assertEqual(manifest['source_revision'],'bdf494ab3fd74898b5159419fbffe87113b4097c')
+        self.assertEqual(manifest['architecture'],'aarch64')
+        self.assertEqual(manifest['software_version'],'2026.10.28')
+        self.assertEqual(manifest['size'],5564672)
+        self.assertEqual(manifest['model_api'],2)
+        self.assertEqual(manifest['ipc_api'],40)
+
+    def test_unreviewed_bytes_are_refused(self):
+        with self.assertRaises(ValueError): self.build(b'foreign binary')
+
+
+if __name__=='__main__':unittest.main()

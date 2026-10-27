@@ -1,0 +1,545 @@
+"""Native updater boundary tests; temporary files and simulated systemd, no hardware."""
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+from tests.test_helper_imu_redo import RedoWorld
+from tests.test_helper_calib import CalibCtx, H
+
+MODULE = Path(__file__).resolve().parents[1] / 'deploy/native_update.py'
+N = None
+if MODULE.exists():
+    spec = importlib.util.spec_from_file_location('native_update', MODULE)
+    N = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(N)
+
+
+def elf(tail):
+    return b'\x7fELF\x02\x01\x01' + bytes(9) + b'\x02\x00\xb7\x00' + bytes(44) + tail
+
+
+OLD, NEW = elf(b'old'), elf(b'new')
+SHA = lambda data: hashlib.sha256(data).hexdigest()
+TARGET = '/opt/robot/feetech-ft5-r5/robotd'
+ARGS = [TARGET, '--socket', '/run/robotd.sock', '--params', H.IMU_CONFIG, '--port', '/dev/ttyS2']
+STATE = '/var/lib/microduck-helper/native-update'
+GUARD = '/etc/systemd/system/robotd.service.d/zzzzzzz-microduck-native-update.conf'
+FILES = (H.IMU_CONFIG, H.IMU_CONFIG_SAVED, H.CALIB, H.CALIB_SAVED)
+
+
+class NativeWorld(RedoWorld):
+    def __init__(self, root):
+        super().__init__(root)
+        self.pid = 200
+        self.boot = 'test-boot'
+        self.fail = None
+        self.hook = None
+        self.units['duck-echo'] = 'active'
+        self.exec_override = ' '.join(ARGS)
+        self.path(TARGET).parent.mkdir(parents=True)
+        self.path(TARGET).write_bytes(OLD)
+        os.chmod(self.path(TARGET), 0o755)
+        self.path('/proc/sys/kernel/random').mkdir(parents=True)
+        self.path(H.BOOT_ID).write_text(self.boot)
+        self.publish_process()
+        self.ctx_factory=NativeCtx
+
+    def reboot(self):
+        self.boot='new-boot-'+self.boot
+        self.locks.clear()
+        for path in (N.PROTECTED,N.RESTORE_PERMIT,H.LAST):
+            if self.path(path).exists():self.path(path).unlink()
+        self.pid+=1000
+        self.effective_commissioning=self.path(GUARD).exists() or self.path(H.COMMISSIONING_DROPIN).exists()
+        self.live_mode='commissioning' if self.effective_commissioning else 'motion'
+        self.robotd='active';self.publish_process()
+        for unit in N.CONTROLLERS:self.units[unit]='inactive' if self.path(N.ACTIVE).exists() else 'active'
+
+    def _rpc(self, method, params=None):
+        if method == 'robot.health': return {'battery':{'volts':7.7,'percent':60}}
+        return super()._rpc(method, params)
+
+    def publish_process(self):
+        p = self.path('/proc/' + str(self.pid))
+        p.mkdir(parents=True, exist_ok=True)
+        if (p/'exe').exists(): (p/'exe').unlink()
+        os.link(self.path(TARGET), p/'exe')
+        (p/'stat').write_text(str(self.pid) + ' (robotd) S ' + ' '.join(['0'] * 18 + [str(self.pid)]))
+        (p/'cmdline').write_bytes(b'\0'.join(a.encode() for a in ARGS + (['--commissioning'] if self.live_mode == 'commissioning' else [])) + b'\0')
+
+    def show(self, unit, props):
+        values = super().show(unit, props)
+        if unit == 'robotd':
+            values = values.replace('path=/opt/robot/robotd ;', 'path='+TARGET+' ;')
+            values += f'\nMainPID={self.pid}\nInvocationID=inv-{self.pid}\nExecMainStartTimestampMonotonic={self.pid}\n'
+            values += '\nDropInPaths=/etc/systemd/system/robotd.service.d/zzzz-r17-0151.conf ' + (GUARD if self.path(GUARD).exists() else '') + '\n'
+        if unit == 'padd':
+            values += '\nMainPID=20\nInvocationID=pad-generation\nExecMainStartTimestampMonotonic=20\n'
+        return values
+
+    def run(self, argv):
+        if self.hook: self.hook(argv)
+        if argv == ['systemctl', 'daemon-reload']:
+            self.effective_commissioning = self.path(GUARD).exists() or self.path(H.COMMISSIONING_DROPIN).exists()
+            return 0, '', ''
+        if argv[:3] == ['systemctl', 'stop', 'robotd']:
+            self.calls.append(argv)
+            self.robotd = 'inactive'
+            return 0, '', ''
+        if argv[:3] == ['systemctl', 'start', 'robotd']:
+            self.calls.append(argv)
+            if self.fail == 'start': return 1, '', 'injected failure'
+            self.robotd = 'active'
+            self.live_mode = 'commissioning' if self.effective_commissioning else 'motion'
+            self.pid += 1
+            self.publish_process()
+            return 0, '', ''
+        if argv == [TARGET, 'deployment-info']:
+            return 0, json.dumps({'build': '0791fcd-feetech-qinmo-control.45', 'model_api': 2, 'official_version': '0.15.1'}), ''
+        return super().run(argv)
+
+
+class NativeCtx(CalibCtx):
+    def boot_id(self):return self.w.boot
+
+    def lock(self,path):
+        handle=super().lock(path)
+        if handle is not None and not os.path.lexists(self.p(path)):
+            with open(self.p(path),'xb'):pass
+            os.chmod(self.p(path),0o600)
+        return handle
+
+
+class NativeTest(unittest.TestCase):
+    def setUp(self):
+        self.assertIsNotNone(N, 'native update module must exist')
+        self.tmp = tempfile.mkdtemp(prefix='native-update-')
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.w = NativeWorld(self.tmp)
+        for i, path in enumerate(FILES):
+            p = self.w.path(path); p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes((f'# preserve exact file {i}\nfeetech_calibration = "{H.CALIB}"\n[bus]\nprotocol = "feetech"\n').encode())
+        self.saved = {p: self.w.path(p).read_bytes() for p in FILES}
+        self.release = '/opt/microduck/software/releases/2026.10.28'
+        for name, data in [('studio/deploy/native/robotd', NEW), ('studio/deploy/native/manifest.json', b'{}')]:
+            p = self.w.path(self.release + '/' + name); p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(data)
+        self.ctx = NativeCtx(self.w, b'{}')
+        self.op = H.Op(self.ctx, 'robotd-update')
+        self.pins = mock.patch.multiple(N, REVIEWED_SHA256=SHA(NEW), REVIEWED_SIZE=len(NEW), SUPPORTED_SHA256=(SHA(OLD),))
+        self.pins.start(); self.addCleanup(self.pins.stop)
+        self.manifest = N.native_manifest('2026.10.28', NEW)
+        self.w.path(self.release + '/studio/deploy/native/manifest.json').write_text(json.dumps(self.manifest), encoding='utf-8')
+        for path in (N.MOTION_LOCK,H.SERVICE_LOCK,'/etc/systemd/system/robotd.service.d/zzzz-r17-0151.conf'):
+            p=self.w.path(path);p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b'')
+        self.readiness = mock.patch.object(N, 'json_socket', side_effect=self.socket)
+        self.readiness.start(); self.addCleanup(self.readiness.stop)
+        self.disk = mock.patch.object(N.shutil, 'disk_usage', return_value=shutil._ntuple_diskusage(2**30,0,2**30))
+        self.disk.start(); self.addCleanup(self.disk.stop)
+        self.w.bus_mutate = self.fresh
+
+    def fresh(self, bus):
+        bus.update(fresh_sample=True, all_joints_fresh=True)
+        self.w.motion_cycle=getattr(self.w,'motion_cycle',0)+1
+        bus['cycle']=self.w.motion_cycle
+        bus.setdefault('native', {})['joints'] = [{'id': i, 'feedback_fresh': True, 'sample_age_ms': 10, 'velocity_rad_s': 0., 'position_rad': 0.} for i in sorted(H.JOINT_IDS)]
+        if bus['mode']=='commissioning':
+            self.w.cycle=getattr(self.w,'cycle',0)+1
+            bus.update(policy_motion_enabled=False,power_pending=False,updated_at_us=self.w.cycle*300000,
+                       last_sample={'cycle':self.w.cycle,'at_us':self.w.cycle*300000,
+                       'servos':[{'id':i,'position_raw':2048,'speed_raw':0,'moving':False} for i in H.JOINT_IDS]})
+
+    def socket(self, path, payload):
+        self.assertFalse(self.w.path(STATE+'/journal.json').exists(), 'readiness must precede own journal')
+        return {'ready': True} if payload == {'op':'readiness'} else {'ok':True,'status':{'listening':False,'music':False}}
+
+    def update(self, action='install'):
+        return N.handle(H, self.op, {'by':'Studio','action':action, **({'confirmed':True} if action!='status' else {})}, self.release)
+
+    def journal(self):
+        return json.loads(self.w.path(STATE+'/journal.json').read_text(encoding='utf-8'))
+
+    def test_normal_install_verifies_real_process_and_preserves_exact_user_files(self):
+        self.assertEqual(self.update(), 0)
+        self.assertEqual(self.w.path(TARGET).read_bytes(), NEW)
+        self.assertFalse(self.journal()['active'])
+        self.assertEqual(self.journal()['phase'], 'completed')
+        self.assertTrue(self.journal()['running_verified'])
+        self.assertFalse(self.w.path(GUARD).exists())
+        self.assertEqual(self.w.live_mode, 'motion')
+        self.assertTrue(all(self.w.path(p).read_bytes()==v for p,v in self.saved.items()))
+        self.assertEqual(self.w.units['padd'], 'active')
+
+    def test_fixed_arguments_reject_arbitrary_paths_and_confirmation(self):
+        for args in ({'action':'shell'}, {'action':'install'}, {'action':'recover','confirmed':1},
+                     {'action':'install','confirmed':True,'path':'/tmp/robotd'}, {'action':'status','by':'evil'}):
+            with self.subTest(args=args), self.assertRaises(H.Stop):
+                N.handle(H,self.op,{'by':'Studio',**args},self.release)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),OLD)
+
+    def test_unknown_elf_exec_running_bytes_and_stale_feedback_refuse_before_mutation(self):
+        for mutate in ('unknown_binary','foreign_exec','running_old','stale','torque_unknown'):
+            with self.subTest(mutate=mutate):
+                with tempfile.TemporaryDirectory() as _:
+                    self.w.path(TARGET).write_bytes(OLD)
+                    self.w.publish_process()
+                    if mutate=='unknown_binary': self.w.path(TARGET).write_bytes(elf(b'foreign'))
+                    if mutate=='foreign_exec': self.w.exec_override = ' '.join(ARGS).replace('/run/robotd.sock','/tmp/foreign')
+                    if mutate=='running_old':
+                        p=self.w.path('/proc/'+str(self.w.pid)+'/exe');p.unlink();p.write_bytes(elf(b'other'))
+                    if mutate=='stale': self.w.bus_mutate=lambda b:(self.fresh(b),b['native']['joints'][0].update(sample_age_ms=999))
+                    if mutate=='torque_unknown': self.w.robot.torque=None
+                    with self.assertRaises(H.Stop): self.update()
+                    self.assertFalse(self.w.path(GUARD).exists())
+                    self.assertFalse(self.w.path(STATE+'/journal.json').exists())
+                    self.w.exec_override=' '.join(ARGS);self.w.bus_mutate=self.fresh;self.w.robot.torque=False
+
+    def test_start_failure_leaves_guard_and_recover_restores_old_before_normal(self):
+        self.w.fail='start'
+        self.assertEqual(self.update(),5)
+        self.assertTrue(self.journal()['active'])
+        self.assertTrue(self.w.path(GUARD).exists())
+        self.w.fail=None
+        self.assertEqual(self.update('recover'),0)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),OLD)
+        self.assertFalse(self.journal()['active'])
+        self.assertEqual(self.update('recover'),0)
+
+    def test_user_changes_after_interruption_are_never_overwritten_or_resumed(self):
+        self.w.fail='start';self.update();self.w.fail=None
+        changed = b'# later user change\n'
+        self.w.path(H.CALIB_SAVED).write_bytes(changed)
+        self.assertEqual(self.update('recover'),5)
+        self.assertEqual(self.w.path(H.CALIB_SAVED).read_bytes(),changed)
+        self.assertTrue(self.w.path(GUARD).exists())
+        self.assertTrue(self.journal()['active'])
+
+    def test_helper_trust_rejects_source_tree_before_loading_module(self):
+        self.assertTrue(hasattr(H,'load_native_update'),'missing managed release loader')
+        with self.assertRaises(H.Stop) as error:
+            H.load_native_update(self.op)
+        self.assertEqual(error.exception.result,'native_untrusted_release')
+
+    def test_helper_loads_only_hash_bound_module_from_pinned_managed_release(self):
+        self.assertTrue(hasattr(H,'load_native_update'),'missing managed release loader')
+        helper = self.w.path(self.release+'/studio/deploy/microduck-helper')
+        helper.write_bytes(Path(H.__file__).read_bytes())
+        module = self.w.path(self.release+'/studio/deploy/native_update.py')
+        module.write_bytes(MODULE.read_bytes())
+        suite = self.w.path(self.release+'/suite-version.json')
+        names = ('studio/deploy/microduck-helper','studio/deploy/native_update.py','studio/deploy/native/robotd','studio/deploy/native/manifest.json')
+        suite.write_text(json.dumps({'version':'2026.10.28','files':{name:SHA(self.w.path(self.release+'/'+name).read_bytes()) for name in names}}),encoding='utf-8')
+        current=self.w.path('/opt/microduck/software/current')
+        try: current.symlink_to('releases/2026.10.28',target_is_directory=True)
+        except OSError: self.skipTest('symlink support required for installed release path')
+        with mock.patch.object(H,'__file__',str(helper)):
+            loaded, pinned = H.load_native_update(self.op)
+            self.assertEqual(pinned,self.release)
+            self.assertEqual(loaded.SOURCE,N.SOURCE)
+            module.write_bytes(b'raise RuntimeError("must never execute")')
+            with self.assertRaises(H.Stop) as error: H.load_native_update(self.op)
+            self.assertEqual(error.exception.result,'native_untrusted_release')
+
+    def test_bridge_fixed_verb_and_fail_closed_persistent_state(self):
+        from studio import helper
+        self.assertTrue(hasattr(helper,'robotd_update'),'missing native bridge')
+        with mock.patch.object(helper,'_call',return_value=(True,'native_status',{})) as call:
+            helper.robotd_update('Studio','install',confirmed=True)
+        self.assertEqual(call.call_args.args[:2],('robotd-update',{'by':'Studio','action':'install','confirmed':True}))
+        self.assertFalse(helper.native_update_state(root=self.tmp)['active'])
+        p=self.w.path(STATE+'/journal.json');p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b'{broken')
+        self.assertTrue(helper.native_update_state(root=self.tmp)['active'])
+
+    def test_optional_saved_calibration_absence_is_preserved(self):
+        self.w.path(H.CALIB_SAVED).unlink()
+        self.assertEqual(self.update(),0)
+        self.assertFalse(self.w.path(H.CALIB_SAVED).exists())
+        self.assertFalse(self.journal()['files'][3]['existed'])
+
+    def test_later_created_saved_calibration_blocks_recovery_without_overwrite(self):
+        self.w.path(H.CALIB_SAVED).unlink();self.w.fail='start';self.update();self.w.fail=None
+        self.w.path(H.CALIB_SAVED).write_bytes(b'# created later')
+        self.assertEqual(self.update('recover'),5)
+        self.assertEqual(self.w.path(H.CALIB_SAVED).read_bytes(),b'# created later')
+        self.assertTrue(self.journal()['active'])
+
+    def test_reviewed_payload_accepts_aarch64_pie_but_rejects_other_elf(self):
+        self.assertTrue(N.is_aarch64(NEW[:16]+b'\x03\x00'+NEW[18:]))
+        self.assertFalse(N.is_aarch64(NEW[:18]+b'\x3e\x00'+NEW[20:]))
+
+    def test_two_replayed_motion_snapshots_do_not_prove_freshness(self):
+        self.w.bus_mutate=lambda bus:(self.fresh(bus),bus.update(cycle=1))
+        with self.assertRaises(H.Stop): self.update()
+        self.assertFalse(self.w.path(GUARD).exists())
+
+    def test_precontrol_lands_in_owned_factory_flow_with_controllers_stopped(self):
+        original=self.w.bus_mutate
+        self.w.bus_mutate=lambda bus: (original(bus),bus.update(phase='waiting_for_bus')) if self.w.pid==200 else original(bus)
+        self.assertEqual(self.update(),0)
+        self.assertEqual(self.journal()['mode'],'startup')
+        self.assertTrue(self.w.path(H.COMMISSIONING_DROPIN).exists())
+        self.assertFalse(self.w.path(GUARD).exists())
+        self.assertEqual(self.w.live_mode,'commissioning')
+        self.assertTrue(all(self.w.units.get(unit)=='inactive' for unit in N.CONTROLLERS))
+
+    def test_foreign_guard_is_preserved_during_recovery(self):
+        self.w.fail='start';self.update();self.w.fail=None
+        self.w.path(GUARD).write_bytes(b'# foreign guard')
+        self.assertEqual(self.update('recover'),5)
+        self.assertEqual(self.w.path(GUARD).read_bytes(),b'# foreign guard')
+
+    def test_protected_service_baseline_rejects_foreign_preexisting_generation(self):
+        p=self.w.path(N.PROTECTED);p.write_text(json.dumps({'robotd':{},'padd':{}}))
+        with self.assertRaises(H.Stop): self.update()
+        self.assertFalse(self.w.path(STATE+'/journal.json').exists())
+
+    def test_transaction_refreshes_only_owned_protected_service_generations(self):
+        transaction=N.Transaction(H,self.op,self.release)
+        before={'robotd':transaction.unit('robotd'),'padd':transaction.unit('padd')}
+        self.w.path(N.PROTECTED).write_text(json.dumps(before),encoding='utf-8')
+        self.assertEqual(self.update(),0)
+        after=json.loads(self.w.path(N.PROTECTED).read_bytes())
+        self.assertNotEqual(after['robotd'],before['robotd'])
+        self.assertEqual(after['robotd'],transaction.unit('robotd'))
+
+    def test_reboot_immediately_after_owned_baseline_refresh_is_recoverable(self):
+        t=N.Transaction(H,self.op,self.release)
+        self.w.path(N.PROTECTED).write_text(json.dumps({'robotd':t.unit('robotd'),'padd':t.unit('padd')}))
+        original=H.write_atomic
+        def write(ctx,path,data,*args,**kwargs):
+            value=original(ctx,path,data,*args,**kwargs)
+            if path==N.PROTECTED:raise PowerCut()
+            return value
+        with mock.patch.object(H,'write_atomic',side_effect=write),self.assertRaises(PowerCut):self.update()
+        self.op=H.Op(self.ctx,'robotd-update')
+        self.assertEqual(self.update('recover'),0)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),NEW)
+        self.assertFalse(self.journal()['active'])
+
+    def test_precontrol_reboot_after_factory_handoff_file_can_recover(self):
+        original=self.w.bus_mutate
+        self.w.bus_mutate=lambda bus:(original(bus),bus.update(phase='waiting_for_bus')) if self.w.pid==200 else original(bus)
+        write=H.write_atomic
+        def cut(ctx,path,data,*args,**kwargs):
+            result=write(ctx,path,data,*args,**kwargs)
+            if path==H.COMMISSIONING_DROPIN:raise PowerCut()
+            return result
+        with mock.patch.object(H,'write_atomic',side_effect=cut),self.assertRaises(PowerCut):self.update()
+        self.op=H.Op(self.ctx,'robotd-update')
+        self.assertEqual(self.update('recover'),0)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),OLD)
+        self.assertTrue(self.w.path(H.COMMISSIONING_DROPIN).exists())
+        self.assertFalse(self.journal()['active'])
+
+    def test_foreign_target_change_during_final_check_does_not_get_restored(self):
+        original=self.w.run
+        foreign=elf(b'foreign')
+        def run(argv):
+            if argv==['systemctl','stop','robotd']:self.w.path(TARGET).write_bytes(foreign)
+            return original(argv)
+        self.w.run=run
+        self.assertEqual(self.update(),5)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),foreign)
+        self.assertTrue(self.journal()['active'])
+        self.assertTrue(self.w.path(GUARD).exists())
+
+    def test_mutual_exclusion_refuses_before_own_journal(self):
+        for path in (H.SERVICE_LOCK,N.MOTION_LOCK):
+            original=self.ctx.lock
+            with mock.patch.object(self.ctx,'lock',side_effect=lambda p:None if p==path else original(p)):
+                with self.assertRaises(H.Stop) as error:self.update()
+                self.assertEqual(error.exception.code,4)
+            self.assertFalse(self.w.path(STATE+'/journal.json').exists())
+
+    def test_controller_start_exclusion_persists_after_normal_guard_removal(self):
+        remove=H.remove
+        def cut(ctx,path):
+            result=remove(ctx,path)
+            if path==GUARD:raise PowerCut()
+            return result
+        with mock.patch.object(H,'remove',side_effect=cut),self.assertRaises(PowerCut):self.update()
+        self.assertTrue(self.w.path(STATE+'/active').exists(),'persistent controller exclusion missing')
+        for unit in N.CONTROLLERS:
+            p=self.w.path('/etc/systemd/system/'+unit+'.service.d/zzzzzzz-microduck-native-update.conf')
+            self.assertIn('ConditionPathExists=|!'+STATE+'/active',p.read_text(encoding='utf-8'))
+        self.op=H.Op(self.ctx,'robotd-update')
+        self.assertEqual(self.update('recover'),0)
+        self.assertFalse(self.w.path(STATE+'/active').exists())
+
+    def test_persisted_completed_with_pending_controller_restore_is_busy(self):
+        original=H.write_atomic
+        def cut(ctx,path,data,*args,**kwargs):
+            result=original(ctx,path,data,*args,**kwargs)
+            if path==N.JOURNAL and json.loads(data).get('phase')=='completed':raise PowerCut()
+            return result
+        with mock.patch.object(H,'write_atomic',side_effect=cut),self.assertRaises(PowerCut):self.update()
+        from studio import helper
+        self.assertTrue(helper.native_update_state(root=self.tmp)['active'])
+        self.assertTrue(self.journal()['restore_pending'])
+
+    def test_pending_controller_restore_keeps_persistent_block_until_final_record(self):
+        original=self.w.run
+        def run(argv):
+            if argv==['systemctl','start','padd']:
+                self.assertTrue(self.w.path(STATE+'/active').exists(),'persistent exclusion removed too early')
+                self.assertTrue(self.w.path('/run/microduck-helper/native-update-restore').exists(),'no boot-local restore permit')
+                raise PowerCut()
+            return original(argv)
+        self.w.run=run
+        with self.assertRaises(PowerCut):self.update()
+        self.assertTrue(self.journal()['restore_pending'])
+
+    def test_true_reboot_after_owned_baseline_refresh_can_recover_from_lost_run_state(self):
+        t=N.Transaction(H,self.op,self.release)
+        self.w.path(N.PROTECTED).write_text(json.dumps({'robotd':t.unit('robotd'),'padd':t.unit('padd')}))
+        original=H.write_atomic
+        def cut(ctx,path,data,*args,**kwargs):
+            result=original(ctx,path,data,*args,**kwargs)
+            if path==N.PROTECTED:raise PowerCut()
+            return result
+        with mock.patch.object(H,'write_atomic',side_effect=cut),self.assertRaises(PowerCut):self.update()
+        self.w.reboot();self.op=H.Op(self.ctx,'robotd-update')
+        self.assertEqual(self.update('recover'),0)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),NEW)
+        self.assertEqual(json.loads(self.w.path(N.PROTECTED).read_bytes())['robotd'],t.unit('robotd'))
+
+    def test_same_boot_missing_protected_baseline_does_not_mask_foreign_changes(self):
+        t=N.Transaction(H,self.op,self.release)
+        self.w.path(N.PROTECTED).write_text(json.dumps({'robotd':t.unit('robotd'),'padd':t.unit('padd')}))
+        hook=self.w.run
+        def run(argv):
+            if argv==['systemctl','start','padd'] and self.w.path(N.PROTECTED).exists():self.w.path(N.PROTECTED).unlink()
+            return hook(argv)
+        self.w.run=run
+        self.assertEqual(self.update(),5)
+        self.assertTrue(self.journal()['active'])
+
+    def test_fixed_helper_verb_survives_detached_execution(self):
+        ctx=CalibCtx(self.w,json.dumps({'by':'Studio','action':'install','confirmed':True}).encode())
+        with mock.patch.object(H,'load_native_update',return_value=(N,self.release)):
+            self.assertEqual(H.run(['microduck-helper','robotd-update'],ctx),0)
+        self.assertEqual(self.w.relays[0][0][-2:],['/usr/local/sbin/microduck-helper','robotd-update'])
+        self.assertEqual(self.w.path(TARGET).read_bytes(),NEW)
+
+    @unittest.skipUnless(os.name=='posix' and hasattr(os,'geteuid') and os.geteuid()==0,'POSIX root ownership test')
+    def test_root_owned_transaction_exposes_only_public_record_to_unprivileged_user(self):
+        self.ctx.check_owner=True
+        self.assertEqual(self.update(),0)
+        os.chmod(self.tmp,0o755)
+        script=('import json,os,sys;sys.path.insert(0,'+repr(str(MODULE.parents[1]))+');'
+                'from studio import helper;'
+                's=helper.native_update_state(root='+repr(self.tmp)+');'
+                'print(json.dumps({"state":s,"write":os.access('+repr(str(self.w.path(N.JOURNAL)))+',os.W_OK),'
+                '"backup":os.access('+repr(str(self.w.path(STATE+'/'+self.journal()['transaction_id']+'/robotd')))+',os.R_OK)}))')
+        result=subprocess.run(['/usr/sbin/runuser','-u','nobody','--','/usr/bin/python3.11','-I','-c',script],capture_output=True,text=True,check=True)
+        public=json.loads(result.stdout)
+        self.assertFalse(public['state']['active'])
+        self.assertFalse(public['write']);self.assertFalse(public['backup'])
+
+    @unittest.skipUnless(os.name=='posix','POSIX permissions test')
+    def test_writable_or_symlinked_ancestry_is_refused_before_execution(self):
+        self.ctx.check_owner=True
+        p=self.w.path('/opt/robot/feetech-ft5-r5');os.chmod(p,0o777)
+        with self.assertRaises(H.Stop):self.update()
+        self.assertFalse(self.w.path(STATE+'/journal.json').exists())
+
+    def test_runtime_status_has_no_backup_or_user_file_contents(self):
+        self.update()
+        self.assertEqual(self.update('status'),0)
+        status=self.op.lines[-1]['detail']
+        self.assertNotIn('files',status);self.assertNotIn('protected',status)
+        self.assertNotIn('preserve exact file',json.dumps(status))
+        self.assertLess(len(json.dumps(status)),2000)
+
+    def test_status_distinguishes_payload_availability_from_unsupported_installation(self):
+        self.w.path(TARGET).write_bytes(elf(b'foreign'))
+        self.update('status')
+        status=self.op.lines[-1]['detail']
+        self.assertTrue(status['available'])
+        self.assertFalse(status['running_verified'])
+        self.assertTrue(status.get('reason'))
+
+    def test_malformed_terminal_state_and_unsafe_binary_mode_refuse(self):
+        self.update()
+        from studio import helper
+        m=self.journal();m['restore_pending']='false'
+        self.w.path(N.JOURNAL).write_text(json.dumps(m),encoding='utf-8')
+        self.assertTrue(helper.native_update_state(root=self.tmp)['active'])
+        with self.assertRaises(H.Stop):self.update('recover')
+
+    @unittest.skipUnless(os.name=='posix','POSIX executable permission test')
+    def test_non_executable_known_binary_refuses_before_mutation(self):
+        os.chmod(self.w.path(TARGET),0o644)
+        with self.assertRaises(H.Stop):self.update()
+        self.assertFalse(self.w.path(N.JOURNAL).exists())
+
+    def test_other_helper_control_verbs_refuse_persistent_native_transaction(self):
+        self.w.path(N.ACTIVE).parent.mkdir(parents=True,exist_ok=True)
+        self.w.path(N.ACTIVE).write_text('owned-active')
+        for verb,payload in [('bus-take',{'by':'Studio'}),('bus-give-back',{'by':'Studio','soft':True}),
+                             ('calib-commit',{'by':'Studio'}),('imu-recalibrate',{'by':'Studio','action':'enter','confirmed':True})]:
+            ctx=NativeCtx(self.w,json.dumps(payload).encode())
+            self.assertEqual(H.run(['microduck-helper',verb],ctx),3)
+            self.assertEqual(ctx.stdout.lines()[-1]['detail']['result'],'native_update_active')
+
+    @unittest.skipUnless(os.name=='posix','POSIX durable directory sync')
+    def test_material_directory_sync_failure_cannot_be_silently_accepted(self):
+        transaction=N.Transaction(H,self.op,self.release)
+        self.assertTrue(hasattr(transaction,'sync_dir'),'native transactions require strict directory fsync')
+        with mock.patch.object(N.os,'fsync',side_effect=OSError('injected disk failure')):
+            with self.assertRaises(OSError):transaction.sync_dir('/var/lib')
+
+    def test_fresh_boot_creates_only_fixed_missing_service_lock(self):
+        self.w.path(H.SERVICE_LOCK).unlink()
+        try:result=self.update()
+        except FileNotFoundError:self.fail('fresh boot must allow the fixed service-management lock to be created')
+        self.assertEqual(result,0)
+        self.assertTrue(self.w.path(H.SERVICE_LOCK).exists())
+
+    def test_missing_controller_motion_lock_is_not_replaced_by_a_different_lock(self):
+        self.w.path(N.MOTION_LOCK).unlink()
+        with self.assertRaises(OSError):self.update()
+        self.assertFalse(self.w.path(N.JOURNAL).exists())
+
+
+class PowerCut(BaseException):pass
+
+
+def boundary_test(boundary):
+    def test(self):
+        original=H.write_atomic
+        fired=[]
+        def write(ctx,path,data,*args,**kwargs):
+            result=original(ctx,path,data,*args,**kwargs)
+            match=(path==N.JOURNAL and json.loads(data).get('phase')==boundary)
+            match=match or (boundary=='guard_file' and path==GUARD)
+            match=match or (boundary=='binary_replace' and path==TARGET and data==NEW)
+            if match and not fired:
+                fired.append(True);raise PowerCut()
+            return result
+        with mock.patch.object(H,'write_atomic',side_effect=write),self.assertRaises(PowerCut):self.update()
+        self.assertTrue(fired)
+        # Simulate process death / reboot: descriptors gone, controllers may boot,
+        # durable files and guard remain. Recovery must use real current process.
+        self.op=H.Op(self.ctx,'robotd-update')
+        self.w.reboot()
+        self.assertEqual(self.update('recover'),0)
+        self.assertEqual(self.w.path(TARGET).read_bytes(),NEW if boundary=='completed' else OLD)
+        self.assertFalse(self.journal()['active'])
+        self.assertTrue(all(self.w.path(p).read_bytes()==v for p,v in self.saved.items()))
+    return test
+
+
+for _boundary in ('prepared','guarding','guard_file','guarded','replacing','binary_replace','replaced',
+                  'verified_commissioning','restoring_normal','verified_motion','completed'):
+    setattr(NativeTest,'test_reboot_after_'+_boundary,boundary_test(_boundary))
+
+
+if __name__=='__main__':unittest.main()

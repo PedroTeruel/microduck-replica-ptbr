@@ -7,12 +7,24 @@ from pathlib import Path
 import shutil
 import subprocess
 import tarfile
+import importlib.util
 from package import runtime_path, valid_version
 
-def build(repo, ref, version, output, signing_key, public_key, minisign='minisign', changelog='', zstd='zstd'):
+def build(repo, ref, version, output, signing_key, public_key, minisign='minisign', changelog='', zstd='zstd', native_robotd=None):
     if not valid_version(version): raise ValueError('version must be SemVer')
     revision=subprocess.check_output(['git','-C',str(repo),'rev-parse','--verify',ref+'^{commit}'],text=True).strip()
     frozen=subprocess.check_output(['git','-C',str(repo),'archive','--format=tar',revision,'software/studio','software/duck-echo'])
+    native_files={}
+    if native_robotd is not None:
+        path=Path(native_robotd)
+        if path.is_symlink() or not path.is_file() or path.stat().st_size>32*1024*1024:
+            raise ValueError('native input must be a bounded regular file')
+        spec=importlib.util.spec_from_file_location('publisher_native_manifest',Path(__file__).resolve().parents[1]/'studio/deploy/native_update.py')
+        native=importlib.util.module_from_spec(spec);spec.loader.exec_module(native)
+        data=path.read_bytes(); native_manifest=native.native_manifest(version,data)
+        native.validate_payload(data,native_manifest,version)
+        native_files={'studio/deploy/native/robotd':data,
+                      'studio/deploy/native/manifest.json':(json.dumps(native_manifest,sort_keys=True,indent=2)+'\n').encode()}
     output=Path(output); output.mkdir(parents=True,exist_ok=True)
     artifact=output/f'{version}.tar.zst'; files={}; tar_buffer=io.BytesIO()
     with tarfile.open(fileobj=tar_buffer,mode='w') as dest:
@@ -24,7 +36,15 @@ def build(repo, ref, version, output, signing_key, public_key, minisign='minisig
                     if item.isdir(): continue
                     raise ValueError('runtime whitelist contains a non-regular file')
                 data=source.extractfile(item).read(); files[name]=hashlib.sha256(data).hexdigest()
+                if name in native_files: raise ValueError('native payload must only come from the explicit publisher input')
                 info=tarfile.TarInfo(name); info.size=len(data); info.mode=0o755 if name.endswith('microduck-helper') else 0o644
+                dest.addfile(info,io.BytesIO(data))
+        if native_files:
+            if any(name not in files for name in ('studio/deploy/microduck-helper','studio/deploy/native_update.py')):
+                raise ValueError('frozen source does not contain the native updater')
+            for name,data in native_files.items():
+                files[name]=hashlib.sha256(data).hexdigest()
+                info=tarfile.TarInfo(name);info.size=len(data);info.mode=0o755 if name.endswith('/robotd') else 0o644
                 dest.addfile(info,io.BytesIO(data))
         provenance=json.dumps({'version':version,'source_revision':revision,'files':files},sort_keys=True,indent=2).encode()
         info=tarfile.TarInfo('suite-version.json'); info.size=len(provenance); info.mode=0o644
@@ -65,5 +85,6 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ('repo','ref','version','output','signing-key','public-key'): parser.add_argument('--'+name,required=True)
     parser.add_argument('--minisign',default='minisign'); parser.add_argument('--zstd',default='zstd'); parser.add_argument('--changelog',default='')
+    parser.add_argument('--native-robotd',help='Optional reviewed Qinmo AArch64 ELF; all identities are fixed and verified')
     args=vars(parser.parse_args())
     print(build(**{key.replace('-','_'):value for key,value in args.items()}))
