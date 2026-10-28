@@ -7,9 +7,9 @@
     "pollen-robotics/microduck": {
       "default_branch": "main",
       "head": {
-        "sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
-        "committed_at": "2026-10-27T14:19:13Z",
-        "subject": "Merge pull request #479 from pollen-robotics/vetbook-gallery-cards"
+        "sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+        "committed_at": "2026-10-28T08:28:43Z",
+        "subject": "Merge pull request #431 from pollen-robotics/mediad-no-downscale"
       },
       "latest_stable_release": {
         "tag_name": "daemon-v0.17.9",
@@ -119,18 +119,6 @@
           "verification": "Read-only specs/lap/guard/getup/control/test source; no execution including dryrun, nohardwareacceptance."
         },
         {
-          "tag": "daemon-dev-vetbook-gallery-cards",
-          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-vetbook-gallery-cards",
-          "published_at": "2026-10-27T14:26:09Z",
-          "version": "daemon 0.17.9-dev.1455.0f72879 (vetbook-gallery-cards)",
-          "head_sha": "0f728794479a3a2238fa1ee489d8c40a7230b579",
-          "prerelease": true,
-          "related_pull_request": 479,
-          "change": "Vetbook actual card images/background warming/sticker aspect ratio; not a stable daemon upgrade.",
-          "priority": "low_reference_only",
-          "replica_integration": "not_integrated; Space deployment not verified"
-        },
-        {
           "tag": "daemon-dev-codex/gamepad-connection",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-codex/gamepad-connection",
           "published_at": "2026-10-27T16:34:38Z",
@@ -169,16 +157,17 @@
         {
           "tag": "daemon-dev-main",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-main",
-          "published_at": "2026-10-27T14:28:59Z",
-          "head_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
+          "published_at": "2026-10-28T08:37:03Z",
+          "head_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
           "prerelease": true,
-          "scope_note": "Development main now at5def2f3 with gallery/card followup; stable remains0.17.9/96b89; not integrated into replica.",
-          "previous_head_sha": "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
+          "scope_note": "Development main at6cdfdaad includes merged camera weak-link frame dropping plus earlier fall arming/gallery; stable0.17.9 remains96b89. No tracker runtime integration.",
+          "previous_head_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
           "head_history": [
             "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
-            "2091d42286fa29a1e24ea4f072191a4836fd1a6e"
+            "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
+            "5def2f3e66501f0f365d4fb1183020b8ee875443"
           ],
-          "version": "daemon 0.17.9-dev.1457.5def2f3 (main)"
+          "version": "daemon 0.17.9-dev.1470.6cdfdaa (main)"
         },
         {
           "tag": "daemon-dev-ground-grasp-x",
@@ -226,13 +215,6 @@
           "prerelease": true
         },
         {
-          "tag": "daemon-dev-mediad-no-downscale",
-          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-mediad-no-downscale",
-          "published_at": "2026-10-21T16:08:32Z",
-          "head_sha": "b0d9466eb5f75b8ee9a9e143592e8d324525b9b6",
-          "prerelease": true
-        },
-        {
           "tag": "daemon-dev-mpegts_udp",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-mpegts_udp",
           "published_at": "2026-10-20T10:56:11Z",
@@ -250,6 +232,41 @@
         }
       ],
       "pending_pull_requests": [
+        {
+          "number": 431,
+          "title": "mediad: lower the frame rate on a weak link, never the resolution",
+          "state": "closed",
+          "draft": false,
+          "merged_at": "2026-10-28T08:28:44Z",
+          "created_at": "2026-10-21T16:00:11Z",
+          "updated_at": "2026-10-28T08:28:47Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/431",
+          "head_sha": "b0d9466eb5f75b8ee9a9e143592e8d324525b9b6",
+          "base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+          "base_branch": "main",
+          "merge_commit_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/5def2f3e66501f0f365d4fb1183020b8ee875443...6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "scope_note": "Main merge changes only mediad/src/pipeline.rs (6added lines including comments): enable-mitigation-modes=downsampled makes weak links drop frames rather than lower resolution, keeping camera buffers away from system-memory scaling path into mpph264enc. Does not change FOV, models, sensors or motor control.",
+          "priority": "higher_before_real_camera_weak_link_acceptance; review_plugin_and_encoder_stack",
+          "replica_integration": "not_integrated_by_tracker; fixed migration runtimec615 has no enable-mitigation-modes or downsampled assignment in mediad pipeline; image/device acceptance unchanged",
+          "submitter_validation": {
+            "hardware": "Zero3W with companion Yocto bundle, mediad change atop0.17.8",
+            "weak_link": "Chrome behind600kbit/s policer:1280x720 maintained,15fps reported, no negotiation error/kernel issue observed",
+            "mediad_tests_reported_passed": 117,
+            "clippy_note": "Submitter reports Rust1.99 clippy-Dwarnings fails on existing main warnings; tracker did not reproduce or execute tests.",
+            "replica_hardware_tested": false
+          },
+          "associated_runtime_bundle": {
+            "repo": "pollen-robotics/microduck_yocto",
+            "pull_request": 59,
+            "url": "https://github.com/pollen-robotics/microduck_yocto/pull/59",
+            "head_sha": "7f5eff804d83770bc93d9d65b632a3254504163c",
+            "merge_commit_sha": "00b27921d30f25433846871d0c6f89bfc6847540",
+            "merged_at": "2026-10-26T11:06:11Z",
+            "scope": "Already merged Oct26; removes mpph264enc identity converter override and retains default videoconvert/videoscale passthrough while retaining bitrate support. Pair with mediad mitigation and verify installed plugin, not a new Yocto release inferred here."
+          },
+          "this_review": "Read-only fixed1file patch, PR431 and companion Yocto59 patch/body, tags/releases availability and fixed local sourcec615. No downloaded implementation execution, builds, installation, camera/robot/onlinepage access."
+        },
         {
           "number": 481,
           "title": "ground pick: the static low grasp by default",
@@ -568,11 +585,11 @@
           "draft": false,
           "merged_at": null,
           "created_at": "2026-10-27T01:50:52Z",
-          "updated_at": "2026-10-27T02:23:18Z",
-          "head_sha": "db22c24dde3658a0023c33b00c5c723d2179b34e",
-          "base_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "updated_at": "2026-10-28T04:25:24Z",
+          "head_sha": "3e5993082f3b32870b000453d8ce152d7bf79ddd",
+          "base_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
           "base_branch": "main",
-          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...db22c24dde3658a0023c33b00c5c723d2179b34e",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/5def2f3e66501f0f365d4fb1183020b8ee875443...3e5993082f3b32870b000453d8ce152d7bf79ddd",
           "scope_note": "Official console wirePad releases joystick pointer ownership on window blur or lostpointercapture, centres each knob and zeros its intent, and ignores unrelated contacts until a fresh pointerdown. Its 10 Hz intent refresh previously kept the daemon deadman alive after focus loss. Studio is a separate client and already has blur/visibilitychange releaseAll handling in existing source; applicability must be checked independently.",
           "priority": "higher_before_official_console_drive_acceptance",
           "replica_integration": "not_integrated_or_executed; not included in official 0.17.9, published replica image, or documented local migration checkpoint",
@@ -584,7 +601,16 @@
             "physical_robot_tested": false,
             "verified_by_this_tracker": false
           },
-          "this_review": "Read-only fixed diff and source-context inspection; no downloaded source/test execution or hardware validation."
+          "this_review": "Read-only fixed diff and source-context inspection; no downloaded source/test execution or hardware validation.",
+          "history": [
+            {
+              "head_sha": "db22c24dde3658a0023c33b00c5c723d2179b34e",
+              "base_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+              "updated_at": "2026-10-27T02:23:18Z",
+              "superseded_at_check_utc": "2026-10-28T09:23:41.758197+00:00"
+            }
+          ],
+          "head_refresh_note": "Merged already-recorded main into PR branch. Previously verified identical blob SHAs for all3 feature files; no new joystick fix or validation, remains unmerged."
         },
         {
           "number": 469,
@@ -1011,16 +1037,17 @@
       },
       "main_since_latest_stable": {
         "from_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
-        "to_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
-        "fixed_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...5def2f3e66501f0f365d4fb1183020b8ee875443",
-        "commit_count": 6,
-        "file_count": 20,
+        "to_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+        "fixed_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+        "commit_count": 8,
+        "file_count": 21,
         "merged_pull_requests": [
           476,
           478,
-          479
+          479,
+          431
         ],
-        "release_status": "Main/API45 includes fall arming plus gallery/cards; stable0.17.9/96b89 remains unchanged and local migration is still pinned to that stable.",
+        "release_status": "Main/API45 includes fall arming, gallery/cards and weak-link frame-rate-only camera mitigation; stable0.17.9/96b89 unchanged. This is not a new stable release.",
         "replica_integration": "not_integrated; isolated migration remains pinned to stable96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
         "main_api_version": 45
       },
@@ -1049,12 +1076,39 @@
           "tracking_status": "retired_tag_and_release_not_found",
           "last_checked_at_utc": "2026-10-27T15:00:36.501280+00:00",
           "availability_note": "Git ref and release-by-tag both404; last known47d2a23 retained historically. Feature is still merged into main, this is not a rollback."
+        },
+        {
+          "tag": "daemon-dev-vetbook-gallery-cards",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-vetbook-gallery-cards",
+          "published_at": "2026-10-27T14:26:09Z",
+          "version": "daemon 0.17.9-dev.1455.0f72879 (vetbook-gallery-cards)",
+          "head_sha": "0f728794479a3a2238fa1ee489d8c40a7230b579",
+          "prerelease": true,
+          "related_pull_request": 479,
+          "change": "Vetbook actual card images/background warming/sticker aspect ratio; not a stable daemon upgrade.",
+          "priority": "low_reference_only",
+          "replica_integration": "not_integrated; Space deployment not verified",
+          "tracking_status": "retired_tag_and_release_not_found",
+          "last_checked_at_utc": "2026-10-28T09:23:41.758197+00:00",
+          "availability_note": "Git ref and release-by-tag independently returned404; fixed feature commit remains reachable and merged into main. Retain as provenance, not a feature rollback or a recurring new check failure.",
+          "fixed_source_url": "https://github.com/pollen-robotics/microduck/commit/0f728794479a3a2238fa1ee489d8c40a7230b579"
+        },
+        {
+          "tag": "daemon-dev-mediad-no-downscale",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-mediad-no-downscale",
+          "published_at": "2026-10-21T16:08:32Z",
+          "head_sha": "b0d9466eb5f75b8ee9a9e143592e8d324525b9b6",
+          "prerelease": true,
+          "tracking_status": "retired_tag_and_release_not_found",
+          "last_checked_at_utc": "2026-10-28T09:23:41.758197+00:00",
+          "availability_note": "Git ref and release-by-tag independently returned404; fixed feature commit remains reachable and merged into main. Retain as provenance, not a feature rollback or a recurring new check failure.",
+          "fixed_source_url": "https://github.com/pollen-robotics/microduck/commit/b0d9466eb5f75b8ee9a9e143592e8d324525b9b6"
         }
       ],
       "previous_head": {
-        "sha": "e6ff9991534580bff5c932ca10b3f1b8da851ce2",
-        "committed_at": "2026-10-27T14:01:28Z",
-        "subject": "Merge pull request #478 from pollen-robotics/vetbook-gallery"
+        "sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
+        "committed_at": "2026-10-27T14:19:13Z",
+        "subject": "Merge pull request #479 from pollen-robotics/vetbook-gallery-cards"
       },
       "tracked_model_metadata": [
         {
@@ -1070,6 +1124,13 @@
           "tag": "v9",
           "sha": null,
           "present": false
+        }
+      ],
+      "head_history": [
+        {
+          "sha": "e6ff9991534580bff5c932ca10b3f1b8da851ce2",
+          "committed_at": "2026-10-27T14:01:28Z",
+          "subject": "Merge pull request #478 from pollen-robotics/vetbook-gallery"
         }
       ]
     },
@@ -1349,25 +1410,43 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-28T00:20:51.849064+00:00",
+  "checked_at_utc": "2026-10-28T09:23:41.758197+00:00",
   "latest_review": {
-    "default_branch_changes": false,
+    "default_branch_changes": true,
+    "default_branch_details": {
+      "pollen-robotics/microduck": {
+        "before": "5def2f3e66501f0f365d4fb1183020b8ee875443",
+        "after": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde"
+      }
+    },
     "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
     "previous_tracked_prs_merged": false,
-    "new_pull_requests": {
+    "newly_recorded_merged_pull_requests": {
       "pollen-robotics/microduck": [
-        481
+        431
       ]
     },
-    "new_development_releases": [
-      "daemon-dev-static-grasp-default"
-    ],
-    "changed_pull_request_heads": {},
+    "new_pull_requests": {},
+    "new_development_releases": [],
     "moved_development_tags": [
-      "daemon-dev-ground-grasp-x"
+      "daemon-dev-main"
     ],
+    "confirmed_retired_development_tags": [
+      "daemon-dev-vetbook-gallery-cards",
+      "daemon-dev-mediad-no-downscale"
+    ],
+    "changed_pull_request_heads": {
+      "pollen-robotics/microduck": {
+        "471": {
+          "before": "db22c24dde3658a0023c33b00c5c723d2179b34e",
+          "after": "3e5993082f3b32870b000453d8ce152d7bf79ddd",
+          "substantive_feature_change": false,
+          "reason": "Main synchronized; feature blobs identical."
+        }
+      }
+    },
     "official_blog_new_articles": false,
     "official_blog_article_count": 3,
     "official_blog_latest_on": "2026-10-23",
@@ -1375,7 +1454,7 @@
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "Static low-grasp PR481 remains unmerged, dev tag48dabad atopmain. Required public policy-setv9 absent; standalone HF model manifest XL330, notHD1910 validated. Older divergentground-grasp-x adds optional secondgrasp at8df04b3. Allfourdefaultheads,stable,earlierPRs,blog andlocalmigrationunchanged. Docs only."
+    "notes": "PR431 camera mitigation is merged on main and dev-main6cdf, not in stable0.17.9. Removed2devtags independently verified404 and moved to historical records with fixed source preserved. PR471 metadata caught up without new functional change. Threeotherdefaultheads,modelmetadata,stable and documentedfixedmigrationunchanged. Docs only."
   },
   "replica_migration": {
     "recorded_on": "2026-10-27",
