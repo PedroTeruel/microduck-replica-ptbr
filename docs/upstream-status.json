@@ -20,6 +20,88 @@
       },
       "tracked_development_releases": [
         {
+          "tag": "daemon-dev-footsteps",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-footsteps",
+          "published_at": "2026-10-28T13:29:16Z",
+          "version": "daemon 0.17.9-dev.1471.bd7a367 (footsteps)",
+          "head_sha": "bd7a3677b887b96cf140b603efee36b449f09172",
+          "prerelease": true,
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...bd7a3677b887b96cf140b603efee36b449f09172",
+          "comparison_to_recorded_main": {
+            "from_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+            "to_sha": "bd7a3677b887b96cf140b603efee36b449f09172",
+            "status": "ahead",
+            "ahead_by": 1,
+            "behind_by": 0,
+            "file_count": 23
+          },
+          "change": "Opt-in planned footsteps in Walk: paired footstep-tracking policy and FootstepNet planner, contact-odometry sole poses, replan on anchor switches, swing target pose in twist slots rather than gait velocity.",
+          "priority": "medium_research_reference; requires_HD1910_tracking_policy_geometry_and_control_acceptance",
+          "replica_integration": "not_integrated; no robot/model replacement, package installation, downloaded implementation execution or migration branch changes by tracker",
+          "configuration": {
+            "required_together": [
+              "policy.footsteps",
+              "policy.footstep_planner"
+            ],
+            "optional": "policy.footstep_horizon_s",
+            "default_horizon_s": 1.0,
+            "max_planned_steps_per_touchdown": 8,
+            "default_enabled": false,
+            "walk_mode_only": true,
+            "incomplete_pair": "load refused"
+          },
+          "planner_model": {
+            "repo": "apirrone/microduck-footstepnet",
+            "sha": "1132e672d261cb8520c296acaa06fac955424b14",
+            "fixed_readme_url": "https://huggingface.co/apirrone/microduck-footstepnet/blob/1132e672d261cb8520c296acaa06fac955424b14/README.md",
+            "contract": "obs(N,8)f32 to step(N,3)f32; options metadata supplies geometry/limits; loaded and warmed before driving",
+            "sole_center_forward_shift_m": 0.007,
+            "feet_spacing_m": 0.095,
+            "sole_size_m": [
+              0.054,
+              0.041
+            ],
+            "step_limits": {
+              "forward_m": 0.05,
+              "backward_m": 0.05,
+              "lateral_m": 0.02,
+              "yaw_rad": 0.5235987755982988
+            },
+            "limits_provisional_per_model_card": true,
+            "weights_downloaded": false
+          },
+          "tracking_policy_dependency": {
+            "task_family": "Mjlab-Footsteps-*",
+            "model_card_named_task": "Mjlab-Footsteps-Flat-Backlash-MicroDuck",
+            "training_branch_named_by_model_card": "footsteps",
+            "separate_from_planner": true,
+            "only_ONNX_in_source_delta": "duck-control/tests/fixtures/footstepnet.onnx",
+            "production_tracking_policy_delivered_in_this_delta": false,
+            "HD1910_or_BAM_fit_verified": false
+          },
+          "control_semantics": {
+            "requires_contact_odometry": true,
+            "touchdown": "odometry anchor foot switch, swing target fixed between switches",
+            "released_stick": "neutral stance stepping, then after0.75sidle handoff at next touchdown; not immediate halt",
+            "planner_error": "immediate ordinary-gait handoff, not global torque disable",
+            "body_pose_and_skills": "higher priority than footstep walking",
+            "obstacle_in_robot_joystick_path": null,
+            "camera_or_ToF_obstacle_integration": false
+          },
+          "verification_source": {
+            "pure_logic_fixture_cases": 12,
+            "pure_logic_fixture_steps": 221,
+            "landing_parity_tolerance": 1e-06,
+            "ORT_test_landing_tolerance": 0.0001,
+            "ORT_tests_default_ignored": true,
+            "ORT_minimum": "1.23",
+            "fixture_blob_sha": "ff6b586741d5ac3e4e26b1495c668d8a7bb2e2c9",
+            "test_model_fixture_blob_sha": "b4a7a808df5ecf52ff25d0a8a5b329370ec755d4",
+            "this_review": "Read source/tests/docs and parsed JSONfixture/modelcard metadata only; no test or ONNX execution, no physical acceptance."
+          },
+          "scope_limits": "Not merged into default main or stable; no source for new camera/ToF/sound/BAM support. Planner reach rates in modelcard are planning-environment results, not HD1910 gait/obstacle-avoidance acceptance."
+        },
+        {
           "tag": "daemon-dev-static-grasp-default",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-static-grasp-default",
           "published_at": "2026-10-27T20:50:31Z",
@@ -1124,6 +1206,12 @@
           "tag": "v9",
           "sha": null,
           "present": false
+        },
+        {
+          "key": "footstepnet-planner-model",
+          "api_url": "https://huggingface.co/api/models/apirrone/microduck-footstepnet",
+          "kind": "model_sha",
+          "sha": "1132e672d261cb8520c296acaa06fac955424b14"
         }
       ],
       "head_history": [
@@ -1410,43 +1498,19 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-28T09:23:41.758197+00:00",
+  "checked_at_utc": "2026-10-28T13:32:39.603032+00:00",
   "latest_review": {
-    "default_branch_changes": true,
-    "default_branch_details": {
-      "pollen-robotics/microduck": {
-        "before": "5def2f3e66501f0f365d4fb1183020b8ee875443",
-        "after": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde"
-      }
-    },
+    "default_branch_changes": false,
     "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
     "previous_tracked_prs_merged": false,
-    "newly_recorded_merged_pull_requests": {
-      "pollen-robotics/microduck": [
-        431
-      ]
-    },
     "new_pull_requests": {},
-    "new_development_releases": [],
-    "moved_development_tags": [
-      "daemon-dev-main"
+    "new_development_releases": [
+      "daemon-dev-footsteps"
     ],
-    "confirmed_retired_development_tags": [
-      "daemon-dev-vetbook-gallery-cards",
-      "daemon-dev-mediad-no-downscale"
-    ],
-    "changed_pull_request_heads": {
-      "pollen-robotics/microduck": {
-        "471": {
-          "before": "db22c24dde3658a0023c33b00c5c723d2179b34e",
-          "after": "3e5993082f3b32870b000453d8ce152d7bf79ddd",
-          "substantive_feature_change": false,
-          "reason": "Main synchronized; feature blobs identical."
-        }
-      }
-    },
+    "changed_pull_request_heads": {},
+    "moved_development_tags": [],
     "official_blog_new_articles": false,
     "official_blog_article_count": 3,
     "official_blog_latest_on": "2026-10-23",
@@ -1454,7 +1518,7 @@
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "PR431 camera mitigation is merged on main and dev-main6cdf, not in stable0.17.9. Removed2devtags independently verified404 and moved to historical records with fixed source preserved. PR471 metadata caught up without new functional change. Threeotherdefaultheads,modelmetadata,stable and documentedfixedmigrationunchanged. Docs only."
+    "notes": "Newfootstepsdev atbd7a367 is1commit23files atoprecordedmain6cdf, notmerged orstable. Pairedtrackingpolicy+planner andodometry required; joystick obstacleNone, releasedstick delayshandoffuntiltouchdown; noHD1910physicalacceptance. Readonlysourceandmetadata, noexecution. Fourdefaultheads,stable,otherPRs,blog and documentedmigrationunchanged."
   },
   "replica_migration": {
     "recorded_on": "2026-10-27",
