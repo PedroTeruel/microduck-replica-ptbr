@@ -2,6 +2,8 @@
 
 > 用户看这份：[烧录和第一次使用](烧录和第一次使用.md)。下面是做镜像的人看的。
 
+> 热点不出现时，先确认主板是 **Zero 3W 还是无板载 Wi-Fi 的 3E**。热点不依赖舵机 ID；本镜像尚未验证 3E 适配。见[热点与主板型号排查](../../docs/热点与主板型号排查.md)。
+
 > **2026-10-27发行：**[20261027 Latest镜像](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261027)与[2026.10.27软件包](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-software-v2026.10.27)已公开，预装网页签名更新/回退、匹配helper及本地R3坐站语音，包含中文ASR模型和ARM64依赖。运行来源e382f074，签名包与镜像使用同一个安装器。服务器端全部附件大小/hash与公开下载入口已核验，鸭子暂时关闭，未烧卡/上机，本版实物验收待完成；[产物hash与验证边界](../../docs/superpowers/verification/2026-10-27-web-updates.md)、[软件更新与语音用法](../../docs/软件更新与语音使用说明-20261027.md)。下列10-25笔记保留为历史状态。
 
 > 2026-10-25：[软件功能与升级总账](../../docs/软件功能与升级总账.md)记录了源码、现机与镜像的差异，以及共用组件包的后续升级方向。今天的独立语音服务和选定频段保持尚未接入通用镜像构建；在线升级仍待实现。
