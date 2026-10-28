@@ -106,22 +106,22 @@
         {
           "tag": "daemon-dev-footsteps",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-footsteps",
-          "published_at": "2026-10-28T15:35:18Z",
-          "version": "daemon 0.17.9-dev.1485.b11a4ad (footsteps)",
-          "head_sha": "b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
+          "published_at": "2026-10-28T16:03:25Z",
+          "version": "daemon 0.17.9-dev.1489.f0034aa (footsteps)",
+          "head_sha": "f0034aa99632ac4b8a9a955fd584e8f303c4085d",
           "prerelease": true,
-          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...f0034aa99632ac4b8a9a955fd584e8f303c4085d",
           "comparison_to_recorded_main": {
             "from_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
-            "to_sha": "b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
+            "to_sha": "f0034aa99632ac4b8a9a955fd584e8f303c4085d",
             "status": "ahead",
-            "ahead_by": 10,
+            "ahead_by": 14,
             "behind_by": 0,
             "file_count": 38,
-            "scope_note": "Verified complete fixed compare6cdf...b11:10commits38unique paths; one ONNXtestfixture only."
+            "scope_note": "Verified complete fixed compare6cdf...f003:14commits38unique paths; latest4commits change3existing source paths only, no new model bytes."
           },
-          "change": "Adds default-off footstep_control switch, proportional stick steps and0.4s idle handoff; goal walking via robot.footstepGoal and camera AprilTag floor-target CLI; incorporates beta camera calibration from PR484 only into this development branch.",
-          "priority": "medium_research_reference; requires_HD1910_tracking_policy_geometry_and_control_acceptance",
+          "change": "Finite camera re-sighting for goto tag: approach a staging pose22cm behind footprints, at most3sighting rounds, then send the final footprint goal. Adds look-only vision diagnostics and fixes world-goal norm rejection. Returned miss is staging error, not final measured accuracy.",
+          "priority": "medium_research_reference; camera_calibration_alpha_geometry_HD1910_tracking_and_final_physical_accuracy_require_separate_acceptance",
           "replica_integration": "not_integrated; no robot/model replacement, package installation, downloaded implementation execution or migration branch changes by tracker",
           "configuration": {
             "enable_key": "policy.footstep_control",
@@ -181,7 +181,8 @@
             "camera_or_ToF_obstacle_integration": false,
             "joystick_target": "Normalized deflection times step limits; old look-ahead carrot planning removed; default full twist0.4/0.3/1.0 scales need client-specific review.",
             "camera_tag_goal_acquisition": true,
-            "ToF_obstacle_avoidance": false
+            "ToF_obstacle_avoidance": false,
+            "camera_tag_loop": "Finite approach/re-sight rounds plus final open-loop leg; no ToF obstacle integration."
           },
           "verification_source": {
             "pure_logic_fixture_cases": 12,
@@ -194,7 +195,7 @@
             "test_model_fixture_blob_sha": "b4a7a808df5ecf52ff25d0a8a5b329370ec755d4",
             "this_review": "Read source/tests/docs and parsed JSONfixture/modelcard metadata only; no test or ONNX execution, no physical acceptance."
           },
-          "scope_limits": "Development only. Prior joystick-only/no-camera and0.75sidle records are superseded here. API46 expanded again without a number bump and differs from BluetoothAPI46. No ToF obstacle integration, new voice assets or HD1910BAM adaptation.",
+          "scope_limits": "Development only, not merged into main or stable. Finite stop/re-sight corrections followed by an open-loop final leg, not continuous visual servoing, SLAM or ToF avoidance. API46 unchanged while CLI flags/JSON semantics and world-goal admission change. No HD1910 adaptation, model-byte or voice-asset changes in latest increment.",
           "history": [
             {
               "head_sha": "bd7a3677b887b96cf140b603efee36b449f09172",
@@ -264,17 +265,222 @@
                 "camera_or_ToF_obstacle_integration": false
               },
               "superseded_at_check_utc": "2026-10-28T15:38:08.759799+00:00"
+            },
+            {
+              "tag": "daemon-dev-footsteps",
+              "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-footsteps",
+              "published_at": "2026-10-28T15:35:18Z",
+              "version": "daemon 0.17.9-dev.1485.b11a4ad (footsteps)",
+              "head_sha": "b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
+              "prerelease": true,
+              "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
+              "comparison_to_recorded_main": {
+                "from_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+                "to_sha": "b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
+                "status": "ahead",
+                "ahead_by": 10,
+                "behind_by": 0,
+                "file_count": 38,
+                "scope_note": "Verified complete fixed compare6cdf...b11:10commits38unique paths; one ONNXtestfixture only."
+              },
+              "change": "Adds default-off footstep_control switch, proportional stick steps and0.4s idle handoff; goal walking via robot.footstepGoal and camera AprilTag floor-target CLI; incorporates beta camera calibration from PR484 only into this development branch.",
+              "priority": "medium_research_reference; requires_HD1910_tracking_policy_geometry_and_control_acceptance",
+              "replica_integration": "not_integrated; no robot/model replacement, package installation, downloaded implementation execution or migration branch changes by tracker",
+              "configuration": {
+                "enable_key": "policy.footstep_control",
+                "default_enabled": false,
+                "walk_mode_only": true,
+                "fetch_attempt": "robotctl configure on/save requests both named files through updaterd policy.fetch before optional reload",
+                "files": [
+                  "footsteps.onnx",
+                  "footstepnet.onnx"
+                ],
+                "repo": "apirrone/microduck-footsteps",
+                "path_overrides": [
+                  "policy.footsteps",
+                  "policy.footstep_planner"
+                ],
+                "removed_key": "policy.footstep_horizon_s",
+                "missing_files": "Logs fallback to ordinary walk; this is not a completed download or successful footstep acceptance"
+              },
+              "planner_model": {
+                "repo": "apirrone/microduck-footstepnet",
+                "sha": "1132e672d261cb8520c296acaa06fac955424b14",
+                "fixed_readme_url": "https://huggingface.co/apirrone/microduck-footstepnet/blob/1132e672d261cb8520c296acaa06fac955424b14/README.md",
+                "contract": "obs(N,8)f32 to step(N,3)f32; options metadata supplies geometry/limits; loaded and warmed before driving",
+                "sole_center_forward_shift_m": 0.007,
+                "feet_spacing_m": 0.095,
+                "sole_size_m": [
+                  0.054,
+                  0.041
+                ],
+                "step_limits": {
+                  "forward_m": 0.05,
+                  "backward_m": 0.05,
+                  "lateral_m": 0.02,
+                  "yaw_rad": 0.5235987755982988
+                },
+                "limits_provisional_per_model_card": true,
+                "weights_downloaded": false
+              },
+              "tracking_policy_dependency": {
+                "task_family": "Mjlab-Footsteps-*",
+                "model_card_named_task": "Mjlab-Footsteps-Flat-Backlash-MicroDuck",
+                "training_branch_named_by_model_card": "footsteps",
+                "separate_from_planner": true,
+                "only_ONNX_in_source_delta": "duck-control/tests/fixtures/footstepnet.onnx",
+                "production_tracking_policy_delivered_in_this_delta": false,
+                "HD1910_or_BAM_fit_verified": false,
+                "external_bundle_metadata_available": true,
+                "source_delta_note": "No model bytes in Git increment; external Hub bundle now lists both model files. Prior statement referred to source diff only."
+              },
+              "control_semantics": {
+                "requires_contact_odometry": true,
+                "touchdown": "odometry anchor foot switch, swing target fixed between switches",
+                "released_stick": "Neutral steps, then after0.4s idle handoff at next touchdown; not instantaneous stop.",
+                "planner_error": "immediate ordinary-gait handoff, not global torque disable",
+                "body_pose_and_skills": "higher priority than footstep walking",
+                "obstacle_in_robot_joystick_path": null,
+                "camera_or_ToF_obstacle_integration": false,
+                "joystick_target": "Normalized deflection times step limits; old look-ahead carrot planning removed; default full twist0.4/0.3/1.0 scales need client-specific review.",
+                "camera_tag_goal_acquisition": true,
+                "ToF_obstacle_avoidance": false
+              },
+              "verification_source": {
+                "pure_logic_fixture_cases": 12,
+                "pure_logic_fixture_steps": 221,
+                "landing_parity_tolerance": 1e-06,
+                "ORT_test_landing_tolerance": 0.0001,
+                "ORT_tests_default_ignored": true,
+                "ORT_minimum": "1.23",
+                "fixture_blob_sha": "ff6b586741d5ac3e4e26b1495c668d8a7bb2e2c9",
+                "test_model_fixture_blob_sha": "b4a7a808df5ecf52ff25d0a8a5b329370ec755d4",
+                "this_review": "Read source/tests/docs and parsed JSONfixture/modelcard metadata only; no test or ONNX execution, no physical acceptance."
+              },
+              "scope_limits": "Development only. Prior joystick-only/no-camera and0.75sidle records are superseded here. API46 expanded again without a number bump and differs from BluetoothAPI46. No ToF obstacle integration, new voice assets or HD1910BAM adaptation.",
+              "previous_head_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
+              "development_api_version": 46,
+              "latest_increment": {
+                "from_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
+                "to_sha": "b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
+                "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/9195d88fa8a232daa67d33dde9abeb344276f57d...b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
+                "commit_count": 7,
+                "file_count": 24,
+                "new_model_bytes_in_git_diff": false
+              },
+              "scripted_patterns": {
+                "route": "robot.footsteps",
+                "command": "robotctl robot footsteps pattern.json",
+                "coordinates": "x,y inmetres,yaw inradians,startstanceframe anchored on firsttick",
+                "admission_checks": [
+                  "policyenabled",
+                  "HOMEfinished",
+                  "footstepconfigpairpresent",
+                  "1to64steps"
+                ],
+                "acceptance_means": "queued intent, not motion completion or measuredaccuracy",
+                "scheduling": "At touchdown use next swingfoot mark, step in place to align phase ifneeded; after9195d88 hand back aslast mark lands. Generated pattern lastmark closesstance; tail2 remains fallback iflast markneverlands.",
+                "replacement": "newpattern replaces activepattern; lastwriter wins in one tick",
+                "cancellation": "stick motion cancels into joystickfollowing; bodypose cancels pattern",
+                "logging": "landingerror mm/degrees fromcontactodometry, not independentexternalgroundtruth",
+                "routing": "btd and mediad explicitly deny this bench call",
+                "validation_source": "Perfectwalker synthetic pattern/order/meanframe tests plus configuration-admission test; no tracker test execution or physicalpatternacceptance"
+              },
+              "api_contract_note": "FootstepsAPI46 adds robot.footsteps, unlikeBluetoothPR477API46 and historicaldiagnostics+BluetoothAPI46. It does not include those extensions; use method/field/routing contracts rather than API number.",
+              "pattern_end_followup": {
+                "from_sha": "2b9ed7dbbcf1d2cae06e50a05aceda44978ac5d2",
+                "to_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
+                "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/2b9ed7dbbcf1d2cae06e50a05aceda44978ac5d2...9195d88fa8a232daa67d33dde9abeb344276f57d",
+                "file": "duck-footstep-control/src/pattern.rs",
+                "change": "Return when the last pattern mark touchdown is recorded; remove two extra expected tail steps from the perfect-walker test. The tail fallback remains.",
+                "submitter_observation": "Commit saysolderpattern keptstepping3touchdowns afterarrival onrobot; not replicaorHD1910evidence. No quantitative physicalplacement orlatestfixacceptance verified bytracker.",
+                "this_review": "Read1filefollowupandupdatedsynthetictest; no execution."
+              },
+              "pattern_route_increment": {
+                "from_sha": "bd7a3677b887b96cf140b603efee36b449f09172",
+                "to_sha": "2b9ed7dbbcf1d2cae06e50a05aceda44978ac5d2",
+                "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/bd7a3677b887b96cf140b603efee36b449f09172...2b9ed7dbbcf1d2cae06e50a05aceda44978ac5d2",
+                "file_count": 12,
+                "new_model_bytes": false
+              },
+              "goal_walking": {
+                "route": "robot.footstepGoal",
+                "development_api_version": 46,
+                "api_number_unchanged_but_new_method_and_fields": true,
+                "CLI_units": "X,Y metres; THETA degrees; RPCyaw radians",
+                "frames": "start stance, or odometry-world when odom:true",
+                "target": "named foot sole centre or stance centre",
+                "entry_coordinate_norm_limit_m": 1.5,
+                "limit_note": "Source tests hypot(g.x,g.y), including when odom:true; do not turn into a proven relative navigation radius.",
+                "give_up": "more than70touchdowns",
+                "obstacle": "None in goal planner; no general obstacle avoidance",
+                "btd_and_mediad_route": false
+              },
+              "tag_targeting": {
+                "CLI": "robotctl robot goto tag ID",
+                "dictionary": "tag36h11",
+                "capture": "head sweep, raw mediad.frame UYVY luminance, full-resolution AprilTag detector",
+                "geometry": "own intrinsics else detected family, undistort corners and rotate90degree multiples; camera/trunk/IMU/odom transform to world goal",
+                "printed_tag_m": 0.1,
+                "stance_distance_from_tag_m": 0.13,
+                "printed_stance_spacing_m": 0.084,
+                "locate_then_walk": "target acquired from scan; not continuous tag servoing or SLAM obstacle avoidance",
+                "own_beta_calibration_included_from_PR484": true,
+                "physical_end_to_end_or_HD1910_verified_by_tracker": false
+              },
+              "external_model_bundle": {
+                "repo": "apirrone/microduck-footsteps",
+                "sha": "19c38fae6afabddf9c0821009028d0a37963f05f",
+                "fixed_readme_url": "https://huggingface.co/apirrone/microduck-footsteps/blob/19c38fae6afabddf9c0821009028d0a37963f05f/README.md",
+                "files": [
+                  "footsteps.onnx",
+                  "footstepnet.onnx"
+                ],
+                "policy_contract": "obs[1,61] toactions[1,14]; twistmeans targetlandingpose, not normal velocity",
+                "publisher_provenance": "Mjlab-Footsteps-Flat-Backlash-MicroDuck, runm09310ur, iteration3750",
+                "publisher_claims": "Robot trial claimed;5-7mm/1-2degree errors are simulation, not measured HD1910 accuracy",
+                "weights_downloaded_or_executed": false,
+                "HD1910_fit_verified": false
+              },
+              "superseded_at_check_utc": "2026-10-28T16:33:05.624409+00:00"
             }
           ],
-          "previous_head_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
+          "previous_head_sha": "b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
           "development_api_version": 46,
           "latest_increment": {
-            "from_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
-            "to_sha": "b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
-            "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/9195d88fa8a232daa67d33dde9abeb344276f57d...b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
-            "commit_count": 7,
-            "file_count": 24,
-            "new_model_bytes_in_git_diff": false
+            "from_sha": "b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
+            "to_sha": "f0034aa99632ac4b8a9a955fd584e8f303c4085d",
+            "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/b11a4ad49f43b1eedb21f131c44b2b6088a57fd2...f0034aa99632ac4b8a9a955fd584e8f303c4085d",
+            "commit_count": 4,
+            "file_count": 3,
+            "files": [
+              "robotctl/src/main.rs",
+              "robotctl/src/tag.rs",
+              "robotd/src/main.rs"
+            ],
+            "new_model_bytes_in_git_diff": false,
+            "commits": [
+              {
+                "sha": "3839d434761ba86ca40d9e3975bdfa042df26d06",
+                "subject": "goto tag: closed loop on the camera; world-frame goals no longer refused far from the boot spot",
+                "committed_at": "2026-10-28T15:48:10Z"
+              },
+              {
+                "sha": "75b46f92583fad1a08795b4c296fb3b6653953b6",
+                "subject": "robotctl: clippy (bool assert in the goto parse test)",
+                "committed_at": "2026-10-28T15:48:30Z"
+              },
+              {
+                "sha": "025d03d584d4cef1280c5f684f46669840388b63",
+                "subject": "goto tag: re-sight from a staging pose 22 cm behind the footprints, then the last stretch blind",
+                "committed_at": "2026-10-28T15:53:41Z"
+              },
+              {
+                "sha": "f0034aa99632ac4b8a9a955fd584e8f303c4085d",
+                "subject": "goto tag: settle at 5 cm / 12°, at most 3 rounds, and always walk the last stretch",
+                "committed_at": "2026-10-28T15:57:31Z"
+              }
+            ]
           },
           "scripted_patterns": {
             "route": "robot.footsteps",
@@ -319,10 +525,11 @@
             "frames": "start stance, or odometry-world when odom:true",
             "target": "named foot sole centre or stance centre",
             "entry_coordinate_norm_limit_m": 1.5,
-            "limit_note": "Source tests hypot(g.x,g.y), including when odom:true; do not turn into a proven relative navigation radius.",
+            "limit_note": "Fixes previous1.5m norm check applied even to odom:true, which rejected nearby goals after moving away from boot origin. World goals still require finite coordinates; removing this norm rejection is not a proven unlimited navigation range.",
             "give_up": "more than70touchdowns",
             "obstacle": "None in goal planner; no general obstacle avoidance",
-            "btd_and_mediad_route": false
+            "btd_and_mediad_route": false,
+            "entry_coordinate_norm_limit_scope": "Only robot-relative goals (odom:false); not odometry-world absolute coordinates."
           },
           "tag_targeting": {
             "CLI": "robotctl robot goto tag ID",
@@ -332,9 +539,34 @@
             "printed_tag_m": 0.1,
             "stance_distance_from_tag_m": 0.13,
             "printed_stance_spacing_m": 0.084,
-            "locate_then_walk": "target acquired from scan; not continuous tag servoing or SLAM obstacle avoidance",
+            "locate_then_walk": "Sight tag, walk toward a staging pose, stop/re-sight; at most3sighting rounds, then send actual footprint goal from latest sighting. Final stretch has no further visual correction or final accuracy measurement.",
             "own_beta_calibration_included_from_PR484": true,
-            "physical_end_to_end_or_HD1910_verified_by_tracker": false
+            "physical_end_to_end_or_HD1910_verified_by_tracker": false,
+            "staging_distance_behind_footprints_m": 0.22,
+            "staging_accept_distance_m": 0.05,
+            "staging_accept_heading_rad": 0.21,
+            "maximum_sighting_rounds": 3,
+            "approach_leg_limit_m": 0.8,
+            "final_goal_on_round_exhaustion": "Last round sends actual footprint goal even if staging tolerance is unmet; final leg is therefore not guaranteed to be exactly22cm or bounded by approach_leg_limit_m.",
+            "current_stance": "Forward kinematics using Model::alpha(), measured JOINT_NAMES joints, IMU and contact-odometry trunk position; sole centres7mm ahead of foot sites. Alpha geometry must be reviewed separately for replica/HD1910.",
+            "look_only": {
+              "CLI_flag": "--look-only",
+              "does_not_send_leg_walking_goal": true,
+              "head_scan_still_moves": true,
+              "JSON": "tag and footprints each contain [x_m,y_m,heading_rad] relative to current measured sole stance; text prints heading in degrees.",
+              "purpose": "Separate camera-chain/geometry estimates from walking error for an independently measured bench comparison."
+            },
+            "normal_JSON": {
+              "fields": [
+                "tag",
+                "miss_m",
+                "miss_rad"
+              ],
+              "miss_means": "Last sighting error relative to staging pose before final walk, not final footprint error."
+            },
+            "wait_for_goal": "Checks accepted intent, polls up to60s, errors on requested stick movement over0.05. Returns after3non-footsteps polls following activity or after3s even if no activity was observed; return/text is not independent physical arrival proof.",
+            "upstream_observations": "Commit comments report earlier beta one-sighting10-15cm miss, loss of tag under head near footprints, heading wander3-10degrees and an earlier loop claiming arrival22cm behind. These are submitter observations motivating fixes, not this replica or current-version quantitative acceptance.",
+            "source_review": "Read fixed3file delta and regression-test source for CLI flags/negative numbers, stance/trunk transforms and world-goal admission; no downloaded implementation/test execution, robot motion or final accuracy measurement."
           },
           "external_model_bundle": {
             "repo": "apirrone/microduck-footsteps",
@@ -1881,25 +2113,15 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-28T15:45:07.346365+00:00",
+  "checked_at_utc": "2026-10-28T16:33:05.624409+00:00",
   "latest_review": {
     "default_branch_changes": false,
     "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
     "previous_tracked_prs_merged": false,
-    "new_pull_requests": {
-      "pollen-robotics/microduck": [
-        482,
-        483,
-        484
-      ]
-    },
-    "new_development_releases": [
-      "daemon-dev-policy-community-opt-in",
-      "daemon-dev-config-survives-os-update",
-      "daemon-dev-beta-camera-intrinsics"
-    ],
+    "new_pull_requests": {},
+    "new_development_releases": [],
     "changed_pull_request_heads": {},
     "moved_development_tags": [
       "daemon-dev-footsteps"
@@ -1912,7 +2134,7 @@
     "robot_connected": false,
     "image_built_or_published": false,
     "integration_inference": "PR482 currently reads community_allowed directly from base TOML; PR483 writes overrides in user layer. A combined port must reconcile that reader. New footsteps auto-fetch targets apirrone and would also require community opt-in if PR482 is adopted. No combined merge/test performed.",
-    "notes": "Three unmerged PRs and three related development releases. Footstepsb11 adds proportional walking, a paired external model source, pose goals and camera AprilTag floor targeting; beta calibration is included in that branch only. No default/stable change or replica deployment. Source and model metadata review only."
+    "notes": "Only footsteps development tag moved b11a4ad to f0034aa:4commits3sourcefiles. Finite camera re-sighting, staging/final-goal behavior, look-only diagnostics and world-goal guard fix. All4defaultheads, stable, trackedPRheads/states, otherdevtags, modelmetadata and blog unchanged at fixed check. No replica code/image/model/device changes."
   },
   "replica_migration": {
     "recorded_on": "2026-10-27",
