@@ -862,23 +862,36 @@ class MotionStudioTest(PadTestBase):
         self.assertEqual(self.ops._mode_of(self.conn), "drive")
 
     def test_old_manual_frame_waiting_before_new_session_is_dropped(self):
+        # Keep the second frame inside the rate-limit window even if its worker starts late.
+        now = self.ops.clock()
+        self.ops.clock = lambda: now
         entered, release = threading.Event(), threading.Event()
-        original = self.ops._cancel_wait
+        errors = []
 
         def wait(seconds):
             entered.set()
             release.wait(1.)
 
+        def move():
+            try:
+                self.move()
+            except Exception as exc:
+                errors.append(exc)
+
         self.move(.1)
         with mock.patch.object(self.ops, "_cancel_wait", side_effect=wait):
-            worker = threading.Thread(target=self.move)
+            worker = threading.Thread(target=move)
             worker.start()
-            self.assertTrue(entered.wait(.5))
-            self.ops.handle({"op": "stop", "seq": next(self.seq)}, conn=self.conn)
-            self.start()
-            boundary = len(self.sent("robot.move"))
-            release.set()
-            worker.join(1.)
+            try:
+                self.assertTrue(entered.wait(.5))
+                self.ops.handle({"op": "stop", "seq": next(self.seq)}, conn=self.conn)
+                self.start()
+                boundary = len(self.sent("robot.move"))
+            finally:
+                release.set()
+                worker.join(1.)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(errors, [])
         self.assertEqual(len(self.sent("robot.move")), boundary)
 
     def test_expired_lively_session_cannot_be_revived_by_record_start(self):
