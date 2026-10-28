@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import unittest.mock
@@ -444,8 +445,10 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
         c = WsClient(self.port, origin=self.origin, cookie=token)
         await c.open()
         await c.send({"t": "cmd", "id": "o1", "name": "servo.open"})
-        await c.pump(until=lambda: any(m.get("t") == "servo" and m.get("state") == "open" and m.get("online") == 15
-                                       for m in c.msgs), timeout=3.0)
+        await c.pump(until=lambda: (
+            any(m.get("t") == "result" and m.get("id") == "o1" for m in c.msgs)
+            and any(m.get("t") == "servo" and m.get("state") == "open" and m.get("online") == 15
+                    for m in c.msgs)), timeout=3.0)
         res = [m for m in c.msgs if m.get("t") == "result" and m.get("id") == "o1"]
         self.assertTrue(res and res[0]["ok"], res)
         self.assertTrue(self.rd.paused)
@@ -463,6 +466,47 @@ class HttpTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.servo.state, "closed")
         self.assertFalse(self.rd.paused)
         c.close()
+
+    async def test_servo_session_accepts_open_snapshot_before_command_result(self):
+        """The independent snapshot loop may observe open before open's worker returns."""
+        release=threading.Event()
+        original_open=self.servo.open
+        original_client=WsClient
+        loop=asyncio.get_running_loop()
+        observed=[]
+        clients=[]
+
+        def opening(*args,**kwargs):
+            result=original_open(*args,**kwargs)
+            if result[0] and not release.wait(3):
+                raise AssertionError('client did not observe the independent open snapshot')
+            return result
+
+        class Messages(list):
+            def append(messages,message):
+                super().append(message)
+                if (not observed and message.get('t')=='servo' and message.get('state')=='open'
+                        and message.get('online')==15):
+                    observed.append(not any(m.get('t')=='result' and m.get('id')=='o1' for m in messages))
+                    # Release on the next loop turn, after pump evaluates its
+                    # completion predicate against this snapshot without an ack.
+                    loop.call_soon(release.set)
+
+        class Client(original_client):
+            def __init__(client,*args,**kwargs):
+                super().__init__(*args,**kwargs)
+                client.msgs=Messages()
+                clients.append(client)
+
+        try:
+            with unittest.mock.patch.object(self.servo,'open',side_effect=opening), \
+                 unittest.mock.patch(__name__+'.WsClient',Client):
+                await self.test_servo_session_via_ws()
+            self.assertEqual(observed,[True],'test must exercise snapshot-before-result ordering')
+        finally:
+            release.set()
+            for client in clients:
+                if hasattr(client,'w'):client.close()
 
     async def test_imu_view_and_ops_via_ws(self):
         """IMU 页：收到 {t:'imu'}（芯片、安装方向取自主程序）；solve 回结果；写入这一步先拒、说清楚原因。"""
