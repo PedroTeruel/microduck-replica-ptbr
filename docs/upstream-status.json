@@ -20,6 +20,68 @@
       },
       "tracked_development_releases": [
         {
+          "tag": "daemon-dev-static-grasp-default",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-static-grasp-default",
+          "published_at": "2026-10-27T20:50:31Z",
+          "version": "daemon 0.17.9-dev.1469.48dabad (static-grasp-default)",
+          "head_sha": "48dabadc41f42af11b6479d3aa7b12c9dc3fe920",
+          "prerelease": true,
+          "change": "Unmerged PR481 atop recorded main: default walking ground_pick becomes static_ground_pick.onnx; robotd owns the trained mouth phase schedule; policy-set pin v8 to v9.",
+          "priority": "medium_optional_manipulation_reference; wait_for_policy_set_and_HD1910_training",
+          "replica_integration": "not_integrated; tracker read source and metadata only, no packages/weights/download execution or robot operation",
+          "pull_request": 481,
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/5def2f3e66501f0f365d4fb1183020b8ee875443...48dabadc41f42af11b6479d3aa7b12c9dc3fe920",
+          "policy_set_dependency": {
+            "repo": "pollen-robotics/microduck-policies",
+            "required_tag": "v9",
+            "available_at_check": false,
+            "latest_observed_tag": "v8",
+            "latest_observed_sha": "665ae4eb20bfe13bca1ef4ea6d4bb6b4a096e448",
+            "refs_url": "https://huggingface.co/api/models/pollen-robotics/microduck-policies/refs"
+          },
+          "model_source": {
+            "repo": "RemiFabre/microduck-static-grasp",
+            "sha": "df50e6eddbbcbd05975b9308abd4b4e47c5e6960",
+            "model_card_url": "https://huggingface.co/RemiFabre/microduck-static-grasp/blob/df50e6eddbbcbd05975b9308abd4b4e47c5e6960/README.md",
+            "manifest_url": "https://huggingface.co/RemiFabre/microduck-static-grasp/blob/df50e6eddbbcbd05975b9308abd4b4e47c5e6960/manifest.json",
+            "servos": "xl330",
+            "control_hz": 50,
+            "observation_shape": [
+              1,
+              61
+            ],
+            "action_shape": [
+              1,
+              14
+            ],
+            "period_s": 4.0,
+            "end_phase": 0.7,
+            "duration_s": 2.8,
+            "training_commit": "666dab6c59c8e388ba2d1fd299b72080f2bc7e68",
+            "training_branch": "static-grasp",
+            "checkpoint": 1249,
+            "weights_downloaded_or_compatibility_verified": false
+          },
+          "mouth_schedule": {
+            "open_fraction": 0.775,
+            "open_phase": [
+              0.02,
+              0.1
+            ],
+            "close_phase": [
+              0.34,
+              0.4
+            ],
+            "owner": "robotd Controller during driving ground pick in Walk, not client tick timing"
+          },
+          "submitter_evidence": {
+            "physical_demo_reported": "One duck,50s video, no counted physical success results; not HD1910/replica evidence",
+            "demo_url": "https://www.youtube.com/watch?v=MpWuZ9_dxuk",
+            "sim_evidence": "Exact training model: Lego/block/die/pawn3of3each; AA1of3,coin0of3. Not reproduction by tracker.",
+            "limits": "Leg errors affect floor clearance; targets up to0.25rad past a joint range; objects over2.6cm untested in simulation."
+          }
+        },
+        {
           "tag": "daemon-dev-codex/bluetooth-diagnostics-integration",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-codex/bluetooth-diagnostics-integration",
           "published_at": "2026-10-27T16:17:25Z",
@@ -121,12 +183,33 @@
         {
           "tag": "daemon-dev-ground-grasp-x",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-ground-grasp-x",
-          "published_at": "2026-10-25T13:23:00Z",
-          "head_sha": "01a90748823e92295de4220feb4f61ccd0089464",
+          "published_at": "2026-10-27T19:01:04Z",
+          "head_sha": "8df04b35a7ea2a2f7548f3e990eb96f25912a2b0",
           "prerelease": true,
-          "change": "Optional ground_grasp policy/skill with controller-phase beak scheduling, based on kicks and emotion skill development branch.",
+          "change": "One commit/seven files atop01a9074 adds optional ground_grasp_2 with independent ONNX path and beak opening/close-phase settings; walking only; network absent means skill unavailable.",
           "replica_integration": "not_integrated; requires HD-1910 policy/contract and mouth-ownership review",
-          "priority": "medium"
+          "priority": "medium",
+          "history": [
+            {
+              "head_sha": "01a90748823e92295de4220feb4f61ccd0089464",
+              "published_at": "2026-10-25T13:23:00Z",
+              "change": "Optional ground_grasp policy/skill with controller-phase beak scheduling, based on kicks and emotion skill development branch.",
+              "superseded_at_check_utc": "2026-10-28T00:20:51.849064+00:00"
+            }
+          ],
+          "version": "daemon 0.17.8-dev.1467.8df04b3 (ground-grasp-x)",
+          "fixed_incremental_diff_url": "https://github.com/pollen-robotics/microduck/compare/01a90748823e92295de4220feb4f61ccd0089464...8df04b35a7ea2a2f7548f3e990eb96f25912a2b0",
+          "version_family": "0.17.8-development, diverged from current main; not PR481/static default nor a stable update",
+          "comparison_to_recorded_main": {
+            "from_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
+            "to_sha": "8df04b35a7ea2a2f7548f3e990eb96f25912a2b0",
+            "status": "diverged",
+            "ahead_by": 4,
+            "behind_by": 14,
+            "merge_base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567"
+          },
+          "contract_note": "Reserves fourth built-in request bit, shifts configurable mask by4 and reduces MAX_SKILLS29to28. Requires matching config/selection/request/report and mouth ownership, not version-number equivalence.",
+          "verification": "Read all7 changed source patches including config, policy, controller, intents and reporting/tests; no model bytes in Git diff, no execution or physical test."
         },
         {
           "tag": "daemon-dev-kicks-on-main",
@@ -167,6 +250,31 @@
         }
       ],
       "pending_pull_requests": [
+        {
+          "number": 481,
+          "title": "ground pick: the static low grasp by default",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-27T19:18:23Z",
+          "updated_at": "2026-10-27T20:54:58Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/481",
+          "head_sha": "48dabadc41f42af11b6479d3aa7b12c9dc3fe920",
+          "base_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/5def2f3e66501f0f365d4fb1183020b8ee875443...48dabadc41f42af11b6479d3aa7b12c9dc3fe920",
+          "scope_note": "Six files change default ground_pick network and model-set pin and add trained beak scheduling. v9 missing in public policy refs at check; HF standalone manifest explicitly XL330/BAM,61obs14actions50Hz,4sphase with0.7handoff.",
+          "priority": "medium_optional_grasp; dependency_and_HD1910_fit_required",
+          "replica_integration": "not_integrated; published0.15image and isolated0.17.9 migration unchanged",
+          "submitter_validation": {
+            "real_robot_demo_claimed": true,
+            "robot_count": 1,
+            "counted_real_success_rate_available": false,
+            "tracker_reproduced_or_tested_HD1910": false,
+            "source_model_fixed_sha": "df50e6eddbbcbd05975b9308abd4b4e47c5e6960"
+          },
+          "this_review": "Read-only all6 fixed patches, exact tag refs, modelcard/manifest and public model-set refs; read test source but did not execute downloaded software/tests, install packages, download weights or connect robot."
+        },
         {
           "number": 479,
           "title": "vetbook gallery: show the real cards, and the sticker unsquashed",
@@ -947,7 +1055,23 @@
         "sha": "e6ff9991534580bff5c932ca10b3f1b8da851ce2",
         "committed_at": "2026-10-27T14:01:28Z",
         "subject": "Merge pull request #478 from pollen-robotics/vetbook-gallery"
-      }
+      },
+      "tracked_model_metadata": [
+        {
+          "key": "static-grasp-model",
+          "api_url": "https://huggingface.co/api/models/RemiFabre/microduck-static-grasp",
+          "kind": "model_sha",
+          "sha": "df50e6eddbbcbd05975b9308abd4b4e47c5e6960"
+        },
+        {
+          "key": "static-grasp-policy-set-v9",
+          "api_url": "https://huggingface.co/api/models/pollen-robotics/microduck-policies/refs",
+          "kind": "required_tag",
+          "tag": "v9",
+          "sha": null,
+          "present": false
+        }
+      ]
     },
     "pollen-robotics/microduck_rl": {
       "default_branch": "develop",
@@ -1225,37 +1349,24 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-27T17:02:07.017189+00:00",
+  "checked_at_utc": "2026-10-28T00:20:51.849064+00:00",
   "latest_review": {
     "default_branch_changes": false,
     "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
     "previous_tracked_prs_merged": false,
-    "new_pull_requests": {},
-    "new_development_releases": [
-      "daemon-dev-stress-test",
-      "daemon-dev-codex/bluetooth-diagnostics-integration"
-    ],
-    "changed_pull_request_heads": {
-      "pollen-robotics/microduck": {
-        "473": {
-          "before": "38d033109e94caef12634d6787d1d842c8a42a9b",
-          "after": "9187d5e3d8eff92b85c13ba7a82fdd3406e37be0",
-          "draft": false,
-          "merged_at": null
-        },
-        "477": {
-          "before": "f72c19bf7e58cf0d16e00591728b39f887d4c8e0",
-          "after": "bcd2f70d3ad56a213bbaff88b433ac1bf1c012b1",
-          "draft": false,
-          "merged_at": null
-        }
-      }
+    "new_pull_requests": {
+      "pollen-robotics/microduck": [
+        481
+      ]
     },
+    "new_development_releases": [
+      "daemon-dev-static-grasp-default"
+    ],
+    "changed_pull_request_heads": {},
     "moved_development_tags": [
-      "daemon-dev-codex/gamepad-connection",
-      "daemon-dev-codex/robot-diagnostics-design"
+      "daemon-dev-ground-grasp-x"
     ],
     "official_blog_new_articles": false,
     "official_blog_article_count": 3,
@@ -1264,7 +1375,7 @@
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "473/477 are standalone non-draft but unmerged: rawmaintenanceAPI47 adds implicit torque-on goal-update refusal; BluetoothAPI46 excludesdiagnostics. Historical combinedAPI46 retained. Stress0.17.8dev is an older divergent prototype. Heads/stable/otherPRs/blog unchanged. Docs only."
+    "notes": "Static low-grasp PR481 remains unmerged, dev tag48dabad atopmain. Required public policy-setv9 absent; standalone HF model manifest XL330, notHD1910 validated. Older divergentground-grasp-x adds optional secondgrasp at8df04b3. Allfourdefaultheads,stable,earlierPRs,blog andlocalmigrationunchanged. Docs only."
   },
   "replica_migration": {
     "recorded_on": "2026-10-27",
