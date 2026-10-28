@@ -20,6 +20,19 @@
       },
       "tracked_development_releases": [
         {
+          "tag": "daemon-dev-os-update-ipc",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-os-update-ipc",
+          "published_at": "2026-10-28T16:40:10Z",
+          "version": "daemon 0.17.9-dev.1490.0f9e8ad (os-update-ipc)",
+          "head_sha": "0f9e8ad9093f5ba72e880d44825f197cadc9519a",
+          "prerelease": true,
+          "related_pull_request": 485,
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...0f9e8ad9093f5ba72e880d44825f197cadc9519a",
+          "change": "New unmerged API46 os.status/check/apply/switch routes in updaterd and BLE duckctl. Wraps official Yocto microduck-osupdate/RAUC A/B image machinery; does not create slots or port OS updates to Armbian. Phone app and robotctl os are not implemented in this PR.",
+          "priority": "higher_if_adopting_Yocto_AB_OS_trigger; low_for_current_single_root_Armbian_image",
+          "replica_integration": "not_integrated_or_executed; no daemon/image/robot/preview changes by tracker"
+        },
+        {
           "tag": "daemon-dev-beta-camera-intrinsics",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-beta-camera-intrinsics",
           "published_at": "2026-10-28T15:40:15Z",
@@ -101,7 +114,13 @@
             "HD1910_validated": false
           },
           "verification": "Read2fixedsourcepatches including4mappingtests; no execution, published nudge-weight download, new training or physical input/motion validation.",
-          "same_source_as_ground_grasp_x": true
+          "same_source_as_ground_grasp_x": false,
+          "ground_grasp_source_relationship": {
+            "checked_at_utc": "2026-10-28T17:36:37.308118+00:00",
+            "previously_identical_at_sha": "614acd6eac926931f5bd4ea22ca5910246c89355",
+            "ground_grasp_now_at_sha": "ade23e7c16abef90f18d06f01f15a0be502b709f",
+            "note": "Precision-pad tag did not move; ground-grasp-x added one phase/sound skill commit."
+          }
         },
         {
           "tag": "daemon-dev-footsteps",
@@ -661,26 +680,82 @@
         {
           "tag": "daemon-dev-stress-test",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-stress-test",
-          "published_at": "2026-10-27T16:25:03Z",
-          "version": "daemon 0.17.8-dev.1463.7a72b45 (stress-test)",
-          "head_sha": "7a72b450386a270f3986518060fa4d33e8de41a3",
+          "published_at": "2026-10-28T16:57:14Z",
+          "version": "daemon 0.17.8-dev.1492.8668d77 (stress-test)",
+          "head_sha": "8668d77396218d8009ef8596a6c68edc52145c81",
           "prerelease": true,
           "replica_integration": "not_integrated; no downloaded code/package execution or robot operation",
-          "change": "Prototype robotctl stress: scripted fall/getup/walk/sitstand laps and persistent metrics/plotting; policy disable0.5s deliberately provokes falls.",
+          "change": "Keeps the existing deliberate-fall stress prototype; latest2commits3files only add a per-run PDF report and vector timeline drawing to offline log plotting, plus2regression test sources. No new stress run, gait, guard or model improvement.",
           "version_family": "0.17.8-development; not stable0.17.9/currentmain",
           "priority": "deferred_controlled_bench_reference_only",
           "comparison_to_recorded_main": {
-            "from_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
-            "to_sha": "7a72b450386a270f3986518060fa4d33e8de41a3",
+            "from_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+            "to_sha": "8668d77396218d8009ef8596a6c68edc52145c81",
             "status": "diverged",
-            "ahead_by": 13,
-            "behind_by": 14,
+            "ahead_by": 15,
+            "behind_by": 16,
             "merge_base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
-            "fixed_url": "https://github.com/pollen-robotics/microduck/compare/5def2f3e66501f0f365d4fb1183020b8ee875443...7a72b450386a270f3986518060fa4d33e8de41a3",
-            "scope_note": "Older diverged base; diff includes known endurance plumbing, not13clean additions atop currentmain."
+            "file_count": 13,
+            "fixed_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...8668d77396218d8009ef8596a6c68edc52145c81",
+            "scope_note": "Fixed comparison to recorded main; diverged branches are not clean additions atop current main."
           },
           "bounds": "Six provokedfalls/lap,7sgetup+2sreset+7s, then giveuprelax/logging; odometrysquare/forwardToF approximate; noToF continues.",
-          "verification": "Read-only specs/lap/guard/getup/control/test source; no execution including dryrun, nohardwareacceptance."
+          "verification": "Read all3fixed patches including2new plotting/report regression tests; no script/test execution, PDF rendering, stress command (including dry-run), robot connection or new stress measurements.",
+          "history": [
+            {
+              "tag": "daemon-dev-stress-test",
+              "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-stress-test",
+              "published_at": "2026-10-27T16:25:03Z",
+              "version": "daemon 0.17.8-dev.1463.7a72b45 (stress-test)",
+              "head_sha": "7a72b450386a270f3986518060fa4d33e8de41a3",
+              "prerelease": true,
+              "replica_integration": "not_integrated; no downloaded code/package execution or robot operation",
+              "change": "Prototype robotctl stress: scripted fall/getup/walk/sitstand laps and persistent metrics/plotting; policy disable0.5s deliberately provokes falls.",
+              "version_family": "0.17.8-development; not stable0.17.9/currentmain",
+              "priority": "deferred_controlled_bench_reference_only",
+              "comparison_to_recorded_main": {
+                "from_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
+                "to_sha": "7a72b450386a270f3986518060fa4d33e8de41a3",
+                "status": "diverged",
+                "ahead_by": 13,
+                "behind_by": 14,
+                "merge_base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+                "fixed_url": "https://github.com/pollen-robotics/microduck/compare/5def2f3e66501f0f365d4fb1183020b8ee875443...7a72b450386a270f3986518060fa4d33e8de41a3",
+                "scope_note": "Older diverged base; diff includes known endurance plumbing, not13clean additions atop currentmain."
+              },
+              "bounds": "Six provokedfalls/lap,7sgetup+2sreset+7s, then giveuprelax/logging; odometrysquare/forwardToF approximate; noToF continues.",
+              "verification": "Read-only specs/lap/guard/getup/control/test source; no execution including dryrun, nohardwareacceptance.",
+              "superseded_at_check_utc": "2026-10-28T17:36:37.308118+00:00"
+            }
+          ],
+          "previous_head_sha": "7a72b450386a270f3986518060fa4d33e8de41a3",
+          "fixed_incremental_diff_url": "https://github.com/pollen-robotics/microduck/compare/7a72b450386a270f3986518060fa4d33e8de41a3...8668d77396218d8009ef8596a6c68edc52145c81",
+          "latest_increment": {
+            "from_sha": "7a72b450386a270f3986518060fa4d33e8de41a3",
+            "to_sha": "8668d77396218d8009ef8596a6c68edc52145c81",
+            "commit_count": 2,
+            "file_count": 3,
+            "files": [
+              "docs/robot/cheatsheet.md",
+              "scripts/endurance-plot.py",
+              "scripts/test_endurance_plot.py"
+            ],
+            "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/7a72b450386a270f3986518060fa4d33e8de41a3...8668d77396218d8009ef8596a6c68edc52145c81",
+            "new_model_or_audio_bytes": false
+          },
+          "offline_report": {
+            "file": "report.pdf",
+            "contents": [
+              "headline counts",
+              "provoked fall outcomes by lap",
+              "first-try/reset get-up times",
+              "per-lap table",
+              "vector timeline",
+              "incident log"
+            ],
+            "implementation": "matplotlib PdfPages; timeline redrawn as vector rather than embedded low-resolution PNG",
+            "evidence_limit": "Post-processes recorded events; no independent physical validation or new measured endurance result in this increment."
+          }
         },
         {
           "tag": "daemon-dev-codex/gamepad-connection",
@@ -736,10 +811,10 @@
         {
           "tag": "daemon-dev-ground-grasp-x",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-ground-grasp-x",
-          "published_at": "2026-10-28T13:54:55Z",
-          "head_sha": "614acd6eac926931f5bd4ea22ca5910246c89355",
+          "published_at": "2026-10-28T17:07:07Z",
+          "head_sha": "ade23e7c16abef90f18d06f01f15a0be502b709f",
           "prerelease": true,
-          "change": "Keeps optional secondgrasp; onecommit2file increment adds precisionpad flick-to-nudge mode. Same actualsource614acd6 as precision-pad devtag.",
+          "change": "Onecommit5files adds optional phase-clock configurable skills and a localWAV trigger at successful skill start, plus CLI phase/sound/action-scale flags; keeps previous two-grasp and precision-pad features. Precision-pad tag itself remains614acd6 and is no longer identical to this tag.",
           "replica_integration": "not_integrated; requires HD-1910 policy/contract and mouth-ownership review",
           "priority": "medium",
           "history": [
@@ -756,22 +831,81 @@
               "change": "One commit/seven files atop01a9074 adds optional ground_grasp_2 with independent ONNX path and beak opening/close-phase settings; walking only; network absent means skill unavailable.",
               "fixed_incremental_diff_url": "https://github.com/pollen-robotics/microduck/compare/01a90748823e92295de4220feb4f61ccd0089464...8df04b35a7ea2a2f7548f3e990eb96f25912a2b0",
               "superseded_at_check_utc": "2026-10-28T14:33:35.344006+00:00"
+            },
+            {
+              "tag": "daemon-dev-ground-grasp-x",
+              "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-ground-grasp-x",
+              "published_at": "2026-10-28T13:54:55Z",
+              "head_sha": "614acd6eac926931f5bd4ea22ca5910246c89355",
+              "prerelease": true,
+              "change": "Keeps optional secondgrasp; onecommit2file increment adds precisionpad flick-to-nudge mode. Same actualsource614acd6 as precision-pad devtag.",
+              "replica_integration": "not_integrated; requires HD-1910 policy/contract and mouth-ownership review",
+              "priority": "medium",
+              "version": "daemon 0.17.8-dev.1473.614acd6 (ground-grasp-x)",
+              "fixed_incremental_diff_url": "https://github.com/pollen-robotics/microduck/compare/8df04b35a7ea2a2f7548f3e990eb96f25912a2b0...614acd6eac926931f5bd4ea22ca5910246c89355",
+              "version_family": "0.17.8-development, diverged from current main; not PR481/static default nor a stable update",
+              "comparison_to_recorded_main": {
+                "from_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+                "to_sha": "614acd6eac926931f5bd4ea22ca5910246c89355",
+                "status": "diverged",
+                "ahead_by": 5,
+                "behind_by": 16,
+                "merge_base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567"
+              },
+              "contract_note": "Reserves fourth built-in request bit, shifts configurable mask by4 and reduces MAX_SKILLS29to28. Requires matching config/selection/request/report and mouth ownership, not version-number equivalence.",
+              "verification": "Latest2mapping/paddpatches read; earlier7file secondgrasp scope preserved in prior entries/history. No inference, training, controller or robot execution.",
+              "previous_head_sha": "8df04b35a7ea2a2f7548f3e990eb96f25912a2b0",
+              "superseded_at_check_utc": "2026-10-28T17:36:37.308118+00:00"
             }
           ],
-          "version": "daemon 0.17.8-dev.1473.614acd6 (ground-grasp-x)",
-          "fixed_incremental_diff_url": "https://github.com/pollen-robotics/microduck/compare/8df04b35a7ea2a2f7548f3e990eb96f25912a2b0...614acd6eac926931f5bd4ea22ca5910246c89355",
+          "version": "daemon 0.17.8-dev.1493.ade23e7 (ground-grasp-x)",
+          "fixed_incremental_diff_url": "https://github.com/pollen-robotics/microduck/compare/614acd6eac926931f5bd4ea22ca5910246c89355...ade23e7c16abef90f18d06f01f15a0be502b709f",
           "version_family": "0.17.8-development, diverged from current main; not PR481/static default nor a stable update",
           "comparison_to_recorded_main": {
             "from_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
-            "to_sha": "614acd6eac926931f5bd4ea22ca5910246c89355",
+            "to_sha": "ade23e7c16abef90f18d06f01f15a0be502b709f",
             "status": "diverged",
-            "ahead_by": 5,
+            "ahead_by": 6,
             "behind_by": 16,
-            "merge_base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567"
+            "merge_base_sha": "942e58e3aa6dbb28e7037203fff11866122c7567",
+            "file_count": 19,
+            "fixed_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...ade23e7c16abef90f18d06f01f15a0be502b709f",
+            "scope_note": "Fixed comparison to recorded main; diverged branches are not clean additions atop current main."
           },
           "contract_note": "Reserves fourth built-in request bit, shifts configurable mask by4 and reduces MAX_SKILLS29to28. Requires matching config/selection/request/report and mouth ownership, not version-number equivalence.",
-          "verification": "Latest2mapping/paddpatches read; earlier7file secondgrasp scope preserved in prior entries/history. No inference, training, controller or robot execution.",
-          "previous_head_sha": "8df04b35a7ea2a2f7548f3e990eb96f25912a2b0"
+          "verification": "Read all5fixed source patches and added phase-clock unit-test text only. No new policy/WAV download, inference, audio replay, training, installation or robot execution.",
+          "previous_head_sha": "614acd6eac926931f5bd4ea22ca5910246c89355",
+          "latest_increment": {
+            "from_sha": "614acd6eac926931f5bd4ea22ca5910246c89355",
+            "to_sha": "ade23e7c16abef90f18d06f01f15a0be502b709f",
+            "commit_count": 1,
+            "file_count": 5,
+            "files": [
+              "robotctl/src/main.rs",
+              "robotd-params/src/edit.rs",
+              "robotd-params/src/lib.rs",
+              "robotd/src/control.rs",
+              "robotd/src/main.rs"
+            ],
+            "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/614acd6eac926931f5bd4ea22ca5910246c89355...ade23e7c16abef90f18d06f01f15a0be502b709f",
+            "new_model_or_audio_bytes": false
+          },
+          "phase_clock_skills": {
+            "config": "[[policy.skill]] phase=true and optional sound path; defaults phase=false/sound=None",
+            "holding_command": "[cos(2*pi*phi),sin(2*pi*phi),0] with phi clamped0..1 over positive duration",
+            "ordinary_and_unwind": "Plain skills keep constant command; unwind phase uses existing unwind command.",
+            "audio": "voice.play_file invoked only after start_skill returns Ok(true), from configured localWAV if voice exists; no new play on Ok(false) or refusal. Not a measured acoustic alignment guarantee.",
+            "CLI_options": [
+              "--phase",
+              "--sound",
+              "--action-scale"
+            ],
+            "CLI_phase_conflicts_with_constant_command": true,
+            "action_scale_precedence": "Explicit CLI flag, then manifest action_scale; not automatic dynamics adaptation.",
+            "persistence": "File editor writes phase/sound only when set. robot.setSkill preserves these from the existing entry; new fields are not added to that RPC wire contract.",
+            "new_policy_or_WAV_delivered": false,
+            "HD1910_verified": false
+          }
         },
         {
           "tag": "daemon-dev-kicks-on-main",
@@ -805,6 +939,50 @@
         }
       ],
       "pending_pull_requests": [
+        {
+          "number": 485,
+          "title": "updaterd: os.* — trigger an A/B OS update from duckctl and the phone",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-28T16:33:29Z",
+          "updated_at": "2026-10-28T16:37:51Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/485",
+          "head_sha": "0f9e8ad9093f5ba72e880d44825f197cadc9519a",
+          "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...0f9e8ad9093f5ba72e880d44825f197cadc9519a",
+          "changed_file_count": 10,
+          "scope_note": "New unmerged API46 os.status/check/apply/switch routes in updaterd and BLE duckctl. Wraps official Yocto microduck-osupdate/RAUC A/B image machinery; does not create slots or port OS updates to Armbian. Phone app and robotctl os are not implemented in this PR.",
+          "priority": "higher_if_adopting_Yocto_AB_OS_trigger; low_for_current_single_root_Armbian_image",
+          "replica_integration": "not_integrated_or_executed; no daemon/image/robot/preview changes by tracker",
+          "OS_update_contract": {
+            "development_api_version": 46,
+            "methods": [
+              "os.status",
+              "os.check",
+              "os.apply",
+              "os.switch"
+            ],
+            "script": "/usr/bin/microduck-osupdate",
+            "script_missing": "NOT_SUPPORTED15; installing the daemon alone does not supply A/B slots/RAUC/script",
+            "transient_unit": "microduck-osupdate-apply, shared with official8090page",
+            "preflight": "Mutation startup takes engine try_lock/BUSY; robot-stopped and no-remote-session checks. interrupt_sessions skips only session check, apply checks clock, switch does not. Script owns OS disk-size/RAUC handling.",
+            "transport": "btd permits all4methods with existing peer/gate policy; mediad only status/check and denies apply/switch because that transport has no auth.",
+            "build_selection": "Latest channel or explicit14digit build id; older signed build may be selected; switch downloads nothing.",
+            "reply_scope": "Start/phase status, not completed install. Watches fresh phase and early refusals for up to30s; if still checking at timeout returns current status while unit continues. Poll status and last_result after reboot to inspect outcome.",
+            "automatic_update": false,
+            "known_upstream_gap": "Channel manifest is unsigned; a bucket writer can select an older validly signed bundle. RAUC still checks bundle signature. Not fixed in this PR."
+          },
+          "submitter_validation": {
+            "reported": "macOS workspace excludingLinuxNFC,9new os stub tests plus1duckctl test, host/aarch64 clippy and Rust1.94.1check",
+            "physical_board_cycle": false,
+            "remaining": "Published bundle and complete BLE apply/reboot/last_result plus slot-switch cycle",
+            "verified_by_this_tracker": false
+          },
+          "this_review": "Read all10fixed file patches, including status/route/protocol/CLI/preflight and stub tests. No downloaded implementation/test/script execution, package installation, OS apply/switch or device connection.",
+          "API_number_caveat": "ThisAPI46 adds os.* only; equal API numbers do not imply inclusion of Bluetooth or footsteps development contracts."
+        },
         {
           "number": 484,
           "title": "mediad: beta camera family calibration (GC2093)",
@@ -2113,18 +2291,25 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-28T16:33:05.624409+00:00",
+  "checked_at_utc": "2026-10-28T17:36:37.308118+00:00",
   "latest_review": {
     "default_branch_changes": false,
     "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
     "previous_tracked_prs_merged": false,
-    "new_pull_requests": {},
-    "new_development_releases": [],
+    "new_pull_requests": {
+      "pollen-robotics/microduck": [
+        485
+      ]
+    },
+    "new_development_releases": [
+      "daemon-dev-os-update-ipc"
+    ],
     "changed_pull_request_heads": {},
     "moved_development_tags": [
-      "daemon-dev-footsteps"
+      "daemon-dev-stress-test",
+      "daemon-dev-ground-grasp-x"
     ],
     "official_blog_new_articles": false,
     "official_blog_article_count": 3,
@@ -2134,7 +2319,7 @@
     "robot_connected": false,
     "image_built_or_published": false,
     "integration_inference": "PR482 currently reads community_allowed directly from base TOML; PR483 writes overrides in user layer. A combined port must reconcile that reader. New footsteps auto-fetch targets apirrone and would also require community opt-in if PR482 is adopted. No combined merge/test performed.",
-    "notes": "Only footsteps development tag moved b11a4ad to f0034aa:4commits3sourcefiles. Finite camera re-sighting, staging/final-goal behavior, look-only diagnostics and world-goal guard fix. All4defaultheads, stable, trackedPRheads/states, otherdevtags, modelmetadata and blog unchanged at fixed check. No replica code/image/model/device changes."
+    "notes": "New unmergedPR485/API46 and same-SHA os-update-ipc development release add officialYocto A/B OS trigger, not phone UI or Armbian OTA. Stress delta adds only offlinePDF reports; ground-grasp delta adds phase-clock skills/localWAV triggers without new weights/audio. Precision-pad source unchanged and no longer identical to ground-grasp. All4defaultheads, stable, priorPRstates/heads, modelmetadata and blog unchanged."
   },
   "replica_migration": {
     "recorded_on": "2026-10-27",
