@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "recorded_on": "2026-10-28",
+  "recorded_on": "2026-10-29",
   "display_timezone": "Asia/Tokyo",
   "scope": "Upstream documentation tracking; this snapshot does not certify integration into the replica image.",
   "repositories": {
@@ -19,6 +19,42 @@
         "head_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f"
       },
       "tracked_development_releases": [
+        {
+          "tag": "daemon-dev-beta-camera-intrinsics",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-beta-camera-intrinsics",
+          "published_at": "2026-10-28T15:40:15Z",
+          "version": "daemon 0.17.9-dev.1484.0ab5d19 (beta-camera-intrinsics)",
+          "head_sha": "0ab5d193c18cd6ef646882e0e494c727903e87dc",
+          "prerelease": true,
+          "related_pull_request": 484,
+          "change": "Adds GC2093 beta camera family calibration, sensor HFOV85.2 and scale-specific tests. Own media.intrinsics overrides family values. Calibration applies to official Seeed beta module/lens; not a generic GC2093 lens or purchasing specification.",
+          "priority": "higher_before_GC2093_geometry_or_tag_goal_adoption; verify_actual_module_lens_and_rotation",
+          "replica_integration": "not_integrated; same fixed code as unmergedPR484, no package install or camera test by tracker"
+        },
+        {
+          "tag": "daemon-dev-config-survives-os-update",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-config-survives-os-update",
+          "published_at": "2026-10-28T15:27:22Z",
+          "version": "daemon 0.17.9-dev.1481.a809897 (config-survives-os-update)",
+          "head_sha": "a809897bc2465c88a2dd2298efb55cd663c6b8d8",
+          "prerelease": true,
+          "related_pull_request": 483,
+          "change": "Default config becomes /etc/robot/robotd.toml base plus /var/lib/robot/robotd.toml user override; tables merge recursively and arrays replace. Editors lock/write/validate the user layer, readers and pad mtimes use both. Invalid user layer is ignored with degraded health; invalid base remains fatal. HF token moves to persistent storage with rollback symlink migration.",
+          "priority": "higher_configuration_and_rollback_review_before_adopting_OS_updates; not_an_automatic_Armbian_upgrade",
+          "replica_integration": "not_integrated; unmerged development source, no installation or runtime testing by tracker"
+        },
+        {
+          "tag": "daemon-dev-policy-community-opt-in",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-policy-community-opt-in",
+          "published_at": "2026-10-28T15:01:04Z",
+          "version": "daemon 0.17.9-dev.1479.b60349f (policy-community-opt-in)",
+          "head_sha": "b60349fee07468be8203ff11a627e1e00d7b9119",
+          "prerelease": true,
+          "related_pull_request": 482,
+          "change": "Adds default-off policy.allow_community gate in updaterd policy.fetch before requests; non-Pollen repositories require opt-in. Existing downloaded community policies and direct library-path loads continue. Live successful community policy swaps add repo/revision events to the public shared vetbook. No API version bump.",
+          "priority": "higher_before_adopting_upstream_policy_fetch; preserve_explicit_HD1910_model_choices",
+          "replica_integration": "not_integrated; unmerged development source, no installation or runtime testing by tracker"
+        },
         {
           "tag": "daemon-dev-precision-pad",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-precision-pad",
@@ -70,33 +106,39 @@
         {
           "tag": "daemon-dev-footsteps",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-footsteps",
-          "published_at": "2026-10-28T14:33:49Z",
-          "version": "daemon 0.17.9-dev.1475.9195d88 (footsteps)",
-          "head_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
+          "published_at": "2026-10-28T15:35:18Z",
+          "version": "daemon 0.17.9-dev.1485.b11a4ad (footsteps)",
+          "head_sha": "b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
           "prerelease": true,
-          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...9195d88fa8a232daa67d33dde9abeb344276f57d",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
           "comparison_to_recorded_main": {
             "from_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
-            "to_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
+            "to_sha": "b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
             "status": "ahead",
-            "ahead_by": 3,
+            "ahead_by": 10,
             "behind_by": 0,
-            "file_count": 30
+            "file_count": 38,
+            "scope_note": "Verified complete fixed compare6cdf...b11:10commits38unique paths; one ONNXtestfixture only."
           },
-          "change": "Retains joystick planned footsteps and adds scripted start-stance landing patterns for printed-mark bench comparison via robot.footsteps (API46), with landing error logs. Follow-up9195d88 hands control back at the last mark touchdown.",
+          "change": "Adds default-off footstep_control switch, proportional stick steps and0.4s idle handoff; goal walking via robot.footstepGoal and camera AprilTag floor-target CLI; incorporates beta camera calibration from PR484 only into this development branch.",
           "priority": "medium_research_reference; requires_HD1910_tracking_policy_geometry_and_control_acceptance",
           "replica_integration": "not_integrated; no robot/model replacement, package installation, downloaded implementation execution or migration branch changes by tracker",
           "configuration": {
-            "required_together": [
+            "enable_key": "policy.footstep_control",
+            "default_enabled": false,
+            "walk_mode_only": true,
+            "fetch_attempt": "robotctl configure on/save requests both named files through updaterd policy.fetch before optional reload",
+            "files": [
+              "footsteps.onnx",
+              "footstepnet.onnx"
+            ],
+            "repo": "apirrone/microduck-footsteps",
+            "path_overrides": [
               "policy.footsteps",
               "policy.footstep_planner"
             ],
-            "optional": "policy.footstep_horizon_s",
-            "default_horizon_s": 1.0,
-            "max_planned_steps_per_touchdown": 8,
-            "default_enabled": false,
-            "walk_mode_only": true,
-            "incomplete_pair": "load refused"
+            "removed_key": "policy.footstep_horizon_s",
+            "missing_files": "Logs fallback to ordinary walk; this is not a completed download or successful footstep acceptance"
           },
           "planner_model": {
             "repo": "apirrone/microduck-footstepnet",
@@ -125,16 +167,21 @@
             "separate_from_planner": true,
             "only_ONNX_in_source_delta": "duck-control/tests/fixtures/footstepnet.onnx",
             "production_tracking_policy_delivered_in_this_delta": false,
-            "HD1910_or_BAM_fit_verified": false
+            "HD1910_or_BAM_fit_verified": false,
+            "external_bundle_metadata_available": true,
+            "source_delta_note": "No model bytes in Git increment; external Hub bundle now lists both model files. Prior statement referred to source diff only."
           },
           "control_semantics": {
             "requires_contact_odometry": true,
             "touchdown": "odometry anchor foot switch, swing target fixed between switches",
-            "released_stick": "neutral stance stepping, then after0.75sidle handoff at next touchdown; not immediate halt",
+            "released_stick": "Neutral steps, then after0.4s idle handoff at next touchdown; not instantaneous stop.",
             "planner_error": "immediate ordinary-gait handoff, not global torque disable",
             "body_pose_and_skills": "higher priority than footstep walking",
             "obstacle_in_robot_joystick_path": null,
-            "camera_or_ToF_obstacle_integration": false
+            "camera_or_ToF_obstacle_integration": false,
+            "joystick_target": "Normalized deflection times step limits; old look-ahead carrot planning removed; default full twist0.4/0.3/1.0 scales need client-specific review.",
+            "camera_tag_goal_acquisition": true,
+            "ToF_obstacle_avoidance": false
           },
           "verification_source": {
             "pure_logic_fixture_cases": 12,
@@ -147,7 +194,7 @@
             "test_model_fixture_blob_sha": "b4a7a808df5ecf52ff25d0a8a5b329370ec755d4",
             "this_review": "Read source/tests/docs and parsed JSONfixture/modelcard metadata only; no test or ONNX execution, no physical acceptance."
           },
-          "scope_limits": "Not merged into default main or stable; no source for new camera/ToF/sound/BAM support. Planner reach rates in modelcard are planning-environment results, not HD1910 gait/obstacle-avoidance acceptance.",
+          "scope_limits": "Development only. Prior joystick-only/no-camera and0.75sidle records are superseded here. API46 expanded again without a number bump and differs from BluetoothAPI46. No ToF obstacle integration, new voice assets or HD1910BAM adaptation.",
           "history": [
             {
               "head_sha": "bd7a3677b887b96cf140b603efee36b449f09172",
@@ -180,17 +227,54 @@
               },
               "change": "Keeps joystickplannedfootsteps and adds scripted start-stance landing patterns for printed-mark bench comparison, robot.footsteps/robotctl route, API46; eachmiss logged.",
               "superseded_at_check_utc": "2026-10-28T14:38:25.114917+00:00"
+            },
+            {
+              "head_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
+              "published_at": "2026-10-28T14:33:49Z",
+              "version": "daemon 0.17.9-dev.1475.9195d88 (footsteps)",
+              "change": "Retains joystick planned footsteps and adds scripted start-stance landing patterns for printed-mark bench comparison via robot.footsteps (API46), with landing error logs. Follow-up9195d88 hands control back at the last mark touchdown.",
+              "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...9195d88fa8a232daa67d33dde9abeb344276f57d",
+              "comparison_to_recorded_main": {
+                "from_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+                "to_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
+                "status": "ahead",
+                "ahead_by": 3,
+                "behind_by": 0,
+                "file_count": 30
+              },
+              "configuration": {
+                "required_together": [
+                  "policy.footsteps",
+                  "policy.footstep_planner"
+                ],
+                "optional": "policy.footstep_horizon_s",
+                "default_horizon_s": 1.0,
+                "max_planned_steps_per_touchdown": 8,
+                "default_enabled": false,
+                "walk_mode_only": true,
+                "incomplete_pair": "load refused"
+              },
+              "control_semantics": {
+                "requires_contact_odometry": true,
+                "touchdown": "odometry anchor foot switch, swing target fixed between switches",
+                "released_stick": "neutral stance stepping, then after0.75sidle handoff at next touchdown; not immediate halt",
+                "planner_error": "immediate ordinary-gait handoff, not global torque disable",
+                "body_pose_and_skills": "higher priority than footstep walking",
+                "obstacle_in_robot_joystick_path": null,
+                "camera_or_ToF_obstacle_integration": false
+              },
+              "superseded_at_check_utc": "2026-10-28T15:38:08.759799+00:00"
             }
           ],
-          "previous_head_sha": "2b9ed7dbbcf1d2cae06e50a05aceda44978ac5d2",
+          "previous_head_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
           "development_api_version": 46,
           "latest_increment": {
-            "from_sha": "2b9ed7dbbcf1d2cae06e50a05aceda44978ac5d2",
-            "to_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
-            "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/2b9ed7dbbcf1d2cae06e50a05aceda44978ac5d2...9195d88fa8a232daa67d33dde9abeb344276f57d",
-            "file_count": 1,
-            "new_model_bytes": false,
-            "change": "Finish on the last mark touchdown; preserve the exceptional tail fallback."
+            "from_sha": "9195d88fa8a232daa67d33dde9abeb344276f57d",
+            "to_sha": "b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
+            "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/9195d88fa8a232daa67d33dde9abeb344276f57d...b11a4ad49f43b1eedb21f131c44b2b6088a57fd2",
+            "commit_count": 7,
+            "file_count": 24,
+            "new_model_bytes_in_git_diff": false
           },
           "scripted_patterns": {
             "route": "robot.footsteps",
@@ -226,6 +310,45 @@
             "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/bd7a3677b887b96cf140b603efee36b449f09172...2b9ed7dbbcf1d2cae06e50a05aceda44978ac5d2",
             "file_count": 12,
             "new_model_bytes": false
+          },
+          "goal_walking": {
+            "route": "robot.footstepGoal",
+            "development_api_version": 46,
+            "api_number_unchanged_but_new_method_and_fields": true,
+            "CLI_units": "X,Y metres; THETA degrees; RPCyaw radians",
+            "frames": "start stance, or odometry-world when odom:true",
+            "target": "named foot sole centre or stance centre",
+            "entry_coordinate_norm_limit_m": 1.5,
+            "limit_note": "Source tests hypot(g.x,g.y), including when odom:true; do not turn into a proven relative navigation radius.",
+            "give_up": "more than70touchdowns",
+            "obstacle": "None in goal planner; no general obstacle avoidance",
+            "btd_and_mediad_route": false
+          },
+          "tag_targeting": {
+            "CLI": "robotctl robot goto tag ID",
+            "dictionary": "tag36h11",
+            "capture": "head sweep, raw mediad.frame UYVY luminance, full-resolution AprilTag detector",
+            "geometry": "own intrinsics else detected family, undistort corners and rotate90degree multiples; camera/trunk/IMU/odom transform to world goal",
+            "printed_tag_m": 0.1,
+            "stance_distance_from_tag_m": 0.13,
+            "printed_stance_spacing_m": 0.084,
+            "locate_then_walk": "target acquired from scan; not continuous tag servoing or SLAM obstacle avoidance",
+            "own_beta_calibration_included_from_PR484": true,
+            "physical_end_to_end_or_HD1910_verified_by_tracker": false
+          },
+          "external_model_bundle": {
+            "repo": "apirrone/microduck-footsteps",
+            "sha": "19c38fae6afabddf9c0821009028d0a37963f05f",
+            "fixed_readme_url": "https://huggingface.co/apirrone/microduck-footsteps/blob/19c38fae6afabddf9c0821009028d0a37963f05f/README.md",
+            "files": [
+              "footsteps.onnx",
+              "footstepnet.onnx"
+            ],
+            "policy_contract": "obs[1,61] toactions[1,14]; twistmeans targetlandingpose, not normal velocity",
+            "publisher_provenance": "Mjlab-Footsteps-Flat-Backlash-MicroDuck, runm09310ur, iteration3750",
+            "publisher_claims": "Robot trial claimed;5-7mm/1-2degree errors are simulation, not measured HD1910 accuracy",
+            "weights_downloaded_or_executed": false,
+            "HD1910_fit_verified": false
           }
         },
         {
@@ -450,6 +573,117 @@
         }
       ],
       "pending_pull_requests": [
+        {
+          "number": 484,
+          "title": "mediad: beta camera family calibration (GC2093)",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-28T15:30:47Z",
+          "updated_at": "2026-10-28T15:34:02Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/484",
+          "head_sha": "0ab5d193c18cd6ef646882e0e494c727903e87dc",
+          "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...0ab5d193c18cd6ef646882e0e494c727903e87dc",
+          "changed_file_count": 4,
+          "replica_integration": "not_integrated; source/test-text review only, no software execution, package install, image/build/model/device or online-page operation",
+          "scope_note": "Adds GC2093 beta camera family calibration, sensor HFOV85.2 and scale-specific tests. Own media.intrinsics overrides family values. Calibration applies to official Seeed beta module/lens; not a generic GC2093 lens or purchasing specification.",
+          "priority": "higher_before_GC2093_geometry_or_tag_goal_adoption; verify_actual_module_lens_and_rotation",
+          "submitter_validation": {
+            "calibration_unit": "sky-gtc",
+            "calibrated_on": "2026-10-28",
+            "views": 80,
+            "frame": [
+              1280,
+              720
+            ],
+            "fx": 695.6216231288809,
+            "fy": 696.0209167299262,
+            "cx": 627.4740538073111,
+            "cy": 363.60566030048255,
+            "distortion": [
+              -0.368607360841971,
+              0.13550162561831905,
+              0.00012682873881955374,
+              0.0008719998338708391,
+              -0.022368269599378002
+            ],
+            "horizontal_fov_deg": 85.2,
+            "vertical_fov_approx_deg": 55,
+            "RMS_px": 1.28,
+            "RMS_above_authors_under1px_guide": true,
+            "mediad_and_params_tests_clippy_rust1941_check_reported": true,
+            "verified_on_replica": false
+          },
+          "limits": [
+            "One family solve, not this project camera calibration",
+            "RMS1.28px; author suggests slower acquisition on rigid board; not perfect calibration",
+            "Same sensor can have another lens/crop; do not apply alpha62degree or beta85.2degree parameters indiscriminately"
+          ]
+        },
+        {
+          "number": 483,
+          "title": "Keep the owner's config and sign-in across OS updates",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-28T14:44:22Z",
+          "updated_at": "2026-10-28T15:25:35Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/483",
+          "head_sha": "a809897bc2465c88a2dd2298efb55cd663c6b8d8",
+          "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...a809897bc2465c88a2dd2298efb55cd663c6b8d8",
+          "changed_file_count": 13,
+          "replica_integration": "not_integrated; source/test-text review only, no software execution, package install, image/build/model/device or online-page operation",
+          "scope_note": "Default config becomes /etc/robot/robotd.toml base plus /var/lib/robot/robotd.toml user override; tables merge recursively and arrays replace. Editors lock/write/validate the user layer, readers and pad mtimes use both. Invalid user layer is ignored with degraded health; invalid base remains fatal. HF token moves to persistent storage with rollback symlink migration.",
+          "priority": "higher_configuration_and_rollback_review_before_adopting_OS_updates; not_an_automatic_Armbian_upgrade",
+          "submitter_validation": {
+            "macOS_workspace_tests_excluding_nfc_passed": 1761,
+            "rust1941_workspace_check_excluding_nfc_reported": true,
+            "changed_crate_lints_no_new_warnings_reported": true,
+            "history_guard_negative_test_reported": true,
+            "hardware_run": false,
+            "aarch64_linted": false,
+            "verified_by_tracker": false
+          },
+          "limits": [
+            "A/B robots need daemon update first, before OS slot replacement loses old /etc data",
+            "Adoption copies only known non-template values; board.version never copied; edits equal to any shipped template value are not recognized",
+            "Old base remains for rollback; logout on an old rolled-back version is not propagated forward",
+            "updater.toml auto_apply and allow_dev_keys remain outside this migration",
+            "Explicit non-default config paths remain standalone"
+          ]
+        },
+        {
+          "number": 482,
+          "title": "policy: community policies are opt-in, and the vet book records them",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-28T14:39:46Z",
+          "updated_at": "2026-10-28T15:08:47Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/482",
+          "head_sha": "b60349fee07468be8203ff11a627e1e00d7b9119",
+          "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...b60349fee07468be8203ff11a627e1e00d7b9119",
+          "changed_file_count": 14,
+          "replica_integration": "not_integrated; source/test-text review only, no software execution, package install, image/build/model/device or online-page operation",
+          "scope_note": "Adds default-off policy.allow_community gate in updaterd policy.fetch before requests; non-Pollen repositories require opt-in. Existing downloaded community policies and direct library-path loads continue. Live successful community policy swaps add repo/revision events to the public shared vetbook. No API version bump.",
+          "priority": "higher_before_adopting_upstream_policy_fetch; preserve_explicit_HD1910_model_choices",
+          "submitter_validation": {
+            "changed_component_tests_and_checks_reported": true,
+            "platform": "macOS; Linux-only NFC excluded from applicable checks, existing newer-toolchain robotd lints noted",
+            "tracker_executed_or_tested_hardware": false
+          },
+          "limits": [
+            "Only downloads are gated, not already-installed policies or policy.search",
+            "Public shared vetbook can expose repository/revision names",
+            "Does not certify model shape, motor dynamics or HD1910 suitability"
+          ]
+        },
         {
           "number": 431,
           "title": "mediad: lower the frame rate on a weak link, never the resolution",
@@ -1355,6 +1589,12 @@
           "api_url": "https://huggingface.co/api/models/apirrone/microduck-footstepnet",
           "kind": "model_sha",
           "sha": "1132e672d261cb8520c296acaa06fac955424b14"
+        },
+        {
+          "key": "footsteps-paired-model-bundle",
+          "api_url": "https://huggingface.co/api/models/apirrone/microduck-footsteps",
+          "kind": "model_sha",
+          "sha": "19c38fae6afabddf9c0821009028d0a37963f05f"
         }
       ],
       "head_history": [
@@ -1641,23 +1881,29 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-28T14:38:25.114917+00:00",
+  "checked_at_utc": "2026-10-28T15:45:07.346365+00:00",
   "latest_review": {
     "default_branch_changes": false,
     "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
     "previous_tracked_prs_merged": false,
-    "new_pull_requests": {},
+    "new_pull_requests": {
+      "pollen-robotics/microduck": [
+        482,
+        483,
+        484
+      ]
+    },
     "new_development_releases": [
-      "daemon-dev-precision-pad"
+      "daemon-dev-policy-community-opt-in",
+      "daemon-dev-config-survives-os-update",
+      "daemon-dev-beta-camera-intrinsics"
     ],
     "changed_pull_request_heads": {},
     "moved_development_tags": [
-      "daemon-dev-footsteps",
-      "daemon-dev-ground-grasp-x"
+      "daemon-dev-footsteps"
     ],
-    "PR477_body_only_no_new_implementation_or_hardware_acceptance": true,
     "official_blog_new_articles": false,
     "official_blog_article_count": 3,
     "official_blog_latest_on": "2026-10-23",
@@ -1665,7 +1911,8 @@
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "notes": "Precision614acd6 is also the ground-grasp-x head on an older divergent0.17.8 line. Footsteps2b9ed7d adds the printed-mark bench route (API46);9195d88 corrects extra steps at pattern completion. This API46 differs from BluetoothAPI46. No new weights in these increments. Four default heads, stable release, models, other PR heads, blog and documented migration remain unchanged. Prior robot observation is not current physical acceptance; docs only."
+    "integration_inference": "PR482 currently reads community_allowed directly from base TOML; PR483 writes overrides in user layer. A combined port must reconcile that reader. New footsteps auto-fetch targets apirrone and would also require community opt-in if PR482 is adopted. No combined merge/test performed.",
+    "notes": "Three unmerged PRs and three related development releases. Footstepsb11 adds proportional walking, a paired external model source, pose goals and camera AprilTag floor targeting; beta calibration is included in that branch only. No default/stable change or replica deployment. Source and model metadata review only."
   },
   "replica_migration": {
     "recorded_on": "2026-10-27",
