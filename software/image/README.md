@@ -1,189 +1,161 @@
-# Microduck 复刻Imagem：构建脚本
+# Imagem de réplica do Microduck: script de construção
 
-> Usuário看这份：[Gravaçãoe第一次使用](Gravaçãoe第一次使用.md)。abaixo是做Imagem de 人看 de 。
+> Para quem vai usar a imagem: consulte [Gravação da imagem e primeiro uso](烧录和第一次使用.md). Este documento explica como construir a imagem.
 
-> Ponto de acesso不出现时，先确认Placa principal是 **Zero 3W 还是无板载 Wi-Fi  de  3E**。Ponto de acesso不依赖Servo ID；本Imagem尚未Validação 3E 适配。见[Ponto de acesso e Placa principal型号排查](../../docs/Ponto de acesso e Placa principal型号排查.md)。
+> Se o ponto de acesso não aparecer, confirme primeiro se a placa principal é uma **Zero 3W** ou uma **3E sem Wi-Fi integrado**. O ponto de acesso não depende do ID dos servos. A compatibilidade com a 3E ainda não foi validada nesta imagem. Consulte [Verificação do ponto de acesso e do modelo da placa principal](../../docs/热点与主板型号排查.md).
 
-> **2026-10-27发行：**[20261027 Latest镜像](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261027)与[2026.10.27软件包](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-software-v2026.10.27)已公开，预装网页签名更新/回退、匹配helper及本地R3坐站语音，包含中文ASR模型和ARM64依赖。运行来源e382f074，签名包与镜像使用同一个安装器。服务器端全部附件大小/hash与公开下载入口已核验，鸭子暂时关闭，未烧卡/上机，本版实物验收待完成；[产物hash与验证边界](../../docs/superpowers/verification/2026-10-27-web-updates.md)、[软件更新与语音用法](../../docs/软件更新与语音使用说明-20261027.md)。下列10-25笔记保留为历史状态。
+> **Lançamento de 2026-10-27:** a [imagem 20261027](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261027) e o [pacote de software 2026.10.27](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-software-v2026.10.27) foram publicados. Incluem atualização e reversão assinadas pela web, o auxiliar compatível e comandos locais de voz no R3 para sentar e levantar, além do modelo chinês de reconhecimento de fala e das dependências ARM64. O código em execução vem de `e382f074`; o pacote assinado e a imagem usam o mesmo instalador. O tamanho e os hashes de todos os anexos do servidor e os links públicos de download foram verificados. O robô está desligado e a imagem ainda não foi gravada nem testada no robô; a validação física desta versão está pendente. Consulte [hashes e limites da verificação](../../docs/superpowers/verification/2026-10-27-web-updates.md) e [atualização de software e uso de voz](../../docs/软件更新与语音使用说明-20261027.md). As notas de 25 de outubro abaixo descrevem o estado histórico.
 
-> 2026-10-25：[Software功能 e 升级总账](../../docs/Software功能 e 升级总账.md)记录了源码、现机 e Imagem de 差异，e共用组件包 de 后续升级方向。今天 de 独立语音Serviçoe选定频段保持尚未接入通用Imagem构建；在线升级仍待实现。
+> **Nota de 2026-10-25:** o [inventário de recursos e atualizações de software](../../docs/软件功能与升级总账.md) registra diferenças entre o código-fonte, o robô atual e a imagem, além do plano de atualização posterior pelo pacote de componentes. Naquele dia, o serviço de voz independente e a manutenção da faixa selecionada ainda não faziam parte da construção geral da imagem; a atualização online ainda não estava implementada.
 
-> 同日后续：Web录制回放 e 灵动已在 c18783c 实现并por meio de SSH 部署到Atual鸭子，内联摄像头预览e配对输入恢复也同步了匹配Versão。没有重新构建现有Imagem；冻结源码包 e 单机部署不能当作通用在线升级。见[本轮验收](../../docs/superpowers/verification/2026-10-25-web-motion-studio.md)。
+> **Atualização posterior, no mesmo dia:** a gravação e reprodução de movimentos pela web e o modo de movimentos espontâneos foram implementados em `c18783c` e instalados no robô atual via SSH. A prévia da câmera interna e a recuperação da entrada pareada também foram sincronizadas com a versão compatível. A imagem existente não foi reconstruída. O pacote de código congelado e a instalação em um único robô não equivalem a uma atualização online geral. Consulte a [verificação desta rodada](../../docs/superpowers/verification/2026-10-25-web-motion-studio.md).
 
-> Atualização：aa825fc 进一步加入Sentar/站起录制，已部署并由Usuário确认保存e实际回放正常；v2 记录兼容 e 回退范围见[坐站验收](../../docs/superpowers/verification/2026-10-25-web-posture-recording.md)。此Versão仍未重新制作Imagem。
+> **Atualização:** `aa825fc` também adicionou a gravação de sentar e levantar. O recurso foi instalado, e o usuário confirmou que salvar e reproduzir os movimentos funciona. A versão 2 registra a compatibilidade e os limites de reversão na [verificação de sentar e levantar](../../docs/superpowers/verification/2026-10-25-web-posture-recording.md). Esta versão ainda não foi incorporada a uma nova imagem.
 
-复刻Imagem是一张烧好就能用 de  SD 卡：我们 fork  de 主程序、走路e动作Modelo、Microduck Studio、
-首次开机（起名、认 IMU、建Ponto de acesso）e配网（连不Superior WiFi 就开Ponto de acesso）都装好了。
-这个Diretório是做这张卡 de 脚本：从一只调好 de 鸭子Superior只读地拉主程序eModelo，装进底图，
-清掉机器身份、日志e别人留Inferior de 东西，缩容压缩。
+A imagem de réplica é um cartão SD que pode ser gravado e usado. Ela já inclui o programa principal do nosso fork, os modelos de marcha e de movimentos, o Microduck Studio, os recursos de primeira inicialização (nome do robô, identificação da IMU e criação do ponto de acesso) e a configuração da rede (se não encontrar Wi-Fi, o robô abre um ponto de acesso).
 
-Imagem免费Baixar，只供Pessoal e não comercial复刻，**不随任何收费产品分发**：里面 de Modelo是Autor de Pessoal e não comercialLicença，
-见 [`overlay/usr/share/doc/microduck/模型说明.txt`](overlay/usr/share/doc/microduck/模型说明.txt)。
+Este diretório contém os scripts que preparam o cartão: eles copiam em modo somente leitura o programa principal e os modelos de um robô configurado, instalam-nos sobre a imagem-base, removem a identidade da máquina, os registros e os dados deixados por outras pessoas e, por fim, reduzem e compactam a imagem.
 
-## Imagem里有什么
+A imagem é gratuita e destinada apenas a réplicas pessoais e não comerciais. **Não a distribua com produtos pagos.** Os modelos incluídos seguem a licença pessoal e não comercial dos autores. Consulte [`overlay/usr/share/doc/microduck/模型说明.txt`](overlay/usr/share/doc/microduck/模型说明.txt).
 
-| 组件 | 在Imagem里 de 位置 | 从哪来 | Licença |
+## Conteúdo da imagem
+
+| Componente | Localização na imagem | Origem | Licença |
 |---|---|---|---|
-| 系统底座 | `/` | Armbian 26.2.1（Debian 13）、内核 6.1.115-vendor-rk35xx、Radxa 的 U-Boot | 各包自有，`/usr/share/doc/<包>/copyright` |
-| 官方运行时 0.15.1 | `/opt/robot/daemon/`、`/usr/local/bin/robotctl` | Pollen Robotics，源码提交 1fa8438，底图里自带 | Apache-2.0 |
-| 主程序 robotd、padd、mediad | `/opt/robot/feetech-ft5-r5/` | 我们的 fork（官方 0.15.1 + 飞特总线、I²C IMU 模块、陀螺融合、UDP 手柄），从调好的鸭子上拉 | Apache-2.0 |
-| ONNX Runtime 1.28.0 | `/opt/robot/feetech-ft5-r5/onnxruntime/` | Microsoft，原样 | MIT |
-| 走路和动作模型 10 个 | `/opt/robot/feetech-ft5-r5/models/`、`roller/` | 社区作者训练，从调好的鸭子上拉，删掉了训练归档 | 个人非商业 |
-| Microduck Studio | 20261027起`/opt/microduck/software/current/studio/`，服务`microduck-studio`，端口8000；早期镜像为`/home/radxa/studio-dev/` | [`../studio/`](../studio/)，签名运行文件 | Apache-2.0 |
-| 本地坐站语音 | `/opt/microduck/software/current/duck-echo/`；资源在`/opt/microduck/resources/`，默认R3单击开关、鸭叫确认 | [`../duck-echo/`](../duck-echo/)，Vosk small-cn0.22及ARM64/cp313依赖 | Apache-2.0及依赖各自许可 |
-| 软件更新执行器 | `/usr/local/lib/microduck-updater/`，独立root服务；版本树`/opt/microduck/software/releases/` | [`../updater/`](../updater/)，原ARM updaterd0.15.1；内置自己的发行公钥，自动应用关闭 | Apache-2.0 |
-| 首次开机、配网、root 小助手 | `/usr/local/sbin/microduck-firstboot`、`microduck-netcheck`、`microduck-helper` | [`overlay/`](overlay/)、Studio 的 `deploy/` | Apache-2.0 |
-| 出厂标定 | `/etc/robot/feetech-ft5/hd1910-calibration.toml` | [`calib/hd1910-calibration.option-a.toml`](calib/hd1910-calibration.option-a.toml)：15 颗都是 2048 / −1 / 未标定 | — |
+| Base do sistema | `/` | Armbian 26.2.1 (Debian 13), kernel 6.1.115-vendor-rk35xx e U-Boot da Radxa | A licença de cada pacote está em `/usr/share/doc/<pacote>/copyright` |
+| Runtime oficial 0.15.1 | `/opt/robot/daemon/`, `/usr/local/bin/robotctl` | Pollen Robotics, commit `1fa8438`, já incluído na imagem-base | Apache-2.0 |
+| Programas principais `robotd`, `padd` e `mediad` | `/opt/robot/feetech-ft5-r5/` | Nosso fork do runtime oficial 0.15.1, com barramento Feetech, módulo IMU I²C, fusão do giroscópio e controle UDP; copiados de um robô configurado | Apache-2.0 |
+| ONNX Runtime 1.28.0 | `/opt/robot/feetech-ft5-r5/onnxruntime/` | Microsoft, sem modificações | MIT |
+| Dez modelos de marcha e movimentos | `/opt/robot/feetech-ft5-r5/models/` e `roller/` | Treinados por autores da comunidade e copiados de um robô configurado; os arquivos de treinamento foram removidos | Pessoal e não comercial |
+| Microduck Studio | Desde 20261027: `/opt/microduck/software/current/studio/`, serviço `microduck-studio`, porta 8000; em imagens antigas: `/home/radxa/studio-dev/` | [`../studio/`](../studio/), arquivo de execução assinado | Apache-2.0 |
+| Voz local para sentar e levantar | `/opt/microduck/software/current/duck-echo/`; recursos em `/opt/microduck/resources/`; por padrão, um clique no R3 alterna a escuta e o robô confirma com um som | [`../duck-echo/`](../duck-echo/), Vosk small-cn0.22 e dependências ARM64/cp313 | Apache-2.0 e licenças próprias das dependências |
+| Executor de atualização de software | `/usr/local/lib/microduck-updater/`, serviço root independente; versões em `/opt/microduck/software/releases/` | [`../updater/`](../updater/), derivado do updaterd 0.15.1 para ARM; inclui sua própria chave pública de lançamento; aplicação automática desativada | Apache-2.0 |
+| Primeira inicialização, configuração de rede e auxiliar root | `/usr/local/sbin/microduck-firstboot`, `microduck-netcheck` e `microduck-helper` | [`overlay/`](overlay/) e `deploy/` do Studio | Apache-2.0 |
+| Calibração de fábrica | `/etc/robot/feetech-ft5/hd1910-calibration.toml` | [`calib/hd1910-calibration.option-a.toml`](calib/hd1910-calibration.option-a.toml): todos os 15 servos estão em 2048 / −1 / não calibrado | — |
 
-每部分的许可全文在镜像里的 `/usr/share/doc/microduck/`，构建时也拷到输出目录随发布一起放出去。
+Os textos completos das licenças estão em `/usr/share/doc/microduck/` na imagem. Durante a construção, eles também são copiados para o diretório de saída e acompanham o lançamento.
 
-出厂时几个跟二号鸭不一样 de 地方：
+As principais diferenças em relação ao segundo robô de referência são:
 
-- **主程序跑标定模式**（`robotd.service.d/zzzz-zz-microduck-commissioning.conf` 给它加 `--commissioning`）。
-  没标定 de 鸭子只有在标定模式Inferior才能读 IMU、做 IMU 粗校、看到 15 颗 de 标定；Superior手清单第 3 步
-  「写进主程序」Sucesso后，root 小助手删掉这个Arquivo，主程序回到运动模式。
-- **摄像头默认用测试画面**（官方配置 `/etc/robot/robotd.toml` 的 `[media] source = "test"`），
-  没接摄像头 de 鸭子 mediad 不会反复崩。
-- **radxa 默认密码 `microduck`**，root 锁着，SSH 只认钥匙。
-- 手柄键位、走路参数沿用二号鸭的 `robotd.toml`（动作幅度 0.7、摔倒不自动卸力、电池没电不自动关机）。
+- **O programa principal inicia no modo de calibração** (`robotd.service.d/zzzz-zz-microduck-commissioning.conf` acrescenta `--commissioning`). Um robô sem calibração só consegue ler a IMU, fazer a calibração básica e mostrar a calibração dos 15 servos nesse modo. Depois que a terceira etapa da lista de primeiro uso, **Gravar no programa principal**, termina com sucesso, o auxiliar root remove esse arquivo e o programa principal volta ao modo de movimento.
+- **A câmera usa uma imagem de teste por padrão** (a configuração oficial `/etc/robot/robotd.toml` define `[media] source = "test"`). Assim, `mediad` não entra em ciclo de falhas quando o robô está sem câmera.
+- **A senha padrão de `radxa` é `microduck`**. O usuário root fica bloqueado e o SSH aceita somente chaves.
+- Os controles e parâmetros de caminhada seguem o `robotd.toml` do segundo robô: amplitude de movimento 0.7, sem alívio de torque automático após quedas e sem desligamento automático quando a bateria acaba.
 
-## 准备输入
+## Insumos para a construção
 
-### 1. 底图
+### 1. Imagem-base
 
-`microduck-zero3w-0.15.1-R1-V112.img`：在社区公开的 R1 镜像上，用 `tools/radxa/` 里的 R1 转换脚本
-（参数 `--no-tof --overlay i2c4-m0`）改出来的：换 Radxa 的 U-Boot 和 B1 设备树、打开 I²C4（27/28 脚）
-给 IMU 模块用。底图里已经有OficialExecução时 0.15.1。20261020、20261021 两版用 de 底图
-sha256 都是 `652dd54e70f49fd3633058d5ed9bbb2f63b435648da2346dfbfa60fcaa4c5bcc`。
+`microduck-zero3w-0.15.1-R1-V112.img` foi derivada da imagem R1 publicada pela comunidade com o script de conversão R1 em `tools/radxa/`. Os argumentos `--no-tof --overlay i2c4-m0` substituem o U-Boot e a árvore de dispositivos pelos da Radxa B1 e habilitam I²C4 (pinos 27 e 28) para o módulo IMU. A imagem-base já contém o runtime oficial 0.15.1. As imagens usadas em 20261020 e 20261021 tinham o mesmo SHA-256: `652dd54e70f49fd3633058d5ed9bbb2f63b435648da2346dfbfa60fcaa4c5bcc`.
 
-以后打算换成干净 de  Armbian + OficialInstalação器做底图，就不用依赖别人 de Imagem了。
+O plano é substituir essa base por uma instalação limpa do Armbian com o instalador oficial, eliminando a dependência de uma imagem de terceiros.
 
-### 2. payload（从一只调好 de 鸭子Superior拉）
+### 2. Payload (copiado de um robô configurado)
 
-这只鸭子要装好我们 fork  de 主程序，并且已经能走：
+O robô de origem precisa ter o programa principal do nosso fork instalado e já conseguir caminhar. Ele deve conter:
 
-- `/opt/robot/feetech-ft5-r5/` 下有 `robotd`、`padd`、`mediad`、`onnxruntime/`、`models/`、`roller/`；
-- `/etc/systemd/system/robotd.service.d/zzzz-r17-0151.conf`（主程序的启动参数，不能带 `--commissioning`）；
-- `/etc/robot/feetech-ft5/robotd.toml`（拉的时候会自动去掉本机的 IMU 接线，声音包指回官方的）。
+- `robotd`, `padd`, `mediad`, `onnxruntime/`, `models/` e `roller/` em `/opt/robot/feetech-ft5-r5/`;
+- `/etc/systemd/system/robotd.service.d/zzzz-r17-0151.conf` com os parâmetros de inicialização do programa principal, sem `--commissioning`;
+- `/etc/robot/feetech-ft5/robotd.toml`. Durante a cópia, a configuração da fiação da IMU local é removida e o pacote de voz volta a apontar para a versão oficial.
 
-拉 de 东西是白名单，只读，不改鸭子Superior任何Arquivo：
+A cópia usa uma lista permitida, é somente para leitura e não altera arquivos no robô de origem:
 
 ```sh
-# 电脑上：把脚本拷过去
-scp capture-payload.sh radxa@<鸭子 IP>:/tmp/
-# 鸭子上
+# No computador: copie o script para o robô
+scp capture-payload.sh radxa@<IP-do-robo>:/tmp/
+# No robô
 sudo sh /tmp/capture-payload.sh /tmp/microduck-payload.tgz
-# 电脑上：拉回来
-scp radxa@<鸭子 IP>:/tmp/microduck-payload.tgz .
+# No computador: copie o arquivo de volta
+scp radxa@<IP-do-robo>:/tmp/microduck-payload.tgz .
 ```
 
-20261020 那一版是从二号鸭拉的，payload 的 sha256 `9e1e64b8…`。里面的 robotd（sha256 `9b734239…`）
-是 10-15 在 fork 的工作区里编的，**不完全等于**哪一个提交（之前这里写成 `a844db6`，不对）。
+A versão de 20261020 foi copiada do segundo robô. O SHA-256 do payload começa com `9e1e64b8…`. O `robotd` dentro dele (SHA-256 começando com `9b734239…`) foi compilado em 15 de outubro no espaço de trabalho do fork, mas **não corresponde exatamente a um commit**; uma nota anterior o associava incorretamente a `a844db6`.
 
-20261021 那一版用的还是这份 payload，只把 robotd 换成 fork `hd1910-v167-imu-autodetect` 分支
-提交 `f4bbe53` 编的 arm64 版（sha256 `0a6a86b2…`，fork 的地址见首页「软件」一节），
-`payload.json` 里 robotd 那一条的 sha256 跟着改；换完的 payload sha256 `26252fbc…`。
-以后 de  robotd 都从提交编，对得Superior源码。
+A versão de 20261021 usou o mesmo payload, trocando apenas o `robotd` pela versão ARM64 compilada do commit `f4bbe53` da branch `hd1910-v167-imu-autodetect` do fork. O SHA-256 do binário começa com `0a6a86b2…`; o endereço do fork está na seção Software da página inicial. O valor do `robotd` em `payload.json` foi atualizado e o novo SHA-256 do payload começa com `26252fbc…`. Desde então, cada `robotd` deve ser compilado a partir de um commit para que corresponda ao código-fonte.
 
-20261023c 的 robotd 来自 [runtime fork 的 `hd1910-v167-imu-dxl2` 分支](https://github.com/fanhao375/Microduck-kissqy/tree/hd1910-v167-imu-dxl2)，
-提交 `0791fcd44f71c705dc8bb0fbcde405593b52d19b`，构建标识 `4734cbb-feetech-imu-auto-control.44`。
-使用 Rust 1.99.0、`cargo zigbuild --locked --release --target aarch64-unknown-linux-gnu.2.31 -p robotd --bin robotd`，
-`CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1`；robotd sha256 为
-`edf182edb7bf11aeeeedfdab98170ab2ec48a9ec18417f9b68c744b0a60c6d16`。
-只替换已核验 payload 里的 robotd，并在运行与保存配置中明确设置 `[bus] imu_protocol = "auto"`；
-其他 daemon、Modelo e  ONNX Runtime 保持原Arquivo。每个Arquivo de 大小e哈希在重打包时重新Validação，
-`payload.json` 保存源码提交、构建参数及来源说明入口；完整 payload 哈希以交付镜像清单为准。
-suporta范围、旧版TesteFalha对照e真板验收边界见[本版记录](../../docs/HD1910-20261023-总线IMU自动识别.md)。
+O `robotd` de 20261023c veio da branch [`hd1910-v167-imu-dxl2` do fork do runtime](https://github.com/fanhao375/Microduck-kissqy/tree/hd1910-v167-imu-dxl2), commit `0791fcd44f71c705dc8bb0fbcde405593b52d19b`, identificação da compilação `4734cbb-feetech-imu-auto-control.44`. Foi compilado com Rust 1.99.0 e `cargo zigbuild --locked --release --target aarch64-unknown-linux-gnu.2.31 -p robotd --bin robotd`, usando `CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1`. O SHA-256 do `robotd` é `edf182edb7bf11aeeeedfdab98170ab2ec48a9ec18417f9b68c744b0a60c6d16`.
 
-### 3. 构建机
+Somente o `robotd` foi substituído no payload verificado, e `[bus] imu_protocol = "auto"` foi definido explicitamente na configuração de execução e na configuração salva. Os outros daemons, os modelos e o ONNX Runtime permaneceram iguais. Os tamanhos e hashes de cada arquivo são verificados novamente ao reempacotar. `payload.json` registra o commit de origem, os parâmetros da compilação e as fontes; o hash completo do payload consta no manifesto da imagem entregue. Consulte o [registro desta versão](../../docs/HD1910-20261023-总线IMU自动识别.md) para conhecer o escopo de compatibilidade, a comparação com falhas de testes antigos e os limites da validação no robô real.
 
-WSL  de  Ubuntu 22.04 或任意 Linux，要 root（loop 设备）：
+### 3. Máquina de construção
+
+Use Ubuntu 22.04 no WSL ou qualquer Linux. A construção precisa de permissões root para acessar dispositivos loop:
 
 ```sh
 sudo apt install fdisk e2fsprogs xz-utils openssl python3.11
 ```
 
-脚本要 Python 3.11 以上（用 `tomllib`）。Ubuntu 22.04 自带的 `python3` 是 3.10，
-装了 python3.11 以后让 `python3` 指向它，比如建一个只放这一个链接的目录、加到 `PATH` 最前面。
+O script requer Python 3.11 ou superior por usar `tomllib`. O Ubuntu 22.04 vem com Python 3.10. Depois de instalar o Python 3.11, configure o comando `python3` para apontar para ele — por exemplo, criando um diretório com apenas esse link e colocando-o no início de `PATH`.
 
-## 构建
+## Construção
 
-20261027的完整功能镜像还需四项成套输入，缺少任一项会在修改rootfs前拒绝。先从冻结Git提交生成签名包，使用`voice_resources.py`准备并校验官方中文模型及ARM64/cp313 wheel资源；不得把开发机Python依赖或个人语音/Key混入。发行私钥只供构建机签名，不作为镜像输入。
+A imagem completa de 20261027 precisa de quatro insumos fornecidos em conjunto. Se faltar qualquer um, o script interrompe antes de modificar o sistema de arquivos raiz. Primeiro, gere o pacote assinado a partir do commit congelado e use `voice_resources.py` para preparar e verificar o modelo oficial de voz em chinês e as dependências ARM64/cp313. Não inclua dependências Python da máquina de desenvolvimento, arquivos pessoais de voz nem chaves pessoais. A chave privada de lançamento serve apenas para assinar na máquina de construção e não é um insumo da imagem.
 
 ```sh
 export SOFTWARE_UPDATE_PACKAGE=/path/to/2026.10.27.software-update.tar
 export SOFTWARE_UPDATE_PUBLIC_KEY=/path/to/software/updater/release.pub
 export SOFTWARE_UPDATE_ENGINE=/path/to/verified-arm64-updaterd
 export VOICE_RESOURCES_DIR=/path/to/verified-resources
-# x86构建机另需qemu-user，并给出已核验ARM64 loader/libs根目录；原生ARM构建机留空即可。
+# Em uma máquina x86, também é necessário qemu-user e a raiz verificada de bibliotecas/loader ARM64.
+# Em uma máquina ARM nativa, deixe esta variável vazia.
 export SOFTWARE_UPDATE_ENGINE_COMMAND_JSON='["qemu-aarch64","-L","/path/to/arm64-libs"]'
 ```
 
-以下命令在root构建shell执行时保留上述环境；通过sudo调用时需显式传入这些固定输入，避免sudo清理环境后退回旧版构建。未设置整套组件输入只保留旧镜像构建行为，不包含新的升级/语音套件。最终镜像检查`/usr/share/doc/microduck/software-components.json`、语音资源说明与实际版本文件。
+Ao construir em um shell root, as variáveis de ambiente acima continuam disponíveis. Se executar com `sudo`, transmita explicitamente esses insumos fixos para evitar que o `sudo` limpe o ambiente e acione a construção antiga. Sem o conjunto completo de insumos, o script mantém o comportamento da imagem antiga e não inclui os novos componentes de atualização e voz. Na imagem final, confira `/usr/share/doc/microduck/software-components.json`, a descrição dos recursos de voz e os arquivos de versão efetivamente instalados.
 
 ```sh
-sudo STUDIO_VERSION=<Studio 的提交号> IMAGE_VERSION=<本目录的提交号> \
+sudo STUDIO_VERSION=<commit-do-Studio> IMAGE_VERSION=<commit-deste-diretorio> \
     sh build-image.sh /path/to/microduck-zero3w-0.15.1-R1-V112.img \
     /path/to/microduck-payload.tgz ../studio ~/microduck-out
 ```
 
-- `OUT_DIR` 不能放在 `/mnt` 下：WSL 的 Windows 盘上 loop 很慢、权限也不对；用 `~/microduck-out`。
-- 只给自己的验收卡用：`DEV_AUTHORIZED_KEY="$(cat 某把.pub)"` 会把这把公钥写进 radxa 的
-  `authorized_keys`，测出问题能直接远程改，不用重烧卡，镜像清单里会注明。**正式发布绝对不要设**：
-  那等于给所有Usuário de 鸭子留了一扇后门。
-- 版本号不给的话脚本自己用 `git rev-parse`（有未提交改动加 `-dirty`），拿不到就写「未知」。
-  WSL 里读 Windows 盘Superior de  git worktree 常常拿不到，所以发布时自己传。
-- 镜像文件名默认是 `microduck-replica-日期.img.xz`；同一天出第二版时传 `IMAGE_TAG=20261021b` 这样的名字（只能数字和小写字母）。
-- 大约 10 分钟。产出：
-  - `microduck-replica-YYYYMMDD.img.xz` 和同名 `.sha256`；
-  - `镜像清单.txt`：底图和 payload 的 sha256、删了什么、加了什么；
-  - `开源许可.txt`、`第三方.txt`、`模型说明.txt`；
-  - `work.img`：总是保留，确认无误后手工删。
+- `OUT_DIR` não pode ficar em `/mnt`: a montagem loop na unidade Windows do WSL é lenta e tem problemas de permissões. Use, por exemplo, `~/microduck-out`.
+- Para um cartão de validação pessoal, `DEV_AUTHORIZED_KEY="$(cat algum-arquivo.pub)"` instala a chave pública em `authorized_keys` do usuário `radxa`. Assim, você pode corrigir problemas remotamente sem gravar o cartão outra vez; o manifesto da imagem registra essa inclusão. **Nunca defina essa variável em um lançamento público:** isso deixaria uma porta de acesso nos robôs dos usuários.
+- Se não informar as versões, o script tentará obtê-las com `git rev-parse`. Acrescentará `-dirty` se houver alterações sem commit e usará “desconhecido” se não conseguir ler o Git. O WSL frequentemente não consegue acessar um worktree Git em uma unidade Windows; informe as versões manualmente no lançamento.
+- Por padrão, a imagem recebe o nome `microduck-replica-DATA.img.xz`. Para uma segunda versão no mesmo dia, passe um nome como `IMAGE_TAG=20261021b` (somente números e letras minúsculas).
+- A construção leva cerca de 10 minutos. Os resultados são:
+  - `microduck-replica-YYYYMMDD.img.xz` e seu arquivo `.sha256`;
+  - `镜像清单.txt`, com o SHA-256 da imagem-base e do payload e a lista de itens removidos e adicionados;
+  - `开源许可.txt`, `第三方.txt` e `模型说明.txt`;
+  - `work.img`, mantido para inspeção. Apague-o manualmente depois de confirmar o resultado.
 
-单独 de Verificação入口（不é necessário root）：
+É possível executar verificações individuais sem permissões root:
 
 ```sh
-sh build-image.sh --selftest                 # GPT / MBR 分区行改写
-sh capture-payload.sh --clean-toml IN OUT    # robotd.toml 清理函数
-sh apply-rootfs.sh ROOT PAYLOAD ../studio ./overlay   # 在假目录树上试装（ROOT 不能是 /）
+sh build-image.sh --selftest                 # reescrita das linhas de partição GPT / MBR
+sh capture-payload.sh --clean-toml IN OUT    # função de limpeza de robotd.toml
+sh apply-rootfs.sh ROOT PAYLOAD ../studio ./overlay   # teste de instalação em uma árvore fictícia (ROOT não pode ser /)
 ```
 
-## Teste
+## Testes
 
 ```sh
-# WSL root 下跑全（有几条要 root 才能验属主和权限）
+# Execute todos os testes como root no WSL; alguns verificam proprietário e permissões.
 python3 -I -m unittest discover -s tests -v
 sh -n apply-rootfs.sh && sh -n build-image.sh && sh -n capture-payload.sh
 ```
 
-Windows 上用 `py -3.13 -I -m unittest discover -s tests -v` 也能跑（Git Bash 的 sh），权限那条会跳过。
+No Windows, também é possível executar `py -3.13 -I -m unittest discover -s tests -v` com o `sh` do Git Bash. O teste de permissões será ignorado.
 
-## 脚本自己会拦住 de 事
+## O que o script bloqueia automaticamente
 
-构建过程 em abaixo任何一条不满足就停Inferior，并写清卡在哪一步、怎么办：
+Se qualquer uma das condições abaixo falhar, a construção para e informa a etapa e a ação necessária:
 
-- payload 里每个Arquivo de  sha256 跟清单对不Superior、有清单外 de Arquivo、有符号链接；
-- overlay、Studio 的 `deploy/`、`run.py` 里有 Windows 换行（CR）：
-  Windows 上 clone 时 `core.autocrlf=true` 会把没后缀的脚本变成 CRLF，开机就跑不起来。
-  仓库的 `.gitattributes` 已经给这些目录定了 LF；
-- 镜像里任何文件（包括二进制）还有模型作者的名字（只有 `模型说明.txt` 例外，那里按许可要署名）；
-- `etc/systemd`、`udev`、`cron` 里有悬空链接，或者还引用着已删掉的文件；
-- `opt/robot/feetech-ft5-r5` 下还有训练归档（`export-data.zip`、`training-*.json`、`upstream-params`、`*.pt`）；
-- 「待人工确认」里还有普通文件（要先确认不含个人数据，再用 `ALLOW_UNCONFIRMED=1` 放行，清单里会注明）；
-- 官方声卡初始化（`aic3104-init`）不全。
+- o SHA-256 de um arquivo no payload não corresponde ao manifesto, há arquivo sem manifesto ou há link simbólico;
+- os arquivos em `overlay/`, `Studio/deploy/` ou `run.py` usam finais de linha Windows (CR). Ao clonar no Windows com `core.autocrlf=true`, scripts sem extensão podem virar CRLF e falhar na inicialização. O `.gitattributes` do repositório define LF nesses diretórios;
+- qualquer arquivo da imagem, inclusive binários, ainda contém o nome de um autor de modelos. A única exceção é `模型说明.txt`, que precisa creditar os autores conforme a licença;
+- existe um link simbólico quebrado em `etc/systemd`, `udev` ou `cron`, ou algum desses diretórios ainda aponta para um arquivo removido;
+- ainda há arquivos de treinamento em `opt/robot/feetech-ft5-r5`, como `export-data.zip`, `training-*.json`, `upstream-params` ou `*.pt`;
+- a seção “A confirmar manualmente” ainda contém arquivos comuns. Antes de liberar com `ALLOW_UNCONFIRMED=1`, confirme que eles não contêm dados pessoais; o manifesto registrará a exceção;
+- a inicialização oficial do codec de áudio (`aic3104-init`) está incompleta.
 
-另外：所有删除都先打印再删；所有写入都走 `safe_dir` / `safe_file`，ROOT 里指向外部的符号链接会让脚本失败，
-不会写坏宿主机；`apply-rootfs.sh` 不碰 loop 设备、不 chroot。
+Além disso, as exclusões são listadas antes de ocorrer e todas as gravações passam por `safe_dir` ou `safe_file`. Se `ROOT` contiver um link simbólico apontando para fora, o script falhará em vez de modificar arquivos do computador. `apply-rootfs.sh` não acessa dispositivos loop nem executa `chroot`.
 
-## 发布前核对
+## Verificações antes do lançamento
 
-1. Teste全过（WSL root）。
-2. 用提交好的代码构建，`STUDIO_VERSION`、`IMAGE_VERSION` 写提交号，日志里没有 `ALLOW_UNCONFIRMED` 放行。
-3. 把交付的 `.img.xz` 解压回来、只读挂载，至少看：sha256 对得上；`e2fsck -fn` 没错；
-   主程序和模型的 sha256 跟 payload 一致、`robotd.toml` 引用的模型都在；
-   标定模式 drop-in 在；`machine-id` 是空的、没有 SSH 主机钥匙；SSH 只认钥匙；
-   全盘只有 `模型说明.txt` 带模型作者的名字。
-4. 记录本版新卡从头走[Gravaçãoe第一次使用](Gravaçãoe第一次使用.md) de 实物验收范围：Ponto de acesso → 配网 → Superior手清单 6 步 → Levantar走。未Concluído时在发行Instruções明确标出，不能沿用旧版真机por meio de结论。20261027由Usuário授权先发布已核验 de Software/Imagem，本版实物验收待开机后进行。
-5. Imagem里主程序对应 de  fork 提交已经推到 fork Superior。
-6. 发布：GitHub Releases 放 `.img.xz`、`.sha256`、`镜像清单.txt` 和三份 txt；
-   Release Instruções第一段写「免费、只供Pessoal e não comercial复刻、不随收费产品分发」。
+1. Execute todos os testes no WSL como root.
+2. Construa a imagem a partir de um commit. Informe os commits em `STUDIO_VERSION` e `IMAGE_VERSION` e confirme que o registro não liberou nenhum arquivo com `ALLOW_UNCONFIRMED`.
+3. Descompacte e monte a imagem entregue em modo somente leitura. Confira pelo menos: hashes corretos; `e2fsck -fn` sem erros; hashes do programa principal e dos modelos iguais aos do payload; todos os modelos referenciados em `robotd.toml` presentes; arquivo auxiliar do modo de calibração instalado; `machine-id` vazio; nenhuma chave SSH de host; SSH aceitando somente chaves; somente `模型说明.txt` contendo nomes de autores de modelos.
+4. Registre o escopo do teste físico de um cartão novo com [Gravação da imagem e primeiro uso](烧录和第一次使用.md): ponto de acesso → configuração da rede → seis etapas da lista de primeiro uso → levantar e caminhar. Se a validação não estiver concluída, declare isso nas instruções do lançamento; não reutilize resultados de testes físicos de versões anteriores. Em 20261027, o usuário autorizou publicar primeiro o software e a imagem verificados; o teste físico desta versão será feito depois da inicialização.
+5. Confirme que o commit do fork do programa principal incluído na imagem foi enviado ao fork remoto.
+6. No GitHub Releases, publique o `.img.xz`, o `.sha256`, `镜像清单.txt` e os três arquivos `.txt`. A primeira seção das instruções do lançamento deve dizer: “Gratuito, somente para réplicas pessoais e não comerciais; não distribuir com produtos pagos”.
