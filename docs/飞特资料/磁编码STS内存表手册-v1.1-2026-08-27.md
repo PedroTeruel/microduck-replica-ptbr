@@ -1,145 +1,145 @@
-# 磁编码STSServo-内存表解析
+# Tabela de memória do servo STS com encoder magnético
 
-# 1 Servo通信Protocolo
-Servo使用FT-SCS自定义Protocolo，出厂时 de 串口默认Configuração，STSServo默认波特率为1M使用TTL单总线通信，Dados位 8，无校验，停止位 1；波特率可Configuração范围38400~1Mbps，默认通信地址（站号）为1。
-[FT-SCS 自定义协议](http://doc.feetech.cn/#/tiaozhunlujingft?srcType=FT-SCS-Protocol-41ad23fe8a244712ba160b93)
+# 1. Protocolo de comunicação do servo
+O servo usa o protocolo personalizado FT-SCS. A porta serial vem configurada de fábrica; o STS usa taxa padrão de 1 Mbps e comunicação TTL de barramento único, com 8 bits de dados, sem paridade e 1 bit de parada. A taxa pode ser configurada de 38400 a 1 Mbps. O endereço de comunicação (ID da estação) padrão é 1.
+[Protocolo personalizado FT-SCS](http://doc.feetech.cn/#/tiaozhunlujingft?srcType=FT-SCS-Protocol-41ad23fe8a244712ba160b93)
 
-# 2 Servo内存表定义
-Se功能地址采用两个字节数 de Dados，低位字节在前面地址，高位字节在后面地址
-## 2.1 Versão信息
-|地址DEC|地址HEX|功能名称|字节数|初始值|权限|取值范围|单位|Instruções|
+# 2. Definição da tabela de memória do servo
+Para funções com endereços de dados de dois bytes, o byte menos significativo vem no endereço inferior e o mais significativo no endereço seguinte.
+## 2.1 Informações da versão
+|Endereço DEC|Endereço HEX|Nome da função|Bytes|Valor inicial|Permissão|Faixa de valores|Unidade|Instruções|
 |-|-|-|-|-|-|-|-|-|
-|0|0x00|Firmware主Versão号|1|--|只读||||
-|1|0x01|Firmware次Versão号|1|--|只读|||
-|2|0x02|END|1|0|只读|||0表示小端存储结构|
-|3|0x03|Servo主Versão号|1|--|只读||||
-|4|0x04|Servo次Versão号|1|--|只读||||
+|0|0x00|Versão principal do firmware|1|--|Somente leitura||||
+|1|0x01|Versão secundária do firmware|1|--|Somente leitura|||
+|2|0x02|END|1|0|Somente leitura|||0 indica armazenamento little-endian|
+|3|0x03|Versão principal do servo|1|--|Somente leitura||||
+|4|0x04|Versão secundária do servo|1|--|Somente leitura||||
 
-## 2.2 EPROMConfiguração
-地址DEC|地址HEX|功能名称|字节数|初始值|权限|取值范围|单位|Instruções|
+## 2.2 Configuração da EPROM
+|Endereço DEC|Endereço HEX|Nome da função|Bytes|Valor inicial|Permissão|Faixa de valores|Unidade|Instruções|
 |-|-|-|-|-|-|-|-|-|
-|5|0x05|ServoID|1|1|读写|0 ~ 253|号|总线Superior唯一 de 主ID标识|
-|6|0x06|波特率|1|0|读写|0 ~ 7|无|0-7分别代表波特率：1000000(0)，500000(1)，250000(2)，128000(3)，115200(4)，76800(5)，57600(6)，38400(7)|
-|7|0x07|预留地址|1|--|读写|--|--||
-|8|0x08|应答状态级别|1|1|读写|0 ~ 1|无|0：除读指令 e PING指令外其它指令不返回应答包；1：对所有指令返回应答包|
-|9|0x09|最小角度限制|2|0|读写|0 ~ 4094|0.087度|多圈绝对位置Controle时此值为0|
-|11|0x0B|最大角度限制|2|4095|读写|1 ~ 4095|0.087度|多圈绝对位置Controle时此值为0|
-|13|0x0D|最高温度Superior限|1|70|读写|0 ~ 100|°C||
-|14|0x0E|最高输入电压|1|--|读写|0 ~ 254|0.1V||
-|15|0x0F|最低输入电压|1|40|读写|0 ~ 254|0.1V||
-|16|0x10|最大扭矩|2|1000|读写|0 ~ 1000|0.1%|Superior电赋值给48号地址转矩限制|
-|18|0x12|相位|1|--|读写|0 ~ 254|无|特殊功能字节，无特别需求不可修改|
-|19|0x13|卸载条件|1|--|读写|0 ~ 254|无|对应位设置1为开启相应保护，对应位设置0为关闭相应保护|
-|20|0x14|LED报警条件|1|--|读写|0 ~ 254|无|对应位设置1为开启闪灯报警，对应位设置0为关闭闪灯报警|
-|21|0x15|位置环P 比例系数|1|--|读写|0 ~ 254|无|Controle电机 de 比例系数(1/4)|
-|22|0x16|位置环D 微分系数|1|--|读写|0 ~ 254|无|Controle电机 de 微分系数(1/8)|
-|23|0x17|位置环I 积分系数|1|0|读写|0 ~ 254|无|Controle电机 de 积分系数|
-|24|0x18|最小Inicialização扭矩|1|--|读写|0 ~ 254|0.1%|设置Servo de 最小输出Inicialização扭矩|
-|25|0x19|积分限制值|1|0|读写|0 ~ 254|无|最大积分值=积分限制值*4，0表示关闭积分限制功能，位置模式0 e 模式4生效|
-|26|0x1A|正向不灵敏区|1|1|读写|0 ~ 16|0.087度|最小单位为一个最小分辨角度|
-|27|0x1B|负向不灵敏区|1|1|读写|0 ~ 16|0.087度|最小单位为一个最小分辨角度|
-|28|0x1C|保护电流|2|511|读写|0 ~ 2047|6.5mA|最大可设置电流为 500 * 6.5mA = 3250mA|
-|30|0x1E|角度分辨率|1|1|读写|1 ~ 128|无|对传感器最小分辨角度 de 放大系数|
-|31|0x1F|位置偏移|2|0|读写|0 ~ 8191|0.087度|0 ~ 2047表示0 ~ 2047；2048 ~ 4095表示0 ~ -2047；4096 ~ 6143表示2048 ~ 4095；6144~8191表示-2048 ~ -4095（表示偏位置-4095~4095）|
-|33|0x21|Execução模式|1|0|读写|0 ~ 3|无|0：位置伺服模式；1：电机恒速模式；2：PWM开环调速度模式；3：步进模式|
-|34|0x22|保持扭矩|1|20|读写|0 ~ 254|1%|进入过载保护后输出扭矩，如设20表示20% de 最大扭矩|
-|35|0x23|保护时间|1|200|读写|0 ~ 254|10ms|Atual负载输出超过过载扭力并保持 de 计时时长，如设200表示2秒，最大可设2.5秒|
-|36|0x24|过载扭矩|1|80|读写|0 ~ 254|1%|Inicialização过载保护时间计时 de 最大扭力阀值，如设80表示80% de 最大扭矩|
-|37|0x25|速度闭环P比例系数|1|--|读写|0 ~ 254|无|电机恒速模式（模式1）Inferior,速度环比例系数|
-|38|0x26|过流保护时间|1|200|读写|0 ~ 254|10ms|最大可设置254 * 10ms = 2540ms|
-|39|0x27|速度闭环I积分系数|1|--|读写|0 ~ 254|无|电机恒速模式（模式1）Inferior,速度环积分系数|
+|5|0x05|ID do servo|1|1|Leitura/escrita|0 ~ 253|ID|Identificador de ID principal, único no barramento|
+|6|0x06|Taxa de transmissão|1|0|Leitura/escrita|0 ~ 7|Nenhum|Os valores 0–7 correspondem às taxas: 1000000 (0), 500000 (1), 250000 (2), 128000 (3), 115200 (4), 76800 (5), 57600 (6), 38400 (7)|
+|7|0x07|Endereço reservado|1|--|Leitura/escrita|--|--||
+|8|0x08|Nível de resposta|1|1|Leitura/escrita|0 ~ 1|Nenhum|0: não responde a instruções, exceto READ e PING; 1: responde a todas as instruções|
+|9|0x09|Limite mínimo de ângulo|2|0|Leitura/escrita|0 ~ 4094|0,087°|Defina como 0 para controle de posição absoluta multivoltas|
+|11|0x0B|Limite máximo de ângulo|2|4095|Leitura/escrita|1 ~ 4095|0,087°|Defina como 0 para controle de posição absoluta multivoltas|
+|13|0x0D|Limite superior de temperatura|1|70|Leitura/escrita|0 ~ 100|°C||
+|14|0x0E|Tensão máxima de entrada|1|--|Leitura/escrita|0 ~ 254|0.1V||
+|15|0x0F|Tensão mínima de entrada|1|40|Leitura/escrita|0 ~ 254|0.1V||
+|16|0x10|Torque máximo|2|1000|Leitura/escrita|0 ~ 1000|0.1%|O valor de torque é aplicado ao limite de torque no endereço 48|
+|18|0x12|Fase|1|--|Leitura/escrita|0 ~ 254|Nenhum|Byte de função especial; não altere sem necessidade específica|
+|19|0x13|Condição de desligamento de torque|1|--|Leitura/escrita|0 ~ 254|Nenhum|Defina o bit correspondente como 1 para ativar a proteção ou 0 para desativá-la|
+|20|0x14|Condição de alerta do LED|1|--|Leitura/escrita|0 ~ 254|Nenhum|Defina o bit correspondente como 1 para ativar o alerta piscante ou 0 para desativá-lo|
+|21|0x15|Ganho proporcional P do controle de posição|1|--|Leitura/escrita|0 ~ 254|Nenhum|Ganho proporcional do controle do motor (1/4)|
+|22|0x16|Ganho derivativo D do controle de posição|1|--|Leitura/escrita|0 ~ 254|Nenhum|Ganho derivativo do controle do motor (1/8)|
+|23|0x17|Ganho integral I do controle de posição|1|0|Leitura/escrita|0 ~ 254|Nenhum|Ganho integral do controle do motor|
+|24|0x18|Torque inicial mínimo|1|--|Leitura/escrita|0 ~ 254|0.1%|Define o torque de inicialização mínimo de saída do servo|
+|25|0x19|Limite integral|1|0|Leitura/escrita|0 ~ 254|Nenhum|Valor integral máximo = limite integral × 4; 0 desativa o limite. Aplicável aos modos de posição 0 e 4|
+|26|0x1A|Zona morta positiva|1|1|Leitura/escrita|0 ~ 16|0,087°|A unidade mínima é um incremento da resolução angular mínima|
+|27|0x1B|Zona morta negativa|1|1|Leitura/escrita|0 ~ 16|0,087°|A unidade mínima é um incremento da resolução angular mínima|
+|28|0x1C|Corrente de proteção|2|511|Leitura/escrita|0 ~ 2047|6.5mA|Corrente máxima configurável: 500 × 6,5 mA = 3250 mA|
+|30|0x1E|Resolução angular|1|1|Leitura/escrita|1 ~ 128|Nenhum|Fator de ampliação da resolução angular mínima do sensor|
+|31|0x1F|Deslocamento de posição|2|0|Leitura/escrita|0 ~ 8191|0,087°|0–2047 representa 0–2047; 2048–4095 representa 0 a −2047; 4096–6143 representa 2048–4095; 6144–8191 representa −2048 a −4095 (deslocamento de −4095 a 4095)|
+|33|0x21|Modo de operação|1|0|Leitura/escrita|0 ~ 3|Nenhum|0: servo de posição; 1: velocidade constante do motor; 2: controle de velocidade PWM em malha aberta; 3: modo de passos|
+|34|0x22|Torque mantido|1|20|Leitura/escrita|0 ~ 254|1%|Torque de saída após entrar na proteção contra sobrecarga; 20 significa 20% do torque máximo|
+|35|0x23|Tempo de proteção|1|200|Leitura/escrita|0 ~ 254|10ms|Tempo durante o qual a carga atual deve exceder o torque de sobrecarga para iniciar a proteção; 200 significa 2 s, máximo de 2,5 s|
+|36|0x24|Torque de sobrecarga|1|80|Leitura/escrita|0 ~ 254|1%|Limite de torque máximo que inicia a contagem da proteção contra sobrecarga; 80 significa 80% do torque máximo|
+|37|0x25|Ganho proporcional P do controle de velocidade|1|--|Leitura/escrita|0 ~ 254|Nenhum|Ganho proporcional do controle de velocidade no modo de velocidade constante do motor (modo 1)|
+|38|0x26|Tempo de proteção contra sobrecorrente|1|200|Leitura/escrita|0 ~ 254|10ms|Máximo configurável: 254 × 10 ms = 2540 ms|
+|39|0x27|Ganho integral I do controle de velocidade|1|--|Leitura/escrita|0 ~ 254|Nenhum|Ganho integral do controle de velocidade no modo de velocidade constante do motor (modo 1)|
 
-## 2.3 SRAMControle
-地址DEC|地址HEX|功能名称|字节数|初始值|权限|取值范围|单位|Instruções|
+## 2.3 Controle da SRAM
+Endereço DEC|Endereço HEX|Nome da função|Bytes|Valor inicial|Permissão|Faixa de valores|Unidade|Instruções|
 |-|-|-|-|-|-|-|-|-|
-|40|0x28|扭矩开关|1|0|读写|0 ~ 2|无|写0：关闭扭力输出；写1：打开扭力输出；写2：阻尼输出（转矩限制（48）可Controle阻尼力大小），写128：任意Atual位置较正为2048|
-|41|0x29|加速度|1|0|读写|0 ~ 254|8.7度/秒^2^|ServoExecução加/减速度，0表示最大加速度|
-|42|0x2A|目标位置|2|0|读写|-32767 ~ 32767|0.087度|绝对位置Controle方式，最大对应最大有效角度，BIT15为方向位|
-|44|0x2C|PWM开环速度|2|1000|读写|0~1000|0.1%|PWM开环调速度模式Inferior生效，BIT10为方向位|
-|46|0x2E|Execução速度|2|Servo出厂默认最大速度|读写|-32767 ~ 32767|0.732RPM/0.0146RPM|Controle电机最高Execução速度，BIT15为方向位；速度0默认表示最高速度，可por meio de相位设置0表示停止；速度单位可por meio de相位设置，0.732RPM/0.0146RPM两种单位，速度单位设置为0.0146RPM，其精度也是0.732RPM|
-|48|0x30|转矩限制|2|最大扭矩（16），默认1000|读写|0 ~ 1000|0.1%|Usuário可程序修改此值来Controle堵转扭矩 de 输出|
-|50~54|0x32~0x36|无定义|1|--|读写|--|--||
-|55|0x37|锁标志|1|1|读写|0 ~ 1|无|写0关闭Gravação锁，GravaçãoEPROM地址 de 值掉电保存；写1打开Gravação锁，GravaçãoEPROM地址 de 值掉电不保存|
+|40|0x28|Chave de torque|1|0|Leitura/escrita|0 ~ 2|Nenhum|Gravar 0: desativa a saída de torque; gravar 1: ativa a saída; gravar 2: ativa a saída de amortecimento (o limite de torque, endereço 48, controla sua intensidade); gravar 128: calibra qualquer posição atual como 2048|
+|41|0x29|Aceleração|1|0|Leitura/escrita|0 ~ 254|8,7°/s²|Aceleração/desaceleração do servo; 0 significa aceleração máxima|
+|42|0x2A|Posição-alvo|2|0|Leitura/escrita|-32767 ~ 32767|0,087°|No controle de posição absoluta, o máximo corresponde ao maior ângulo válido; BIT15 indica a direção|
+|44|0x2C|Velocidade PWM em malha aberta|2|1000|Leitura/escrita|0~1000|0.1%|Aplicável ao modo PWM de velocidade em malha aberta; BIT10 indica a direção|
+|46|0x2E|Velocidade de operação|2|Velocidade máxima padrão de fábrica do servo|Leitura/escrita|-32767 ~ 32767|0.732RPM/0.0146RPM|Controla a velocidade máxima do motor; BIT15 indica a direção. Por padrão, velocidade 0 significa velocidade máxima; pela configuração de fase, 0 também pode significar parado. A fase seleciona a unidade: 0,732 RPM ou 0,0146 RPM. Mesmo ao selecionar 0,0146 RPM, a precisão continua sendo 0,732 RPM.|
+|48|0x30|Limite de torque|2|Torque máximo (16), padrão 1000|Leitura/escrita|0 ~ 1000|0.1%|O usuário pode alterar este valor no programa para controlar o torque de saída em caso de travamento|
+|50~54|0x32~0x36|Não definido|1|--|Leitura/escrita|--|--||
+|55|0x37|Flag de bloqueio|1|1|Leitura/escrita|0 ~ 1|Nenhum|Gravar 0 desbloqueia a escrita e salva os valores da EPROM após desligar; gravar 1 bloqueia a escrita e não salva alterações da EPROM após desligar|
 
-## 2.4 SRAM反馈
-|地址DEC|地址HEX|功能名称|字节数|初始值|权限|取值范围|单位|Instruções|
+## 2.4 Feedback da SRAM
+|Endereço DEC|Endereço HEX|Nome da função|Bytes|Valor inicial|Permissão|Faixa de valores|Unidade|Instruções|
 |-|-|-|-|-|-|-|-|-|
-|56|0x38|Atual位置|2|--|只读|--|0.087度|反馈ServoAtual绝对位置，BIT15为方向位；步进模式3返回Atual位置 e 目标位置 de 步进差值，BIT15为方向位|
-|58|0x3A|Atual速度|2|--|只读|--|0.732RPM/0.0146RPM|反馈Atual电机转动 de 速度，速度单位conforme相位设置，BIT15为方向位|
-|60|0x3C|Atual负载|2|--|只读|--|0.1%|AtualControle输出驱动电机 de 电压占空比，BIT10为方向位|
-|62|0x3E|Atual电压|1|--|只读|--|0.1V|AtualServo工作电压|
-|63|0x3F|Atual温度|1|--|只读|--|°C|AtualServo内部工作温度|
-|64|0x40|异步写标志|1|0|只读|--|无|采用异步写指令时，标志位|
-|65|0x41|Servo状态|1|0|只读|--|无|对应位被置1表示相应错误出现|
-|66|0x42|移动标志|1|0|只读|--|无|Servo在运动时标志为1，Servo到达目标并且停止时为0；Servo无Atualização目标位置保持为0|
-|67|0x43|目标位置|2|0|只读|--|0.087度|Atual目标位置|
-|69|0x45|Atual电流|2|--|只读|--|6.5mA|反馈Atual电机相电流|
-|71|0x47|无定义|2|--|只读|--|--||
+|56|0x38|Posição atual|2|--|Somente leitura|--|0,087°|Retorna a posição absoluta atual do servo; BIT15 indica a direção. No modo de passos 3, retorna a diferença em passos entre a posição atual e a posição-alvo; BIT15 indica a direção|
+|58|0x3A|Velocidade atual|2|--|Somente leitura|--|0.732RPM/0.0146RPM|Retorna a velocidade atual do motor; a unidade depende da configuração de fase; BIT15 indica a direção|
+|60|0x3C|Carga atual|2|--|Somente leitura|--|0.1%|Ciclo de trabalho da tensão de saída de controle que aciona o motor; BIT10 indica a direção|
+|62|0x3E|Tensão atual|1|--|Somente leitura|--|0.1V|Tensão de operação atual do servo|
+|63|0x3F|Temperatura atual|1|--|Somente leitura|--|°C|Temperatura interna atual do servo|
+|64|0x40|Flag de gravação assíncrona|1|0|Somente leitura|--|Nenhum|Flag usada com a instrução de gravação assíncrona|
+|65|0x41|Estado do servo|1|0|Somente leitura|--|Nenhum|Um bit correspondente em 1 indica o erro correspondente|
+|66|0x42|Flag de movimento|1|0|Somente leitura|--|Nenhum|1 enquanto o servo está em movimento; 0 quando atinge o alvo e para. Sem atualização da posição-alvo, permanece em 0|
+|67|0x43|Posição-alvo|2|0|Somente leitura|--|0,087°|Posição-alvo atual|
+|69|0x45|Corrente atual|2|--|Somente leitura|--|6.5mA|Retorna a corrente de fase atual do motor|
+|71|0x47|Não definido|2|--|Somente leitura|--|--||
 
-## 3.5 出厂Parâmetros
-|地址DEC|地址HEX|功能名称|字节数|初始值|权限|取值范围|单位|Instruções|
+## 3.5 Parâmetros de fábrica
+|Endereço DEC|Endereço HEX|Nome da função|Bytes|Valor inicial|Permissão|Faixa de valores|Unidade|Instruções|
 |-|-|-|-|-|-|-|-|-|
-|80|0x50|移动速度阀值|1|--|只读|--|--|--|
-|81|0x51|DTs(ms)|1|--|只读|--|--|--|
-|82|0x52|速度单位系数|1|--|只读|--|--|--|
-|83|0x53|最小速度限制|1|--|只读|--|--|单位0.732rpm|
-|84|0x54|最大速度限制|1|--|只读|--|--|单位0.732rpm|
-|85|0x55|加速度限制|1|--|只读|--|--|--|
-|86|0x56|加速度倍数|1|--|只读|--|--|加速度为0时加速度倍数生效，加速度倍数 e 加速度同时为0表示Servo响应速度最快|
+|80|0x50|Limite de velocidade de movimento|1|--|Somente leitura|--|--|--|
+|81|0x51|DTs(ms)|1|--|Somente leitura|--|--|--|
+|82|0x52|Fator da unidade de velocidade|1|--|Somente leitura|--|--|--|
+|83|0x53|Limite mínimo de velocidade|1|--|Somente leitura|--|--|Unidade: 0,732 rpm|
+|84|0x54|Limite máximo de velocidade|1|--|Somente leitura|--|--|Unidade: 0,732 rpm|
+|85|0x55|Limite de aceleração|1|--|Somente leitura|--|--|--|
+|86|0x56|Multiplicador de aceleração|1|--|Somente leitura|--|--|O multiplicador de aceleração é usado quando a aceleração é 0. Se o multiplicador e a aceleração forem ambos 0, o servo responde na velocidade máxima|
 
-# 3 特殊字节解释
-## 3.1 Servo相位
-- **位数/位权重：Instruções**
-- BIT0（1）：驱动方向相位；(0)正向，(1)反向
-- BIT1（2）：驱动桥模式；(0)无刷，(1)有刷，重启生效
-- BIT2（4）：速度单位；(0)0.732RPM，(1)0.0146RPM
-- BIT3（8）：速度模式；(0)速度0表示停止，(1)速度0表示最高速度
-- BIT4（16）：角度反馈模式；(0)反馈单圈角度，(1)反馈全角度
-- BIT5（32）：驱动桥Configuração，(0)独立H桥，(1)集成H桥/无电流反馈
-- BIT6（64）：PWM频率，(0)24kHz，(1)16kHz
-- BIT7（128）：位置反馈方向相位，(0)正向，(1)反向
-- <div style="padding: 8px 16px;background-color: #fff9e9;border-radius: 4px;border-left: 5px solid #fbc302;margin: 20px 0;">Se同时设置多个位，Servo de 相位值为各个位值之e。例如：原相位值为0，ServoExecução反向，则相位值为128+1=129；
+# 3. Interpretação de bytes especiais
+## 3.1 Fase do servo
+- **Número do bit / peso do bit:**
+- BIT0 (1): fase da direção de acionamento — (0) direta, (1) reversa
+- BIT1 (2): modo da ponte de acionamento — (0) sem escovas, (1) com escovas; aplicado após reinicialização
+- BIT2 (4): unidade de velocidade — (0) 0,732 RPM, (1) 0,0146 RPM
+- BIT3 (8): modo de velocidade — (0) velocidade 0 significa parado, (1) velocidade 0 significa velocidade máxima
+- BIT4 (16): modo de feedback angular — (0) ângulo de uma volta, (1) ângulo total
+- BIT5 (32): configuração da ponte de acionamento — (0) ponte H independente, (1) ponte H integrada/sem feedback de corrente
+- BIT6 (64): frequência PWM — (0) 24 kHz, (1) 16 kHz
+- BIT7 (128): fase da direção de feedback de posição — (0) direta, (1) reversa
+- <div style="padding: 8px 16px;background-color: #fff9e9;border-radius: 4px;border-left: 5px solid #fbc302;margin: 20px 0;">Ao definir vários bits, o valor da fase do servo é a soma dos respectivos pesos. Exemplo: se a fase original for 0 e o servo operar no sentido inverso, o valor será 128+1=129.
 </div> 
 
-## 3.2 Servo状态
-**Servo状态：0表示正常，1表示异常**
-- **位数/位权重：Instruções**
-- BIT0（1）：电压状态
-- BIT1（2）：磁编码状态
-- BIT2（4）：温度状态
-- BIT3（8）：电流状态
-- BIT4（16）：----
-- BIT5（32）：负载状态
-- BIT6（64）：----
-- BIT7（128）：----
-- <div style="padding: 8px 16px;background-color: #fff9e9;border-radius: 4px;border-left: 5px solid #fbc302;margin: 20px 0;">Se同时有多种状态，Servo de 状态值为各个位值之e。例如：电压过压/欠压 e Servo过热，则Servo状态值为4+1=5；
+## 3.2 Estado do servo
+**Estado do servo: 0 = normal; 1 = anormal**
+- **Número do bit / peso do bit:**
+- BIT0 (1): estado da tensão
+- BIT1 (2): estado do encoder magnético
+- BIT2 (4): estado da temperatura
+- BIT3 (8): estado da corrente
+- BIT4 (16): —
+- BIT5 (32): estado da carga
+- BIT6 (64): —
+- BIT7 (128): —
+- <div style="padding: 8px 16px;background-color: #fff9e9;border-radius: 4px;border-left: 5px solid #fbc302;margin: 20px 0;">Quando há vários estados, o valor do estado do servo é a soma dos pesos dos bits. Exemplo: sobretensão/subtensão e superaquecimento do servo resultam em 4+1=5.
 </div> 
 
-## 3.3 卸载条件
-**卸载条件：0表示关闭，1表示开启**
-- **位数/位权重：Instruções**
-- BIT0（1）：电压保护
-- BIT1（2）：磁编码保护
-- BIT2（4）：过热保护
-- BIT3（8）：过流保护
-- BIT4（16）：----
-- BIT5（32）：负载过载
-- BIT6（64）：----
-- BIT7（128）：----
-- <div style="padding: 8px 16px;background-color: #fff9e9;border-radius: 4px;border-left: 5px solid #fbc302;margin: 20px 0;">Se同时设置多个位，Servo de 卸载条件值为各位值之e。例如：电压保护 e 过热保护同时开启，则卸载条件值为4+1=5；
+## 3.3 Condições de desligamento de torque
+**Condição de desligamento de torque: 0 = desativada; 1 = ativada**
+- **Número do bit / peso do bit:**
+- BIT0 (1): proteção de tensão
+- BIT1 (2): proteção do encoder magnético
+- BIT2 (4): proteção contra superaquecimento
+- BIT3 (8): proteção contra sobrecorrente
+- BIT4 (16): —
+- BIT5 (32): sobrecarga
+- BIT6 (64): —
+- BIT7 (128): —
+- <div style="padding: 8px 16px;background-color: #fff9e9;border-radius: 4px;border-left: 5px solid #fbc302;margin: 20px 0;">Ao definir vários bits, o valor da condição de desligamento do servo é a soma dos pesos. Exemplo: proteção de tensão e proteção térmica ativadas resultam em 4+1=5.
 </div>
 
-## 3.4 LED报警条件
-**LED报警条件：0表示关闭，1表示开启**
-- **位数/位权重：Instruções**
-- BIT0（1）：电压报警
-- BIT1（2）：磁编码报警
-- BIT2（4）：过热报警
-- BIT3（8）：过流报警
-- BIT4（16）：----
-- BIT5（32）：负载过载报警
-- BIT6（64）：----
-- BIT7（128）：----
+## 3.4 Condições de alerta do LED
+**Condição de alerta do LED: 0 = desativada; 1 = ativada**
+- **Número do bit / peso do bit:**
+- BIT0 (1): alerta de tensão
+- BIT1 (2): alerta do encoder magnético
+- BIT2 (4): alerta de superaquecimento
+- BIT3 (8): alerta de sobrecorrente
+- BIT4 (16): —
+- BIT5 (32): alerta de sobrecarga
+- BIT6 (64): —
+- BIT7 (128): —
 
-- <div style="padding: 8px 16px;background-color: #fff9e9;border-radius: 4px;border-left: 5px solid #fbc302;margin: 20px 0;">Se同时设置多个位，Servo de LED报警条件值为各位值之e。例如：电压报警 e 过热报警同时开启，则报警条件值为4+1=5；
+- <div style="padding: 8px 16px;background-color: #fff9e9;border-radius: 4px;border-left: 5px solid #fbc302;margin: 20px 0;">Ao definir vários bits, o valor da condição de alerta do LED do servo é a soma dos pesos. Exemplo: alertas de tensão e superaquecimento ativados resultam em 4+1=5;
 </div>
