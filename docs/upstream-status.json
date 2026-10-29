@@ -7,9 +7,9 @@
     "pollen-robotics/microduck": {
       "default_branch": "main",
       "head": {
-        "sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
-        "committed_at": "2026-10-28T08:28:43Z",
-        "subject": "Merge pull request #431 from pollen-robotics/mediad-no-downscale"
+        "sha": "52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+        "committed_at": "2026-10-29T11:18:42Z",
+        "subject": "Merge pull request #490 from pollen-robotics/prepare-release-0.18.0"
       },
       "latest_stable_release": {
         "tag_name": "daemon-v0.17.9",
@@ -20,53 +20,42 @@
       },
       "tracked_development_releases": [
         {
-          "tag": "daemon-dev-os-update-ipc",
-          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-os-update-ipc",
-          "published_at": "2026-10-28T16:40:10Z",
-          "version": "daemon 0.17.9-dev.1490.0f9e8ad (os-update-ipc)",
-          "head_sha": "0f9e8ad9093f5ba72e880d44825f197cadc9519a",
+          "tag": "daemon-dev-configure-tolerates-unknown-keys",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-configure-tolerates-unknown-keys",
+          "published_at": "2026-10-29T11:52:01Z",
+          "version": "daemon 0.18.0-dev.1508.6e6111f (configure-tolerates-unknown-keys)",
+          "head_sha": "6e6111f1ca25870ca8d6de1051c5a47be70a4ca0",
           "prerelease": true,
-          "related_pull_request": 485,
-          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...0f9e8ad9093f5ba72e880d44825f197cadc9519a",
-          "change": "New unmerged API46 os.status/check/apply/switch routes in updaterd and BLE duckctl. Wraps official Yocto microduck-osupdate/RAUC A/B image machinery; does not create slots or port OS updates to Armbian. Phone app and robotctl os are not implemented in this PR.",
-          "priority": "higher_if_adopting_Yocto_AB_OS_trigger; low_for_current_single_root_Armbian_image",
-          "replica_integration": "not_integrated_or_executed; no daemon/image/robot/preview changes by tracker"
-        },
-        {
-          "tag": "daemon-dev-beta-camera-intrinsics",
-          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-beta-camera-intrinsics",
-          "published_at": "2026-10-28T15:40:15Z",
-          "version": "daemon 0.17.9-dev.1484.0ab5d19 (beta-camera-intrinsics)",
-          "head_sha": "0ab5d193c18cd6ef646882e0e494c727903e87dc",
-          "prerelease": true,
-          "related_pull_request": 484,
-          "change": "Adds GC2093 beta camera family calibration, sensor HFOV85.2 and scale-specific tests. Own media.intrinsics overrides family values. Calibration applies to official Seeed beta module/lens; not a generic GC2093 lens or purchasing specification.",
-          "priority": "higher_before_GC2093_geometry_or_tag_goal_adoption; verify_actual_module_lens_and_rotation",
-          "replica_integration": "not_integrated; same fixed code as unmergedPR484, no package install or camera test by tracker"
-        },
-        {
-          "tag": "daemon-dev-config-survives-os-update",
-          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-config-survives-os-update",
-          "published_at": "2026-10-28T15:27:22Z",
-          "version": "daemon 0.17.9-dev.1481.a809897 (config-survives-os-update)",
-          "head_sha": "a809897bc2465c88a2dd2298efb55cd663c6b8d8",
-          "prerelease": true,
-          "related_pull_request": 483,
-          "change": "Default config becomes /etc/robot/robotd.toml base plus /var/lib/robot/robotd.toml user override; tables merge recursively and arrays replace. Editors lock/write/validate the user layer, readers and pad mtimes use both. Invalid user layer is ignored with degraded health; invalid base remains fatal. HF token moves to persistent storage with rollback symlink migration.",
-          "priority": "higher_configuration_and_rollback_review_before_adopting_OS_updates; not_an_automatic_Armbian_upgrade",
-          "replica_integration": "not_integrated; unmerged development source, no installation or runtime testing by tracker"
-        },
-        {
-          "tag": "daemon-dev-policy-community-opt-in",
-          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-policy-community-opt-in",
-          "published_at": "2026-10-28T15:01:04Z",
-          "version": "daemon 0.17.9-dev.1479.b60349f (policy-community-opt-in)",
-          "head_sha": "b60349fee07468be8203ff11a627e1e00d7b9119",
-          "prerelease": true,
-          "related_pull_request": 482,
-          "change": "Adds default-off policy.allow_community gate in updaterd policy.fetch before requests; non-Pollen repositories require opt-in. Existing downloaded community policies and direct library-path loads continue. Live successful community policy swaps add repo/revision events to the public shared vetbook. No API version bump.",
-          "priority": "higher_before_adopting_upstream_policy_fetch; preserve_explicit_HD1910_model_choices",
-          "replica_integration": "not_integrated; unmerged development source, no installation or runtime testing by tracker"
+          "related_pull_request": 489,
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36...6e6111f1ca25870ca8d6de1051c5a47be70a4ca0",
+          "change": "Unmerged editor unknown-key tolerance: shared Params::parse names/ignores unsupported keys for resolved hints and pad_bindings while retaining text for other branches; save validation remains. Syntax/type/range errors are not accepted. Fixes misleading default binding display when strict parser encountered a stray key.",
+          "priority": "medium_before_switching_experimental_config_branches",
+          "replica_integration": "not_integrated; no editor/test/robot execution by tracker",
+          "history": [
+            {
+              "tag": "daemon-dev-configure-tolerates-unknown-keys",
+              "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-configure-tolerates-unknown-keys",
+              "published_at": "2026-10-29T09:44:33Z",
+              "version": "daemon 0.17.9-dev.1495.1e6998b (configure-tolerates-unknown-keys)",
+              "head_sha": "1e6998b8f6fd48b7400fcf878b1f199cd5df60bd",
+              "prerelease": true,
+              "related_pull_request": 489,
+              "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36...1e6998b8f6fd48b7400fcf878b1f199cd5df60bd",
+              "change": "Unmerged editor unknown-key tolerance: shared Params::parse names/ignores unsupported keys for resolved hints and pad_bindings while retaining text for other branches; save validation remains. Syntax/type/range errors are not accepted. Fixes misleading default binding display when strict parser encountered a stray key.",
+              "priority": "medium_before_switching_experimental_config_branches",
+              "replica_integration": "not_integrated; no editor/test/robot execution by tracker",
+              "superseded_at_check_utc": "2026-10-29T11:58:47.851613+00:00"
+            }
+          ],
+          "previous_head_sha": "1e6998b8f6fd48b7400fcf878b1f199cd5df60bd",
+          "followup_checked_at_utc": "2026-10-29T11:58:47.851613+00:00",
+          "comparison_to_recorded_main": {
+            "from_sha": "52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+            "to_sha": "6e6111f1ca25870ca8d6de1051c5a47be70a4ca0",
+            "status": "ahead",
+            "ahead_by": 3,
+            "behind_by": 0
+          }
         },
         {
           "tag": "daemon-dev-precision-pad",
@@ -796,17 +785,36 @@
         {
           "tag": "daemon-dev-main",
           "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-main",
-          "published_at": "2026-10-28T08:37:03Z",
-          "head_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "published_at": "2026-10-29T11:26:25Z",
+          "head_sha": "52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
           "prerelease": true,
-          "scope_note": "Development main at6cdfdaad includes merged camera weak-link frame dropping plus earlier fall arming/gallery; stable0.17.9 remains96b89. No tracker runtime integration.",
-          "previous_head_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
+          "scope_note": "0.18.0development/API46 at main52a8e23; includes merged persistence/community/camera/OS changes, not stable0.18.0 publication or replica acceptance.",
+          "previous_head_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
           "head_history": [
             "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
             "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
-            "5def2f3e66501f0f365d4fb1183020b8ee875443"
+            "5def2f3e66501f0f365d4fb1183020b8ee875443",
+            "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde"
           ],
-          "version": "daemon 0.17.9-dev.1470.6cdfdaa (main)"
+          "version": "daemon 0.18.0-dev.1506.52a8e23 (main)",
+          "history": [
+            {
+              "tag": "daemon-dev-main",
+              "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-main",
+              "published_at": "2026-10-28T08:37:03Z",
+              "head_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+              "prerelease": true,
+              "scope_note": "Development main at6cdfdaad includes merged camera weak-link frame dropping plus earlier fall arming/gallery; stable0.17.9 remains96b89. No tracker runtime integration.",
+              "previous_head_sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
+              "head_history": [
+                "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+                "2091d42286fa29a1e24ea4f072191a4836fd1a6e",
+                "5def2f3e66501f0f365d4fb1183020b8ee875443"
+              ],
+              "version": "daemon 0.17.9-dev.1470.6cdfdaa (main)",
+              "superseded_at_check_utc": "2026-10-29T11:40:52.775469+00:00"
+            }
+          ]
         },
         {
           "tag": "daemon-dev-ground-grasp-x",
@@ -940,6 +948,128 @@
       ],
       "pending_pull_requests": [
         {
+          "number": 491,
+          "title": "build(deps-dev): bump vite from 7.3.6 to 7.3.7 in /spaces/policy-playground/web",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-29T11:34:34Z",
+          "updated_at": "2026-10-29T11:38:11Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/491",
+          "head_sha": "e539590e54dd63c64916eaf0d02ee1e98d63738f",
+          "base_sha": "52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+          "base_branch": "main",
+          "merge_commit_sha": null,
+          "changed_file_count": 2,
+          "scope_note": "Unmerged policy-playground web devDependency Vite7.3.6to7.3.7 and range^7.3.7 in2package files. No robot runtime, model, camera, training or hardware changes.",
+          "priority": "low_web_build_tooling_reference",
+          "replica_integration": "not_integrated_or_executed; docs tracking only",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/commit/e539590e54dd63c64916eaf0d02ee1e98d63738f",
+          "this_review": "Read fixed source diff/metadata only; no downloaded source/test execution or package installation."
+        },
+        {
+          "number": 490,
+          "title": "Prepare release 0.18.0",
+          "state": "closed",
+          "draft": false,
+          "merged_at": "2026-10-29T11:18:43Z",
+          "created_at": "2026-10-29T11:06:01Z",
+          "updated_at": "2026-10-29T11:18:45Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/490",
+          "head_sha": "ff79ae892aff868c6951fb2b28d06463982225a1",
+          "base_sha": "ae52491f3ebd93d6ebf2cf027edbdc5db32e540e",
+          "base_branch": "main",
+          "merge_commit_sha": "52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+          "changed_file_count": 2,
+          "scope_note": "Merged release preparation only:workspace/Cargo.lock versions0.17.9to0.18.0,2files. Does not by itself publish stable tag or downloadable formal release.",
+          "priority": "release_metadata_only",
+          "replica_integration": "not_integrated_or_executed; docs tracking only",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/commit/ff79ae892aff868c6951fb2b28d06463982225a1",
+          "this_review": "Read fixed source diff/metadata only; no downloaded source/test execution or package installation."
+        },
+        {
+          "number": 489,
+          "title": "configure: open a robotd.toml with keys from another branch",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-29T09:36:32Z",
+          "updated_at": "2026-10-29T11:48:42Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/489",
+          "head_sha": "6e6111f1ca25870ca8d6de1051c5a47be70a4ca0",
+          "base_sha": "52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+          "base_branch": "main",
+          "merge_commit_sha": null,
+          "changed_file_count": 3,
+          "scope_note": "Unmerged editor unknown-key tolerance: shared Params::parse names/ignores unsupported keys for resolved hints and pad_bindings while retaining text for other branches; save validation remains. Syntax/type/range errors are not accepted. Fixes misleading default binding display when strict parser encountered a stray key.",
+          "priority": "medium_before_switching_experimental_config_branches",
+          "replica_integration": "not_integrated_or_executed; docs tracking only",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36...6e6111f1ca25870ca8d6de1051c5a47be70a4ca0",
+          "comparison_to_recorded_main": {
+            "from_sha": "52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+            "to_sha": "6e6111f1ca25870ca8d6de1051c5a47be70a4ca0",
+            "status": "ahead",
+            "ahead_by": 3,
+            "behind_by": 0
+          },
+          "submitter_validation": "params/robotctl tests, lint/fmt reported; explicitly not tried on a robot; no tracker execution",
+          "this_review": "Read fixed source diff/metadata only; no downloaded source/test execution or package installation.",
+          "history": [
+            {
+              "number": 489,
+              "title": "configure: open a robotd.toml with keys from another branch",
+              "state": "open",
+              "draft": false,
+              "merged_at": null,
+              "created_at": "2026-10-29T09:36:32Z",
+              "updated_at": "2026-10-29T09:39:41Z",
+              "url": "https://github.com/pollen-robotics/microduck/pull/489",
+              "head_sha": "1e6998b8f6fd48b7400fcf878b1f199cd5df60bd",
+              "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+              "base_branch": "main",
+              "merge_commit_sha": null,
+              "changed_file_count": 3,
+              "scope_note": "Unmerged editor unknown-key tolerance: shared Params::parse names/ignores unsupported keys for resolved hints and pad_bindings while retaining text for other branches; save validation remains. Syntax/type/range errors are not accepted. Fixes misleading default binding display when strict parser encountered a stray key.",
+              "priority": "medium_before_switching_experimental_config_branches",
+              "replica_integration": "not_integrated_or_executed; docs tracking only",
+              "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36...1e6998b8f6fd48b7400fcf878b1f199cd5df60bd",
+              "comparison_to_recorded_main": {
+                "status": "diverged",
+                "ahead_by": 1,
+                "behind_by": 21,
+                "from_sha": "52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+                "to_sha": "1e6998b8f6fd48b7400fcf878b1f199cd5df60bd"
+              },
+              "submitter_validation": "params/robotctl tests, lint/fmt reported; explicitly not tried on a robot; no tracker execution",
+              "this_review": "Read fixed source diff/metadata only; no downloaded source/test execution or package installation.",
+              "superseded_at_check_utc": "2026-10-29T11:58:47.851613+00:00"
+            }
+          ],
+          "followup_checked_at_utc": "2026-10-29T11:58:47.851613+00:00",
+          "followup_note": "Branch merged main and added persistent yellow unknown-key notices including base layer;3featurefiles match storedPRfileblobSHAs. Earlier1e6998b retained as initial cut, not paired with newer patches."
+        },
+        {
+          "number": 420,
+          "title": "console: link to the robot's OS update page when it has one",
+          "state": "closed",
+          "draft": false,
+          "merged_at": "2026-10-29T09:47:58Z",
+          "created_at": "2026-10-16T13:22:23Z",
+          "updated_at": "2026-10-29T09:48:00Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/420",
+          "head_sha": "38eefafde6811f04ba9e2880973fbdddbe96d501",
+          "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "base_branch": "main",
+          "merge_commit_sha": "486dd3af1ef674849183d61236590aa6b3c15be6",
+          "changed_file_count": 1,
+          "scope_note": "Merged console LAN OS-update link:15HTML/JS lines, shown only when served locally and8090 no-cors probe resolves. Hidden through rendezvous; does not add OS service or authenticated remoteOS updates.",
+          "priority": "low_console_reference; requires_existing_Yocto8090service",
+          "replica_integration": "not_integrated_or_executed; docs tracking only",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/commit/38eefafde6811f04ba9e2880973fbdddbe96d501",
+          "submitter_validation": "Submitter reports JSparse and Chromium port probes; rebuiltmediad not tested; tracker did not open page or access robot",
+          "this_review": "Read fixed source diff/metadata only; no downloaded source/test execution or package installation."
+        },
+        {
           "number": 488,
           "title": "README: say what works today, and what is planned",
           "state": "open",
@@ -979,18 +1109,18 @@
         {
           "number": 485,
           "title": "updaterd: os.* — trigger an A/B OS update from duckctl and the phone",
-          "state": "open",
+          "state": "closed",
           "draft": false,
-          "merged_at": null,
+          "merged_at": "2026-10-29T11:04:26Z",
           "created_at": "2026-10-28T16:33:29Z",
-          "updated_at": "2026-10-28T16:37:51Z",
+          "updated_at": "2026-10-29T11:04:29Z",
           "url": "https://github.com/pollen-robotics/microduck/pull/485",
-          "head_sha": "0f9e8ad9093f5ba72e880d44825f197cadc9519a",
-          "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "head_sha": "4c0da9169a603665902e253b2b1d6f5110e2e471",
+          "base_sha": "66bd9f4835bbe5d1d2b526ca571e678ffe5e5a43",
           "base_branch": "main",
-          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...0f9e8ad9093f5ba72e880d44825f197cadc9519a",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/66bd9f4835bbe5d1d2b526ca571e678ffe5e5a43...4c0da9169a603665902e253b2b1d6f5110e2e471",
           "changed_file_count": 10,
-          "scope_note": "New unmerged API46 os.status/check/apply/switch routes in updaterd and BLE duckctl. Wraps official Yocto microduck-osupdate/RAUC A/B image machinery; does not create slots or port OS updates to Armbian. Phone app and robotctl os are not implemented in this PR.",
+          "scope_note": "Merged API46 os.* Yocto A/B trigger. Final follow-up merges main and fixes CLI note whitespace/fmt; no new OS mechanism beyond previously reviewed0f9e8ad. Does not provide Armbian slots or phoneApp UI.",
           "priority": "higher_if_adopting_Yocto_AB_OS_trigger; low_for_current_single_root_Armbian_image",
           "replica_integration": "not_integrated_or_executed; no daemon/image/robot/preview changes by tracker",
           "OS_update_contract": {
@@ -1018,16 +1148,66 @@
             "verified_by_this_tracker": false
           },
           "this_review": "Read all10fixed file patches, including status/route/protocol/CLI/preflight and stub tests. No downloaded implementation/test/script execution, package installation, OS apply/switch or device connection.",
-          "API_number_caveat": "ThisAPI46 adds os.* only; equal API numbers do not imply inclusion of Bluetooth or footsteps development contracts."
+          "API_number_caveat": "ThisAPI46 adds os.* only; equal API numbers do not imply inclusion of Bluetooth or footsteps development contracts.",
+          "history": [
+            {
+              "number": 485,
+              "title": "updaterd: os.* — trigger an A/B OS update from duckctl and the phone",
+              "state": "open",
+              "draft": false,
+              "merged_at": null,
+              "created_at": "2026-10-28T16:33:29Z",
+              "updated_at": "2026-10-28T16:37:51Z",
+              "url": "https://github.com/pollen-robotics/microduck/pull/485",
+              "head_sha": "0f9e8ad9093f5ba72e880d44825f197cadc9519a",
+              "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+              "base_branch": "main",
+              "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...0f9e8ad9093f5ba72e880d44825f197cadc9519a",
+              "changed_file_count": 10,
+              "scope_note": "New unmerged API46 os.status/check/apply/switch routes in updaterd and BLE duckctl. Wraps official Yocto microduck-osupdate/RAUC A/B image machinery; does not create slots or port OS updates to Armbian. Phone app and robotctl os are not implemented in this PR.",
+              "priority": "higher_if_adopting_Yocto_AB_OS_trigger; low_for_current_single_root_Armbian_image",
+              "replica_integration": "not_integrated_or_executed; no daemon/image/robot/preview changes by tracker",
+              "OS_update_contract": {
+                "development_api_version": 46,
+                "methods": [
+                  "os.status",
+                  "os.check",
+                  "os.apply",
+                  "os.switch"
+                ],
+                "script": "/usr/bin/microduck-osupdate",
+                "script_missing": "NOT_SUPPORTED15; installing the daemon alone does not supply A/B slots/RAUC/script",
+                "transient_unit": "microduck-osupdate-apply, shared with official8090page",
+                "preflight": "Mutation startup takes engine try_lock/BUSY; robot-stopped and no-remote-session checks. interrupt_sessions skips only session check, apply checks clock, switch does not. Script owns OS disk-size/RAUC handling.",
+                "transport": "btd permits all4methods with existing peer/gate policy; mediad only status/check and denies apply/switch because that transport has no auth.",
+                "build_selection": "Latest channel or explicit14digit build id; older signed build may be selected; switch downloads nothing.",
+                "reply_scope": "Start/phase status, not completed install. Watches fresh phase and early refusals for up to30s; if still checking at timeout returns current status while unit continues. Poll status and last_result after reboot to inspect outcome.",
+                "automatic_update": false,
+                "known_upstream_gap": "Channel manifest is unsigned; a bucket writer can select an older validly signed bundle. RAUC still checks bundle signature. Not fixed in this PR."
+              },
+              "submitter_validation": {
+                "reported": "macOS workspace excludingLinuxNFC,9new os stub tests plus1duckctl test, host/aarch64 clippy and Rust1.94.1check",
+                "physical_board_cycle": false,
+                "remaining": "Published bundle and complete BLE apply/reboot/last_result plus slot-switch cycle",
+                "verified_by_this_tracker": false
+              },
+              "this_review": "Read all10fixed file patches, including status/route/protocol/CLI/preflight and stub tests. No downloaded implementation/test/script execution, package installation, OS apply/switch or device connection.",
+              "API_number_caveat": "ThisAPI46 adds os.* only; equal API numbers do not imply inclusion of Bluetooth or footsteps development contracts.",
+              "superseded_at_check_utc": "2026-10-29T11:40:52.775469+00:00"
+            }
+          ],
+          "merge_commit_sha": "ae52491f3ebd93d6ebf2cf027edbdc5db32e540e",
+          "upstream_integration": "merged_into_main; not in stable0.17.9 and not integrated into replica",
+          "final_followup_note": "4c0da91 includes known camera/community/console main merges and duckctl note whitespace regression; OS module contract unchanged."
         },
         {
           "number": 484,
           "title": "mediad: beta camera family calibration (GC2093)",
-          "state": "open",
+          "state": "closed",
           "draft": false,
-          "merged_at": null,
+          "merged_at": "2026-10-29T09:46:34Z",
           "created_at": "2026-10-28T15:30:47Z",
-          "updated_at": "2026-10-28T15:34:02Z",
+          "updated_at": "2026-10-29T09:46:37Z",
           "url": "https://github.com/pollen-robotics/microduck/pull/484",
           "head_sha": "0ab5d193c18cd6ef646882e0e494c727903e87dc",
           "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
@@ -1067,50 +1247,156 @@
             "One family solve, not this project camera calibration",
             "RMS1.28px; author suggests slower acquisition on rigid board; not perfect calibration",
             "Same sensor can have another lens/crop; do not apply alpha62degree or beta85.2degree parameters indiscriminately"
-          ]
+          ],
+          "history": [
+            {
+              "number": 484,
+              "title": "mediad: beta camera family calibration (GC2093)",
+              "state": "open",
+              "draft": false,
+              "merged_at": null,
+              "created_at": "2026-10-28T15:30:47Z",
+              "updated_at": "2026-10-28T15:34:02Z",
+              "url": "https://github.com/pollen-robotics/microduck/pull/484",
+              "head_sha": "0ab5d193c18cd6ef646882e0e494c727903e87dc",
+              "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+              "base_branch": "main",
+              "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...0ab5d193c18cd6ef646882e0e494c727903e87dc",
+              "changed_file_count": 4,
+              "replica_integration": "not_integrated; source/test-text review only, no software execution, package install, image/build/model/device or online-page operation",
+              "scope_note": "Adds GC2093 beta camera family calibration, sensor HFOV85.2 and scale-specific tests. Own media.intrinsics overrides family values. Calibration applies to official Seeed beta module/lens; not a generic GC2093 lens or purchasing specification.",
+              "priority": "higher_before_GC2093_geometry_or_tag_goal_adoption; verify_actual_module_lens_and_rotation",
+              "submitter_validation": {
+                "calibration_unit": "sky-gtc",
+                "calibrated_on": "2026-10-28",
+                "views": 80,
+                "frame": [
+                  1280,
+                  720
+                ],
+                "fx": 695.6216231288809,
+                "fy": 696.0209167299262,
+                "cx": 627.4740538073111,
+                "cy": 363.60566030048255,
+                "distortion": [
+                  -0.368607360841971,
+                  0.13550162561831905,
+                  0.00012682873881955374,
+                  0.0008719998338708391,
+                  -0.022368269599378002
+                ],
+                "horizontal_fov_deg": 85.2,
+                "vertical_fov_approx_deg": 55,
+                "RMS_px": 1.28,
+                "RMS_above_authors_under1px_guide": true,
+                "mediad_and_params_tests_clippy_rust1941_check_reported": true,
+                "verified_on_replica": false
+              },
+              "limits": [
+                "One family solve, not this project camera calibration",
+                "RMS1.28px; author suggests slower acquisition on rigid board; not perfect calibration",
+                "Same sensor can have another lens/crop; do not apply alpha62degree or beta85.2degree parameters indiscriminately"
+              ],
+              "superseded_at_check_utc": "2026-10-29T11:40:52.775469+00:00"
+            }
+          ],
+          "merge_commit_sha": "d1d1689a2184b21d487a20fce58e2d93d12db238",
+          "upstream_integration": "merged_into_main; not in stable0.17.9 and not integrated into replica"
         },
         {
           "number": 483,
           "title": "Keep the owner's config and sign-in across OS updates",
-          "state": "open",
+          "state": "closed",
           "draft": false,
-          "merged_at": null,
+          "merged_at": "2026-10-29T10:56:14Z",
           "created_at": "2026-10-28T14:44:22Z",
-          "updated_at": "2026-10-28T15:25:35Z",
+          "updated_at": "2026-10-29T10:56:16Z",
           "url": "https://github.com/pollen-robotics/microduck/pull/483",
-          "head_sha": "a809897bc2465c88a2dd2298efb55cd663c6b8d8",
+          "head_sha": "7497fef1b13c50f6e91a9b52a7920d98a07fe24b",
           "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
           "base_branch": "main",
-          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...a809897bc2465c88a2dd2298efb55cd663c6b8d8",
-          "changed_file_count": 13,
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...7497fef1b13c50f6e91a9b52a7920d98a07fe24b",
+          "changed_file_count": 15,
           "replica_integration": "not_integrated; source/test-text review only, no software execution, package install, image/build/model/device or online-page operation",
-          "scope_note": "Default config becomes /etc/robot/robotd.toml base plus /var/lib/robot/robotd.toml user override; tables merge recursively and arrays replace. Editors lock/write/validate the user layer, readers and pad mtimes use both. Invalid user layer is ignored with degraded health; invalid base remains fatal. HF token moves to persistent storage with rollback symlink migration.",
+          "scope_note": "Merged two-layer config and token persistence. Final7497 follow-up adopts under first writer lock and on editor open; moves eligible old settings into user layer then strips matching base keys after base validation. Older daemons without layers therefore read template defaults after rollback.",
           "priority": "higher_configuration_and_rollback_review_before_adopting_OS_updates; not_an_automatic_Armbian_upgrade",
           "submitter_validation": {
             "macOS_workspace_tests_excluding_nfc_passed": 1761,
             "rust1941_workspace_check_excluding_nfc_reported": true,
             "changed_crate_lints_no_new_warnings_reported": true,
             "history_guard_negative_test_reported": true,
-            "hardware_run": false,
+            "hardware_run": true,
             "aarch64_linted": false,
-            "verified_by_tracker": false
+            "verified_by_tracker": false,
+            "hardware_run_source_sha": "90fcc861322dbfc1c82526efde8c131a03bd703b",
+            "hardware_scope": "Submitter reports Radxa Zero3W officialmicroduckOS with0.17.9 robotd/robotctl/updaterd bind mounts: startup/first-write adoption, editor, invalid-user fallback, token move and mediad sandbox. Not this replica or HD1910.",
+            "full_latest_7497_or_merged_hardware_acceptance": false,
+            "earlier_macOS_report_source_sha": "a809897bc2465c88a2dd2298efb55cd663c6b8d8"
           },
           "limits": [
-            "A/B robots need daemon update first, before OS slot replacement loses old /etc data",
-            "Adoption copies only known non-template values; board.version never copied; edits equal to any shipped template value are not recognized",
-            "Old base remains for rollback; logout on an old rolled-back version is not propagated forward",
+            "Eligible known non-template edits move out of base; board.version excluded, historical template-equal edits cannot be recognized",
+            "Rollback to a daemon without user-layer support reads template values until moved forward again; previous base-untouched claim is superseded",
+            "If OS update arrives first, adoption can consume /var/lib/robot/robotd.toml.from-slot; requires an actual Yocto bundle hook to preserve old data. Hook/image publication not certified here",
+            "Old-version logout is not propagated forward; token newer-copy/symlink behavior retained",
             "updater.toml auto_apply and allow_dev_keys remain outside this migration",
-            "Explicit non-default config paths remain standalone"
-          ]
+            "Explicit non-default config paths remain standalone",
+            "Combined main community gate still reads base only while editors write user layer; static mismatch needs separate reproduction/review"
+          ],
+          "history": [
+            {
+              "number": 483,
+              "title": "Keep the owner's config and sign-in across OS updates",
+              "state": "open",
+              "draft": false,
+              "merged_at": null,
+              "created_at": "2026-10-28T14:44:22Z",
+              "updated_at": "2026-10-28T15:25:35Z",
+              "url": "https://github.com/pollen-robotics/microduck/pull/483",
+              "head_sha": "a809897bc2465c88a2dd2298efb55cd663c6b8d8",
+              "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+              "base_branch": "main",
+              "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...a809897bc2465c88a2dd2298efb55cd663c6b8d8",
+              "changed_file_count": 13,
+              "replica_integration": "not_integrated; source/test-text review only, no software execution, package install, image/build/model/device or online-page operation",
+              "scope_note": "Default config becomes /etc/robot/robotd.toml base plus /var/lib/robot/robotd.toml user override; tables merge recursively and arrays replace. Editors lock/write/validate the user layer, readers and pad mtimes use both. Invalid user layer is ignored with degraded health; invalid base remains fatal. HF token moves to persistent storage with rollback symlink migration.",
+              "priority": "higher_configuration_and_rollback_review_before_adopting_OS_updates; not_an_automatic_Armbian_upgrade",
+              "submitter_validation": {
+                "macOS_workspace_tests_excluding_nfc_passed": 1761,
+                "rust1941_workspace_check_excluding_nfc_reported": true,
+                "changed_crate_lints_no_new_warnings_reported": true,
+                "history_guard_negative_test_reported": true,
+                "hardware_run": false,
+                "aarch64_linted": false,
+                "verified_by_tracker": false
+              },
+              "limits": [
+                "A/B robots need daemon update first, before OS slot replacement loses old /etc data",
+                "Adoption copies only known non-template values; board.version never copied; edits equal to any shipped template value are not recognized",
+                "Old base remains for rollback; logout on an old rolled-back version is not propagated forward",
+                "updater.toml auto_apply and allow_dev_keys remain outside this migration",
+                "Explicit non-default config paths remain standalone"
+              ],
+              "superseded_at_check_utc": "2026-10-29T11:40:52.775469+00:00"
+            }
+          ],
+          "merge_commit_sha": "251359a12ea261481f4c9d5bf8b40067e139e7cc",
+          "upstream_integration": "merged_into_main; not in stable0.17.9 and not integrated into replica",
+          "latest_increment": {
+            "from_sha": "a809897bc2465c88a2dd2298efb55cd663c6b8d8",
+            "to_sha": "7497fef1b13c50f6e91a9b52a7920d98a07fe24b",
+            "fixed_url": "https://github.com/pollen-robotics/microduck/compare/a809897bc2465c88a2dd2298efb55cd663c6b8d8...7497fef1b13c50f6e91a9b52a7920d98a07fe24b",
+            "commit_count": 2,
+            "file_count": 8
+          }
         },
         {
           "number": 482,
           "title": "policy: community policies are opt-in, and the vet book records them",
-          "state": "open",
+          "state": "closed",
           "draft": false,
-          "merged_at": null,
+          "merged_at": "2026-10-29T10:04:40Z",
           "created_at": "2026-10-28T14:39:46Z",
-          "updated_at": "2026-10-28T15:08:47Z",
+          "updated_at": "2026-10-29T10:04:43Z",
           "url": "https://github.com/pollen-robotics/microduck/pull/482",
           "head_sha": "b60349fee07468be8203ff11a627e1e00d7b9119",
           "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
@@ -1118,7 +1404,7 @@
           "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...b60349fee07468be8203ff11a627e1e00d7b9119",
           "changed_file_count": 14,
           "replica_integration": "not_integrated; source/test-text review only, no software execution, package install, image/build/model/device or online-page operation",
-          "scope_note": "Adds default-off policy.allow_community gate in updaterd policy.fetch before requests; non-Pollen repositories require opt-in. Existing downloaded community policies and direct library-path loads continue. Live successful community policy swaps add repo/revision events to the public shared vetbook. No API version bump.",
+          "scope_note": "Merged default-off community fetch gate and dated policy events. Gates downloads only, leaves existing policies running; combined main still reads this gate from base only, requiring layered-config adoption review.",
           "priority": "higher_before_adopting_upstream_policy_fetch; preserve_explicit_HD1910_model_choices",
           "submitter_validation": {
             "changed_component_tests_and_checks_reported": true,
@@ -1129,7 +1415,40 @@
             "Only downloads are gated, not already-installed policies or policy.search",
             "Public shared vetbook can expose repository/revision names",
             "Does not certify model shape, motor dynamics or HD1910 suitability"
-          ]
+          ],
+          "history": [
+            {
+              "number": 482,
+              "title": "policy: community policies are opt-in, and the vet book records them",
+              "state": "open",
+              "draft": false,
+              "merged_at": null,
+              "created_at": "2026-10-28T14:39:46Z",
+              "updated_at": "2026-10-28T15:08:47Z",
+              "url": "https://github.com/pollen-robotics/microduck/pull/482",
+              "head_sha": "b60349fee07468be8203ff11a627e1e00d7b9119",
+              "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+              "base_branch": "main",
+              "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...b60349fee07468be8203ff11a627e1e00d7b9119",
+              "changed_file_count": 14,
+              "replica_integration": "not_integrated; source/test-text review only, no software execution, package install, image/build/model/device or online-page operation",
+              "scope_note": "Adds default-off policy.allow_community gate in updaterd policy.fetch before requests; non-Pollen repositories require opt-in. Existing downloaded community policies and direct library-path loads continue. Live successful community policy swaps add repo/revision events to the public shared vetbook. No API version bump.",
+              "priority": "higher_before_adopting_upstream_policy_fetch; preserve_explicit_HD1910_model_choices",
+              "submitter_validation": {
+                "changed_component_tests_and_checks_reported": true,
+                "platform": "macOS; Linux-only NFC excluded from applicable checks, existing newer-toolchain robotd lints noted",
+                "tracker_executed_or_tested_hardware": false
+              },
+              "limits": [
+                "Only downloads are gated, not already-installed policies or policy.search",
+                "Public shared vetbook can expose repository/revision names",
+                "Does not certify model shape, motor dynamics or HD1910 suitability"
+              ],
+              "superseded_at_check_utc": "2026-10-29T11:40:52.775469+00:00"
+            }
+          ],
+          "merge_commit_sha": "66bd9f4835bbe5d1d2b526ca571e678ffe5e5a43",
+          "upstream_integration": "merged_into_main; not in stable0.17.9 and not integrated into replica"
         },
         {
           "number": 431,
@@ -1943,19 +2262,25 @@
       },
       "main_since_latest_stable": {
         "from_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
-        "to_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
-        "fixed_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
-        "commit_count": 8,
-        "file_count": 21,
+        "to_sha": "52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+        "fixed_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+        "commit_count": 29,
+        "file_count": 49,
         "merged_pull_requests": [
           476,
           478,
           479,
-          431
+          431,
+          484,
+          420,
+          482,
+          483,
+          485,
+          490
         ],
-        "release_status": "Main/API45 includes fall arming, gallery/cards and weak-link frame-rate-only camera mitigation; stable0.17.9/96b89 unchanged. This is not a new stable release.",
+        "release_status": "Main is0.18.0/API46 preparation, available as prerelease daemon-dev-main. Stable remains0.17.9/96b89; daemon-v0.18.0 ref and release not found at this check.",
         "replica_integration": "not_integrated; isolated migration remains pinned to stable96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
-        "main_api_version": 45
+        "main_api_version": 46
       },
       "retired_development_releases": [
         {
@@ -2009,12 +2334,77 @@
           "last_checked_at_utc": "2026-10-28T09:23:41.758197+00:00",
           "availability_note": "Git ref and release-by-tag independently returned404; fixed feature commit remains reachable and merged into main. Retain as provenance, not a feature rollback or a recurring new check failure.",
           "fixed_source_url": "https://github.com/pollen-robotics/microduck/commit/b0d9466eb5f75b8ee9a9e143592e8d324525b9b6"
+        },
+        {
+          "tag": "daemon-dev-os-update-ipc",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-os-update-ipc",
+          "published_at": "2026-10-28T16:40:10Z",
+          "version": "daemon 0.17.9-dev.1490.0f9e8ad (os-update-ipc)",
+          "head_sha": "0f9e8ad9093f5ba72e880d44825f197cadc9519a",
+          "prerelease": true,
+          "related_pull_request": 485,
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...0f9e8ad9093f5ba72e880d44825f197cadc9519a",
+          "change": "New unmerged API46 os.status/check/apply/switch routes in updaterd and BLE duckctl. Wraps official Yocto microduck-osupdate/RAUC A/B image machinery; does not create slots or port OS updates to Armbian. Phone app and robotctl os are not implemented in this PR.",
+          "priority": "higher_if_adopting_Yocto_AB_OS_trigger; low_for_current_single_root_Armbian_image",
+          "replica_integration": "not_integrated_or_executed; no daemon/image/robot/preview changes by tracker",
+          "tracking_status": "retired_tag_and_release_not_found",
+          "last_checked_at_utc": "2026-10-29T11:40:52.775469+00:00",
+          "availability_note": "Git ref and release-by-tag independently404 after merge; fixed source remains in main. Historical provenance, not rollback or recurring new check failure.",
+          "fixed_source_url": "https://github.com/pollen-robotics/microduck/commit/0f9e8ad9093f5ba72e880d44825f197cadc9519a"
+        },
+        {
+          "tag": "daemon-dev-beta-camera-intrinsics",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-beta-camera-intrinsics",
+          "published_at": "2026-10-28T15:40:15Z",
+          "version": "daemon 0.17.9-dev.1484.0ab5d19 (beta-camera-intrinsics)",
+          "head_sha": "0ab5d193c18cd6ef646882e0e494c727903e87dc",
+          "prerelease": true,
+          "related_pull_request": 484,
+          "change": "Adds GC2093 beta camera family calibration, sensor HFOV85.2 and scale-specific tests. Own media.intrinsics overrides family values. Calibration applies to official Seeed beta module/lens; not a generic GC2093 lens or purchasing specification.",
+          "priority": "higher_before_GC2093_geometry_or_tag_goal_adoption; verify_actual_module_lens_and_rotation",
+          "replica_integration": "not_integrated; same fixed code as unmergedPR484, no package install or camera test by tracker",
+          "tracking_status": "retired_tag_and_release_not_found",
+          "last_checked_at_utc": "2026-10-29T11:40:52.775469+00:00",
+          "availability_note": "Git ref and release-by-tag independently404 after merge; fixed source remains in main. Historical provenance, not rollback or recurring new check failure.",
+          "fixed_source_url": "https://github.com/pollen-robotics/microduck/commit/0ab5d193c18cd6ef646882e0e494c727903e87dc"
+        },
+        {
+          "tag": "daemon-dev-config-survives-os-update",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-config-survives-os-update",
+          "published_at": "2026-10-28T15:27:22Z",
+          "version": "daemon 0.17.9-dev.1481.a809897 (config-survives-os-update)",
+          "head_sha": "a809897bc2465c88a2dd2298efb55cd663c6b8d8",
+          "prerelease": true,
+          "related_pull_request": 483,
+          "change": "Default config becomes /etc/robot/robotd.toml base plus /var/lib/robot/robotd.toml user override; tables merge recursively and arrays replace. Editors lock/write/validate the user layer, readers and pad mtimes use both. Invalid user layer is ignored with degraded health; invalid base remains fatal. HF token moves to persistent storage with rollback symlink migration.",
+          "priority": "higher_configuration_and_rollback_review_before_adopting_OS_updates; not_an_automatic_Armbian_upgrade",
+          "replica_integration": "not_integrated; unmerged development source, no installation or runtime testing by tracker",
+          "tracking_status": "retired_tag_and_release_not_found",
+          "last_checked_at_utc": "2026-10-29T11:40:52.775469+00:00",
+          "availability_note": "Git ref and release-by-tag independently404 after merge; fixed source remains in main. Historical provenance, not rollback or recurring new check failure.",
+          "fixed_source_url": "https://github.com/pollen-robotics/microduck/commit/a809897bc2465c88a2dd2298efb55cd663c6b8d8"
+        },
+        {
+          "tag": "daemon-dev-policy-community-opt-in",
+          "url": "https://github.com/pollen-robotics/microduck/releases/tag/daemon-dev-policy-community-opt-in",
+          "published_at": "2026-10-28T15:01:04Z",
+          "version": "daemon 0.17.9-dev.1479.b60349f (policy-community-opt-in)",
+          "head_sha": "b60349fee07468be8203ff11a627e1e00d7b9119",
+          "prerelease": true,
+          "related_pull_request": 482,
+          "change": "Adds default-off policy.allow_community gate in updaterd policy.fetch before requests; non-Pollen repositories require opt-in. Existing downloaded community policies and direct library-path loads continue. Live successful community policy swaps add repo/revision events to the public shared vetbook. No API version bump.",
+          "priority": "higher_before_adopting_upstream_policy_fetch; preserve_explicit_HD1910_model_choices",
+          "replica_integration": "not_integrated; unmerged development source, no installation or runtime testing by tracker",
+          "tracking_status": "retired_tag_and_release_not_found",
+          "last_checked_at_utc": "2026-10-29T11:40:52.775469+00:00",
+          "availability_note": "Git ref and release-by-tag independently404 after merge; fixed source remains in main. Historical provenance, not rollback or recurring new check failure.",
+          "fixed_source_url": "https://github.com/pollen-robotics/microduck/commit/b60349fee07468be8203ff11a627e1e00d7b9119"
         }
       ],
       "previous_head": {
-        "sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
-        "committed_at": "2026-10-27T14:19:13Z",
-        "subject": "Merge pull request #479 from pollen-robotics/vetbook-gallery-cards"
+        "sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+        "committed_at": "2026-10-28T08:28:43Z",
+        "subject": "Merge pull request #431 from pollen-robotics/mediad-no-downscale"
       },
       "tracked_model_metadata": [
         {
@@ -2049,8 +2439,57 @@
           "sha": "e6ff9991534580bff5c932ca10b3f1b8da851ce2",
           "committed_at": "2026-10-27T14:01:28Z",
           "subject": "Merge pull request #478 from pollen-robotics/vetbook-gallery"
+        },
+        {
+          "sha": "5def2f3e66501f0f365d4fb1183020b8ee875443",
+          "committed_at": "2026-10-27T14:19:13Z",
+          "subject": "Merge pull request #479 from pollen-robotics/vetbook-gallery-cards"
+        },
+        {
+          "sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "committed_at": "2026-10-28T08:28:43Z",
+          "subject": "Merge pull request #431 from pollen-robotics/mediad-no-downscale"
         }
-      ]
+      ],
+      "main_since_latest_stable_history": [
+        {
+          "from_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "to_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "fixed_url": "https://github.com/pollen-robotics/microduck/compare/96b89d8613f06722c1d64ce75ab0d7124fed9d8f...6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "commit_count": 8,
+          "file_count": 21,
+          "merged_pull_requests": [
+            476,
+            478,
+            479,
+            431
+          ],
+          "release_status": "Main/API45 includes fall arming, gallery/cards and weak-link frame-rate-only camera mitigation; stable0.17.9/96b89 unchanged. This is not a new stable release.",
+          "replica_integration": "not_integrated; isolated migration remains pinned to stable96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
+          "main_api_version": 45
+        }
+      ],
+      "latest_main_change": {
+        "from_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+        "to_sha": "52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+        "fixed_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+        "commit_count": 21,
+        "file_count": 38,
+        "scope_note": "Merges GC2093 family calibration, LAN8090OS link, default-off community fetch gate, two-layer config/HF token persistence, os.* API46 and0.18.0version preparation. No model weights or HD1910/ToF/voice changes.",
+        "replica_integration": "not_integrated; tracking docs only; local migration still pinned to stable96b89/c615",
+        "community_layer_reader_observation": "At fixed52a8e23, PolicyParams::community_allowed reads only DEFAULT_PATH via read_to_string; editor writes /var/lib/robot override. Static inference: setting only user layer may not enable downloads. Not runtime-reproduced by tracker.",
+        "verification": "Fixed21commit38file comparison, known earlier feature diffs, final config follow-up8files, route/editor/reader/version changes reviewed; no downloaded implementation/test execution."
+      },
+      "release_preparation": {
+        "version": "0.18.0",
+        "head_sha": "ff79ae892aff868c6951fb2b28d06463982225a1",
+        "merge_sha": "52a8e2377aa2ef1ce9d6ae3fdc062d1cc3ab7b36",
+        "formal_tag": "daemon-v0.18.0",
+        "formal_ref_found": false,
+        "formal_release_found": false,
+        "development_release_tag": "daemon-dev-main",
+        "checked_at_utc": "2026-10-29T11:40:52.775469+00:00"
+      }
     },
     "pollen-robotics/microduck_rl": {
       "default_branch": "develop",
@@ -2192,11 +2631,42 @@
           "title": "Add optional read-only MuJoCo visualization stream",
           "state": "open",
           "merged_at": null,
-          "updated_at": "2026-10-25T12:49:06Z",
-          "head_sha": "3293273022d5f1c7f0d327f98959ce8e9543f115",
-          "scope_note": "Updated head includes optional XL330 M6 CPU BAM physics and independent lateral task/finetuning/validation, beyond the original read-only visualization title. Not merged; not HD-1910 validation.",
+          "updated_at": "2026-10-29T10:19:18Z",
+          "head_sha": "9ddb47f0e63c8c6a4c32e222899519add44da103",
+          "scope_note": "Still unmerged: newhead merges already-recorded develop checkpoint-sharing work. Existing optional visualization, XL330M6CPU BAM/lateral feature changes remain; no newHD1910 physics or weights in this increment.",
           "priority": "medium",
-          "draft": false
+          "draft": false,
+          "history": [
+            {
+              "number": 51,
+              "url": "https://github.com/pollen-robotics/microduck_rl/pull/51",
+              "title": "Add optional read-only MuJoCo visualization stream",
+              "state": "open",
+              "merged_at": null,
+              "updated_at": "2026-10-25T12:49:06Z",
+              "head_sha": "3293273022d5f1c7f0d327f98959ce8e9543f115",
+              "scope_note": "Updated head includes optional XL330 M6 CPU BAM physics and independent lateral task/finetuning/validation, beyond the original read-only visualization title. Not merged; not HD-1910 validation.",
+              "priority": "medium",
+              "draft": false,
+              "superseded_at_check_utc": "2026-10-29T11:40:52.775469+00:00"
+            }
+          ],
+          "created_at": "2026-09-11T12:44:53Z",
+          "base_sha": "bae39f5900b318f7e87fc485c30a31213cfa14eb",
+          "base_branch": "develop",
+          "merge_commit_sha": null,
+          "changed_file_count": 26,
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck_rl/compare/bae39f5900b318f7e87fc485c30a31213cfa14eb...9ddb47f0e63c8c6a4c32e222899519add44da103",
+          "latest_increment": {
+            "from_sha": "3293273022d5f1c7f0d327f98959ce8e9543f115",
+            "to_sha": "9ddb47f0e63c8c6a4c32e222899519add44da103",
+            "fixed_url": "https://github.com/pollen-robotics/microduck_rl/compare/3293273022d5f1c7f0d327f98959ce8e9543f115...9ddb47f0e63c8c6a4c32e222899519add44da103",
+            "commit_count": 6,
+            "file_count": 13,
+            "nature": "Five previously recorded develop commits plus merge commit, not six new visualization/physics features.",
+            "feature_comparison": "Same26feature paths relative to respective develop bases;24blobSHAsidentical,2changed from upstream context/blank-line integration; nonblank added/deleted feature lines unchanged across all26."
+          },
+          "replica_integration": "not_integrated_or_executed; no simulation, training, policy replacement or hardware acceptance by tracker"
         },
         {
           "number": 78,
@@ -2328,21 +2798,35 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-29T06:38:21.547882+00:00",
+  "checked_at_utc": "2026-10-29T11:40:52.775469+00:00",
   "latest_review": {
-    "default_branch_changes": false,
+    "default_branch_changes": true,
     "new_stable_release": false,
     "stable_release_tag": "daemon-v0.17.9",
     "stable_release_actual_sha": "96b89d8613f06722c1d64ce75ab0d7124fed9d8f",
-    "previous_tracked_prs_merged": false,
+    "previous_tracked_prs_merged": true,
     "new_pull_requests": {
       "pollen-robotics/microduck": [
-        488
+        489,
+        490,
+        491
       ]
     },
-    "new_development_releases": [],
-    "changed_pull_request_heads": {},
-    "moved_development_tags": [],
+    "new_development_releases": [
+      "daemon-dev-configure-tolerates-unknown-keys"
+    ],
+    "changed_pull_request_heads": {
+      "pollen-robotics/microduck": {
+        "483": "7497fef1b13c50f6e91a9b52a7920d98a07fe24b",
+        "485": "4c0da9169a603665902e253b2b1d6f5110e2e471"
+      },
+      "pollen-robotics/microduck_rl": {
+        "51": "9ddb47f0e63c8c6a4c32e222899519add44da103"
+      }
+    },
+    "moved_development_tags": [
+      "daemon-dev-main"
+    ],
     "official_blog_new_articles": false,
     "official_blog_article_count": 3,
     "official_blog_latest_on": "2026-10-23",
@@ -2350,8 +2834,35 @@
     "models_replaced": false,
     "robot_connected": false,
     "image_built_or_published": false,
-    "integration_inference": "PR482 currently reads community_allowed directly from base TOML; PR483 writes overrides in user layer. A combined port must reconcile that reader. New footsteps auto-fetch targets apirrone and would also require community opt-in if PR482 is adopted. No combined merge/test performed.",
-    "notes": "New unmergedREADME-onlyPR488 clarifies demonstrated remote control versus plannedM9autonomy;12added lines, no runtime or model changes. All4defaultheads, stable/devrefs, previousPRheads/states, modelmetadata and blog unchanged. No replica integration or hardware acceptance by tracker."
+    "integration_inference": "At fixed52a8e23, PolicyParams::community_allowed reads only DEFAULT_PATH via read_to_string; editor writes /var/lib/robot override. Static inference: setting only user layer may not enable downloads. Not runtime-reproduced by tracker.",
+    "notes": "Main52a8e23 now0.18.0development/API46; officialstable remains0.17.9.21commits38files since previousmain,29commits49files since stable. Four feature PRs and console link merged; config adoption changed copy to move with rollback implications. PR489editor tolerance andPR491web tooling remain unmerged. Four retired refs independently confirmed, not ongoing failures. RL51only imports known develop work. No replica integration.",
+    "merged_previously_tracked_prs": {
+      "pollen-robotics/microduck": [
+        482,
+        483,
+        484,
+        485
+      ]
+    },
+    "newly_recorded_merged_pull_requests": {
+      "pollen-robotics/microduck": [
+        420
+      ]
+    },
+    "retired_development_tags": [
+      "daemon-dev-os-update-ipc",
+      "daemon-dev-beta-camera-intrinsics",
+      "daemon-dev-config-survives-os-update",
+      "daemon-dev-policy-community-opt-in"
+    ],
+    "followup_checked_at_utc": "2026-10-29T11:58:47.851613+00:00",
+    "followup_updates": {
+      "PR489_and_development_tag": {
+        "from_sha": "1e6998b8f6fd48b7400fcf878b1f199cd5df60bd",
+        "to_sha": "6e6111f1ca25870ca8d6de1051c5a47be70a4ca0",
+        "scope": "main merge plus persistent base-layer unknown-key notice;3featurefiles"
+      }
+    }
   },
   "replica_migration": {
     "recorded_on": "2026-10-27",
