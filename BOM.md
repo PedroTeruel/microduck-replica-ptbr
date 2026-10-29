@@ -243,12 +243,9 @@ Ambos são seguros (F1 suporta 200 mA, muito acima desses valores), mas **o dobr
 | 3 | 输出 OUT | 晶体端子 |
 | 4 | **VDD** | **金属外壳（接地）** |
 
-无源晶体的 2 脚和 4 脚是同一片金属盖、内部短接。本板 `X1.2 = GND`、`X1.4 = 3.3V`，
-贴Superior去等于用那片盖子把 3.3 V e地连起来。
+Os pinos 2 e 4 de um cristal passivo são ligados internamente pela mesma tampa metálica. Nesta placa, `X1.2 = GND` e `X1.4 = 3.3V`; instalar um cristal passivo provocaria **um curto entre 3,3 V e o terra pela tampa metálica**.
 
-**换料时只认「有源晶振 / 振荡器 / OSC」这个标签**，写 `XTAL` / `晶体谐振器` /
-`无源` 的一律不行。而且这条不是可选项 —— G031 的 TSSOP-20 **没引出 `OSC_OUT`**，
-无源晶振在这颗 MCU Superior本来就接不了。
+**Ao substituir a peça, aceite somente componentes descritos como “oscilador ativo”, “oscilador” ou “OSC”**. Os identificados como `XTAL`, “cristal ressonador” ou “passivo” não servem. Isso é obrigatório: o STM32G031 em TSSOP-20 **não disponibiliza o pino `OSC_OUT`**, portanto um cristal passivo não pode ser conectado a este MCU.
 
 接法：
 
@@ -262,175 +259,146 @@ Ambos são seguros (F1 suporta 200 mA, muito acima desses valores), mas **o dobr
     GND ── 2 GND  OUT 3 ── R3 33Ω ── OSC_IN ── U1 脚2 (PC14/OSC_IN)
 ```
 
-`OE` 也可以改接 U1 脚 3（`PC15` 的 `OSC_EN` 交替功能）做软件使能，但那样固件要多管一件事，
-默认直接接 3.3 V 常开。
+Também é possível ligar `OE` ao pino 3 do U1 (função alternativa `OSC_EN` de `PC15`) para habilitar o oscilador por software; isso acrescenta uma responsabilidade ao firmware. Por padrão, ligue-o diretamente a 3,3 V para mantê-lo sempre ativo.
 
-> ⚠️ **这三颗都不进 BOM、但要进 PCB** —— 嘉立创Inferior单时不会给你贴、也不收料钱，
-> 焊盘照样在板上。原理图里已按 `Add into BOM = no` / `Convert to PCB = yes` 设好。
+> ⚠️ **Esses três componentes não entram na BOM, mas devem estar na PCB.** A LCSC não os montará nem cobrará por eles no pedido, mas os pads continuam na placa. O esquema já está configurado com `Add into BOM = no` / `Convert to PCB = yes`.
 
-#### 封装口径：阻容一律 0603，不用 0402
+#### Encapsulamento: use 0603 em todos os resistores e capacitores, não 0402
 
-**2026-09-06 决定**：所有阻容从 0402 改为 **0603**，D2 从 SOD-323 改为 **SOD-123**。
+**Decisão de 2026-09-06**: todos os resistores e capacitores passaram de 0402 para **0603**, e D2 passou de SOD-323 para **SOD-123**.
 
-理由不是「手焊不了 0402」——这块板Superior有 **LGA-14  de  LSM6DSV16X**（底部焊盘，
-3 × 2.5 mm），本来就必须Superior热风或回流，有了那套Ferramentas 0402 也不难。
+O motivo não é que “0402 seja impossível de soldar à mão”: esta placa já tem a **LSM6DSV16X em LGA-14** (pads inferiores, 3 × 2,5 mm), que exige ar quente ou refusão. Com as ferramentas necessárias, 0402 também não seria difícil.
 
-**真正 de 理由是Depuração期返修**：串阻要从 150 Ω 试到 33 Ω、某个Superior拉要摘掉、
-去耦要加一颗——这些改动在 0603 Superior拿烙铁几秒钟就能做，0402 得重新架热风。
-一块没打样Validação过 de 板子，第一版必然要改几次。
+**O motivo real é facilitar reparos durante a depuração**: talvez seja preciso testar o resistor em série de 150 Ω a 33 Ω, remover um pull-up ou acrescentar um capacitor de desacoplamento. Em 0603, essas alterações levam alguns segundos com o ferro de solda; em 0402, seria necessário preparar novamente o ar quente. É inevitável fazer alguns ajustes na primeira versão de uma placa ainda não fabricada nem validada.
 
-代价很小：板Superior 11 个 0402 换成 0603，多占约 16 mm²，
-不到 45 × 22 mm 板面积 de  2%。而且 **0603 这几个值全在立创基础库**
-（10 kΩ `C25804`、150 Ω `C22808`、33 Ω `C23140`、100 nF `C14663`），
-比原来 0402  de 扩展库料还省Superior料费。
+O custo em área é pequeno: trocar 11 componentes 0402 por 0603 ocupa cerca de 16 mm² adicionais, menos de 2% da placa de 45 × 22 mm. Além disso, **todos estes valores em 0603 estão na biblioteca básica da LCSC** (10 kΩ `C25804`, 150 Ω `C22808`, 33 Ω `C23140`, 100 nF `C14663`), reduzindo as taxas de abastecimento em comparação com os componentes 0402 da biblioteca estendida.
 
-> C6（10 µF/25 V）保持 0805，C5（4.7 µF）e C7（10 µF）本来就是 0603。
+> C6 (10 µF/25 V) continua em 0805; C5 (4,7 µF) e C7 (10 µF) já eram 0603.
 
-#### 板框 e Instalação
+#### Contorno e montagem da placa
 
-Oficial**没有公开这块板 de 任何几何**（MJCF 里没有它 de 网格）。唯一 de 物证是固定它 de Peças impressas
-`banana_pcb_locker`，实测反推：
+O projeto oficial **não publicou nenhuma dimensão desta placa** (não há uma malha dela no MJCF). A única evidência física é a peça impressa `banana_pcb_locker`, que a prende. As dimensões estimadas a partir dela são:
 
-| 量 | 值 | Fonte |
+| Medida | Valor | Fonte |
 |---|---|---|
-| 锁扣总长 | **54.05 mm** | 网格实测 |
-| **两个定位耳 em 心距** | **≈ 34 mm** | 按 X 切片统计耳片位置 |
-| 每个耳片 | ≈ 4 × 2.3 × 2.0 mm | 同Superior |
-| 主体弧高 | 6.7 mm（Z 48.97→55.63） | 这就是「香蕉形」 de 由来 |
+| Comprimento total da trava | **54,05 mm** | Medido na malha |
+| **Distância entre os centros das duas abas de posicionamento** | **≈ 34 mm** | Posição das abas estimada por cortes no eixo X |
+| Cada aba | ≈ 4 × 2,3 × 2,0 mm | Medida na mesma malha |
+| Altura do arco principal | 6,7 mm (Z 48,97→55,63) | Daí vem o formato de “banana” |
 
-→ 推断原版板：**两个Instalação点间距 34 mm、长边 ≤ 54 mm、外形是弧 de **。
+→ Estimativa para a placa original: **34 mm entre os dois pontos de montagem, lado maior ≤ 54 mm e formato curvo**.
 
-> 💡 **但锁扣本身是打印件**（最新文件与数量见 [CAD 仓库](https://github.com/fanhao375/microduck-replica-cad)）—— 所以**板框和锁扣可以一起重新设计**，
-> 不必迁就原版 de 弧。原版做成弧大概是为了贴合躯干内壁省空间；自己复刻用**直板 + 改锁扣**
-> 简单得多，弧形 PCB 布线e拼板都麻烦。
+> 💡 **A trava também é uma peça impressa** (os arquivos e quantidades mais recentes estão no [repositório CAD](https://github.com/fanhao375/microduck-replica-cad)); portanto, **é possível redesenhar juntos o contorno da placa e a trava**, sem precisar manter a curva original. A curva provavelmente acompanha a parede interna do tronco para economizar espaço. Para uma réplica própria, é muito mais simples usar **uma placa reta e adaptar a trava**; rotear e panelizar uma PCB curva é trabalhoso.
 
-**建议板框：40 × 18 mm（宽松则 45 × 22），两个 M2 Instalação孔间距 34 mm，2 层板。**
+**Contorno recomendado: 40 × 18 mm (ou, com mais espaço, 45 × 22 mm), placa de 2 camadas e furos M2 separados por 34 mm.**
 
-- 元件净面积约 230 mm²（Conexão器主导：两个 JST EH 3P 各约 10 × 6 mm），
-  两层板按 2–3 倍算需 460–700 mm² → 40 × 18 = 720 mm² 刚好
-- 孔距保持 34 mm，**可直接用原版打印锁扣**
-- ⚠️ **别为省钱压尺寸**：嘉立创 2 层板 100 × 100 mm 以内同价，画 25×20 e画 50×50 花一样 de 钱。
-  尺寸只该由装配约束决定
-- ⚠️ **Atenção元件高度**：锁扣内腔高 6.65 mm，而 JST EH 直插Conexão器本体高约 8 mm ——
-  要么用卧式（side entry）封装，要么这块板根本不是被那个锁扣压 de 
+- A área ocupada pelos componentes é de cerca de 230 mm² (dominada pelos conectores: cada JST EH de 3 pinos ocupa aproximadamente 10 × 6 mm). Uma placa de duas camadas precisa de 2–3 vezes essa área, ou 460–700 mm²; 40 × 18 mm oferece 720 mm².
+- Mantendo 34 mm entre os furos, **a trava impressa original pode ser usada diretamente**.
+- ⚠️ **Não reduza a placa para economizar**: a LCSC cobra o mesmo por placas de duas camadas de até 100 × 100 mm; uma placa de 25 × 20 mm custa o mesmo que uma de 50 × 50 mm. Deixe que os requisitos de montagem definam o tamanho.
+- ⚠️ **Considere a altura dos componentes**: a cavidade interna da trava tem 6,65 mm, enquanto um conector JST EH vertical tem cerca de 8 mm de altura. Use um encapsulamento horizontal (entrada lateral) ou confirme que a placa não é pressionada por essa trava.
 
-#### 布局要点（比加器件更管用，而且不花钱）
+#### Recomendações de layout (mais eficazes que adicionar componentes e sem custo)
 
-**板型：2 层板，45 × 22 mm，贴片件全部放正面。**
+**Formato: placa de 2 camadas, 45 × 22 mm, com todos os componentes SMT na face superior.**
 
-| 决定 | 为什么 |
+| Decisão | Motivo |
 |---|---|
-| **2 层足够** | 十几个器件、1 Mbps 不算高速。**最é necessário de 是Completo地平面**，2 层底层整片铺地就能做到，比多两层重要得多。成本Superior 2 层比 4 层便宜数倍 |
-| **贴片件全在正面** | ① SMT 打样只贴一面，**费用直接减半**（双面要过两次炉）② 底层不被元件e过孔打断，**地平面Completo** |
-| **连接器 THT，排在同一条边** | `B3B-EH-A` 与 SWD 排针都是插件。留着自己手焊能省一笔插件费（脚大、间距 2.5 mm，很好焊）。<br>⚠️ 但过孔会在底层地平面上开洞 —— **三个连接器都排在同一侧**，洞就集中在一边，不会把地平面切碎 |
-| 45 × 22 而不是 40 × 18 | 单面布局é necessário 2–3 倍元件净面积（约 230 mm²）→ 460–700 mm²。45×22 ＝ 990 mm² 宽裕。<br>**反正嘉立创 100 × 100 以内同价，没必要压尺寸** |
+| **Duas camadas são suficientes** | Uma dúzia de componentes e 1 Mbps não representam alta velocidade. **O plano de terra contínuo é mais importante**; uma camada inferior inteira preenchida com terra já atende a isso e vale mais que adicionar duas camadas. Uma placa de duas camadas custa várias vezes menos que uma de quatro |
+| **Todos os componentes SMT na face superior** | ① A montagem SMT em uma face só **custa metade** (duas faces exigem duas passagens pelo forno). ② A camada inferior não é interrompida por componentes e vias, mantendo **o plano de terra contínuo** |
+| **Conectores THT na mesma borda** | `B3B-EH-A` e o conector SWD são componentes de furo passante. Soldá-los à mão evita a taxa de montagem de THT; seus terminais são grandes, têm passo de 2,5 mm e são fáceis de soldar.<br>⚠️ As vias interrompem o plano de terra inferior; **coloque os três conectores no mesmo lado** para concentrar as aberturas e não fragmentar o plano |
+| 45 × 22 em vez de 40 × 18 | Um layout de face única precisa de 2–3 vezes a área ocupada pelos componentes (cerca de 230 mm²), ou 460–700 mm². 45 × 22 = 990 mm², com folga.<br>**A LCSC cobra o mesmo para placas de até 100 × 100 mm; não há motivo para economizar área** |
 
-**给 IMU  de 三条（Dados手册要求 + 常识，不花钱）：**
+**Três recomendações para a IMU (exigências do manual e boas práticas, sem custo):**
 
-1. **`VDD` 与 `VDDIO` 各自 100 nF 就近去耦** —— 手册明确要求
-2. **Completo地平面，IMU 正Inferior方不走高速线**
-3. **IMU  de Alimentação走线 e  UART 收发部分分开**
+1. **Instale um capacitor de desacoplamento de 100 nF perto de cada pino, `VDD` e `VDDIO`** — exigência explícita do manual.
+2. **Mantenha um plano de terra contínuo e não passe sinais de alta velocidade diretamente sob a IMU.**
+3. **Separe as trilhas de alimentação da IMU e o circuito do transceptor UART.**
 
-> **不做Eletrônica隔离。** Oficial HAT Superior de 音频 codec、BMI088、ToF 全都直接挂同一套Alimentação，零隔离，
-> 而机器人是能走 de 。更关键 de 是：真隔离要独立Alimentação，这块板就不能从总线取电了 ——
-> **"挂在总线Superior de 第 16 个设备"这个设计前提就没了。**
+> **Não use isolamento galvânico.** No HAT oficial, o codec de áudio, o BMI088 e o ToF compartilham a mesma alimentação, sem isolamento, e o robô caminha normalmente. Além disso, o isolamento real exigiria uma fonte de alimentação independente, impedindo que esta placa fosse alimentada pelo barramento — **e eliminando a premissa de projeto de ser o 16.º dispositivo conectado ao barramento**.
 >
-> 💡 Alimentação入口留一个 **0 Ω 跳线位**：默认贴 0 Ω 直通；将来实测发现Alimentação噪声影响陀螺读数，
-> 换成磁珠即可。成本一样，风险为零 —— 直接放磁珠反而可能 e 大电容形成 LC 谐振，放大某个频段。
+> 💡 Reserve um **jumper de 0 Ω** na entrada de alimentação: monte 0 Ω para conexão direta por padrão; se testes mostrarem que o ruído da alimentação afeta as leituras do giroscópio, substitua-o por um bead de ferrite. O custo é o mesmo e não há risco inicial; instalar a ferrite desde o começo poderia formar uma ressonância LC com capacitores grandes e amplificar determinada faixa de frequência.
 
-#### ⚠️ 过压保护：它eServo共用一条母线
+#### ⚠️ Proteção contra sobretensão: esta placa compartilha o barramento com os servos
 
-**这是这块板最容易被忽略的风险。** 15 个舵机挂在同一条 `+BATT` 上，减速、反转、堵转释放时
-**反电动势会把母线抬高**；这块板挂在总线末端，线缆电感加Superior快速换向，输入端看到 de 尖峰比Bateria端更凶。
+**Este é o risco mais fácil de ignorar nesta placa.** Os 15 servos compartilham a mesma linha `+BATT`; ao desacelerar, inverter o sentido ou liberar um rotor travado, **a força contraeletromotriz pode elevar a tensão do barramento**. Como esta placa fica no fim do barramento, a indutância dos cabos e a rápida comutação podem produzir picos ainda maiores na entrada do que nos terminais da bateria.
 
-> Atenção威胁 de 性质是**正向过压，不是反接** —— 所以串联二极管不解决这个问题。
+> A ameaça é **sobretensão com polaridade normal, não inversão de polaridade**; portanto, um diodo em série não resolve o problema.
 
-三道防线，按重要性排：
+Três níveis de proteção, em ordem de importância:
 
-| 防线 | 器件 | 挡什么 | 状态 |
+| Proteção | Componente | O que bloqueia | Status |
 |---|---|---|---|
-| **① 宽压 LDO** | `HT7533-1`（工作 30 V / 极限 33 V） | 持续过压。8.4 V 母线即使被抬到 17 V 也纹丝不动，**余量 3.5×** | ✅ 已选 |
-| **② TVS** | `SMAJ12A`，**贴在连接器旁** | µs 级尖峰。截止 12 V > 满电 8.4 V（不漏电），钳位 19.9 V < C6 的 25 V | ⚠️ 本次补入 |
-| **③ PPTC** | hold 100–200 mA | 本板短路时不把整条总线拉垮 —— 15 个Servo跟着掉电，机器人直接摔 | ⚠️ 本次补入 |
+| **① LDO de ampla faixa** | `HT7533-1` (operação a 30 V / máximo absoluto de 33 V) | Sobretensão contínua. Suporta sem problema um barramento de 8,4 V elevado a 17 V, com **margem de 3,5×** | ✅ Selecionado |
+| **② TVS** | `SMAJ12A`, **junto ao conector** | Picos de microssegundos. Tensão de trabalho de 12 V > 8,4 V da bateria cheia (sem fuga); tensão de limitação de 19,9 V < limite de 25 V de C6 | ⚠️ Adicionado nesta revisão |
+| **③ PPTC** | Corrente de manutenção de 100–200 mA | Evita que um curto nesta placa derrube todo o barramento: os 15 servos perderiam alimentação e o robô cairia | ⚠️ Adicionado nesta revisão |
 
-> **TVS  de 位置比型号更重要**：要贴在 3P Conexão器旁边，越靠近入口越好。放到 LDO 边Superior就晚了 ——
-> 尖峰已经在板Superior跑了一圈。
+> **A posição do TVS é mais importante que o modelo**: instale-o junto ao conector de 3 pinos, o mais perto possível da entrada. Colocá-lo perto do LDO é tarde demais — o pico já terá percorrido a placa.
 >
-> ⚠️ **反电动势 de 实际幅度este repositório没有实测**，取决于线缆电感 e 换向速度。Servo到货后拿示波器
-> 在总线Superior量一次，再回来核对aqui de 选型。
+> ⚠️ **A amplitude real da força contraeletromotriz ainda não foi medida neste repositório**; ela depende da indutância dos cabos e da velocidade de reversão. Quando os servos chegarem, meça o barramento com um osciloscópio e revise esta seleção.
 
-> ⚠️ **另外两个坑，都会烧板：**
+> ⚠️ **Há outros dois riscos que podem queimar a placa:**
 >
-> **1. LDO 耐压。** 总线满电 8.4 V，常见型号全部不够（Inferior列为**工作电压Superior限 / 绝对最大值**）：
-> AP2112K **6.0 / 6.5 V**、ME6211 **6.0 / 6.5 V**、TLV75533 **5.5 / 6.0 V**。
-> 必须选 HT7533-1（工作 30 V，绝对最大 33 V）或同级。
+> **1. Tensão suportada pelo LDO.** O barramento chega a 8,4 V com a bateria cheia, acima do limite dos modelos comuns (abaixo: **tensão máxima de operação / máximo absoluto**): AP2112K **6,0 / 6,5 V**, ME6211 **6,0 / 6,5 V**, TLV75533 **5,5 / 6,0 V**. É obrigatório usar o HT7533-1 (30 V de operação, máximo absoluto de 33 V) ou um modelo equivalente.
 >
-> **2. 输入电容耐压 —— 此前本表选错了。** `C19702` 是 **10 V** X5R，挂在 8.4 V 总线上
-> 只剩 1.2× 余量，且 X5R 在 8.4 V 直流偏置Inferior**实际容量不到标称 de 一半**，还要承受Servo
-> 启停 de 瞬态。**C6 必须换 ≥25 V 料号**（0805 更稳妥）；C7 在 3.3 V 输出侧，10 V 够用。
+> **2. Tensão nominal do capacitor de entrada — a seleção anterior desta lista estava errada.** `C19702` é um capacitor X5R de **10 V**; no barramento de 8,4 V, sobra uma margem de apenas 1,2×. Sob polarização contínua de 8,4 V, a **capacitância real do X5R fica abaixo da metade do valor nominal**, além de o componente precisar suportar os transientes de partida e parada dos servos. **C6 precisa ser substituído por um modelo de pelo menos 25 V** (0805 é mais seguro); C7 fica na saída de 3,3 V, onde 10 V são suficientes.
 
 ---
 
-## 五、Mecânica件
+## 5. Componentes mecânicos
 
-### 轴承（共 14 个）
+### Rolamentos (14 no total)
 
-| 规格 | Quantidade | 依据 |
+| Especificação | Quantidade | Base |
 |---|---|---|
-| **Ø22 × 16 × 4** | **11** | `seeed_bearing__configuration__22x16x4` 引用 11 次 |
-| **Ø15 × 10 × 3** | **3** | `seeed_bearing__configuration_default` 引用 3 次 |
+| **Ø22 × 16 × 4** | **11** | Referência `seeed_bearing__configuration__22x16x4` usada 11 vezes |
+| **Ø15 × 10 × 3** | **3** | Referência `seeed_bearing__configuration_default` usada 3 vezes |
 
-### 紧Firmware（M2 为主，约 325 件）
+### Fixadores (principalmente M2, cerca de 325 peças)
 
-整机 M2 级孔（Ø1.9–2.5 mm、包角 ≥300°）**按装配体用量加权共 237 个**，
-其 em  **60 个在Servo本体Superior**（15 × 4）、21 个在轴承/PCB/Bateria等标准件Superior，
-**结构件Superior约 156 个**。
+No robô inteiro, há **237 furos para fixadores M2** (Ø1,9–2,5 mm, ângulo de envolvimento ≥300°), contando a quantidade usada em cada conjunto. Desses, **60 ficam nos próprios servos** (15 × 4), 21 em peças padrão como rolamentos, PCBs e bateria, e **cerca de 156 em peças estruturais**.
 
-> ⚠️ **口径Instruções**：este repositório早期写 de 「213 个」复算不出来，已更正为 237。
-> 差异来自两点：早期统计**没有按装配体用量加权**（`leg` 实际 ×4、`hip_l` ×2 等），
-> 且**混入了未使用 de 网格**。孔径分布表 e 本数字口径不同，见 [紧Firmware反推](docs/紧Firmware反推.md)。
+> ⚠️ **Critério de contagem**: uma versão anterior deste repositório informava “213”, número que não podia ser reproduzido; foi corrigido para 237.
+> A diferença tem duas causas: a contagem inicial **não multiplicava pelas ocorrências nos conjuntos** (`leg` aparece 4 vezes, `hip_l` 2 vezes etc.) e **incluía malhas não utilizadas**. A tabela de distribuição dos diâmetros usa um critério diferente; consulte a [análise reversa dos fixadores](docs/紧固件反推.md).
 >
-> abaixo de Compra量按 325 件给，对 237 个孔位仍有 **1.37×** 余量，**不影响Inferior单**。
+> A quantidade de compra sugerida abaixo é 325 peças, uma margem de **1,37×** sobre os 237 furos; **isso não exige alterar o pedido**.
 
-| 规格 | 建议Quantidade | 用途 |
+| Especificação | Quantidade sugerida | Uso |
 |---|---|---|
-| M2×4 内六角圆柱头 | 60 | 薄壁位 |
-| M2×6 内六角圆柱头 | **80**（主力） | |
-| M2×8 内六角圆柱头 | 40 | 孔深 3–5 mm |
-| M2×12 内六角圆柱头 | 15 | 少量深孔 |
-| M2 螺母 | 50 | 无攻丝处 |
-| **M2 热熔螺母** | **60** | Peças impressas推荐，比直接攻丝牢得多 |
-| M2.5×6 | 20 | 少量 Ø2.7 孔位 |
+| Parafuso Allen de cabeça cilíndrica M2×4 | 60 | Locais de parede fina |
+| Parafuso Allen de cabeça cilíndrica M2×6 | **80** (principal) | |
+| Parafuso Allen de cabeça cilíndrica M2×8 | 40 | Furos de 3–5 mm de profundidade |
+| Parafuso Allen de cabeça cilíndrica M2×12 | 15 | Alguns furos profundos |
+| Porca M2 | 50 | Locais sem rosca |
+| **Porca de inserção térmica M2** | **60** | Recomendada para peças impressas; muito mais resistente que fazer a rosca diretamente no plástico |
+| M2.5×6 | 20 | Alguns furos de Ø2,7 mm |
 
-推导过程见 [紧Firmware反推](docs/紧Firmware反推.md)。
+O processo de cálculo está na [análise reversa dos fixadores](docs/紧固件反推.md).
 
-### Peças impressas e 轮滑变体
+### Peças impressas e variante com rodas
 
-**模型、数量、材料和装配说明统一查看 [CAD 仓库](https://github.com/fanhao375/microduck-replica-cad#装配-bom)。** 先选飞特 HD-1910 或 XL330，再核对具体附件版本。本仓不再提供第二份打印 STL，也不再把上游 MJCF 的重复网格数量当成实际打印数量。
+**Consulte o [repositório CAD](https://github.com/fanhao375/microduck-replica-cad#装配-bom) para modelos, quantidades, materiais e instruções de montagem.** Primeiro escolha Feetech HD-1910 ou XL330 e depois confirme a versão dos acessórios. Este repositório não mantém uma segunda cópia dos STL para impressão nem trata o número de referências repetidas de malhas no MJCF original como a quantidade real de peças impressas.
 
-飞特 v2.1 已把轮滑变体 de 独立轮辋 e 轮胎改为 TPU 合体轮胎；09-15 旧 3MF 尚未同步此项。详见 [打印入口 e Versão提示](print/README.md)。走路用件e轮滑替换件也不能混用。
-
----
-
-## 六、还没解决 de 空白
-
-复刻到最后会卡在这两处，公开资料给不出答案：
-
-1. **电池取电触点。** CAD 里只有打印件 `power_support`（×2），**没有任何触点 PCB 或簧片的模型**。
-   Oficial用金属簧片还是市售 NP-F 转接板，判断不了。最省事 de 办法是买现成 de  NP-F Bateria转接板。
-2. **线束。** Servo之间 de  Dynamixel 3P Conexão线长度、摄像头 MIPI 排线长度，Oficial没有任何图纸。
-   Servo一般自带短线，但机器人内部走线长度要实测。
+A versão Feetech v2.1 substituiu o aro e o pneu separados da variante com rodas por um pneu único de TPU; o arquivo 3MF antigo de 09-15 ainda não inclui essa mudança. Consulte as [instruções de impressão e avisos de versão](print/README.md). As peças da versão para caminhar e as peças de substituição com rodas também não são intercambiáveis.
 
 ---
 
-## DadosFonte
+## 6. Questões ainda sem resposta
 
-| Dados | Fonte |
+Há dois pontos que não podem ser resolvidos com as informações públicas disponíveis:
+
+1. **Contatos elétricos da bateria.** O CAD inclui apenas duas peças impressas `power_support` (×2), **sem modelo de PCB de contato ou lâminas metálicas**. Não é possível saber se o projeto original usa contatos de mola metálicos ou um adaptador NP-F comercial. A solução mais simples é comprar um adaptador NP-F pronto.
+2. **Chicote de fios.** Não há desenho oficial do comprimento dos cabos Dynamixel de 3 pinos entre os servos nem do cabo flat MIPI da câmera. Em geral, os servos vêm com cabos curtos, mas o comprimento necessário dentro do robô precisa ser medido.
+
+---
+
+## Fontes dos dados
+
+| Dado | Fonte |
 |---|---|
-| 零件数量 | 上游 `robot_walk.xml` 的 geom `mesh=` 引用计数 |
-| 轮滑变体数量 | 上游 `robot_groundcontact_rollers.xml` |
-| 螺丝Quantidade | STL 孔位几何反推，见 [紧Firmware反推](docs/紧Firmware反推.md) |
-| 电子件型号 | Rust 源码、设备树、`robotd.toml`，见 [硬件方案逆向](docs/硬件方案逆向.md) |
-| HAT 板参数 | 官方 KiCad 工程与 `production/` 生产文件 |
-| 舵机规格 | [Robotis e-manual](https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/) |
-| 立创编号 | 嘉立创 EDA 元件库实时查询 |
+| Quantidade de peças | Contagem de referências `mesh=` de `geom` em `robot_walk.xml` do projeto original |
+| Quantidade da variante com rodas | Arquivo original `robot_groundcontact_rollers.xml` |
+| Quantidade de parafusos | Inferida pela geometria dos furos nos STL; veja a [análise reversa dos fixadores](docs/紧固件反推.md) |
+| Modelos de componentes eletrônicos | Código Rust, árvore de dispositivos e `robotd.toml`; veja a [análise reversa de hardware](docs/硬件方案逆向.md) |
+| Parâmetros da placa HAT | Projeto KiCad oficial e arquivos de fabricação em `production/` |
+| Especificações dos servos | [Manual eletrônico da Robotis](https://emanual.robotis.com/docs/en/dxl/x/xl330-m288/) |
+| Códigos LCSC | Consulta atualizada à biblioteca de componentes LCSC EDA |
