@@ -1,75 +1,69 @@
-# software · Software
+# Software
 
-> 本目录保留训练所需的上游仿真模型，**不是最新实物结构件的打印来源**。模型下载统一到 [microduck-replica-cad](https://github.com/fanhao375/microduck-replica-cad)；引入飞特舵机参数不等于已更新 CAD 几何、质量和惯量。
+> Este diretório mantém os modelos de simulação upstream necessários ao treinamento. **Ele não é a fonte para imprimir as peças mecânicas mais recentes do robô.** Os modelos CAD ficam no repositório [microduck-replica-cad](https://github.com/fanhao375/microduck-replica-cad). Incluir parâmetros para servos Feetech não significa que a geometria CAD, a massa ou a inércia tenham sido atualizadas.
 
-官方运行时 [`pollen-robotics/microduck`](https://github.com/pollen-robotics/microduck) 是照 Dynamixel XL330 写的，本仓库主线用飞特 HD-1910，所以主程序要改。
+O runtime oficial [`pollen-robotics/microduck`](https://github.com/pollen-robotics/microduck) foi desenvolvido para os servos Dynamixel XL330. Como a linha principal deste repositório usa Feetech HD-1910, o programa principal precisa de adaptações.
 
-## 现在用 de Software一览
+## Visão geral do software em uso
 
-| Software | 干什么 | 在哪、怎么用 | Licença |
+| Software | Função | Localização e uso | Licença |
 |---|---|---|---|
-| **复刻镜像** | 烧卡开机就能用的整套系统：主程序、模型、Studio、首次开机和配网 | [`image/`](image/)：用户看[烧录和第一次使用](image/烧录和第一次使用.md)，做镜像的人看 [image/README.md](image/README.md)。已发布版本见 [Releases](https://github.com/fanhao375/microduck-replica/releases/latest) | 构建脚本 Apache-2.0；镜像里各部分的许可见镜像内 `/usr/share/doc/microduck/` |
-| **Microduck Studio** | 装在鸭子上的网页中控：状态、卸力、舵机零位、IMU 方向、写进主程序、手柄、遥控、日志 | [`studio/`](studio/)。用复刻镜像的不用另装 | 代码 Apache-2.0 |
-| **网页软件更新** | 签名组件包、独立更新服务、离线上传、安装与回退 | [`updater/`](updater/)，20261027镜像预装；旧卡先一次性SSH引导，[操作说明](../docs/软件更新与语音使用说明-20261027.md) | Apache-2.0 |
-| **本地坐站语音** | R3单击监听开关、中文坐下/站起来、鸭叫提示 | [`duck-echo/`](duck-echo/)，20261027镜像附中文模型与ARM64依赖；无需云端Key | 代码Apache-2.0，模型与依赖按各自许可 |
-| **主程序 robotd / padd / mediad** | 在官方 0.15.1 上加了飞特 HD-1910 舵机总线、I²C IMU 模块、陀螺融合、UDP 手柄 | 源码在 [fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy)，具体镜像使用的分支和提交见 [image/README.md](image/README.md)。复刻镜像里已经装好 | Apache-2.0 |
-| **走路e动作Modelo** | 走路、Sentar / 站起、低头捡、Cambalhota para frente、EsquerdoDireito踢、轮滑 4 个 | 复刻Imagem里带着。每个Modelo干什么、对应哪个手柄键、谁训练 de ，见[ModeloInstruções](image/overlay/usr/share/doc/microduck/ModeloInstruções.txt) | Autor de Pessoal e não comercialLicença，**不是Código abertoLicença**：不得随收费产品分发 |
-| **训练工程** | HD-1910 仿真训练 | [`training/`](training/) | 代码 Apache-2.0，3D 网格 CC BY-NC-SA |
-| **Microduck Training Studio** | 电脑上的网页训练工作台：实验管理、曲线、评估与模型导出 | [`training-studio/`](training-studio/README.md)，与鸭子上的 Studio 分开运行 | 代码 Apache-2.0；依赖与素材许可见该目录说明 |
-| servo-web（旧） | 9 月的网页舵机调试台，Studio 出来以前用 | [`tools/servo-web/`](../tools/servo-web/) | Apache-2.0 |
+| **Imagem de réplica** | Sistema completo pronto para gravar no cartão: programa principal, modelos, Studio, primeira inicialização e configuração da rede | [`image/`](image/). Usuários: [gravação e primeiro uso](image/烧录和第一次使用.md); responsáveis pela imagem: [construção da imagem](image/README.md). Veja as versões publicadas em [Releases](https://github.com/fanhao375/microduck-replica/releases/latest). | Scripts de construção Apache-2.0; consulte as licenças de cada componente em `/usr/share/doc/microduck/` na imagem. |
+| **Microduck Studio** | Painel web instalado no robô para consultar o estado, aliviar o torque, calibrar servos e IMU, gravar configurações no programa principal, usar o controle e consultar registros | [`studio/`](studio/). Quem usa a imagem de réplica não precisa instalá-lo separadamente. | Código Apache-2.0. |
+| **Atualização de software pela web** | Pacote de componentes assinado, serviço de atualização independente, envio offline, instalação e reversão | [`updater/`](updater/). Já vem na imagem 20261027; em cartões antigos, é necessário ativá-lo uma vez por SSH. Consulte as [instruções](../docs/软件更新与语音使用说明-20261027.md). | Apache-2.0. |
+| **Comandos locais de voz para sentar e levantar** | Um clique no R3 ativa a escuta; reconhece “sentar” e “levantar” em mandarim e confirma com um som | [`duck-echo/`](duck-echo/). A imagem 20261027 inclui o modelo em chinês e as dependências ARM64. Não exige chave de serviço na nuvem. | Código Apache-2.0; o modelo e as dependências têm suas próprias licenças. |
+| **Programas principais `robotd`, `padd` e `mediad`** | Adaptações do runtime oficial 0.15.1 para o barramento de servos Feetech HD-1910, módulo IMU I²C, fusão do giroscópio e controle UDP | Código-fonte em [fanhao375/Microduck-kissqy](https://github.com/fanhao375/Microduck-kissqy). A branch e o commit usados na imagem estão nas [instruções de construção](image/README.md). Os binários já vêm na imagem de réplica. | Apache-2.0. |
+| **Modelos de marcha e movimentos** | Quatro modelos para caminhar, sentar e levantar, abaixar a cabeça para pegar objetos, dar cambalhota, chutar com os dois pés e usar as rodas | Incluídos na imagem de réplica. Veja a função de cada modelo, o botão correspondente e os créditos em [descrição dos modelos](image/overlay/usr/share/doc/microduck/模型说明.txt). | Licenças pessoais e não comerciais dos autores; **não são licenças de código aberto**. Não distribua com produtos pagos. |
+| **Projeto de treinamento** | Treinamento em simulação para HD-1910 | [`training/`](training/). | Código Apache-2.0; malhas 3D CC BY-NC-SA. |
+| **Microduck Training Studio** | Ambiente web de treinamento no computador para gerenciar experimentos, ver curvas, avaliar e exportar modelos | [`training-studio/README.md`](training-studio/README.md). É executado separadamente do Studio instalado no robô. | Código Apache-2.0; consulte as licenças de dependências e recursos no próprio diretório. |
+| **servo-web (antigo)** | Bancada web para depuração de servos, usada em setembro antes da criação do Studio | [`tools/servo-web/`](../tools/servo-web/). | Apache-2.0. |
 
-独立 de ServoTeste、IMU Verificaçãoe步态分析入口见[Índice de ferramentas](../tools/README.md)；Placa de circuito e Firmware入口见[Projetos de hardware](../hardware/README.md)。
+Encontre ferramentas independentes para testar servos, verificar a IMU e analisar a marcha no [índice de ferramentas](../tools/README.md). O [índice de hardware](../hardware/README.md) reúne as placas e o firmware.
 
-## HD1910 仿真训练
+## Treinamento em simulação para HD1910
 
-**[`training/`](training/)** 包含完整 Python 训练工程：模型、LuwuDynamics 的 1910 M6 参数、
-HD1910 任务Configuração、飞特Controle器初始化适配、依赖锁ArquivoeTeste。克隆este repositório即可取得，
-不需要再下载 `microduck_rl` 分支。
+**[`training/`](training/)** contém um projeto Python completo de treinamento: modelos, parâmetros LuwuDynamics 1910 M6, configurações de tarefas para HD1910, adaptação de inicialização do controlador Feetech, dependências fixadas e testes. Basta clonar este repositório; não é necessário baixar a branch `microduck_rl` separadamente.
 
-[快速开始](training/README.md) · [ExecuçãoInstruções e 初始化问题解释](training/docs/hd1910-baseline.md) ·
-[FonteeLicença](training/UPSTREAM.md)。Atual是仿真接入基线，尚未Concluído本机实测步态训练。
+[Início rápido](training/README.md) · [Instruções de execução e explicação dos problemas de inicialização](training/docs/hd1910-baseline.md) · [Origem e licenças](training/UPSTREAM.md). Esta é a base atual de integração com a simulação; o treinamento de marcha ainda não foi testado neste computador.
 
-## IMU 裸板Depuração
+## Depuração da placa IMU sem o robô
 
-STM32G031 + LSM6DSV16X 固件与硬件资料放在 [`hardware/imu_to_dxl/firmware/`](../hardware/imu_to_dxl/firmware/)。姿态显示并入 [`tools/servo-web/`](../tools/servo-web/)：使用 `python server.py --port COM5 --imu-jlink imu-jlink.json`，同一个模型同时接收舵机关节角和 J-Link 的躯干姿态；只有裸板时可用 `--fake` 代替串口参数。
+O firmware STM32G031 + LSM6DSV16X e os materiais de hardware estão em [`hardware/imu_to_dxl/firmware/`](../hardware/imu_to_dxl/firmware/). A visualização da orientação foi integrada à [`tools/servo-web/`](../tools/servo-web/). Execute `python server.py --port COM5 --imu-jlink imu-jlink.json`: o mesmo modelo recebe os ângulos das juntas dos servos e a orientação do tronco lida pelo J-Link. Se estiver apenas com a placa, use `--fake` no lugar dos parâmetros da porta serial.
 
-**范围：固件与模拟验证、SWD 台架观察。** 附带 0.2.0 源码已实现飞特 SCS/STS 协议、ID 200、地址 56 的 15 字节块及同步读排队；主机测试与模拟总线验收记录见 [`VALIDATION.md`](../hardware/imu_to_dxl/firmware/VALIDATION.md)。实板已有烧录及 IMU 观察记录，但真实混合总线、响应/释放时序和整机运行时验收仍未完成。此前“仍是 Dynamixel 基线、尚未实现契约”的说明已过时，不能与“真总线尚未验收”混为一谈。
+**Escopo já verificado: firmware e simulação, além de observação na bancada SWD.** O código-fonte 0.2.0 incluído implementa o protocolo Feetech SCS/STS, ID 200, bloco de 15 bytes no endereço 56 e fila de leitura síncrona. Os testes do host e a simulação do barramento estão registrados em [`VALIDATION.md`](../hardware/imu_to_dxl/firmware/VALIDATION.md). Há registros de gravação e observação da IMU em uma placa real, mas ainda não foram concluídas a validação do barramento misto real, a temporização de resposta e liberação, nem a validação com o robô completo. As notas antigas que diziam que a implementação continuava na base Dynamixel e não cumpria o contrato estão desatualizadas; elas não devem ser confundidas com a validação ainda pendente no barramento real.
 
-## Histórico：9 月 de 第一版飞特后端（已不用）
+## Histórico: primeiro backend Feetech, de setembro (não utilizado)
 
-> 现在用 de 主程序是Superior面一览表里 de  fork。abaixo是 9 月基于Oficial 0.14.1 写 de 第一版飞特后端，没Superior过板，留作参考。
+> O programa principal em uso hoje é o fork mencionado na visão geral acima. A seção abaixo descreve o primeiro backend Feetech, escrito em setembro sobre a versão oficial 0.14.1. Ele não foi testado em uma placa e está mantido apenas como referência.
 >
-> [`fanhao375/microduck` · `feetech` 分支](https://github.com/fanhao375/microduck/tree/feetech)：已跟上官方 **0.14.1**，三个 crate 的测试全过（duck-control 80 / robotd-params 151 / robotd 93）。
+> [`fanhao375/microduck` · branch `feetech`](https://github.com/fanhao375/microduck/tree/feetech): atualizada em relação à versão oficial **0.14.1**; todos os testes dos três crates passaram (duck-control 80 / robotd-params 151 / robotd 93).
 
-| Arquivo | 行数 | 做了什么 |
-|---|---|---|
-| [`duck-control/src/bus_feetech.rs`](https://github.com/fanhao375/microduck/blob/feetech/duck-control/src/bus_feetech.rs) | 744（新） | **`FeetechIo` 主体**：每 tick 一次 `sync_read` 地址 56 长 15；位置换算带方向表；写目标带钳位；`set_gain` 只写 P（飞特没有 I/D 同构）；`reboot` 先关扭矩再 0x08；开机检查 END 字节序 / 应答级别 / 运行模式 / 波特率 / 相位；`imu_ready()` 恒 false。含 11 个单元测试 |
-| [`duck-control/src/bus_select.rs`](https://github.com/fanhao375/microduck/blob/feetech/duck-control/src/bus_select.rs) | 149（新） | `AnyBus` 枚举，两种后端二选一（`Box<dyn RobotIo>` 编不过，原因见[架构文档](飞特适配架构.md) §3.1） |
-| `robotd-params/` | +50 | `[bus] protocol = "dynamixel2" \| "feetech-sts"`、`[bus.feetech] p_scale / directions`，登记进参数表 |
-| `robotd/src/main.rs` | +63 | `BusIo` 换成 `AnyBus`，开总线时带协议；参数不合法直接报错不重试 |
-| `duck-control/src/model.rs` | +8 | HD-1910 出厂运行模式 4 的期望值 |
-| `deploy/robotd.toml` | — | 两个新键，带注释 |
+| Arquivo | Linhas | Implementação |
+|---|---:|---|
+| [`duck-control/src/bus_feetech.rs`](https://github.com/fanhao375/microduck/blob/feetech/duck-control/src/bus_feetech.rs) | 744 (novo) | **Implementação principal de `FeetechIo`:** um `sync_read` por ciclo no endereço 56 com 15 bytes; conversão da posição com tabela de direção; limites para os alvos; `set_gain` grava somente P (Feetech não tem um equivalente direto para I/D); `reboot` desliga o torque antes do comando `0x08`; na inicialização, verifica ordem de bytes END, nível de resposta, modo de operação, baud rate e fase; `imu_ready()` sempre retorna false. Inclui 11 testes unitários. |
+| [`duck-control/src/bus_select.rs`](https://github.com/fanhao375/microduck/blob/feetech/duck-control/src/bus_select.rs) | 149 (novo) | Enumeração `AnyBus` para escolher um dos dois backends. `Box<dyn RobotIo>` não compila; veja o motivo na seção 3.1 do [documento de arquitetura](飞特适配架构.md). |
+| `robotd-params/` | +50 | Adiciona `[bus] protocol = "dynamixel2" \| "feetech-sts"` e `[bus.feetech] p_scale / directions` e registra os campos no sistema de parâmetros. |
+| `robotd/src/main.rs` | +63 | Troca `BusIo` por `AnyBus`, passa o protocolo ao abrir o barramento e informa diretamente parâmetros inválidos, sem tentar novamente. |
+| `duck-control/src/model.rs` | +8 | Valor esperado do modo de operação de fábrica 4 do HD-1910. |
+| `deploy/robotd.toml` | — | Adiciona duas chaves e os comentários correspondentes. |
 
-编译（é necessário Rust）：
+Para compilar, é necessário ter Rust instalado:
 
 ```bash
 git clone -b feetech https://github.com/fanhao375/microduck.git
 cd microduck && cargo test -p duck-control -p robotd-params -p robotd
 ```
 
-**为什么放 fork 不放这个仓库**：`FeetechIo` 是官方 Rust 工作区里 `duck-control` 这个 crate 的一个文件，
-用的是官方的 `RobotIo` trait、`Safety<T>` 泛型和参数系统 —— 单独拷出来编译不了。
-放在 fork 分支上，官方更新时 `git rebase` 就能跟上（2026-09-20 跟了 55 个提交，零冲突），
-将来也能直接向Oficial提 PR。Oficial是 Apache-2.0，改动留在 fork 里出处也清楚。
+**Por que manter isso no fork em vez de copiar para este repositório:** `FeetechIo` é um arquivo do crate `duck-control` no workspace Rust oficial. Ele usa o trait oficial `RobotIo`, o tipo genérico `Safety<T>` e o sistema de parâmetros; copiado isoladamente, não compila. Na branch do fork, `git rebase` permite acompanhar as atualizações oficiais — em 2026-09-20, foram integrados 55 commits sem conflitos — e, no futuro, também será possível enviar um PR ao projeto oficial. O runtime oficial usa Apache-2.0, e manter as alterações no fork deixa a origem clara.
 
 | Arquivo | Conteúdo |
 |---|---|
-| [`飞特适配架构.md`](飞特适配架构.md) | 官方运行时现有架构（接缝在哪、每个 tick 干什么、开机序列）、两家舵机逐项差别、适配方案、**`imu_to_dxl` 小板固件架构（§4）**、台架验收、待查清单、构建部署 / 策略关系 / 失败模式、评审记录 |
+| [`飞特适配架构.md`](飞特适配架构.md) | Arquitetura existente do runtime oficial (pontos de integração, trabalho a cada ciclo e sequência de inicialização), diferenças entre os dois fabricantes de servos, plano de adaptação, **arquitetura do firmware da placa `imu_to_dxl` (§4)**, testes de bancada, itens a investigar, relação entre construção, implantação e política, modos de falha e registros de revisão. |
 
-小板固件的接口契约（15 字节块、时序、排队规则、验收）单独成文：[`hardware/imu_to_dxl/总线协议.md`](../hardware/imu_to_dxl/总线协议.md)，配套工具 [`tools/imu200/`](../tools/imu200/)（假小板 + 测试向量 + 真板子验收）。
+O contrato de interface do firmware da placa — bloco de 15 bytes, temporização, regras de fila e testes de aceitação — está documentado separadamente em [`hardware/imu_to_dxl/总线协议.md`](../hardware/imu_to_dxl/总线协议.md). A ferramenta correspondente é [`tools/imu200/`](../tools/imu200/), com placa simulada, vetores de teste e validação na placa real.
 
-板子怎么烧、怎么装官方运行时，在 [不打 HAT](../docs/不打HAT.md) 和 [`tools/radxa/`](../tools/radxa/)。
+As instruções para gravar a placa e instalar o runtime oficial estão em [Sem HAT](../docs/不打HAT.md) e em [`tools/radxa/`](../tools/radxa/).
 
-飞特协议和内存表的官方原文（2026 年版快照）在 [`docs/飞特资料/`](../docs/飞特资料/)。
+Os documentos oficiais Feetech sobre o protocolo e as tabelas de memória (cópias da edição de 2026) estão em [`docs/飞特资料/`](../docs/飞特资料/).
 
-动代码前先把舵机点通：[`tools/servo-web/`](../tools/servo-web/) 是接串口的网页调试台，拖滑块、看回读、导寄存器底账、3D 鸭子跟着动，架构文档台架清单 0–8 项都用它。
+Antes de alterar o código, confirme a comunicação com os servos: [`tools/servo-web/`](../tools/servo-web/) é uma bancada web conectada à porta serial. Ela permite arrastar os controles, consultar as respostas, exportar os registradores e ver o pato 3D acompanhar os movimentos; os itens 0 a 8 da lista de bancada do documento de arquitetura usam essa ferramenta.
