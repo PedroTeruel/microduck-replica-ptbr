@@ -1,58 +1,58 @@
-# 本地音乐互动修复 e 实际限制
+# Correção da interação musical local e limitações reais
 
-日期：2026-10-26（东京时间）。本轮已部署Software修正，但Usuário仍反馈等待节拍、头身未随乐运动，**尚未por meio de真实音乐动作验收**。
+**Data:** 26/10/2026 (horário de Tóquio). Nesta rodada foi implantada uma correção de software, mas o usuário ainda relatou espera pelo ritmo e ausência de movimento da cabeça e do corpo. **A interação com música real ainda não foi validada.**
 
-## 已部署
+## Alterações implantadas
 
-- 语音 `2f24a6ae7b5a2b16d2b222eee507aa91b988c9fc`：20ms ALSA period/80ms buffer，按样本推进的音频时间轴，连续包络周期判断，短断流和时钟漂移处理，停歌底噪下释放旧节拍。
-- Studio `6ca5459c781663d3872cf3a2b4697ee21a05c892`：等待节拍与产生律动分开显示；R3/服务关闭会结束独立音乐会话，恢复监听不复活旧会话。前台/心跳与实体手柄保护仍保留。
-- 语音备份 `/var/lib/duck-echo/upgrades/20261026-012132-2f24a6ae7b`，部署时PID42568；后续收音对照仅重启了该语音服务，不能再将42568当成当前PID。网页备份 `/home/radxa/.microduck-backups/web-audio-20261025-cefb03d009`，运行PID43893。
-- WebAtualização前Usuário确认停好，回读standing/homed、policy_enabled=false；没有补发停止Comando。Atualização5个StudioArquivo；12个原UsuárioDadosArquivohashInalterado。robotd1099/padd1132 e Inicialização时间保持。
-- 8项HTTP资源/健康Verificaçãopor meio de，静态资源hash e 冻结Arquivo相同且no-cache；真实WebSocket快照要求登录，没有绕过登录。
+- Serviço de voz `2f24a6ae7b5a2b16d2b222eee507aa91b988c9fc`: período ALSA de 20 ms e buffer de 80 ms; eixo temporal do áudio avança conforme as amostras; detecção de ciclos de envelope contínuos; tratamento de interrupções curtas e deriva do relógio; liberação do ritmo antigo quando a música para, mesmo com ruído de fundo.
+- Studio `6ca5459c781663d3872cf3a2b4697ee21a05c892`: estados “aguardando o ritmo” e “movimento ativo” aparecem separadamente. Desligar R3/o serviço encerra a sessão musical independente; reativar a escuta não retoma uma sessão antiga. A proteção de primeiro plano/heartbeat e do controle físico foi mantida.
+- Backup do serviço de voz: `/var/lib/duck-echo/upgrades/20261026-012132-2f24a6ae7b`; PID 42568 durante a implantação. A comparação posterior de captação reiniciou somente o serviço de voz; 42568 não é mais o PID atual. Backup da Web: `/home/radxa/.microduck-backups/web-audio-20261025-cefb03d009`; PID em execução 43893.
+- Antes da atualização Web, o usuário confirmou que o robô estava parado; a leitura de retorno foi standing/homed, `policy_enabled=false`. Nenhum comando de parada adicional foi enviado. Foram atualizados 5 arquivos do Studio; os hashes dos 12 arquivos originais de dados do usuário não mudaram. Os processos robotd 1099/padd 1132 e seus horários de início foram preservados.
+- Oito recursos HTTP e verificações de saúde passaram; hashes dos recursos estáticos coincidiram e os arquivos congelados usavam no-cache. A captura real do WebSocket exige login; não houve tentativa de contornar a autenticação.
 
-## Software e 性能Verificação
+## Verificações de software e desempenho
 
-- Windows语音150项：133por meio de，17项Linux跳过；WSLe鸭子Superior150项全por meio de。鸭子最终Versão用时98.600秒。
-- Studio Python3.13后端257项、Node11项por meio de；独立审查 de 相关后端88项por meio de。
-- 本地EdgeCompleto流程por meio de，88.561秒：先显示等待且无虚构动作，再显示律动；假机器人记录头22帧、身体21帧；Preservado坐站录制/多次回放 e 窄屏Verificação。这不是真机效果。
-- 两阶段独立审查修复了弱起音遮蔽重复证据、慢节奏停歌超时e短模式切换累积时间偏移。没有遗留已知重要Software审查项。
-- ARM离线数值基准（7fb0b86检测主体）：8秒包络处理约521.66ms CPU，最慢帧30.05ms，缓存快照平均约0.019ms；此项不是整套ASR/音乐长时温度Teste。
+- Serviço de voz no Windows: 150 verificações; 133 passaram e 17 foram ignoradas por dependerem de Linux. No pato WSL, passaram todas as 150. A versão final no pato levou 98,600 s.
+- Backend do Studio: 257 verificações em Python 3.13 e 11 em Node; 88 verificações relacionadas passaram na revisão independente do backend.
+- Fluxo completo local no Edge passou em 88,561 s: primeiro exibe “aguardando”, sem inventar movimento, e depois mostra o ritmo. O registro do robô simulado contém 22 quadros de cabeça e 21 de corpo. Gravação/reprodução de sentar/levantar e verificação de tela estreita foram preservadas. Isso não demonstra o resultado no robô real.
+- Duas rodadas de revisão independente corrigiram evidência repetida causada por ataques fracos, timeout ao parar música lenta e acúmulo de desvio temporal em trocas rápidas de modo. Não restaram itens importantes conhecidos na revisão de software.
+- Referência numérica offline em ARM (corpo de detecção 7fb0b86): processamento de envelope em 8 s usou cerca de 521,66 ms de CPU; quadro mais lento, 30,05 ms; média de snapshot em cache, cerca de 0,019 ms. Isso não é um teste prolongado de temperatura de toda a cadeia ASR/música.
 
-## 真实采集 e UsuárioResultado
+## Captação real e resultado relatado pelo usuário
 
-- Usuário在旁边播放音乐时，两次8秒A/B采集证明默认period6000帧=125ms；Por favor求小周期后实际960帧=20ms。旧起音Algoritmos在小周期歌曲段没有稳定Resultado，新Algoritmos能从该段数值包络取得约100BPM。仅数值落盘，没有保存PCM或谈话录音。
-- Superior机后Usuário反馈“一直等待节拍，头e身体都没动”，仍按未修复处理。第一段45秒电机观察发生在Usuário开始操作前：监听/音乐均false、策略关闭，因此未覆盖其实际播放，不能usado para动作验收。
-- 后续连续6秒真实Serviço回读60/60项有效，约65.2BPM、置信度0.667–0.815；但再读时又回到unknown。实际音乐 de 锁定仍不稳定，单段por meio de不能代表真实歌曲普遍可用。
-- 用Studio实际Python3.13、radxa UID1000Execução已InstalaçãoAudioClientLeituraSucesso；同一MusicRhythm在unknown时正确等待。不能将问题归因为Controlesocket权限或已证明 de 时钟差异。
+- Com o usuário tocando música ao lado, duas captações A/B de 8 s confirmaram o período padrão de 6000 quadros = 125 ms. Após reduzir o período, a configuração real foi 960 quadros = 20 ms. O algoritmo antigo não produziu resultado estável em trechos de música com período curto; o novo extraiu um envelope numérico de cerca de 100 BPM. Foram salvos somente dados numéricos, sem PCM nem gravação de conversas.
+- Após a implantação, o usuário informou: “fica esperando o ritmo; a cabeça e o corpo não se mexeram”. O recurso continua sendo tratado como não corrigido. A primeira observação dos motores, de 45 s, ocorreu antes de o usuário começar a operar: escuta/música estavam false e a política, desativada. Portanto, não cobriu a reprodução real do usuário e não valida o movimento.
+- Numa leitura posterior de 6 s do serviço real, 60/60 itens eram válidos, com aproximadamente 65,2 BPM e confiança entre 0,667 e 0,815; numa nova leitura, voltou a unknown. O travamento do ritmo com música real continua instável: uma única amostra não comprova funcionamento geral com músicas reais.
+- O cliente de áudio foi instalado e lido com sucesso usando o Python 3.13 real do Studio e UID 1000 da Radxa. A mesma rotina MusicRhythm aguarda corretamente quando o estado é unknown. Não se pode atribuir o problema à permissão do socket de controle nem afirmar que a diferença de relógio foi comprovada.
 
-## 后续收音 e 独立Algoritmos对照（仍未验收）
+## Nova captação e comparação independente de algoritmos (ainda sem validação)
 
-- 实际ALSA `cget` 核对：右路Mic3R开启，其余PGA输入关闭，PGA Capture Switch为on,on，增益60,60（30dB），AGC关闭。与当前服务采集右声道一致；不能仅凭配置正常就断定外放音乐清楚进入麦克风。
-- 两次约62秒Serviço状态观察均没有可靠节拍，Direito路DC去除后 de RMS大致207–414。Usuário de “Teste麦克风”对照尚未收到Concluído确认，因此这些Dados不能当成说话或特定歌曲 de 已确认Teste片段。
-- 在私有staging中构建aubio0.4.9 DSP核心，原始源码SHA256为`d48282ae4dab83b3dc94c16cf011bcb63835c1c02b515490e1883049c3d1f3da`；没有安装系统包或改生产算法。12秒真实采集对照中，tempo输出预测拍但原生confidence始终为0，specflux只在启动时报告一次起音。不得将预测拍数作为可靠节拍证明。
-- 短提示音声学回采：Direito路提示音前/后RMS约302/294，700Hze1100Hz提示音期间约28659/32049，且频率分量对应；Esquerdo路始终为0。确认Direito路能收到本机输出，后者已发生削波，不重复使用该音量做Teste。此Resultado不能替代外放音乐 e 近距离说话对照。
-- 该提示音Teste只临时停止语音Serviço以独占声卡，finally恢复原监听/音乐开关；未调用运动接口。恢复后语音PID53645、Studio43893、robotd1099、padd1132。实际ExecuçãoSoftware仍为语音2f24a6a/Studio6ca5459。
-- Inicialização一个有300秒自动期限 de 数值输入观察器，仅保存时间、RMS、BPM、置信度 e 开关，不保存话语或PCM。仍需Usuário外放音乐/说话 de 同步确认，继续定位输入e检测之间 de 差异。
+- A configuração real foi conferida com ALSA `cget`: microfone direito Mic3R ativado, demais entradas PGA desligadas, PGA Capture Switch em on,on, ganho 60,60 (30 dB), AGC desligado. Isso coincide com a captação do canal direito pelo serviço atual. A configuração correta, por si só, não prova que a música reproduzida esteja chegando claramente ao microfone.
+- Em duas observações de cerca de 62 s, o estado do serviço não revelou ritmo confiável; após remover DC, o RMS do canal direito ficou aproximadamente entre 207 e 414. Ainda não foi confirmado o teste comparativo “Testar microfone”; portanto, esses dados não podem ser tratados como segmentos de fala ou de uma música específica já confirmados.
+- Foi compilado no staging privado o núcleo DSP do aubio 0.4.9; SHA256 do código-fonte original: `d48282ae4dab83b3dc94c16cf011bcb63835c1c02b515490e1883049c3d1f3da`. Nenhum pacote do sistema foi instalado e o algoritmo de produção não foi alterado. Numa comparação de 12 s de áudio real, a saída tempo previu batidas, mas a confiança nativa permaneceu sempre em 0; specflux relatou um início de batida apenas uma vez, na inicialização. Não trate a contagem prevista como evidência confiável de ritmo.
+- Na captação acústica de um tom curto, o RMS do canal direito antes/depois foi cerca de 302/294; durante os tons de 700 Hz e 1100 Hz, cerca de 28659/32049, com componentes de frequência correspondentes. O canal esquerdo permaneceu em 0. Isso confirma que o canal direito capta a saída local; houve clipping no último caso, portanto esse volume não deve ser reutilizado em testes. O resultado não substitui comparações com música reproduzida em alto-falante e fala a curta distância.
+- Esse teste de tom interrompeu temporariamente o serviço de voz para obter acesso exclusivo à placa de som e, no bloco finally, restaurou os estados anteriores de escuta/música; nenhuma interface de movimento foi chamada. Após restaurar, os PIDs eram voz 53645, Studio 43893, robotd 1099 e padd 1132. O software em execução continuava sendo voz 2f24a6a/Studio 6ca5459.
+- Foi iniciado um observador temporário de entrada numérica com prazo automático de 300 s; ele salva somente horário, RMS, BPM, confiança e estados dos controles, sem armazenar fala ou PCM. Ainda é necessária a confirmação sincronizada do usuário ao reproduzir música e falar, para localizar a diferença entre entrada de áudio e detecção.
 
-## 身体Modelo能力 de 关键发现
+## Principal descoberta sobre a capacidade corporal do modelo
 
-在Atual已站稳、策略Execução、扭矩确认、关节反馈新鲜且实体手柄断开时做短时、小幅、无Caminhada de 接口对照；未自动HOME、使能或更换Modelo。所有探测结束均发送head零/pose inactive并取得accepted。
+Com o pato atual em pé e estável, política em execução, torque confirmado, feedback recente das articulações e controle físico desconectado, foram feitas comparações breves, de pequena amplitude e sem caminhada. Não houve comando automático de HOME, habilitação ou troca de modelo. Ao fim de cada sondagem, foram enviados head zero e pose inactive, ambos aceitos.
 
-- 6秒1Hz头身对照：300次Por favor求被接受；头yaw实际变化范围0.08897rad，身体关节基本Inalterado。
-- 6秒缓慢静态roll0.04rad：身体实际无可见位置变化；加入move零心跳也没有改善，排除该假设。
-- 同步订阅真实目标：身体关节目标变化仅约0.002–0.010rad，实测位置基本不动。不能仅因RPC accepted就说鸭子已经能做该动作。
-- 当前实际模型 `Mjlab-VelStand-Rough-Backlash-MicroDuck`，SHA256 `1cbf8730eadd75a5704332c9f3c10f60bfa9412135b907831c9dbd731ce1795f`。从设备完整导出合同的训练快照核实：`body_pose_tracking.weight=0.0`，`head_pose_tracking.weight=2.0`；没有后续启用身体跟踪奖励的课程项。
-- 精确匹配该SHA de 本地ONNX离线反事实推理：roll从0改为+.04，EsquerdoDireitohip_roll输出仅变+.000238/+.000453rad；最大Perna输出变化约.00765rad。这是单步敏感性，不是物理rollout。
-- 原生固定源码4734cbbPreservado身体z/roll/pitch至观测57–59，stand槽为空时仍送给walkModelo，不会因此丢弃身体指令。主要限制在AtualModelo de 训练目标；摩擦/死区可能是额外因素，尚未单独定量。
+- Comparação de cabeça/corpo de 6 s a 1 Hz: 300 solicitações foram aceitas; a variação real de yaw da cabeça foi de 0,08897 rad, enquanto as articulações do corpo ficaram praticamente inalteradas.
+- Roll estático lento de 0,04 rad durante 6 s: não houve mudança visível na posição do corpo. Adicionar um heartbeat de movimento zero também não ajudou, descartando essa hipótese.
+- A assinatura simultânea dos alvos reais mostrou mudanças de apenas cerca de 0,002–0,010 rad nos alvos das articulações do corpo; as posições medidas quase não se moveram. Uma resposta RPC accepted não significa, por si só, que o pato executou a ação.
+- Modelo atualmente em uso: `Mjlab-VelStand-Rough-Backlash-MicroDuck`; SHA256 `1cbf8730eadd75a5704332c9f3c10f60bfa9412135b907831c9dbd731ce1795f`. A captura de treinamento exportada integralmente do dispositivo confirma `body_pose_tracking.weight=0.0` e `head_pose_tracking.weight=2.0`; não existe etapa curricular posterior que habilite a recompensa de rastreamento corporal.
+- Inferência contrafactual offline do ONNX local com o SHA correspondente: ao alterar roll de 0 para +0,04, as saídas de hip_roll esquerdo/direito mudaram apenas +0,000238/+0,000453 rad; a maior mudança de saída das pernas foi cerca de 0,00765 rad. É uma análise de sensibilidade de um passo, não uma simulação de rollout físico.
+- O código nativo fixo 4734cbb mantém z/roll/pitch do corpo nas observações 57–59 e envia os valores ao modelo de caminhada mesmo quando o slot stand está vazio; portanto, a instrução corporal não é descartada por isso. A principal limitação está no objetivo de treinamento do modelo atual; atrito/zona morta podem contribuir, mas ainda não foram quantificados separadamente.
 
-因此，本轮早先“接口suporta即可沿用现有Modelo做身体律动” de 假设不成立。可靠身体跟拍é necessário独立Validação具备身体跟踪能力 de Modelo，不能por meio de接语音大Modelo、放大指令或删除保护来宣称解决。
+Assim, a hipótese inicial desta rodada — “se a interface aceita, o modelo existente pode produzir movimento corporal ao ritmo” — não se confirmou. Para acompanhar o ritmo com o corpo de forma confiável, é necessário validar separadamente um modelo com capacidade de rastreamento corporal. Não se deve alegar que o problema foi resolvido apenas conectando um modelo grande de voz, ampliando os comandos ou removendo proteções.
 
-## 候选Modelo e Controle权边界
+## Limites do modelo candidato e da autoridade de controle
 
-本地 `firmware/policies/stand/policy.onnx` 的HD1910恢复教师（SHA256 `a481d9f211f31d9476ab1a319fe362a21ef0879d9fa59442a122845af598268c`）有身体跟踪训练课程，硬件/home/顺序/dim与现模型匹配，离线body输入响应明显。但其角色为teacher_only、deployment_verified=false，README明确不应自动放入零速stand槽；stand槽会影响所有低速/停止姿态。只列为仿真候选，**未启用或替换**。
+O modelo local `firmware/policies/stand/policy.onnx`, restaurado do professor do HD1910 (SHA256 `a481d9f211f31d9476ab1a319fe362a21ef0879d9fa59442a122845af598268c`), possui um currículo de treinamento para rastreamento corporal; hardware, HOME, ordem e dimensões correspondem ao modelo atual, e a resposta offline à entrada corporal é clara. Porém, sua função é teacher_only, `deployment_verified=false`, e o README diz para não colocá-lo automaticamente no slot stand de velocidade zero. Esse slot afeta todas as posturas de baixa velocidade/parada. É apenas candidato para simulação; **não foi ativado nem substituído**.
 
-实体手柄闲置共存仍需原生通道所有权/接管Protocolo：现有raw tap不提供原生head/body/IMU模式，且停止清理可能 e 手柄Gravação竞争。本轮Preservado保护。前一版6ca5459Web音乐会话离开前台会结束；Usuário随后明确要求后台持续，已在29b9400Concluído独立生命周期并部署，见[后台ExecuçãoValidação](2026-10-26-background-music.md)。声音检测 e 身体Modelo能力仍按本页证据单独验收。
+A coexistência com um controle físico ocioso ainda exige propriedade nativa do canal e protocolo de tomada de controle: o raw tap atual não expõe o modo nativo cabeça/corpo/IMU, e a limpeza ao parar pode competir com a gravação do controle. A proteção foi mantida nesta rodada. A sessão musical Web da versão anterior 6ca5459 terminava ao sair do primeiro plano; depois, o usuário pediu explicitamente continuidade em segundo plano. Isso foi implementado no ciclo de vida independente da 29b9400 e implantado; consulte [Validação da execução em segundo plano](2026-10-26-background-music.md). Detecção sonora e capacidade do modelo corporal continuam sendo validadas separadamente, conforme as evidências desta página.
 
-后续先核对真实音乐 de 可靠节拍/头嘴表现；身体Modelo按Usuário选择另做仿真 e 验收。未接豆包/Jev、未重烧Imagem或发布OTA。
+Próximos passos: primeiro, verificar se há detecção confiável do ritmo e resposta da cabeça/boca com música real; em seguida, avaliar separadamente um modelo corporal conforme a escolha do usuário, em simulação e no robô. Não houve conexão com Doubao/Jev, recriação da imagem nem publicação OTA.
 
-数值与部署证据：根工作区 `artifacts/music-local-fix-20261026/`；最终语音Linux检查在 `artifacts/audio-interaction-20261025/linux-tests-2f24a6ae7b.json`。
+Evidências numéricas e de implantação: diretório raiz de trabalho `artifacts/music-local-fix-20261026/`; verificações finais do Linux do serviço de voz em `artifacts/audio-interaction-20261025/linux-tests-2f24a6ae7b.json`.
