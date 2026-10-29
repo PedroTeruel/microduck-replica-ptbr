@@ -1,30 +1,30 @@
-# Rufus · Windows 烧卡Ferramentas
+# Rufus · ferramenta para gravar cartões no Windows
 
-[返回Índice de ferramentas](../README.md) · [Gravaçãoe第一次使用](../../software/image/Gravaçãoe第一次使用.md)
+[Voltar ao índice de ferramentas](../README.md) · [Gravação e primeiro uso](../../software/image/烧录和第一次使用.md)
 
-usado para把鸭子ImagemGravação microSD 卡。aqui提供Oficial原版 **Rufus 4.15 便携版，Windows x64**，无需Instalação。
+Use esta ferramenta para gravar a imagem do pato em um cartão microSD. Aqui fornecemos a versão oficial original **Rufus 4.15 portátil para Windows x64**, que não requer instalação.
 
-**[下载 rufus-4.15p.exe](rufus-4.15p.exe)** · [官方发布页](https://github.com/pbatard/rufus/releases/tag/v4.15) · [其他平台与新版](https://rufus.ie/zh/)
+**[Baixar rufus-4.15p.exe](rufus-4.15p.exe)** · [Página oficial de versões](https://github.com/pbatard/rufus/releases/tag/v4.15) · [Outras plataformas e versão mais recente](https://rufus.ie/zh/)
 
-## 烧卡步骤
+## Como gravar o cartão
 
-1. 下载鸭子的 `.img.xz` 镜像，将 microSD 卡插入读卡器并连接电脑。
-2. 打开 Rufus，在「设备」 em 核对 SD 卡 de 容量e盘符。**Gravação会清空所选卡 de Dados。**
-3. 点击「选择」，选中镜像文件。若文件筛选器没有显示 `.img.xz`，切换为所有文件。
-4. 核对目标卡后点击「开始」，等待状态回到「准备就绪」，再安全弹出读卡器。
-5. Windows 提示格式化 Linux 分区时点「取消」。把卡插回鸭子，继续[首次开机 e 配网](../../software/image/Gravaçãoe第一次使用.md#3-第一次开机)。
+1. Baixe a imagem do pato no formato .img.xz, insira o cartão microSD no leitor e conecte-o ao computador.
+2. Abra o Rufus e, em “Dispositivo”, confira a capacidade e a letra da unidade do cartão SD. **A gravação apagará os dados do cartão selecionado.**
+3. Clique em “Selecionar” e escolha o arquivo de imagem. Se o filtro não mostrar arquivos .img.xz, altere-o para “Todos os arquivos”.
+4. Confira novamente o cartão de destino, clique em “Iniciar” e aguarde o estado voltar a “Pronto”. Depois, ejete o leitor com segurança.
+5. Se o Windows pedir para formatar uma partição Linux, clique em “Cancelar”. Coloque o cartão no pato e siga as [instruções da primeira inicialização e configuração da rede](../../software/image/烧录和第一次使用.md#3-第一次开机).
 
-## Fonte e 校验
+## Origem e verificação
 
-2026-10-25 核对Oficial发布。EXE  e  GitHub 发布资产 SHA256 一致，Windows 数字签名有效，签名者为 Akeo Consulting；BaixarArquivo未经修改。
+A publicação oficial foi conferida em 25/10/2026. O SHA256 do executável é igual ao do arquivo publicado no GitHub; a assinatura digital do Windows é válida e está em nome de Akeo Consulting. O arquivo baixado não foi modificado.
 
-| Arquivo | 用途 |
+| Arquivo | Finalidade |
 |---|---|
-| [rufus-4.15p.exe](rufus-4.15p.exe) | Windows x64 便携版 |
-| [rufus-4.15-source.zip](rufus-4.15-source.zip) | 同Versão de Oficial源代码，Preservado构建Arquivo e 各组件Licença |
-| [LICENSE.txt](LICENSE.txt) | Rufus  de  GPL-3.0-or-later Licença |
-| [SHA256SUMS.txt](SHA256SUMS.txt) · [SOURCE.json](SOURCE.json) | 校验值、BaixarFonteeVersão记录 |
+| [rufus-4.15p.exe](rufus-4.15p.exe) | Versão portátil para Windows x64 |
+| [rufus-4.15-source.zip](rufus-4.15-source.zip) | Código-fonte oficial da mesma versão, com arquivos de construção e licenças dos componentes |
+| [LICENSE.txt](LICENSE.txt) | Licença GPL-3.0-or-later do Rufus |
+| [SHA256SUMS.txt](SHA256SUMS.txt) · [SOURCE.json](SOURCE.json) | Hashes, origem dos downloads e registro da versão |
 
-在 PowerShell 中运行 `Get-FileHash .\rufus-4.15p.exe -Algorithm SHA256`，与 `SHA256SUMS.txt` 对照即可核对文件。
+No PowerShell, execute Get-FileHash .\\rufus-4.15p.exe -Algorithm SHA256 e compare o resultado com SHA256SUMS.txt para conferir o arquivo.
 
-Rufus 作者为 Pete Batard / Akeo Consulting，源码与更新由 [pbatard/rufus](https://github.com/pbatard/rufus) 维护。
+O autor do Rufus é Pete Batard / Akeo Consulting. O código-fonte e as atualizações são mantidos em [pbatard/rufus](https://github.com/pbatard/rufus).
