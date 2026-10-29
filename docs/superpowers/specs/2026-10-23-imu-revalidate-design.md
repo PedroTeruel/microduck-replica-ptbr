@@ -1,29 +1,29 @@
-# IMU 初始方向可重复标定
+# Recalibração repetível da orientação inicial do IMU
 
-Usuário重新授权 de 是“初始方向保存后仍能重新做、Instalação四元数也能重新校验”。之前取消 de 采集Algoritmos改造保持取消：不改变粗校 de 静止3秒／前倾3秒／扶正再 verify-imu，不改变站姿精校 de 方向采集Algoritmos。只做本地实现 e 模拟Validação，不Conexão板子，不构建或Gravação新Imagem。
+O usuário autorizou novamente “refazer a calibração da orientação inicial mesmo depois de salvá-la e verificar novamente o quaternion de instalação”. A alteração anterior do algoritmo de coleta cancelada permanece cancelada: não mudar a calibração grosseira (3 s parado / 3 s inclinado para a frente / retornar à posição reta e executar verify-imu), nem o algoritmo de coleta da orientação da calibração fina em pé. Implementar localmente e validar com simulação; não conectar à placa nem criar ou gravar uma nova imagem.
 
-## 已确认 de 问题 e 设计选择
+## Problema confirmado e decisão de projeto
 
-`CoarseCard` 在 mount.verified 不是 false 时直接隐藏；后端 coarse/verify 又只接受 commissioning。因此已有错误配置或改变装法的用户无法通过网页回到初始粗校。只显示按钮仍不能完成恢复。motion 下直接写方向会绕过原 runtime 验证；整套 calib-commit 会重置关节零位。采用受控地临时返回 commissioning，保持原 verify-imu 流程。
+Quando `mount.verified` não é false, `CoarseCard` fica oculto; o backend coarse/verify também só aceita commissioning. Assim, usuários com uma configuração errada ou que mudaram a montagem não conseguem voltar à calibração inicial pela Web. Apenas mostrar um botão não completa a recuperação. Gravar a orientação diretamente no modo motion contornaria a validação do runtime original; executar calib-commit completo redefiniria os zeros das articulações. A solução escolhida é retornar temporariamente, de forma controlada, ao modo commissioning e manter o fluxo verify-imu existente.
 
-## Usuário流程
+## Fluxo para o usuário
 
-1. IMU 页始终展示“初始方向标定（可重新做）”入口。已确认时不自动开始，点击“重新标定方向”并明确确认后才进入。
-2. motion 模式必须先由Usuário卸力，并有新鲜回读确认扭矩OFF、策略关闭、无起身或临时增益恢复；保持双手扶住。重新标定按钮Instruções会重启主程序，但Preservado关节标定e原IMU方向备份。
-3. 使用受控 helper 切回 commissioning；已有 factory commissioning 直接打开原粗校，不新增覆盖Arquivo。
-4. 原样采静止、采实际前倾，算方向，回正后点击主程序Validação，再按提示前倾。ValidaçãoFalha可重采，保存前不改旧IMU方向。
-5. 原来处于 motion  de 重标定会话在ValidaçãoSucesso并回读一致后恢复原运动模式，保持卸力。原本 factory commissioning  de 流程不擅自切模式。粗校Sucesso后入口仍可再次进入。
-6. 会话跨Web刷新、Studio重启e板子断电可恢复，界面显示“重标定未结束”，可继续Validação或明确取消并恢复进入前备份。
+1. A página do IMU sempre mostra a opção “Calibração da orientação inicial (pode refazer)”. Mesmo se já estiver confirmada, não inicia automaticamente. Só entra depois que o usuário clicar em “Recalibrar orientação” e confirmar explicitamente.
+2. No modo motion, o usuário precisa primeiro desativar o torque. Uma leitura recente deve confirmar torque OFF, política desativada, sem retorno pendente à postura em pé e sem restauração pendente de ganho temporário; mantenha as duas mãos apoiadas no pato. As instruções do botão de recalibração avisam que ele reinicia o programa principal, preservando a calibração das articulações e o backup da orientação antiga do IMU.
+3. Usar um helper controlado para voltar ao commissioning. Se já estiver no commissioning de fábrica, abrir diretamente a calibração grosseira original, sem criar um arquivo de substituição.
+4. Coletar como antes os dados parado e da inclinação real para a frente, calcular a orientação, retornar à posição reta e clicar na validação do programa principal; depois inclinar conforme as instruções. Se a validação falhar, permitir nova coleta. A orientação antiga do IMU não muda antes de salvar.
+5. Se a sessão de recalibração veio do modo motion, após validação bem-sucedida e leitura de retorno consistente, restaurar o modo anterior de movimento, mantendo o torque desativado. O fluxo que já estava no commissioning de fábrica não muda de modo sem autorização. Depois da calibração grosseira bem-sucedida, a opção continua disponível para novo uso.
+6. A sessão pode ser retomada após atualização da página Web, reinicialização do Studio ou desligamento da placa. A interface mostra “recalibração incompleta” e permite continuar a validação ou cancelar explicitamente e restaurar o backup anterior à entrada.
 
-## 实现边界
+## Limites de implementação
 
-- 新增固定 helper 动词 `imu-recalibrate`，仅接受 enter/status/finish/cancel，参数严格校验，无任意路径、命令、服务名。与 bus-take / calib-commit 共用锁，并阻止这些写操作干扰正在进行的重标定会话；卸力不被锁挡住。
-- enter 使用新鲜双快照门槛、保存Atual主程序有效ExecStart、主／saved标定、ControleServiço状态 e 源信息。只允许直接robotdComando；生成唯一自有 de 持久commissioning drop-in，并先持久保存带Versão e 会话ID de manifest。重启后须读到commissioning e 卸力。不能修改或删除出厂drop-ine其他人 de Configuração。
-- original runtime verify 会把 motion_enabled 写成 false，并保存主／savedArquivo。finish 必须只恢复进入前 de  motion_enabled，Preservado新Validação de AtualIMU方向； e 进入前逐项比较，除该源Instalaçãoe motion_enabled 外任何关节零位／方向／限位、其他IMUe设置均不能变化。复用原子Gravação、Arquivo校验、CompletoExecução回读 e 回滚。删除覆盖Arquivo前核对Conteúdo/所有权/originalExecStart，原状态不明则拒绝。
-- enterFalha恢复进入前状态；finishFalha恢复重标定 de 安全commissioning状态且Preservado可重试会话；cancel明确恢复进入前标定 e 模式。不把取消后 de 旧方向称为本次新Validação。
-- 后端粗校／Validação沿用原计算 e FirmwareComando。只有后台确认本次verifySucesso并且回读 source、verified、quat 一致，才Por favor求finish。不能仅凭helper或RPC accepted显示Sucesso。
-- 前端不手工编辑四元数、不翻转Modelo符号、不改站姿精校 de 识别Algoritmos。只新增重做入口、进度、取消e恢复提示。
+- Adicionar o verbo fixo de helper `imu-recalibrate`, aceitando somente enter/status/finish/cancel, com validação estrita dos parâmetros e sem caminhos, comandos ou nomes de serviço arbitrários. Compartilhar o bloqueio com bus-take/calib-commit e impedir que essas operações de escrita interfiram em uma sessão de recalibração ativa; a desativação do torque não pode ser bloqueada.
+- O comando enter exige dois snapshots recentes, salva o ExecStart válido do programa principal atual, as calibrações principal/salva, o estado do serviço de controle e as informações da fonte. Permite somente comandos diretos do robotd. Gera um drop-in persistente de commissioning exclusivo, depois de salvar de forma durável um manifesto com versão e ID de sessão. Após reiniciar, deve confirmar commissioning e torque desativado. Não altera nem remove drop-ins de fábrica ou configurações de terceiros.
+- O verify original do runtime grava `motion_enabled=false` e salva os arquivos principal/salvo. O finish restaura somente o valor anterior de `motion_enabled` e preserva a nova orientação validada do IMU. Deve comparar item por item com o estado anterior; exceto pela fonte de instalação e `motion_enabled`, nenhum zero/direção/limite de articulação, outro IMU ou outra configuração pode mudar. Reutilizar gravação atômica, validação dos arquivos, leitura completa de retorno do executor e rollback. Antes de excluir um arquivo de substituição, conferir conteúdo, propriedade e ExecStart original; se o estado não for conhecido, recusar.
+- Se enter falhar, restaurar o estado anterior à entrada. Se finish falhar, restaurar o estado seguro de commissioning da recalibração e preservar a sessão para tentar novamente. cancel restaura explicitamente a calibração e o modo anteriores à entrada. Não chamar a orientação antiga, após cancelamento, de uma nova validação desta sessão.
+- O backend de calibração grosseira/validação mantém os cálculos e comandos de firmware originais. Só solicitar finish depois que o backend confirmar a validação bem-sucedida desta sessão e as leituras de retorno de source, verified e quat forem consistentes. Não exibir sucesso apenas porque o helper ou RPC respondeu accepted.
+- A interface não edita o quaternion manualmente, não inverte sinais do modelo nem altera o algoritmo de identificação da calibração fina em pé. Adiciona somente a opção de refazer, progresso, cancelamento e instruções de recuperação.
 
-## Validação e 交付
+## Validação e entrega
 
-先补FalhaTeste，再实现。覆盖verified=true入口、两步确认、已在commissioning直接重做、motion未卸力拒绝、原流程Sucesso／Falha／重试、持久会话重开、四元数回读不一致、runtime关闭motion_enabled后finish恢复、非2048零位 e 其他Parâmetros保持、覆盖Arquivo被改动拒绝、重启Falha回滚、冲突操作拒绝。跑原IMU计算／向导、helper／HTTP、浏览器回归。交付本地代码并Instruções明天先Teste卡部署Validação，再打包Imagem；不把源码Atualização称为已ConcluídoImagem。
+Primeiro, acrescentar testes de falha e depois implementar. Cobrir: acesso quando verified=true; confirmação em duas etapas; refazer diretamente quando já estiver em commissioning; recusar modo motion sem torque desativado; sucesso/falha/nova tentativa do fluxo original; retomada de sessão persistente após reinício; inconsistência na leitura do quaternion; restauração de motion_enabled no finish após o runtime desativá-lo; preservação de zeros diferentes de 2048 e dos demais parâmetros; recusa quando o arquivo de substituição foi alterado; rollback em caso de falha ao reiniciar; recusa de operações conflitantes. Executar regressões dos cálculos/guias originais do IMU, helper/HTTP e navegador. Entregar o código local e orientar para validar primeiro com cartão de teste amanhã antes de empacotar a imagem; não apresentar uma atualização de código-fonte como imagem concluída.
