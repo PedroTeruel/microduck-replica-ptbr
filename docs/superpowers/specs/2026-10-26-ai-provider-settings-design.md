@@ -1,32 +1,32 @@
-# WebAI对话接入Configuração
+# Configuração de provedores de IA para conversas pela Web
 
-Usuário要求参考小智语音项目，在现有鸭子Web保存Serviço商、接口URL、API Key e Modelo，以后usado para语音对话。已确认“还没开通，先做好Configuração入口”。本版Concluído可持久保存、选择eTeste de 接入基础，加Web文字试聊Validação接口；不宣称已接通麦克风、喇叭或云端账号。
+O usuário pediu, tomando como referência o projeto de voz Xiaozhi, que a Web atual do pato permita salvar o provedor, URL da API, chave e modelo para uso futuro em conversas por voz. Foi confirmado que o serviço ainda não está ativo e que primeiro deve ser criada a interface de configuração. Esta versão conclui o salvamento persistente, a seleção, um teste básico de conexão e uma validação de conversa por texto na Web; não afirma que o microfone, alto-falante ou conta na nuvem já estejam conectados.
 
-## 依据 e 方案
+## Referências e solução
 
-- [小智服务端配置](https://github.com/xinnan-tech/xiaozhi-esp32-server/blob/main/main/xiaozhi-server/config.yaml)将ASR、LLM、TTS作为可选模块，LLM可配置model_name、base_url、api_key。
-- [豆包方舟官方示例](https://docs.volcengine.com/docs/ark/context-management?lang=en)使用`https://ark.cn-beijing.volces.com/api/v3`，API Key与已开通Model ID调用Chat Completions。
-- [豆包实时语音3.0官方文档](https://docs.volcengine.com/docs/DoubaoVoice/endtoend-realtime-voice-full-duplex-version?lang=en)使用专用Realtime事件协议与`wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue`。普通方舟Chat API与实时语音不混用；本版先做通用对话接入，实时语音在后续适配。
+- [Configuração do servidor Xiaozhi](https://github.com/xinnan-tech/xiaozhi-esp32-server/blob/main/main/xiaozhi-server/config.yaml) trata ASR, LLM e TTS como módulos opcionais; o LLM permite configurar model_name, base_url e api_key.
+- [Exemplo oficial do Doubao Ark](https://docs.volcengine.com/docs/ark/context-management?lang=en) usa `https://ark.cn-beijing.volces.com/api/v3`; chamadas de Chat Completions exigem uma chave API e um Model ID habilitado.
+- [Documentação oficial do Doubao Realtime Voice 3.0](https://docs.volcengine.com/docs/DoubaoVoice/endtoend-realtime-voice-full-duplex-version?lang=en) usa um protocolo de eventos Realtime próprio e `wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue`. Não misturar a API comum Chat do Ark com voz em tempo real; esta versão implementa primeiro a conexão genérica de conversação, e a compatibilidade com voz em tempo real fica para uma etapa futura.
 
-采用轻量 de 已有Studio后端代理，无需在RK3566Instalação整套小智Serviço端。直接在WebPor favor求Modelo会暴露Key且受跨域约束；Completo部署小智引入另一套设备Protocolo e Serviço，超出此次Configuração入口é necessário。
+Adotar um proxy leve no backend existente do Studio, sem instalar todo o servidor Xiaozhi no RK3566. Enviar solicitações diretamente do navegador à API exporia a chave e esbarraria em CORS; implantar o Xiaozhi completo adicionaria outro protocolo de dispositivo e serviço, excedendo o escopo desta interface de configuração.
 
-## Usuário流程
+## Fluxo para o usuário
 
-设置页增加位置靠前、清晰可见 de “AI 对话”卡片，现有语音面板提供到设置 de 入口。可新增、编辑、删除最多10套Conexão，选择AtualConexão。Configuração包含名称、Serviço商（豆包方舟文字Modelo/其他兼容对话接口）、基础URL、Model ID、可选API Key。豆包预填基础URL，Model ID由UsuárioControle台填写，不猜测最新ModeloID。
+Adicionar na parte superior da página de configurações um cartão claro e visível “Conversas com IA”; o painel de voz existente também terá um link para a configuração. Permitir criar, editar e excluir até 10 conexões e escolher a conexão atual. A configuração inclui nome, provedor (modelo de texto Doubao Ark/outro endpoint compatível), URL base, Model ID e chave de API opcional. Preencher a URL base do Doubao, mas deixar o usuário informar o Model ID pelo console; não adivinhar IDs recentes.
 
-保存草稿允许暂缺Key/Modelo，显示具体缺少项；“TesteConexão”e“试聊”只使用已经保存且Completo de Configuração。Key必需 de 接口未填Key不能启用；本地免KeyServiço可明确选择免Key。保存e选用不会自动调用云端。切换/删除/编辑Conexão后清掉旧TesteResultado或试聊SuperiorInferior文，不能把旧Configuração de Sucesso显示成新ConfiguraçãoSucesso。
+Permitir salvar um rascunho sem chave/modelo e indicar claramente o que falta. “Testar conexão” e “Conversar” usam somente uma configuração salva e completa. Se o endpoint exigir chave, não permitir ativá-lo sem ela; um serviço local sem chave pode ser selecionado explicitamente como tal. Salvar e selecionar não chamam a nuvem automaticamente. Ao trocar, excluir ou editar uma conexão, limpar resultados de teste e textos de conversa anteriores; não mostrar o sucesso da configuração antiga como sucesso da nova.
 
-连接测试使用一次很短的真实模型请求验证鉴权/模型，而非仅凭HTTP200或`/models`目录。文字试聊有简短多轮上下文与清空按钮，不记入磁盘或日志。界面明确“文字试聊尚未连接鸭子麦克风/扬声器，不执行机器人动作”，实时语音专用接口本版尚未适配。
+O teste de conexão faz uma solicitação real e breve ao modelo para verificar autenticação e modelo, não se baseia apenas em HTTP 200 ou no diretório `/models`. A conversa por texto mantém um contexto curto de várias mensagens e tem um botão para limpar; nada é gravado em disco nem em logs. A interface informa explicitamente: “A conversa por texto ainda não está conectada ao microfone/alto-falante do pato e não executa movimentos do robô”. A interface dedicada a voz em tempo real ainda não é compatível nesta versão.
 
-## 后端 e 凭据
+## Backend e credenciais
 
-- 独立模块管理私有`state_dir/ai-connections.json`，POSIX0600、原子写入、进程内锁；首次不创建默认个人配置。重启后保存的连接和当前选择仍在。读到损坏或非法文件应报错并保留原文件，不静默覆盖。
-- HTTP API复用现有登录、Origin e CSRFVerificação，响应no-store；APIé necessário已设Web密码，现有明确本机dev-autologinTeste模式除外。未登录e跨站调用不能保存或用KeyPor favor求Modelo。
-- Key只由表单POST写入鸭子，任何GET、快照、成功/失败响应和诊断包均不返回完整Key。页面保存后清空Key输入，以`key_configured`表示已保存；空输入保留同一连接原Key，可明确清除。改变目标服务地址/服务商不得悄悄带用旧Key，需重新填写或选择免Key。
-- 私有Arquivo不进入Git、基础Imagem或前端localStorage；不宣称加密存储。普通升级PreservadoUsuárioConfiguração；新增日志不写Por favor求体、Authorization、Key或对话原文，诊断包不纳入该Arquivo。
-- ModeloPor favor求只在后台线程Execução，Configuração锁不跨RedePor favor求；小并发Superior限、超时 e 响应体/输入长度Superior限，单次调用不自动重试。URL限定HTTP(S)、禁止userinfo/query/fragment e Controle字符，禁止重定向转发Key。HTTP仅usado para明确本地Serviço；公网Serviço用HTTPS。错误按类别显示且脱敏，不将Serviço端任意HTML/错误Conteúdo当执行指令。
-- AI模块没有机器人端口依赖；不执行Modelo返回 de 任何动作、RPC、代码或Ferramentas调用。所有现有本地语音/音乐/运动行为保持。
+- Um módulo independente gerencia `state_dir/ai-connections.json`, com permissões POSIX 0600, gravação atômica e bloqueio em processo. Não cria uma configuração pessoal padrão na primeira execução. Após reiniciar, as conexões salvas e a seleção atual permanecem. Se o arquivo estiver corrompido ou inválido, informar o erro e preservar o original; não sobrescrever silenciosamente.
+- A API HTTP reutiliza as verificações existentes de login, Origin e CSRF e responde com no-store. Para usar a API, é necessário configurar a senha Web, exceto no modo de teste dev-autologin local, explicitamente habilitado. Chamadas sem login ou entre sites não podem salvar nem enviar solicitações ao modelo usando a chave.
+- A chave só é enviada ao pato pelo POST do formulário. Nenhum GET, snapshot, resposta de sucesso/falha ou pacote de diagnóstico retorna a chave completa. Após salvar, limpar o campo da chave na página e indicar a configuração com `key_configured`; campo vazio mantém a chave existente da conexão, e há uma ação explícita para apagá-la. Ao mudar de provedor ou endpoint, não reutilizar silenciosamente a chave antiga: exigir que seja digitada novamente ou selecionar o modo sem chave.
+- O arquivo privado não entra no Git, na imagem base nem no localStorage do frontend; não afirmar que é armazenado criptografado. Atualizações comuns preservam a configuração do usuário. Novos logs não registram corpo da solicitação, Authorization, chave nem texto original da conversa; o arquivo também não entra no pacote de diagnóstico.
+- As solicitações ao modelo executam em uma thread de backend. O bloqueio de configuração não é mantido durante a chamada de rede. Limitar concorrência, timeout e tamanho da resposta/entrada; não repetir automaticamente uma chamada. A URL deve ser HTTP(S), sem userinfo/query/fragment nem caracteres de controle; não encaminhar chaves em redirecionamentos. HTTP só é permitido para um serviço local explicitamente escolhido; serviços públicos exigem HTTPS. Mostrar erros por categoria com dados sensíveis removidos; nunca tratar HTML ou conteúdo arbitrário de erro do servidor como instrução executável.
+- O módulo de IA não depende de portas no robô; nunca executa ações, RPC, código ou chamadas a ferramentas retornados pelo modelo. Todo o comportamento local existente de voz/música/movimento permanece inalterado.
 
-## 验收
+## Aceitação
 
-存取/重启/Preservado e 清除Key/目标变化/损坏Arquivo保护，真实HTTP登录 e CSRF，模拟兼容接口 de 鉴权、Teste、试聊、超时、错误、大小Superior限 e 不跟随重定向，Teste日志/响应 em 无Key，Validação均先写FalhaTeste。真实本地EdgeConcluído窄屏新增保存、重载、切换、Teste、试聊、清空、删除，实际模拟Serviço确实收到Por favor求。没有Usuário真实Key时不声称豆包云端或Hardware语音已验收。部署延续既有停稳策略关闭、冻结Arquivo/备份/Usuário状态hash/运动核心身份Verificação流程。
+Validar armazenamento/acesso/reinicialização, preservação e remoção da chave, alteração do endpoint e proteção do arquivo corrompido; login HTTP real e CSRF; endpoint compatível simulado para autenticação, teste, conversa, timeout, erros, limite de tamanho e ausência de seguimento de redirecionamento; confirmar que logs e respostas do teste não contêm a chave. Criar primeiro testes que falhem. No Edge local real, validar em tela estreita criar, salvar, recarregar, trocar, testar, conversar, limpar e excluir, e confirmar que o serviço simulado realmente recebeu a solicitação. Sem uma chave real do usuário, não afirmar validação da nuvem Doubao nem de voz no hardware. A implantação continua seguindo o processo existente: desligar movimento e confirmar estabilidade, congelar arquivos, fazer backup, comparar hashes do estado do usuário e verificar a identidade dos processos do núcleo de movimento.
