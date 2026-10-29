@@ -940,6 +940,43 @@
       ],
       "pending_pull_requests": [
         {
+          "number": 488,
+          "title": "README: say what works today, and what is planned",
+          "state": "open",
+          "draft": false,
+          "merged_at": null,
+          "created_at": "2026-10-29T06:17:59Z",
+          "updated_at": "2026-10-29T06:17:59Z",
+          "url": "https://github.com/pollen-robotics/microduck/pull/488",
+          "head_sha": "29c1c5c0fc3422d08c9bb5db7cfeedf493f69974",
+          "base_sha": "6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde",
+          "base_branch": "main",
+          "fixed_diff_url": "https://github.com/pollen-robotics/microduck/compare/6cdfdaad21bed25e01b450c0dd4e0aee0ae19fde...29c1c5c0fc3422d08c9bb5db7cfeedf493f69974",
+          "changed_file_count": 1,
+          "scope_note": "README-only proposal adds12lines distinguishing remote-controlled demonstrations (gamepad/app/scripts) from M9 autonomous decision-making still planned. No runtime, model, camera/ToF, training, action or audio changes; not a release or removal of shipped behavior.",
+          "priority": "low_documentation_claim_precision; no_runtime_upgrade_needed",
+          "replica_integration": "not_merged_or_ported; no replica runtime/image/model/preview changes",
+          "supporting_fixed_sources": [
+            {
+              "path": "docs/project/roadmap.md",
+              "blob_sha": "2ad1dd832b7e8f5e1b6790e209b7a475e9feff35",
+              "url": "https://github.com/pollen-robotics/microduck/blob/29c1c5c0fc3422d08c9bb5db7cfeedf493f69974/docs/project/roadmap.md"
+            },
+            {
+              "path": "docs/ideas/autonomous_behavior.md",
+              "blob_sha": "001805256839f92856679d557c798d6efdbaf2ab",
+              "url": "https://github.com/pollen-robotics/microduck/blob/29c1c5c0fc3422d08c9bb5db7cfeedf493f69974/docs/ideas/autonomous_behavior.md"
+            },
+            {
+              "path": "docs/design/architecture.md",
+              "blob_sha": "f5c1f431c41b4a25dc9bf3f7e66fa5b026d2fcd3",
+              "url": "https://github.com/pollen-robotics/microduck/blob/29c1c5c0fc3422d08c9bb5db7cfeedf493f69974/docs/design/architecture.md"
+            }
+          ],
+          "submitter_validation": "Documentation-only; reports16relative docs targets and M9/architecture anchors checked, no docs lint run. Not runtime or hardware acceptance.",
+          "this_review": "Read fixed1commit/1file/+12line diff, verified3official documentation targets and relevant M9/autonomy/architecture headings. No downloaded implementation/test execution or independent full autonomy audit."
+        },
+        {
           "number": 485,
           "title": "updaterd: os.* — trigger an A/B OS update from duckctl and the phone",
           "state": "open",
@@ -2291,7 +2328,7 @@
       "status": "Existing official article newly indexed in this snapshot; contact odometry and official validation are not replica hardware validation."
     }
   ],
-  "checked_at_utc": "2026-10-28T17:36:37.308118+00:00",
+  "checked_at_utc": "2026-10-29T06:38:21.547882+00:00",
   "latest_review": {
     "default_branch_changes": false,
     "new_stable_release": false,
@@ -2300,17 +2337,12 @@
     "previous_tracked_prs_merged": false,
     "new_pull_requests": {
       "pollen-robotics/microduck": [
-        485
+        488
       ]
     },
-    "new_development_releases": [
-      "daemon-dev-os-update-ipc"
-    ],
+    "new_development_releases": [],
     "changed_pull_request_heads": {},
-    "moved_development_tags": [
-      "daemon-dev-stress-test",
-      "daemon-dev-ground-grasp-x"
-    ],
+    "moved_development_tags": [],
     "official_blog_new_articles": false,
     "official_blog_article_count": 3,
     "official_blog_latest_on": "2026-10-23",
@@ -2319,7 +2351,7 @@
     "robot_connected": false,
     "image_built_or_published": false,
     "integration_inference": "PR482 currently reads community_allowed directly from base TOML; PR483 writes overrides in user layer. A combined port must reconcile that reader. New footsteps auto-fetch targets apirrone and would also require community opt-in if PR482 is adopted. No combined merge/test performed.",
-    "notes": "New unmergedPR485/API46 and same-SHA os-update-ipc development release add officialYocto A/B OS trigger, not phone UI or Armbian OTA. Stress delta adds only offlinePDF reports; ground-grasp delta adds phase-clock skills/localWAV triggers without new weights/audio. Precision-pad source unchanged and no longer identical to ground-grasp. All4defaultheads, stable, priorPRstates/heads, modelmetadata and blog unchanged."
+    "notes": "New unmergedREADME-onlyPR488 clarifies demonstrated remote control versus plannedM9autonomy;12added lines, no runtime or model changes. All4defaultheads, stable/devrefs, previousPRheads/states, modelmetadata and blog unchanged. No replica integration or hardware acceptance by tracker."
   },
   "replica_migration": {
     "recorded_on": "2026-10-27",
