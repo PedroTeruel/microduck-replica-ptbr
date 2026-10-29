@@ -2,32 +2,32 @@
 
 > **For agentic workers:** Use superpowers:subagent-driven-development, with specification and code quality reviews before deployment.
 
-**Goal:** 外放音乐时鸭子随节拍小幅律动，听到明确提问后按音乐感觉发出叫声。
+**Objetivo:** quando houver música tocando em alto-falantes, o pato se mover suavemente no ritmo e responder com vocalizações conforme a sensação musical após ouvir uma pergunta explícita.
 
-**Architecture:** 沿用 continuous_audio  de 单路 PCM，MusicFeel 提取节拍；专门 de 本地流式问题识别 e 普通坐站识别互斥处理音频。私有 Unix socket 提供有界状态 e 开关，Studio 复用Web动作会话 de 优先级e心跳发出头/身体意图。
+**Arquitetura:** reutilizar o fluxo PCM único de continuous_audio e extrair o ritmo com MusicFeel; usar reconhecimento local de perguntas por streaming, isolado, e processar áudio com exclusão mútua em relação ao reconhecimento comum de sentar/levantar. Um socket Unix privado fornece estado e alternância com limites; o Studio reutiliza a prioridade e o heartbeat da sessão de ações Web para enviar intenções de cabeça/corpo.
 
-**Tech Stack:** 标准库、现有 Vosk Model、AF_UNIX、Studio Python/JavaScript。
+**Tecnologias:** biblioteca padrão, modelo Vosk existente, AF_UNIX, Python/JavaScript do Studio.
 
-Usuário后续修正：实际开启监听短叫一次，日常模式默认duck原生回应，不原样复读。录音复读Preservado为显式echo/record独立功能，单独按键这轮不做。此修正优先于早期“普通话语继续复读” de 过渡设计。
+Correção posterior do usuário: ao ativar a escuta, tocar um grasnado curto; no modo diário, responder por padrão com vocalização nativa do pato, sem repetir literalmente a fala. Manter a repetição de gravações como função explícita e independente echo/record; não implementar um botão separado nesta rodada. Esta correção substitui o projeto de transição anterior, que previa repetir falas comuns.
 
-### 1. 感知 e 问题识别
+### 1. Percepção e reconhecimento de perguntas
 
-- [ ] `music_feel.py`/tests：20ms RMS 起音、8秒/64点上限、BPM/节拍新鲜度、轻快/低沉/摇摆/不确定、明确提问白名单。快慢不等同准确曲风。模拟75/125BPM、摇摆、恒定噪声、静音、变速、错误声道必须分别覆盖。
-- [ ] `music_interaction.py`/tests：复用 Vosk Model，单独有界流式提问队列；允许背景音乐未静音时对稳定完整问题作回应，partial词置信度至少0.8，完整白名单稳定0.5秒，4秒防重复。音乐模式不把整段歌曲当普通复读或坐站口令。每次回应经 ContinuousAudio 抑制自身音频，使用提问前的近期可靠节奏。清空队列或丢帧重置识别状态，不能保留任意转写。
+- [ ] `music_feel.py`/testes: detectar início de som por RMS a cada 20 ms, limitar a janela a 8 s/64 pontos, acompanhar BPM/atualidade da batida e classificar em animada, grave, balanço ou incerta; usar uma lista de perguntas explícitas permitidas. Ritmo rápido/lento não equivale a identificar corretamente o gênero musical. Cobrir separadamente simulações a 75/125 BPM, balanço, ruído constante, silêncio, mudança de velocidade e canal de áudio incorreto.
+- [ ] `music_interaction.py`/testes: reutilizar o modelo Vosk e criar uma fila separada e limitada para perguntas reconhecidas por streaming. Responder a perguntas completas e estáveis mesmo com música ambiente tocando; confiança de pelo menos 0,8 para palavras parciais, pergunta completa da lista permitida estável por 0,5 s e intervalo de 4 s contra repetição. O modo música não pode tratar a faixa inteira como repetição comum nem como comando de sentar/levantar. Cada resposta deve suprimir o próprio áudio por ContinuousAudio e usar o ritmo recente confiável anterior à pergunta. Limpar a fila ou perder quadros deve redefinir o reconhecimento; não manter transcrições arbitrárias.
 
-### 2. 本地ControleServiço
+### 2. Serviço local de controle
 
-- [ ] `audio_control.py`/tests：`/run/duck-echo/control.sock`，0600，有界JSON单请求，方法只有 status 和 set；只能开关监听、音乐模式，不能接受任意机器人命令。状态只有开关、节奏和故障，无PCM或对话文本。启动默认关闭。R3与网页修改使用同一真实active状态，关闭/Select/断开取消。web音乐可以在实体手柄关闭时开启麦克风。
-- [ ] 集成 daemon 保持主线程能处理无手柄状态e重连；套接字退出收尾；unit使用 RuntimeDirectory，Instalaçãomanifest含所有模块。Teste开关竞争、输入过大、无效字段、关闭后旧问题不叫。
+- [ ] `audio_control.py`/testes: usar `/run/duck-echo/control.sock`, permissões 0600, uma solicitação JSON limitada; os únicos métodos são status e set. Permitir apenas alternar escuta e modo música, sem aceitar comandos arbitrários ao robô. O estado contém somente alternância, ritmo e falhas; não guarda PCM nem texto de conversas. Inicia desligado. As alterações por R3 e pela Web compartilham o mesmo estado active real; desligar/Select/desconexão cancela a sessão. A música pela Web pode ativar o microfone mesmo com o controle físico desligado.
+- [ ] Integrar o daemon de modo que a thread principal continue processando o estado sem controle e a reconexão; encerrar corretamente o socket; usar RuntimeDirectory na unidade systemd e incluir todos os módulos no manifesto de instalação. Testar concorrência de alternâncias, entrada excessiva, campos inválidos e ausência de vocalização de uma pergunta antiga após desligar.
 
-### 3. Web e 律动
+### 3. Web e movimento rítmico
 
-- [ ] Studio本地客户端在后台取状态，快照不阻塞事件循环；已认证 de  pad.op 提供监听e音乐入口。
-- [ ] MotionStudio新增音乐会话/节拍采样，沿用动作准备、心跳、失联、实体手柄接管e坐站屏障；只发小幅头/身体意图，不自动Superior力或Inicialização策略。人工手柄Conexão时Web律动暂停并显示原因；Usuário关掉实体手柄后可在Web开启听音乐。没有可靠节拍先等待；声音/状态过期停止输出并清理锁存。
-- [ ] 现有手柄页在录制面板旁显示“语音/听音乐”开关、监听状态、BPMe粗略音乐感觉；停止、Página离开、急停仍按现有流程。
+- [ ] O cliente local do Studio consulta o estado em segundo plano; o snapshot não pode bloquear o loop de eventos. O endpoint pad.op autenticado fornece os controles de escuta e música.
+- [ ] MotionStudio adiciona sessão musical e amostragem do ritmo, reutilizando preparação de movimento, heartbeat, perda de conexão, tomada de controle pelo controle físico e bloqueios de sentar/levantar. Envia somente intenções pequenas de cabeça/corpo; não habilita torque nem inicia a política automaticamente. Se o controle físico estiver conectado, o movimento Web pausa e explica o motivo; quando o usuário desligar o controle físico, pode ativar a escuta musical pela Web. Sem ritmo confiável, aguarda; com áudio/estado expirado, para a saída e limpa o bloqueio retido.
+- [ ] Na página existente do controle, exibir ao lado do painel de gravação a alternância “voz/ouvir música”, o estado da escuta, BPM e uma estimativa aproximada da sensação musical. Parada, saída da página e parada de emergência continuam seguindo o fluxo atual.
 
-### 4. Validaçãoe发布
+### 4. Validação e publicação
 
-- [ ] Python单元+Linux假ALSA/假机器人IPC、前端e浏览器Verificação；Validação模式之间切换 e 反馈抑制。
-- [ ] 冻结组件包、Arquivohash、设备原Arquivo备份，停止状态Inferior只重启必要Serviço；核对robotd/padd进程Inalterado，记录负载温度 e 剩余真人验收。
-- [ ] 总账F16/17Atualização，新增音乐律动/音乐问答编号，明确SoftwareValidaçãoe真人音乐混响验收边界。
+- [ ] Testes unitários de Python, ALSA simulada no Linux, IPC com robô simulado, validação de frontend/navegador e alternância entre modos de validação com supressão de feedback.
+- [ ] Congelar o pacote de componentes, hashes dos arquivos e backup dos arquivos originais do dispositivo; confirmar estado parado e reiniciar somente o serviço necessário. Verificar que os processos robotd/padd permaneceram inalterados, registrar carga/temperatura e as validações humanas ainda pendentes.
+- [ ] Atualizar F16/F17 no inventário, criar identificadores para movimento rítmico e perguntas sobre música e especificar os limites entre validação de software e validação humana da reverberação/música real.
