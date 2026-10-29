@@ -137,108 +137,98 @@ Versões anteriores deste repositório mencionavam “NP-F970” em vários luga
 | J3/J11 | JST EH 4P | Dynamixel **RS-485** |
 | J5–J8 | JST SH 1 mm 4P | Qwiic / Stemma (para o ToF) |
 
-⚠️ **打样前必读**：
+⚠️ **Leia antes de encomendar a fabricação:**
 
-1. **这块板没有充电电路，也没有 USB-C 输入**。仓库里的 `pwr_supply_charge.kicad_sch`
-   是**孤儿图纸**（`main.kicad_sch` 没挂它，标题栏还写着别的项目名）。电池要用外部充电器充。
-2. **打开 KiCad 工程需要先装 [`lib_KiCAD`](https://github.com/pollen-robotics/lib_KiCAD)**，
-   否则一片未解析符号。只打样则不é necessário，直接用 Gerber。
+1. **Esta placa não tem circuito de carga nem entrada USB-C.** O arquivo `pwr_supply_charge.kicad_sch` do repositório é uma **folha esquemática órfã** (`main.kicad_sch` não a inclui, e o cabeçalho ainda mostra o nome de outro projeto). Carregue a bateria com um carregador externo.
+2. **Para abrir o projeto KiCad, instale primeiro [`lib_KiCAD`](https://github.com/pollen-robotics/lib_KiCAD)**; caso contrário, os símbolos não serão resolvidos. Isso não é necessário se você for fabricar a placa diretamente pelos Gerbers.
 
-### 板 2：`imu_to_dxl` —— 全网无公开工程，必须自己画
+### Placa 2: `imu_to_dxl` — não há projeto público; é preciso desenhar a placa
 
 | | |
 |---|---|
-| 状态 | 🔧 **este repositório正在重建**，见 [Hardware方案逆向 §三](docs/Hardware方案逆向.md) |
-| 功能 | 把 IMU 伪装成一个 Dynamixel 从机（ID **200**）挂在Servo总线Superior |
+| Status | 🔧 **Em reconstrução neste repositório**; consulte a [análise reversa da solução de hardware, seção 3](docs/硬件方案逆向.md) |
+| Função | Apresenta a IMU como um servo Dynamixel escravo (ID **200**) no barramento dos servos |
 
-**参考 BOM**（este repositório设计，非Oficial）：
+**BOM de referência** (projeto deste repositório, não oficial):
 
-| 位号 | 器件 | 立创编号 | Instruções |
+| Referência | Componente | Código LCSC | Observações |
 |---|---|---|---|
-| U1 | **STM32G031F8P6** | `C529334` | MCU，TSSOP-20。⚠️ **这是本仓库的选型建议，不是逆向所得** —— 官方那块板的 MCU 型号无从还原（见 [硬件方案逆向](docs/硬件方案逆向.md#那-imu_to_dxl-板上是什么-mcu)）。选 F8（64 KB Flash）而非 F6（32 KB）是为双协议固件留余量。<br>**选 ST 的理由不是"生态好"，是两个具体特性**：① 和 IMU 同厂，[`lsm6dsv16x-pid`](https://github.com/STMicroelectronics/lsm6dsv16x-pid) 驱动与 [`lsm6dsv16x_sensor_fusion.c`](https://github.com/STMicroelectronics/STMems_Standard_C_drivers/blob/master/lsm6dsv16x_STdC/examples/lsm6dsv16x_sensor_fusion.c) SFLP 例程现成 —— SFLP 初始化要配 FIFO、融合率、量程，顺序错了不出数；② STM32G0 的 USART 有**硬件 DE（Driver Enable）**，半双工方向自动切换，1 Mbps 下一个 bit 才 1 µs，软件切的抖动就在这个量级 |
-| U2 | **LSM6DSV16XTR** | `C5267406` | 六轴 IMU + SFLP 硬件融合，LGA-14 |
-| U3 | **SN74LVC2G241DCUR** | `C10430` | 三态缓冲，做单线半双工 |
-| U4 | **HT7533-1** | `C14289` | 3.3V LDO，**耐压 30 V**（基础库免上料费） |
-| J1/J2 | B3B-EH-A(LF)(SN) | `C160259` | Dynamixel 3P，**2.5 mm**，**与官方 HAT 同料号**，线束通用 |
-| **J4/J5** | **B3B-PH-K-S(LF)(SN)** | 待定 | **飞特 3P，2.0 mm 立式**（2026-09-08 新增）。飞特 `AMP2.0-3P` 与 JST EH **间距不同、插不进对方**，所以两套座子并存，用哪种舵机插哪一组。<br>⚠️ **脚序与 J1/J2 完全相反**：`1=DXL_BUS / 2=VDD_BUS / 3=GND`，见 [接线表](hardware/imu_to_dxl/imu_to_dxl-接线表.md)。<br>⚠️ **料号待定** —— 飞特规格书只给了线端型号，板端没给。焊盘阵是三孔 2.0 mm 间距，与其它 2.0 mm 系列通用，换系列只改封装不动焊盘。<br>本体高约 **6.0 mm**，比 EH 立式的 8 mm 更适合 6.65 mm 的躯干内腔 |
-| **J3** | **PZ254V-11-06P**（6P，2.54 mm） | `C492405` | **SWD + 串口 printf 合一**。脚序 `1=GND 2=SWDCLK 3=SWDIO 4=UART_TX 5=UART_RX 6=+3V3` —— 前 4 脚不变，原来的 4 针 SWD 排线插 1–4 仍可用。<br>UART 来自 U1 脚 16/17（`PA11[PA9]`/`PA12[PA10]`），经 `SYSCFG_CFGR1` 重映射成 **PA9 = `USART1_TX` / PA10 = `USART1_RX`**（DS12992 Rev 3, Table 12 脚注 4）。<br>**不上 USB**：G031 没有 USB 外设（手册全文零命中，Development support 只有 SWD），加 USB 要多一颗 CH340/CP2102，45×22 mm 板上不划算。调试走 SWD + RTT（`probe-rs` 支持 CMSIS-DAP 上跑 RTT，不停 CPU）；要普通 printf 就插 4/5 脚。<br>⚠️ Cortex-M0+ **没有 SWO/ITM**，别指望 SWO printf |
-| C1–C4, C8 | **100 nF 0603** 50 V | `C14663` | 去耦（同官方 HAT 料号）。C1/C2 贴 U2 的 8/5 脚，C3 贴 U3 的 8 脚，C4 贴 U1 的 4 脚 |
-| **C5** | **4.7 µF / 16 V / 0603 / X5R**<br>Samsung `CL10A475KO8NNNC` | `C19666` | **MCU 本地储能**，与 C4 一起构成 ST 要求的 `100 nF + 4.7 µF`。<br>依据 **DS12992 Rev 3, Figure 13「Power supply scheme」(p.44)**：`VDD/VDDA` 一路明确标注 `1 x 100 nF + 1 x 4.7 μF`，并 Caution 要求"尽可能贴近引脚，或放在 PCB 背面正对该脚"。<br>立创**基础库**。<br>⚠️ 本表此前把 C5 也写成 100 nF —— 两颗相同的 100 nF 并联只是容量翻倍，频响曲线不变、低频段仍然是空的，不符合手册 |
-| **C6** | **10 µF / 25 V / 0805 / X5R**<br>Samsung `CL21A106KAYNNNE` | `C15850` | **LDO 输入**，直接挂 8.4 V 总线。立创**基础库**（免上料费）。<br>⚠️ 8.4 V 直流偏压下 X5R 衰减约 30–40%，实际约 6–7 µF —— 对 LDO 输入够用 |
-| C7 | 10 µF 0603 10 V | `C19702` | LDO 输出（3.3 V），10 V 够用 |
-| **R1/R2/R4/R5/R7** | **10 kΩ 0603** | `C25804` | 五个上拉，全部接到 3.3 V：<br>**R1 = SPI_CS**（必须）—— 上电与复位期间 PA4 是高阻，CS 浮着可能被 IMU 误判成 I²C 模式<br>**R2 = NRST** —— 芯片内部已有 ~40 kΩ 弱上拉，外面再加一个提高抗干扰<br>**R4 = DE**（必须，2026-09-06 补）—— `1OE#` 低电平使能发送。复位期间 PA1 高阻，这脚若浮成低电平，发送缓冲就打开，本板会往总线上灌数据、和 15 个舵机全撞车。此前只在 CS 上加了上拉、DE 上漏了，由社区评审指出<br>**R5 = DXL_DATA**（2026-09-06 补）—— 总线空闲时无人驱动，`2A` 这个 CMOS 输入浮着会有穿透电流，UART 也可能把噪声当起始位。本板应当自己定义空闲电平，不依赖主机<br>**R7 = RX_EN**（2026-09-07 补）—— `2OE` 原本硬接 3.3 V（接收常开）。改成经 R7 上拉、同时引一根线到 `U1.1 (PB7/PB8)`：默认行为完全不变，但固件多了一个「发送时关掉接收、免去回显」的选项。MCU 复位期间 PB7 高阻，靠 R7 保证 `2OE` 为高 |
-| **R6** | **150 Ω 0603** | `C22808` | **数据线源端串阻**（2026-09-06 补）。与 D2 一起构成 HAT 同款的数据线保护：限制短路电流、软化边沿降 EMI。<br>1 Mbps 下 150 Ω 与总线电容构成的延迟约占比特时间的 3%，可接受。<br>依据：官方 HAT `dynamixel.kicad_sch` 用的是 `R33 150R + TH1 100R` 串联共 250 Ω |
-| **D2** | **BZT52C5V1-7-F**<br>5.1 V 稳压管，**SOD-123** | `C151588` | **数据线钳位**（2026-09-06 补）。与官方 HAT 的 `D4` **同型号不同封装** —— HAT 用 `BZT52C5V1S`（SOD-323，`C151348`），本板改用 **SOD-123**（`C151588`）便于返修。<br>阴极接 `DXL_BUS`、阳极接地。飞特信号高电平规格是 2–5 V，74LVC 输入耐 5.5 V 本身不会坏，但此前**没有任何对付线上尖峰的器件**；舵机带电插拔是常态 |
-| **D1** | **TVS `SMF12A`**，SOD-123FL | `C2943870` | ⚠️ **必须贴在 3P 连接器旁**。截止 **12 V** > 满电 8.4 V（正常工作不漏电）；击穿 13.3–14.7 V；**钳位 19.9 V** < C6 的 25 V。峰值功率 200 W。<br>封装 3.7 × 1.8 mm，比 SMA 小一半。要更大耐量可换 SMA 版 `SMAJ12A`（400 W）：ST `C132952` / Littelfuse `C148213` |
-| **F1** | **PPTC `MF-NSMF020X-2`**，BOURNS，1206 | `C210358` | 本板故障时不拖垮整条舵机总线（官方 HAT 用 TH1 100R 热敏是同一思路）。<br>**额定 24 V**（母线 8.4 V，余量 2.9×）· 保持 **200 mA** · 跳闸 460 mA · 跳闸时间 0.6 s · AEC-Q200。<br>⚠️ **别选 0805 的常见型号** —— 那一档大多只有 **6 V** 额定（如 `0805L150SLYR`，而且它是 1.5 A 不是 150 mA），挂 8.4 V 母线直接不合格。**PPTC 的电压等级是硬约束** |
-| J4 | 2×2 或 1×4 排针（可选，DNP） | — | 把 IMU  de  SPI 四线引出。将来若改成 SPI 直连主控，MCU 不贴、飞线即可，不用推翻整块板 |
+| U1 | **STM32G031F8P6** | `C529334` | MCU em TSSOP-20. ⚠️ **Esta é a escolha recomendada neste repositório, não uma conclusão da análise reversa**; não foi possível descobrir o MCU da placa oficial (veja a [análise reversa de hardware](docs/硬件方案逆向.md)). A versão F8 (64 KB de Flash), em vez da F6 (32 KB), deixa espaço para o firmware com dois protocolos.<br>**A ST foi escolhida por dois recursos concretos, não apenas pelo ecossistema**: ① é da mesma fabricante da IMU, e já existem o driver [`lsm6dsv16x-pid`](https://github.com/STMicroelectronics/lsm6dsv16x-pid) e o exemplo SFLP [`lsm6dsv16x_sensor_fusion.c`](https://github.com/STMicroelectronics/STMems_Standard_C_drivers/blob/master/lsm6dsv16x_STdC/examples/lsm6dsv16x_sensor_fusion.c); a inicialização do SFLP precisa configurar FIFO, taxa de fusão e escala na ordem certa, senão não gera dados. ② O USART do STM32G0 tem **DE (Driver Enable) por hardware**, que alterna automaticamente a direção do modo half-duplex; a 1 Mbps cada bit dura apenas 1 µs, a mesma ordem de grandeza da oscilação de uma comutação por software |
+| U2 | **LSM6DSV16XTR** | `C5267406` | IMU de seis eixos com fusão de sensores SFLP por hardware, encapsulamento LGA-14 |
+| U3 | **SN74LVC2G241DCUR** | `C10430` | Buffer tri-state para comunicação half-duplex em um único fio |
+| U4 | **HT7533-1** | `C14289` | LDO de 3,3 V, **tensão máxima de 30 V** (componente da biblioteca básica, sem taxa de abastecimento) |
+| J1/J2 | B3B-EH-A(LF)(SN) | `C160259` | Conectores Dynamixel de 3 pinos, **passo de 2,5 mm**, mesmo código usado no HAT oficial; os cabos são compatíveis |
+| **J4/J5** | **B3B-PH-K-S(LF)(SN)** | A definir | Conectores Feetech de 3 pinos, **passo de 2,0 mm, verticais** (adicionados em 2026-09-08). O `AMP2.0-3P` da Feetech tem passo diferente do JST EH e não encaixa nele; por isso há os dois tipos de conector, cada qual para seu servo.<br>⚠️ **A ordem dos pinos é exatamente inversa à de J1/J2**: `1=DXL_BUS / 2=VDD_BUS / 3=GND`; consulte a [tabela de ligação](hardware/imu_to_dxl/imu_to_dxl-接线表.md).<br>⚠️ **Código da peça ainda não definido**: a especificação Feetech informa apenas o modelo do conector do cabo, não o da placa. O conjunto de três furos tem passo de 2,0 mm e é compatível com outras séries de mesmo passo; para trocar a série, basta alterar o footprint, não os pads. A peça tem cerca de **6,0 mm** de altura, adequada ao espaço interno de 6,65 mm do tronco e mais baixa que o conector EH vertical de 8 mm |
+| **J3** | **PZ254V-11-06P** (6 pinos, passo de 2,54 mm) | `C492405` | **Conector combinado para SWD e serial**. Pinagem: `1=GND 2=SWDCLK 3=SWDIO 4=UART_TX 5=UART_RX 6=+3V3`. Os quatro primeiros pinos não mudam; o cabo SWD de 4 pinos existente continua servindo nos pinos 1–4.<br>A UART vem dos pinos 16/17 do U1 (`PA11[PA9]`/`PA12[PA10]`), remapeados por `SYSCFG_CFGR1` para **PA9 = `USART1_TX` / PA10 = `USART1_RX`** (DS12992 Rev. 3, nota 4 da Tabela 12).<br>**Sem USB**: o G031 não tem periférico USB (não há ocorrências de USB no manual; a seção de suporte ao desenvolvimento cita apenas SWD). Adicionar USB exigiria um CH340/CP2102 e não compensa numa placa de 45 × 22 mm. A depuração usa SWD + RTT (`probe-rs` oferece RTT com CMSIS-DAP sem parar a CPU); para usar `printf` serial comum, conecte os pinos 4/5.<br>⚠️ O Cortex-M0+ **não tem SWO/ITM**; não conte com `printf` por SWO |
+| C1–C4, C8 | **100 nF 0603**, 50 V | `C14663` | Desacoplamento (mesmo código do HAT oficial). C1/C2 ficam nos pinos 8/5 do U2, C3 no pino 8 do U3 e C4 no pino 4 do U1 |
+| **C5** | **4,7 µF / 16 V / 0603 / X5R**<br>Samsung `CL10A475KO8NNNC` | `C19666` | **Reserva local de energia do MCU**; junto com C4, atende à exigência da ST de `100 nF + 4,7 µF`.<br>A **Figura 13 (“Power supply scheme”), página 44, do DS12992 Rev. 3** especifica `1 x 100 nF + 1 x 4.7 μF` na linha `VDD/VDDA` e recomenda colocar os componentes o mais perto possível do pino ou na face oposta da placa, diretamente sob ele.<br>Componente da **biblioteca básica** da LCSC.<br>⚠️ Antes, esta lista também especificava 100 nF para C5. Dois capacitores iguais de 100 nF em paralelo apenas duplicam a capacitância, sem alterar a curva de resposta; ainda faltaria capacitância em baixas frequências, em desacordo com o manual |
+| **C6** | **10 µF / 25 V / 0805 / X5R**<br>Samsung `CL21A106KAYNNNE` | `C15850` | **Entrada do LDO**, diretamente no barramento de 8,4 V. Componente da **biblioteca básica** da LCSC (sem taxa de abastecimento).<br>⚠️ Com polarização contínua de 8,4 V, um X5R perde cerca de 30–40% da capacitância e fica com aproximadamente 6–7 µF, ainda suficiente para a entrada do LDO |
+| C7 | 10 µF 0603 10 V | `C19702` | Saída do LDO (3,3 V); 10 V são suficientes |
+| **R1/R2/R4/R5/R7** | **10 kΩ 0603** | `C25804` | Cinco resistores de pull-up, todos ligados a 3,3 V:<br>**R1 = SPI_CS** (obrigatório): durante a energização e a reinicialização, PA4 fica em alta impedância; sem pull-up, a IMU pode interpretar o CS flutuante como modo I²C.<br>**R2 = NRST**: o chip já tem um pull-up interno fraco de cerca de 40 kΩ; o resistor externo melhora a imunidade a ruído.<br>**R4 = DE** (obrigatório; adicionado em 2026-09-06): nível baixo em `1OE#` habilita a transmissão. Durante a reinicialização, PA1 fica em alta impedância; se o pino flutuar para baixo, o buffer de transmissão será habilitado e esta placa poderá enviar dados ao barramento, colidindo com os 15 servos. Uma revisão da comunidade observou que o pull-up havia sido incluído no CS, mas esquecido no DE.<br>**R5 = DXL_DATA** (adicionado em 2026-09-06): quando o barramento está ocioso, ninguém dirige o sinal; a entrada CMOS `2A` flutuante pode conduzir corrente, e a UART pode interpretar ruído como bit de início. A placa deve definir seu próprio nível de repouso, sem depender do controlador.<br>**R7 = RX_EN** (adicionado em 2026-09-07): `2OE` era ligado diretamente a 3,3 V (recepção sempre ativa). O pull-up por R7, junto com um fio até `U1.1 (PB7/PB8)`, mantém o comportamento padrão e permite ao firmware desativar a recepção durante a transmissão para evitar eco. PB7 fica em alta impedância durante a reinicialização do MCU; R7 mantém `2OE` em nível alto |
+| **R6** | **150 Ω 0603** | `C22808` | **Resistor em série na origem da linha de dados** (adicionado em 2026-09-06). Junto com D2, oferece proteção semelhante à do HAT: limita a corrente de curto-circuito e suaviza as bordas para reduzir EMI.<br>A 1 Mbps, o atraso causado pelos 150 Ω e pela capacitância do barramento corresponde a cerca de 3% do tempo de um bit, o que é aceitável.<br>Referência: o esquema oficial do HAT (`dynamixel.kicad_sch`) usa R33 de 150 Ω + TH1 de 100 Ω em série, totalizando 250 Ω |
+| **D2** | **BZT52C5V1-7-F**<br>Diodo zener de 5,1 V, **SOD-123** | `C151588` | **Limitador de tensão da linha de dados** (adicionado em 2026-09-06). Mesmo modelo do D4 do HAT oficial, mas com encapsulamento diferente: o HAT usa `BZT52C5V1S` (SOD-323, `C151348`); esta placa usa **SOD-123** (`C151588`), mais fácil de reparar.<br>Ligue o cátodo a `DXL_BUS` e o ânodo ao terra. O nível alto especificado para o sinal Feetech é de 2–5 V, e a entrada 74LVC suporta até 5,5 V; portanto, ela não seria danificada por esse nível. Porém, antes **não havia nenhum componente para proteger contra picos na linha**, e conectar servos com a alimentação ligada é comum |
+| **D1** | **TVS `SMF12A`**, SOD-123FL | `C2943870` | ⚠️ **Instale junto ao conector de 3 pinos.** Tensão de trabalho de **12 V**, acima dos 8,4 V da bateria totalmente carregada (sem fuga durante o uso normal); ruptura entre 13,3–14,7 V; **tensão de limitação de 19,9 V**, abaixo dos 25 V suportados por C6. Potência de pico de 200 W.<br>O encapsulamento mede 3,7 × 1,8 mm, metade do tamanho de um SMA. Para maior capacidade, use a versão SMA `SMAJ12A` (400 W): ST `C132952` / Littelfuse `C148213` |
+| **F1** | **PPTC `MF-NSMF020X-2`**, BOURNS, 1206 | `C210358` | Evita que uma falha nesta placa derrube todo o barramento dos servos (a mesma ideia do termistor TH1 de 100 Ω no HAT oficial).<br>**Tensão nominal de 24 V** (barramento de 8,4 V, margem de 2,9×) · corrente de manutenção **200 mA** · disparo a 460 mA · tempo de disparo de 0,6 s · AEC-Q200.<br>⚠️ **Não escolha os modelos 0805 comuns**: a maioria tem tensão nominal de apenas **6 V** (por exemplo, `0805L150SLYR`, que também é de 1,5 A, e não 150 mA); não serve para um barramento de 8,4 V. **A tensão nominal do PPTC é uma exigência rígida** |
+| J4 | Conector de pinos 2×2 ou 1×4 (opcional, DNP) | — | Expõe os quatro sinais SPI da IMU. Se no futuro a IMU for ligada diretamente ao controlador por SPI, basta não montar o MCU e instalar fios; não será necessário redesenhar a placa |
 
-#### 时钟：这个封装接不了无源晶振
+#### Clock: este encapsulamento não permite ligar um cristal passivo
 
-查 **DS12992 Rev 3, Table 12「Pin assignment and description」(p.36)**，TSSOP20 那一列：
+Consulte a coluna TSSOP-20 da **Tabela 12 (“Pin assignment and description”), página 36, do DS12992 Rev. 3**:
 
-| 脚 | 名字 | 附加功能 |
+| Pino | Nome | Função alternativa |
 |---|---|---|
 | 2 | `PC14-OSC32_IN` | `OSC32_IN`, **`OSC_IN`** |
 | 3 | `PC15-OSC32_OUT` | `OSC32_OUT`（**没有 `OSC_OUT`**）；交替功能里有 `OSC_EN` |
 
-`PF0-OSC_IN` / `PF1-OSC_OUT` 在 TSSOP20 这一列是 `-`，**没引出来**。无源晶振要
-`OSC_IN` + `OSC_OUT` 两个脚才能起振，所以：
+Na coluna TSSOP-20, `PF0-OSC_IN` / `PF1-OSC_OUT` aparecem como `-`, **ou seja, não estão disponíveis**. Um cristal passivo precisa dos dois pinos, `OSC_IN` e `OSC_OUT`, para oscilar. Portanto:
 
-| 方案 | 可行性 |
+| Opção | Viabilidade |
 |---|---|
-| 无源高速晶振（8/16 MHz + 两颗电容） | ❌ 没有 `OSC_OUT` |
-| **有源晶振走 HSE 旁路**（单端时钟灌进 2 脚） | ✅ 3 脚还能当 `OSC_EN` 使能它 |
-| 32.768 kHz 无源晶振（LSE） | ✅ 2/3 脚都有，但 **LSE 不能给 PLL 供时钟**（手册 p.21：PLL 只能吃 HSE 或 HSI16），只能拿来校准 HSI16 |
+| Cristal passivo de alta frequência (8/16 MHz + dois capacitores) | ❌ Não há pino `OSC_OUT` |
+| **Oscilador ativo no modo bypass de HSE** (clock de ponta única no pino 2) | ✅ O pino 3 também pode habilitá-lo como `OSC_EN` |
+| Cristal passivo de 32,768 kHz (LSE) | ✅ Os pinos 2/3 estão disponíveis, mas **LSE não pode fornecer clock ao PLL** (manual, p. 21: o PLL só aceita HSE ou HSI16); só pode ser usado para calibrar o HSI16 |
 
-**默认用 HSI16。** 手册 **Table 41 (p.64)**  de Dados：
+**Por padrão, use HSI16.** Os dados da **Tabela 41, página 64, do manual**:
 
-| 项 | 条件 | 范围 |
+| Parâmetro | Condição | Faixa |
 |---|---|---|
-| 出厂频率 | V<sub>DD</sub> = 3.0 V, T<sub>A</sub> = 30 °C | 15.88–16.08 MHz，即 **−0.75% / +0.5%** |
-| 温漂 | 0 ~ 85 °C | **±1%** |
-| 温漂 | −40 ~ 125 °C | −2% / +1.5% |
-| 电压漂移 | 1.62–3.6 V | ±0.1%（可忽略） |
+| Frequência de fábrica | V<sub>DD</sub> = 3,0 V, T<sub>A</sub> = 30 °C | 15,88–16,08 MHz, ou **−0,75% / +0,5%** |
+| Variação com a temperatura | 0 a 85 °C | **±1%** |
+| Variação com a temperatura | −40 a 125 °C | −2% / +1,5% |
+| Variação com a tensão | 1,62–3,6 V | ±0,1% (desprezível) |
 
-叠加后 0–85 °C 内最坏约 **−1.85% / +1.55%**。1 Mbps 异步 UART  de 典型容差在 ±3% 量级，
-主机侧（树莓派）是晶振精度、基本不占预算 —— **能跑，但吃掉约三分之二 de 余量**。
+Somadas, as variações podem chegar a **−1,85% / +1,55%** entre 0 e 85 °C. A tolerância típica de uma UART assíncrona a 1 Mbps é da ordem de ±3%; o clock do controlador (Raspberry Pi) vem de um cristal e quase não consome essa margem. **Funciona, mas usa cerca de dois terços da tolerância disponível.**
 
-→ 原方案是**留出晶振位、默认不贴（DNP）**，出问题再拿烙铁焊Superior去。
-**2026-09-07 改为默认贴片**，理由见abaixo「为什么从 DNP 改成贴片」。
+→ A proposta original era **reservar o espaço do cristal e não montá-lo por padrão (DNP)**, soldando-o depois apenas se surgisse um problema.
+**Em 2026-09-07, a decisão mudou para montagem padrão**; veja abaixo “Por que deixar de usar DNP e montar o componente”.
 
-##### 时钟位（2026-09-07 起**默认贴片**）
+##### Componentes do clock (montados por padrão desde 2026-09-07)
 
-| 位号 | 器件 | 立创编号 | Instruções |
+| Referência | Componente | Código LCSC | Observações |
 |---|---|---|---|
-| **X1** | **F322516MUBCE2O**（雅晶鑫）<br>16 MHz **有源晶振** · CMOS · 1.8–3.3 V · ±10 ppm 常温 · **5 mA** · SMD3225-4P | `C5917307` | 走 **HSE 旁路**。脚位 `1=OE / 2=GND / 3=OUT / 4=VDD`。<br>**选它是因为 5 mA 是同封装候选里最低的** —— 见下方「为什么挑 5 mA 那颗」 |
-| **C9** | 100 nF 0603 | `C14663` | X1 的 VDD 去耦，**贴着 X1 的 4 脚放**（实测 2.39 mm） |
-| **R3** | 33 Ω 0603 | `C23140` | 时钟输出**源端串联阻尼**。16 MHz 方波边沿陡，一段走线就够产生振铃和 EMI。要省可换 0 Ω |
+| **X1** | **F322516MUBCE2O** (Yajingxin)<br>Oscilador ativo de 16 MHz · CMOS · 1,8–3,3 V · ±10 ppm à temperatura ambiente · **5 mA** · SMD3225-4P | `C5917307` | Opera em **bypass de HSE**. Pinos: `1=OE / 2=GND / 3=OUT / 4=VDD`.<br>**Foi escolhido porque, entre os candidatos com o mesmo encapsulamento, consome menos corrente: 5 mA**. Veja abaixo “Por que escolher o modelo de 5 mA” |
+| **C9** | 100 nF 0603 | `C14663` | Desacoplamento da alimentação VDD de X1; **instale junto ao pino 4 de X1** (distância medida: 2,39 mm) |
+| **R3** | 33 Ω 0603 | `C23140` | **Resistor de amortecimento em série na saída do clock**. As bordas rápidas da onda quadrada de 16 MHz podem gerar ringing e EMI até em uma trilha curta. Para economizar, pode ser substituído por 0 Ω |
 
-> 原选型是 `C387369`（星通时频 S3D16.000000B20F30T，10 mA）。下单时发现
-> **立创贴片备料库没有这颗**（被归到「使用私有库存 de 元器件」，私有库 0），故更换。
+> A escolha original era `C387369` (Singo S3D16.000000B20F30T, 10 mA). Ao fazer o pedido, descobrimos que **esse componente não estava disponível no estoque de montagem da LCSC** (estava classificado como componente de estoque privado, com estoque privado igual a zero); por isso, foi substituído.
 
-###### 为什么从 DNP 改成贴片
+###### Por que deixar de usar DNP e montar o componente
 
-DNP  de original理由本身成立：HSI16 最坏 −1.85%/+1.55%，1 Mbps UART 容差 ±3%，够用；
-固件还能用定时器输入捕获反调 `HSITRIM`，误差压到 0.3% 以内。
+O motivo original para usar DNP era válido: no pior caso, o HSI16 varia −1,85%/+1,55%, dentro da tolerância de ±3% da UART a 1 Mbps. O firmware também poderia ajustar `HSITRIM` por captura de entrada do timer e reduzir o erro para menos de 0,3%.
 
-**但那套 `HSITRIM` 自校准固件一行都还没写。** 第一版板子从没上电过，真出现通信误码时，
-「是 HSI16 漂了还是Firmware写错了」会是个纯浪费时间 de 分叉。一颗 ¥1.9  de 晶振把这个分叉直接砍掉
-—— **第一版能用钱买掉 de 不确定性都该买掉。**
+**Mas ainda não foi escrita nenhuma linha do firmware de autocalibração do `HSITRIM`.** A primeira versão da placa nunca foi energizada; se ocorrer um erro de comunicação, tentar descobrir se a causa é a deriva do HSI16 ou um bug do firmware seria uma investigação que desperdiça tempo. Um oscilador de ¥ 1,9 elimina essa dúvida — **na primeira versão, vale pagar para remover incertezas quando isso é possível.**
 
-###### 为什么挑 5 mA 那颗
+###### Por que escolher o modelo de 5 mA
 
-同封装 de 候选精度都远远够用（要替代 de  HSI16 是 ±18500 ppm，随便哪颗都好一千倍），
-**唯一跟本板设计有互动 de Parâmetros是工作电流**：
+Todos os candidatos do mesmo encapsulamento têm precisão mais que suficiente (o HSI16 que será substituído varia até ±18.500 ppm; qualquer um dos modelos é mil vezes mais preciso). **O único parâmetro com impacto no projeto desta placa é a corrente de operação:**
 
 ```
-板上原本总电流 5–10 mA  →  LDO 压降 5.1 V  →  耗散约 51 mW
-选 5 mA 晶振  → 总 11 mA → 56 mW → SOT-89 结温升 6~9 °C
-选 10 mA 晶振 → 总 16 mA → 82 mW → 结温升 8~13 °C
+Corrente total original da placa: 5–10 mA → queda de 5,1 V no LDO → dissipação de cerca de 51 mW
+Oscilador de 5 mA → total de 11 mA → 56 mW → aumento de 6–9 °C na temperatura de junção do SOT-89
+Oscilador de 10 mA → total de 16 mA → 82 mW → aumento de 8–13 °C na temperatura de junção
 ```
 
-两者都安全（F1 是 200 mA 保持，远不到），但**耗散翻倍会直接叠在评审提 de 
-「LDO 发热影响 IMU」那条Superior**。5 mA 那颗只贵 ¥0.4，没有理由选 10 mA  de 。
+Ambos são seguros (F1 suporta 200 mA, muito acima desses valores), mas **o dobro da dissipação se soma diretamente à preocupação levantada na revisão de que “o aquecimento do LDO pode afetar a IMU”**. O modelo de 5 mA custa apenas ¥ 0,4 a mais; não há motivo para escolher o de 10 mA.
 
 ###### ⚠️ 换料时 de 陷阱：四脚同封装，引脚定义相反
 
