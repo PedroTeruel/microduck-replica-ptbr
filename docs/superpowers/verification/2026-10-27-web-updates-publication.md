@@ -1,44 +1,44 @@
-# 20261027Imagem e Software包公开发布
+# Publicação da imagem 20261027 e do pacote de software
 
-日期：2026-10-27（东京时间）。Usuário在本地交付eIMU代码核对后明确要求“推送，按最新，弄个Imagem”。此授权覆盖推送源码、发布对应Software包eImagem；没有授权烧卡或让关闭 de 鸭子运动。
+**Data:** 27/10/2026 (horário de Tóquio). Depois de receber a entrega local e conferir o código do IMU, o usuário solicitou explicitamente: “envie, use a versão mais recente e faça uma imagem”. Essa autorização abrangia enviar o código-fonte e publicar o pacote de software e a imagem correspondentes; não abrangia gravar cartões nem colocar em movimento o pato desligado.
 
-**公开发布Concluído：源码已推送master，Imagem20261027设为Latest，Software2026.10.27另行发布；8个Imagem附件e10个Software附件 de Serviço器端大小/SHA256全部匹配。实际匿名AtualizaçãoDiretório、Software包Baixar/签名eImagem校验Arquivo/XZArquivo头Verificaçãopor meio de。两份Release均为draft=false、prerelease=false；本版实物验收仍Pendente。**
+**Publicação concluída:** o código-fonte foi enviado ao master; a imagem 20261027 foi definida como Latest; o software 2026.10.27 foi publicado separadamente. Os tamanhos no servidor e os SHA256 dos 8 anexos da imagem e dos 10 anexos do software coincidem. Foram verificadas a disponibilidade pública anônima, o download do pacote de software, a assinatura e o arquivo de validação da imagem/cabeçalho XZ. Ambos os releases estão com `draft=false` e `prerelease=false`; a validação física desta versão continua pendente.
 
-## Versão e Fonte
+## Versão e origem
 
-- 源码集成推送：`762b0d44b784104aeb73c7b6bad10a25713daa44`，保留远端16项新文档提交；仅README有冲突，保留最新项目介绍再加入新版软件入口。
-- 软件/镜像运行来源：`e382f0741d7dfe4e972605e2843474df7219cade`。发布树的Studio、duck-echo、updater、镜像安装脚本与该提交逐路径对照一致，无需重做同内容镜像。
-- 两个发行标签均为附注标签，解引用到e382f074；不把后续文档提交冒充Imagem构建Fonte。
-- runtime源码`0791fcd44f71c705dc8bb0fbcde405593b52d19b`已通过GitHub提交API确认公开存在，robotd/步态模型/总线ID200 IMU支持保持20261023c版本。
-- 原本本地的训练配方修改未进入本次公开发布树；`software/training`和`software/training-studio`与发布前origin/master相同。原本地分支和用户未跟踪文档保留。
+- Código-fonte integrado enviado: `762b0d44b784104aeb73c7b6bad10a25713daa44`; preservados os 16 novos documentos que já estavam no remoto. Somente o README teve conflito: manteve-se a apresentação mais recente do projeto e acrescentou-se a entrada do novo software.
+- Origem de execução do software/imagem: `e382f0741d7dfe4e972605e2843474df7219cade`. Studio, duck-echo, updater e scripts de instalação da imagem correspondem a esse commit em cada caminho; não foi necessário reconstruir uma imagem com o mesmo conteúdo.
+- As duas tags de release são tags anotadas e apontam, após desreferenciar, para e382f074; o commit documental posterior não foi apresentado indevidamente como origem da imagem.
+- A existência pública do código runtime `0791fcd44f71c705dc8bb0fbcde405593b52d19b` foi confirmada pela API de commits do GitHub. robotd, modelo de marcha e suporte ao IMU no barramento com ID 200 continuam na versão 20261023c.
+- As alterações locais de receitas de treinamento não entraram nesta publicação. `software/training` e `software/training-studio` são iguais ao origin/master anterior à publicação. O ramo local original e os documentos não rastreados do usuário foram preservados.
 
-## 发行入口 e Arquivo
+## Páginas de release e arquivos
 
-| 发行 | 入口 | 附件 e 校验 |
+| Release | Página | Anexos e verificações |
 | --- | --- | --- |
-| 镜像20261027 | [镜像发行页](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261027) | 8个：xz、SHA256、清单、许可、模型、第三方、语音说明和README，全部服务器端摘要匹配，Latest读回正确。 |
-| 软件2026.10.27 | [软件发行页](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-software-v2026.10.27) | 10个：签名软件包/校验、manifest/签名、首次引导包/校验、公钥、Apache许可、语音说明和README，全部服务器端摘要匹配。 |
+| Imagem 20261027 | [Página do release da imagem](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-replica-image-20261027) | 8 arquivos: xz, SHA256, manifesto, licença, modelos, terceiros, instruções de voz e README. Todos os resumos do servidor coincidem; a consulta confirmou a tag Latest. |
+| Software 2026.10.27 | [Página do release do software](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-software-v2026.10.27) | 10 arquivos: pacote assinado/checksum, manifesto/assinatura, pacote de configuração inicial/checksum, chave pública, licença Apache, instruções de voz e README. Todos os resumos do servidor coincidem. |
 
-| 核心产物 | 字节数 | SHA256 |
+| Artefato principal | Bytes | SHA256 |
 | --- | --- | --- |
 | `microduck-replica-20261027.img.xz` | 741604104 | `91ab5550e0f409d634722718a638d6e9615412b779b5d26c0af5c777056d0194` |
 | `2026.10.27.software-update.tar` | 5683200 | `b6543c9f3a2ad6477106410dbed9753be9fa37c61b79ea0350767a18229d0e55` |
 | `microduck-bootstrap-20261027.tar.gz` | 57811043 | `866f8d49e3097133ab911debda9c4fdc66b9f02b867a789aadfb9793b99b3610` |
 
-全部资产明确逐个上传，不使用工作区通配。发行私钥不在附件中；Git仅包含发行公钥。中文语音说明文件经GitHub自动规范化为default.txt后，在草稿阶段核对内容hash并改为明确ASCII文件名`microduck-software-20261027-voice.txt`，再验证后公开。
+Todos os artefatos foram enviados individualmente, sem usar curingas do diretório de trabalho. A chave privada de publicação não está nos anexos; somente a chave pública está no Git. O GitHub normalizou automaticamente o arquivo de instruções de voz em chinês para default.txt. Ainda no rascunho, o hash do conteúdo foi conferido e o arquivo foi renomeado para ASCII explícito `microduck-software-20261027-voice.txt`; depois foi verificado novamente e publicado.
 
-## 发布核对
+## Conferências da publicação
 
-- 本地交付Arquivo重新核对大小/hash、内外包签名e引导归档319个清单Arquivo，por meio de。
-- 原本地CompletoValidação e 独立审查见[构建Validação](2026-10-27-web-updates.md)。发布合并仅改文档；ExecuçãoArquivo e 已验收冻结Fonte一致。合并后又ExecuçãoLinuxAtualização器18项 e StudioAtualizaçãoHTTP5项，全部por meio de。
-- GitHub两份标签指向、Software10附件 de uploaded状态、大小eSHA256逐项Verificaçãopor meio de。草稿资产URL含临时untaggedCaminho，只在正式公开后Verificação稳定tagBaixarURL。
-- Completo18附件e两个标签Fontepor meio de，Latest指向Imagem20261027；实际已发布代码 de 匿名Diretório客户端能正确区分ImagemeSoftware，识别2026.10.27并Baixar5,683,200字节Software包，hash e 两份minisign签名por meio de。公开ImagemSHA256Arquivo e 本地一致，RangeLeitura返回正确XZArquivo头。
-- 公开验收快照见[release-assets.json](2026-10-27-release-assets.json)。ImagemCompleto性由独立解压/逐Arquivo只读验收 e GitHubServiço器端CompletoArquivo摘要共同Validação，实物验收另行记录。
+- Os tamanhos e hashes dos arquivos da entrega local foram verificados novamente; a assinatura dos pacotes interno/externo e os 319 arquivos do manifesto do pacote inicial também passaram.
+- A validação local completa e a revisão independente estão em [Validação da criação](2026-10-27-web-updates.md). A publicação mesclada alterou somente documentação; os arquivos em execução correspondem à origem congelada já validada. Após a mesclagem, passaram mais 18 verificações Linux do atualizador e 5 verificações HTTP de atualização do Studio.
+- Foram verificados individualmente os destinos das duas tags do GitHub, o estado uploaded dos 10 anexos do software, seus tamanhos e SHA256. As URLs dos ativos em rascunho continham caminhos temporários untagged; somente depois da publicação foi confirmada a URL estável de download pela tag.
+- Todos os 18 anexos e a origem das duas tags foram confirmados; Latest aponta para a imagem 20261027. O cliente público anônimo do diretório distingue corretamente imagem de software, reconhece 2026.10.27 e baixa o pacote de software de 5.683.200 bytes; hash e as duas assinaturas minisign passaram. O arquivo SHA256 da imagem pública coincide com o local e a leitura Range devolveu o cabeçalho XZ correto.
+- O snapshot de validação pública está em [release-assets.json](2026-10-27-release-assets.json). A integridade da imagem foi validada em conjunto pela extração independente e verificação arquivo a arquivo somente de leitura e pelo resumo do arquivo completo no servidor do GitHub; a aceitação física é registrada separadamente.
 
-证据在工作区`artifacts/software-updates-20261027`的publication-assets.json、draft/public分阶段publication-verification.json及发行说明文件。原delivery.json的local_only=true保留为首次本地交付时的历史，不覆盖本次公开状态。
+As evidências estão em `artifacts/software-updates-20261027`: publication-assets.json, publication-verification.json nas etapas de rascunho/público e os arquivos de release. O valor `local_only=true` em delivery.json foi preservado como registro histórico da primeira entrega local e não substitui o estado desta publicação pública.
 
-## 实物边界
+## Limites da validação física
 
-鸭子关闭，本轮没有SSHInstalação、烧卡、机器人动作或云端Por favor求。旧卡初次引导/升级/回退、新卡首次使用、真实掉电 e 真人声学仍待验收；发行页标题 e 正文明确Instruções。Software发行不是默认自动应用，Imagem e 组件包分开识别。
+O pato está desligado. Nesta rodada não houve instalação por SSH, gravação de cartão, movimento do robô nem requisição à nuvem. Ainda aguardam validação: configuração inicial/atualização/retorno no cartão antigo; primeiro uso no cartão novo; desligamento real da alimentação e teste acústico com pessoa. O título e o corpo da página de release deixam isso explícito. O release de software não é aplicado automaticamente por padrão; a imagem e o pacote de componentes são identificados separadamente.
 
-音乐头身实动尚未修复，自由AI人声对话未接入；原版实物坐站/录放Sucesso不能替代本次组合Imagem实物验收。发行Instruções第一段Preservado免费Pessoal e não comercial复刻 e ModeloLicença边界。
+O movimento real da cabeça e do corpo com música ainda não foi corrigido e a conversa livre por voz com IA não está conectada. O sucesso físico anterior de sentar/levantar e gravar/reproduzir não substitui a validação física desta imagem completa. O primeiro parágrafo das instruções do release mantém os limites de reprodução gratuita, pessoal e não comercial e de licença dos modelos.
