@@ -1,7 +1,7 @@
 <a id="microduck-复刻"></a>
 # Réplica do Microduck
 
-**Português brasileiro** · [简体中文 no repositório original](https://github.com/fanhao375/microduck-replica/blob/master/README.md) · [English](README.en.md)
+**Português brasileiro** · [Versão em chinês simplificado no repositório original](https://github.com/fanhao375/microduck-replica/blob/master/README.md) · [English](README.en.md)
 
 > **Tradução pt-BR:** mantida no fork [PedroTeruel/microduck-replica-ptbr](https://github.com/PedroTeruel/microduck-replica-ptbr), a partir de [fanhao375/microduck-replica](https://github.com/fanhao375/microduck-replica), revisão `4d9b19b`. Alteração: tradução da documentação em 2026-10-29. Créditos, imagens e destinos dos links originais foram preservados; os relatos de testes abaixo pertencem ao projeto de origem. Consulte [o escopo, as licenças e o andamento da tradução](TRADUCAO.md). A tradução da documentação completa ainda está em andamento.
 
@@ -10,7 +10,7 @@ Projeto independente de réplica completa do robô [Microduck da Pollen Robotics
 
 **A versão com Feetech HD-1910 foi validada no robô físico: ficar em pé, caminhar, dar uma cambalhota para a frente e se levantar novamente.** A configuração principal usa **15 servos Feetech HD-1910**. O projeto fornece uma **imagem de sistema pronta para gravação** e o **painel web Microduck Studio** para configurar a rede, calibrar e controlar o robô pelo navegador do celular ou computador.
 
-**O procedimento de primeiro uso também foi executado no robô físico:** gravar a imagem → configurar a rede pelo ponto de acesso → calibrar servos e IMU → parear o controle e testar a parada de emergência → ficar em pé e caminhar. [Registros de validação no robô físico](docs/Histórico de atualizações.md#最近Atualização)
+**O procedimento de primeiro uso também foi executado no robô físico:** gravar a imagem → configurar a rede pelo ponto de acesso → calibrar servos e IMU → parear o controle e testar a parada de emergência → ficar em pé e caminhar. [Registros de validação no robô físico](docs/历史更新.md#最近Atualização)
 
 <a id="鸭子现在 de 样子"></a>
 ## O robô em ação
@@ -34,7 +34,7 @@ Projeto independente de réplica completa do robô [Microduck da Pollen Robotics
 
 Os GIFs são prévias sem som; os arquivos MP4 incluem o vídeo completo e o áudio.
 
-**[Baixar a imagem](https://github.com/fanhao375/microduck-replica/releases/latest)** · **[Guia de primeiro uso (PDF / web)](docs/上手指南/README.md)** · **[CAD e peças para impressão](https://github.com/fanhao375/microduck-replica-cad)** · **[Tutoriais de montagem](#-装配视频教程)** · **[Lista de materiais (BOM)](BOM/README.md)** · **[Projetos de hardware](hardware/README.md)**
+**[Baixar a imagem](https://github.com/fanhao375/microduck-replica/releases/latest)** · **[Guia de primeiro uso (PDF / web)](docs/上手指南/README.md)** · **[CAD e peças para impressão](https://github.com/fanhao375/microduck-replica-cad)** · **[Tutoriais de montagem](#-Vídeos%20de%20montagem)** · **[Lista de materiais (BOM)](BOM/README.md)** · **[Projetos de hardware](hardware/README.md)**
 
 ---
 
@@ -67,7 +67,7 @@ O código abaixo é do **Grupo de Réplica do Microduck 13** (o WeChat desativa 
 <a id="-Vídeos de montagem"></a>
 ## 📺 Vídeos de montagem
 
-**[Série no Bilibili “MicroDuck 从零安装教程” (montagem do zero)](https://space.bilibili.com/312747174/lists/9279084?type=season)** — gravada por **机械行者Robo**, autor dos desenhos CAD e da lista de materiais de montagem. Começa pela lista de peças e monta um subconjunto por episódio. São 8 episódios; até 2026-10-12, 6 haviam sido publicados.
+**[Série no Bilibili “MicroDuck: tutorial de montagem do zero”](https://space.bilibili.com/312747174/lists/9279084?type=season)** — gravada por **机械行者Robo**, autor dos desenhos CAD e da lista de materiais de montagem. Começa pela lista de peças e monta um subconjunto por episódio. São 8 episódios; até 2026-10-12, 6 haviam sido publicados.
 
 Ao lado da lista de episódios estão as contas do autor, na ordem **Bilibili, Xiaohongshu e Douyin**. Escaneie o código ou clique na imagem para acessá-las.
 
@@ -99,7 +99,7 @@ Escolha os arquivos de impressão conforme a versão dos servos e depois provide
 |---|---|---|
 | **Peças para impressão e CAD** | **Feetech HD-1910** | [Seção Feetech](https://github.com/fanhao375/microduck-replica-cad#飞特-hd-1910-打印资料): projeto de impressão, arquivos CAD e notas de atualização |
 | **Peças para impressão e CAD** | **Dynamixel XL330** | [Seção XL330](https://github.com/fanhao375/microduck-replica-cad#dynamixel-xl330-打印资料): arquivos CAD e instruções de impressão específicos |
-| **Lista de compras para montagem** | **Feetech HD-1910** | **[Visualizar online](BOM/README.md)** · **[Baixar Excel](BOM/装配BOM-Mecânica行者Robo-2026-10-23-带Compra链接.xlsx)**: organizada por Mecânica行者Robo, versão de 2026-10-23, com quantidades, materiais e links de compra |
+| **Lista de compras para montagem** | **Feetech HD-1910** | **[Visualizar online](BOM/README.md)** · **[Baixar Excel](BOM/装配BOM-机械行者Robo-2026-10-23-带采购链接.xlsx)**: organizada por 机械行者Robo, versão de 2026-10-23, com quantidades, materiais e links de compra |
 
 As peças de encaixe das duas versões de servos não são intercambiáveis. As versões dos arquivos e as datas de atualização são mantidas nas respectivas seções do repositório CAD. Esta lista de compras segue a configuração Feetech; os servos XL330 e a eletrônica correspondente precisam ser conferidos separadamente.
 
@@ -108,7 +108,7 @@ As peças de encaixe das duas versões de servos não são intercambiáveis. As 
 <a id="现在做到哪了"></a>
 ## Estado atual do projeto
 
-Até **2026-10-25**, **a réplica completa com Feetech, o procedimento de primeiro uso e os movimentos haviam sido validados no robô físico**. As seções abaixo apresentam os resultados e as extensões do projeto. Consulte o [histórico de atualizações](docs/Histórico de atualizações.md) para conhecer o escopo dos testes e o desenvolvimento.
+Até **2026-10-25**, **a réplica completa com Feetech, o procedimento de primeiro uso e os movimentos haviam sido validados no robô físico**. As seções abaixo apresentam os resultados e as extensões do projeto. Consulte o [histórico de atualizações](docs/历史更新.md) para conhecer o escopo dos testes e o desenvolvimento.
 
 ---
 
@@ -139,7 +139,7 @@ A imagem é gratuita e destinada apenas a réplicas pessoais sem fins comerciais
 | **Impressão em um só projeto** | **[Bambu MakerWorld (Feetech)](https://makerworld.com.cn/zh/models/2963569-microduck#profileId-3478428)** · [Projeto 3MF para Bambu Studio](https://github.com/fanhao375/microduck-replica-cad#打印) |
 | **Modelos e arquivos de impressão** | **[Seção Feetech HD-1910](https://github.com/fanhao375/microduck-replica-cad#飞特-hd-1910-打印资料)** · **[Seção XL330](https://github.com/fanhao375/microduck-replica-cad#dynamixel-xl330-打印资料)** |
 | **Tutoriais de montagem** | **[Manual de montagem em PDF](https://github.com/fanhao375/microduck-replica-cad/blob/master/安装说明书/microduck装配安装说明书.pdf)** · **[Vídeos por episódio](#-装配视频教程)**; use as peças estruturais correspondentes à sua versão |
-| **Lista de compras** | **[Visualizar BOM online](BOM/README.md)** · **[Baixar Excel](BOM/装配BOM-Mecânica行者Robo-2026-10-23-带Compra链接.xlsx)**: versão Feetech de 2026-10-23; os servos XL330 e sua eletrônica precisam ser conferidos separadamente |
+| **Lista de compras** | **[Visualizar BOM online](BOM/README.md)** · **[Baixar Excel](BOM/装配BOM-机械行者Robo-2026-10-23-带采购链接.xlsx)**: versão Feetech de 2026-10-23; os servos XL330 e sua eletrônica precisam ser conferidos separadamente |
 
 [Repositório CAD e versões publicadas](https://github.com/fanhao375/microduck-replica-cad/releases) · [Diário de construção](构建日志.md)
 
@@ -223,7 +223,7 @@ Este repositório é um trabalho coletivo. Aqui estão os créditos pelo código
 |---|---|
 | [@yoyojacky](https://github.com/yoyojacky) | **Ferramenta em Rust para testar servos Feetech** ([PR #27](https://github.com/fanhao375/microduck-replica/pull/27), incorporado). Implementação própria e mínima do protocolo STS/SCS: montagem de quadros, soma de verificação, ping, leitura e escrita de registradores e interpretação do estado. A linha de comando permite varrer o barramento com barra de progresso, ler o estado, mover para uma posição e executar testes individuais ou em lote. Informa desvio de posição, corrente e carga de pico, tensão e temperatura, com resultado PASS/FAIL. Um comando gera a tabela de aceitação em bancada → [`tools/sts3215Servo_testtool/`](tools/sts3215Servo_testtool/) |
 | [@Abo1ish](https://github.com/Abo1ish) | **Firmware da placa IMU e visualização de orientação na bancada** ([PR #32](https://github.com/fanhao375/microduck-replica/pull/32), incorporado). Base de firmware STM32G031 para a placa imu_to_dxl cujo firmware oficial não foi disponibilizado. Validado na placa física, com testes no computador e um [`VALIDATION.md`](hardware/imu_to_dxl/firmware/VALIDATION.md) que explicita seus limites → [`hardware/imu_to_dxl/firmware/`](hardware/imu_to_dxl/firmware/). Também integrou a leitura da orientação da IMU via J-Link à bancada web, fazendo o tronco do modelo 3D acompanhar a placa real (`--imu-jlink`; sem placa, use `--imu-demo`) → [`tools/servo-web/`](tools/servo-web/) |
-| Integrante do grupo no WeChat | **Procedimento de inicialização da Radxa Zero 3W V1.12J.** Nesse lote, com Wi-Fi AIC8800DS2, substituir apenas o carregador de inicialização da Radxa não bastava. Os testes mostraram que também era necessária a árvore de dispositivos da Radxa B1: **bootloader B1 + DTB B1 + kernel Armbian 6.1.115 + sistema Trixie**. A combinação funcionou e foi registrada no [diário de problemas](Problemas encontrados.md#Software) e no [guia da imagem](tools/radxa/ImagemInstruções de uso.md#6-Se你 de 板子不是这一批) |
+| Integrante do grupo no WeChat | **Procedimento de inicialização da Radxa Zero 3W V1.12J.** Nesse lote, com Wi-Fi AIC8800DS2, substituir apenas o carregador de inicialização da Radxa não bastava. Os testes mostraram que também era necessária a árvore de dispositivos da Radxa B1: **bootloader B1 + DTB B1 + kernel Armbian 6.1.115 + sistema Trixie**. A combinação funcionou e foi registrada no [diário de problemas](踩坑记录.md#Software) e no [guia da imagem](tools/radxa/镜像使用说明.md#6-Se你 de 板子不是这一批) |
 
 ---
 
@@ -257,15 +257,15 @@ Os caminhos são relativos à raiz deste repositório. O CAD mecânico é mantid
 | Plataforma e projeto de treinamento | [software/training-studio/](software/training-studio/README.md)<br>[software/training/](software/training/README.md) | Bancada web, ambiente de simulação e exportação de modelos |
 | Eletrônica e firmware | [hardware/](hardware/README.md) | [Projetos de placas](hardware/README.md) · [Firmware da IMU](hardware/imu_to_dxl/README.md) |
 | Depuração e análise | [tools/](tools/README.md) | [Índice de ferramentas](tools/README.md) · Gravação de cartões, depuração serial, referências Feetech e análise |
-| Documentação e registros | [docs/](docs/README.md) | [Índice completo em pt-BR](docs/README.pt-BR.md) · [Problemas encontrados](Problemas encontrados.md) · [Depuração](Registro de depuração.md) · [Construção](Diário de construção.md) |
-| Histórico e comunidade | [docs/](docs/README.md#深入研究 e 归档) | [Acompanhamento do projeto oficial](docs/Acompanhamento do projeto oficial.md) · [Histórico de atualizações](docs/Histórico de atualizações.md) · [Contribuições da comunidade](docs/Contribuições da comunidade.md) |
+| Documentação e registros | [docs/](docs/README.md) | [Índice completo em pt-BR](docs/README.pt-BR.md) · [Problemas encontrados](踩坑记录.md) · [Depuração](调试记录.md) · [Construção](构建日志.md) |
+| Histórico e comunidade | [docs/](docs/README.md#深入研究 e 归档) | [Acompanhamento do projeto oficial](docs/官方更新跟踪.md) · [Histórico de atualizações](docs/历史更新.md) · [Contribuições da comunidade](docs/社区贡献.md) |
 
 ---
 
 <a id="Licença e Fonte"></a>
 ## Licenças e fontes
 
-Código, recursos de simulação e modelos incluídos na imagem têm licenças distintas. Consulte [licenças e atribuições](NOTICE.md) e os [termos dos modelos](software/image/overlay/usr/share/doc/microduck/ModeloInstruções.txt). **A imagem da réplica destina-se apenas a construções pessoais sem fins comerciais e não pode ser distribuída com produtos pagos.**
+Código, recursos de simulação e modelos incluídos na imagem têm licenças distintas. Consulte [licenças e atribuições](NOTICE.md) e os [termos dos modelos](software/image/overlay/usr/share/doc/microduck/模型说明.txt). **A imagem da réplica destina-se apenas a construções pessoais sem fins comerciais e não pode ser distribuída com produtos pagos.**
 
 Este projeto independente não tem vínculo com a Pollen Robotics nem é endossado por ela.
 

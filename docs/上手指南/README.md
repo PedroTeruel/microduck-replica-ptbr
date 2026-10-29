@@ -1,12 +1,12 @@
-# Gravação e 首次使用
+# Gravação da imagem e primeiro uso
 
-从BaixarImagem、烧卡e配网，到Servo e  IMU 标定、手柄配对e开始Caminhada。
+Este guia reúne os passos desde o download e a gravação da imagem até a configuração da rede, calibração dos servos e da IMU, pareamento do controle e início da caminhada.
 
-| 阅读方式 | 入口 | 适用Instruções |
+| Formato | Acesso | Observações |
 |---|---|---|
-| **AtualWeb版Instruções** | **[打开Gravaçãoe第一次使用](../../software/image/Gravaçãoe第一次使用.md)** | 随项目Atualização，包含 20261023c  de  IMU 兼容范围 |
-| **PDF 图解** | **[预览 / BaixarSuperior手指南 V2](MicroduckSuperior手指南-V2-20261022.pdf)** | 2026-10-22 整理，21 页，可打印；图解基于 20261021b Imagem，Versão差异以AtualWeb版Instruções为准 |
+| **Instruções web atualizadas** | **[Abrir o guia de gravação e primeiro uso](../../software/image/烧录和第一次使用.md)** | Atualizado junto com o projeto; inclui a faixa de compatibilidade da IMU da versão 20261023c. |
+| **Guia ilustrado em PDF** | **[Visualizar ou baixar o guia de montagem V2](Microduck上手指南-V2-20261022.pdf)** | Edição de 2026-10-22, com 21 páginas para impressão. As ilustrações usam a imagem 20261021b; em caso de diferença entre versões, siga as instruções web atuais. |
 
-PDF 覆盖Baixar e 烧卡、ConexãoPonto de acesso e 配网、Servo e  IMU 标定、手柄、急停eCaminhada。manter o texto original档Conteúdo。
+O PDF aborda o download e a gravação da imagem, a conexão ao ponto de acesso e a configuração da rede, a calibração dos servos e da IMU, o controle, a parada de emergência e a caminhada. O arquivo PDF mantém o conteúdo original.
 
-[下载镜像](https://github.com/fanhao375/microduck-replica/releases/latest) · [CAD 与打印文件](https://github.com/fanhao375/microduck-replica-cad) · [飞特版采购清单](../../BOM/README.md) · [硬件工程](../../hardware/README.md)
+[Baixar a imagem](https://github.com/fanhao375/microduck-replica/releases/latest) · [CAD e arquivos para impressão](https://github.com/fanhao375/microduck-replica-cad) · [Lista de compras da versão Feetech](../../BOM/README.md) · [Projetos de hardware](../../hardware/README.md)
