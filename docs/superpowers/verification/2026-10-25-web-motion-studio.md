@@ -1,8 +1,8 @@
-# 网页录制回放与灵动：实现及单机部署验收
+# Web录制回放 e 灵动：实现 e 单机部署验收
 
-日期：2026-10-25（东京时间；设备日志为 +08:00）。用户授权“开始吧……灵动……先做在网页版里头”，随后明确选择鸭子现有控制网址。
+日期：2026-10-25（东京时间；设备日志为 +08:00）。Usuário授权“开始吧……灵动……先做在Web版里头”，随后明确选择鸭子现有Controle网址。
 
-## 本轮结果与范围
+## 本轮Resultado e 范围
 
 运行代码提交：`c18783c9a2b2e2635124c6c4d53007e3fefb3ba6`，已快进合入 `studio-dev`。原有未提交的路线/语音记录保留，没有重置工作区或改动语音源码。
 
@@ -10,11 +10,11 @@
 
 首版每段 60 秒/6,000 事件/1 MiB，最多 20 段。内容保存在 Studio state 的 `motion-recordings/`，刷新与重启后保留。录制只包含被接受的网页移动、头/身体/嘴和已知声音，不含麦克风音频、摄像头视频、站坐/上力、设置或模型技能。缺少可靠技能完成回读，因此录制时在发送前拒绝踢腿、翻滚、捡取等技能；不把“停止发指令”当作物理技能已停止。
 
-录制/灵动/回放要求现有策略就绪、状态新鲜、无实体手柄冲突，且不自动站起或使能。每会话独立令牌，100ms 心跳、500ms 失效；退出控制区、后台/失焦、断网、接管、手柄连接、卸力和状态变化会停止，重连不续播。暂停清除连续目标；继续恢复头/身体/嘴姿态，速度等待后续有效帧。迟到目标合并，不集中补发过时运动。模型文件内容/配置指纹不匹配拒绝旧记录。
+录制/灵动/回放要求现有策略就绪、状态新鲜、无实体手柄冲突，且不自动站起或使能。每会话独立令牌，100ms 心跳、500ms 失效；退出Controle区、后台/失焦、断网、接管、手柄Conexão、卸力e状态变化会停止，重连不续播。暂停清除连续目标；继续恢复头/身体/嘴姿态，速度等待后续有效帧。迟到目标合并，不集 em 补发过时运动。ModeloArquivoConteúdo/Configuração指纹不匹配拒绝旧记录。
 
-## 软件验证
+## SoftwareValidação
 
-最终通过 **351 项软件检查**：203 项动作/原手柄后端（44 + 159）、140 项 HTTP/原虚拟手柄/总览/传感器回归、7 项 Node 心跳测试、1 项新动作浏览器端到端测试。独立需求及代码审查的问题均有复现测试并修复，最终审查无待处理发现。
+最终por meio de **351 项SoftwareVerificação**：203 项动作/原手柄后端（44 + 159）、140 项 HTTP/原虚拟手柄/总览/传感器回归、7 项 Node 心跳Teste、1 项新动作浏览器端到端Teste。独立需求 e 代码审查 de 问题均有复现Teste并修复，最终审查无待处理发现。
 
 在 `software/studio` 运行（Windows Python 3.13，运行时依赖使用现有 `deps/`）：
 
@@ -33,7 +33,7 @@ py -3.13 -X utf8 -I -c "import sys;sys.path[:0]=['deps','.'];import unittest;uni
 
 部署目标为用户选择的 `http://duck-0de6:8000/#/pad`。先用冻结 Git 字节比较设备文件，确认依赖版本一致、安装路径无越界或符号链接、Python 能编译；即时回读 `motion/control`、`policy_enabled=false`，没有舵机会话标记，才切换程序。
 
-更新 12 个文件：
+Atualização 12 个Arquivo：
 
 ```text
 studio/motion_store.py       studio/motion_studio.py
@@ -44,7 +44,7 @@ web/sensors.css              web/motion-heartbeat.js
 web/motion-studio.js         web/motion-studio.css
 ```
 
-其中 app/sensors/pad 的匹配资源包含此前本地内联摄像头及配对恢复版本，避免仅替换入口文件导致依赖不完整。未启用真实摄像头，未改网络、模型、主程序、padd、蓝牙或语音服务。
+其 em  app/sensors/pad  de 匹配资源包含此前本地内联摄像头 e 配对恢复Versão，避免仅替换入口Arquivo导致依赖不Completo。未启用真实摄像头，未改Rede、Modelo、主程序、padd、蓝牙或语音Serviço。
 
 仅停止并重新启动 `microduck-studio`，PID 从 980 变为 15333，当前 active。部署前后 `robotd=1105`、`padd=1138`、`duck-echo=1110` 及各自单调启动时间相同，三个服务均 active，语音 enabled。安装的 12 个文件均与清单 SHA-256 一致。
 
@@ -54,17 +54,17 @@ web/motion-studio.js         web/motion-studio.css
 
 私有备份：`/home/radxa/.microduck-backups/web-motion-20261025-e6610b5e21`，目录权限 0700，含更新前运行文件、用户 state、清单及成功回执。本地 `artifacts/web-motion-20261025/device-before/full-runtime/` 保存更新前相关程序，`deployment-manifest.json`、`deployment-result.json`、`device-verification.json` 保存完整核对结果；不纳入公开包。
 
-单机切换脚本在安装/服务健康检查失败时会恢复旧文件并重启 Studio。本次未触发失败回退；自动回退分支未做真机故障注入，不能称为已验证的通用 OTA 回退。人工恢复时先确保鸭子停止、没有舵机会话，再停止 Studio；按备份清单恢复原文件，删除清单中此前不存在的新文件，仅重新启动 Studio 并验证 HTTP。原 state 保留；备份内用户 state 仅作损坏恢复，不覆盖后来新保存的录制。
+单机切换脚本在Instalação/Serviço健康VerificaçãoFalha时会恢复旧Arquivo并重启 Studio。本次未触发Falha回退；自动回退分支未做真机故障注入，不能称为已Validação de 通用 OTA 回退。人工恢复时先确保鸭子停止、没有Servo会话，再停止 Studio；按备份清单恢复原Arquivo，删除清单 em 此前不存在 de 新Arquivo，仅重新Inicialização Studio 并Validação HTTP。原 state Preservado；备份内Usuário state 仅作损坏恢复，不覆盖后来新保存 de 录制。
 
-## 冻结交付与后续
+## 冻结交付 e 后续
 
 本地交付目录：工作区 `artifacts/web-motion-20261025/release/`，包含按 Git 提交生成的 Studio 源码归档、版本/哈希清单和本验收副本。包不含设备 state、个人密码、SSH 钥匙、家庭 Wi-Fi、配对或录制数据；它是维护与后续组件发布的可追溯输入，尚不是网页一键升级器。
 
-没有新建镜像、启用 updaterd 或发布到远端。现有镜像仍保持原版本。下一步先完成用户动作试用，再把语音和 Studio 整理成统一版本组件，设计通用安装/迁移/回退与新卡/旧系统两条验收；手柄/语音绑定保存回放仍是后续需求。
+没有新建Imagem、启用 updaterd 或发布到远端。现有Imagem仍保持原Versão。Inferior一步先ConcluídoUsuário动作试用，再把语音e Studio 整理成统一Versão组件，设计通用Instalação/迁移/回退 e 新卡/旧系统两条验收；手柄/语音绑定保存回放仍是后续需求。
 
-## 用户截图后的状态判断修正
+## Usuário截图后 de 状态判断修正
 
-用户随后提供了真实网页截图，确认已出现“动作录制与回放”及“灵动”入口；按钮灰色，站姿是“站着（保持）”，却仍提示“上个模型技能没有可验证的完成状态，先手动停下策略”。日志显示用户已经执行过坐/站及“停下（站好）”。
+Usuário随后提供了真实Web截图，确认已出现“动作录制 e 回放” e “灵动”入口；按钮灰色，站姿是“站着（保持）”，却仍提示“Superior个Modelo技能没有可Validação de Concluído状态，先手动停Inferior策略”。日志显示Usuário已经执行过坐/站 e “停Inferior（站好）”。
 
 只读回读发现：`robot.policies.enabled=true`、`homed=true`、`sitting=false`，而 `robot.busStatus.policy_enabled=false`、`mode=motion`、`phase=control`、`homed=true`。主程序源码明确前者来自启动配置 `[policy] enabled`，不是运行开关。首版 `policy_feed` 错误地要求配置开关与运行开关同时为 false，导致真实机器停止策略后仍无法记录停止边界。原测试人为把两个开关同时置 false，未覆盖真机的配置保持 true 情况。
 
@@ -76,4 +76,4 @@ web/motion-studio.js         web/motion-studio.css
 
 本次私有备份为 `/home/radxa/.microduck-backups/web-motion-20261025-8ac5417e9b`（0700）。设备读取证据在工作区 `artifacts/web-motion-20261025/live-skill-gate-readback.json`，浏览器证据在同目录 `skill-gate-browser/`；单机更新清单、成功回执、服务/文件回读及新的冻结源码交付在 `artifacts/web-motion-20261025-skill-gate/`，原首轮记录保留。
 
-已告知用户刷新、点“开始走”、等待“准备好走”再开启“灵动”。网页入口已由用户截图确认，修正后的真实头嘴动作效果仍待用户回复；没有由本轮脚本主动发出运动指令，没有更新镜像或启用通用在线升级。
+已告知Usuário刷新、点“开始走”、等待“准备好走”再开启“灵动”。Web入口已由Usuário截图确认，修正后 de 真实头嘴动作效果仍待Usuário回复；没有由本轮脚本主动发出运动指令，没有AtualizaçãoImagem或启用通用在线升级。

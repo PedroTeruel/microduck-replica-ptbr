@@ -4,13 +4,13 @@
 
 ## 在界面里操作
 
-1. 启动真实训练服务，打开它显示的地址。在「计算环境」确认真实模式、CUDA、图形后端和任务检查通过。
-2. 点「新建训练」，选「HD1910 平地行走」，填实验名，点「开始短试跑」。先保持默认种子和学习率。
+1. Inicialização真实训练Serviço，打开它显示 de 地址。在「计算环境」确认真实模式、CUDA、图形后端e任务Verificaçãopor meio de。
+2. 点「新建训练」，选「HD1910 平地Caminhada」，填实验名，点「开始短试跑」。先保持默认种子e学习率。
 3. 等待状态变为完成。应出现 5 个指标点和 `model_0.pt` 至 `model_4.pt`，日志累计 7,680 步。
 4. 选最后的 `model_4.pt` 进行评估，查看 250 步、约 5 秒的策略回放。训练区域的 CAD 外观与评估视频用途不同。
-5. 导出模型包，确认下载成功。需要部署前，再进行模型与机器人配置核对及独立仿真验证。
+5. 导出Modelo包，确认BaixarSucesso。é necessário部署前，再进行Modelo e 机器人Configuração核对 e 独立仿真Validação。
 
-5 轮只检查加载、GPU 仿真、优化器更新和产物流程。奖励负数、鸭子跌倒或动作不稳定都不足以判定这个短测试失败；重点是无报错退出、指标有限、检查点可加载、视频可播放。先通过这个测试再安排长训练。
+5 轮只Verificação加载、GPU 仿真、优化器Atualizaçãoe产物流程。奖励负数、鸭子跌倒或动作不稳定都不足以判定这个短TesteFalha；重点是无报错退出、指标有限、Verificação点可加载、视频可播放。先por meio de这个Teste再安排长训练。
 
 ## Windows 使用 WSL2
 
@@ -32,4 +32,4 @@ cd ../training-studio
 
 ## 本次实测
 
-2026-10-23，Windows + WSL Ubuntu 22.04、RTX 5060 Ti 16 GB、Python 3.12.14、torch 2.9.1+cu128、mjlab 1.3.0：上述 5 轮约 41 秒完成（包含启动加载），生成 5 个 PT。评估得到 960×540、50 FPS、250 帧视频。ONNX checker 和 32 组同输入 PT/ONNX 推理核对通过。耗时是本次测量，首次内核编译或其他机器可能不同。
+2026-10-23，Windows + WSL Ubuntu 22.04、RTX 5060 Ti 16 GB、Python 3.12.14、torch 2.9.1+cu128、mjlab 1.3.0：Superior述 5 轮约 41 秒Concluído（包含Inicialização加载），生成 5 个 PT。评估得到 960×540、50 FPS、250 帧视频。ONNX checker e 32 组同输入 PT/ONNX 推理核对por meio de。耗时是本次测量，首次内核编译或其他机器可能不同。

@@ -1,6 +1,6 @@
-# Studio 的 root 小助手：舵机总线交接、写标定、手柄配对（安装、卸载、上机核对）
+# Studio  de  root 小助手：Servo总线交接、写标定、手柄配对（Instalação、卸载、Superior机核对）
 
-写给人看，也写给以后接手的 AI 看：每一步都写了为什么。
+写给人看，也写给以后接手 de  AI 看：每一步都写了为什么。
 
 ## 重做初次 IMU 校准（imu-recalibrate）
 
@@ -25,7 +25,7 @@
 
 方案出处：scratchpad `console/handover-plan.md`（v2 定稿）§2.2、§4.2、§5；规矩照 `console/studio-ops-plan.md` §7。
 
-## 1. 它是干什么的
+## 1. 它是干什么 de 
 
 Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 robotd 要先停下，用完再交还。
 
@@ -37,16 +37,16 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
 
 **出厂镜像跑标定模式**：镜像放 `/etc/systemd/system/robotd.service.d/zzzz-zz-microduck-commissioning.conf`，`ExecStart` 带 `--commissioning`（fork `main.rs:1300-1315`：busStatus 的 mode 只看启动参数，跟标定文件里写了什么无关）。标定模式下 `calibration-status` 马上能读，busStatus 带 `last_sample`（15 颗舵机 + `imu`），`verify-imu` 会把方向写进标定文件；运动模式下标定不合格 / 舵机总线打不开会停在 `waiting_for_bus`，`calibration-status` 回 `calibration not available yet`。第 3 步写成功时小助手删掉这个文件、`daemon-reload`、重启 robotd，主程序回到运动模式。如果 `ExecStart` 里有 `--commissioning` 但文件不在，小助手拒绝自动切（`foreign_commissioning`），让人去日志页导出诊断包。
 
-## 镜像里 vs 手动装
+## Imagem里 vs 手动装
 
-「连 WiFi」卡片不是 Studio 单独就能提供的，它依赖复刻镜像里的四样东西：
+「连 WiFi」卡片不是 Studio 单独就能提供 de ，它依赖复刻Imagem里 de 四样东西：
 
 - netcheck 写的 `/run/microduck/net.json`；
 - NetworkManager 里的 `Microduck-Hotspot` 热点配置；
 - configd 以 `--allow-user btd,radxa` 运行；
 - mDNS 配置（`duck-xxxx.local`）。
 
-按本文手动装 Studio 和 root 小助手、但没有复刻镜像 overlay 的鸭子，没有这些，Studio 就不显示「连 WiFi」卡片；总览、手柄、舵机、IMU、日志和网页设密码都照常。
+按本文手动装 Studio e root 小助手、但没有复刻Imagem overlay  de 鸭子，没有这些，Studio 就不显示「连 WiFi」卡片；总览、手柄、Servo、IMU、日志eWeb设密码都照常。
 网页设密码在「更多 → 登录密码」；命令行 `python3 -I run.py set-password` 要用 radxa 用户运行，别用 `sudo`，否则 Studio 读不了密码文件。
 
 | 动词 | stdin（一个 JSON 对象） | 做什么 |
@@ -72,10 +72,10 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
 
 | 码 | 意思 |
 |---|---|
-| 0 | 成功 |
-| 2 | 参数错（动词不认识、stdin 不是 JSON 对象、有不认识的键、标记校验没过） |
+| 0 | Sucesso |
+| 2 | Parâmetros错（动词不认识、stdin 不是 JSON 对象、有不认识 de 键、标记校验没过） |
 | 3 | 状态不允许（没装保护、策略在跑、鸭子站着 / 在走、没有会话、不是 root；`calib-commit` 还可能是 bus-held、`foreign_commissioning`） |
-| 4 | 忙或中止（管理锁被板端脚本占着、小助手正在跑别的总线操作 / 另一个配对或忘掉、另一个 WiFi 热点操作、交还被中止） |
+| 4 | 忙或 em 止（管理锁被板端脚本占着、小助手正在跑别 de 总线操作 / 另一个配对或忘掉、另一个 WiFi Ponto de acesso操作、交还被 em 止） |
 | 5 | 执行失败（停不下来、串口被占、robotd 没认标记已经全卸、软交还起不来；或者 `pad-pair` / `pad-forget` 找不到 robotctl、robotctl 说配对失败、超时被杀；热点关 / 开没成、nmcli 出错、等超时；`calib-commit` 写失败 / 重启失败 / 主程序没进运动模式 / 读回不一致，已经回滚） |
 | 6 | 交接没成，总线已拿回（旗重新立好、robotd 停了、锁还在），Studio 重开串口接着保持 |
 
@@ -92,7 +92,7 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
 - calib-commit：`preview`（dry_run）、`committed`（`mode=motion` 且 `phase=control`，并且 `calibration-status` 读回逐项一致）、`not_motion`（30 秒还没进运动模式）、`calib_rejected`（主程序说标定没通过检查）、`bus_unavailable`（主程序打不开舵机总线）、`readback_mismatch`（进了运动模式但读回不一致）、`bus_held`、`no_calibration`、`bad_calibration`、`joint_mismatch`、`invalid`、`bad_toml`、`restart_failed`、`write_failed`、`backup_failed`、`read_failed`、`foreign_commissioning`、`refused`（策略在跑 / 站着）。失败结果里 `detail.rolled_back` / `files_restored` / `mode_restored` / `robotd_up_after_rollback` 分开报；`readback_ok`、`mismatches`、`bus_status`（最后一次的 mode / phase / error）和 `backup` 也在。若回滚自己没完全成功，`msg` 会写「去日志页导出诊断包」
 - 都可能有：`bad_args`、`bad_marker`、`bad_verb`、`not_root`、`busy`、`error`
 
-## 2. 文件和路径
+## 2. ArquivoeCaminho
 
 | 东西 | 位置 | 为什么 |
 |---|---|---|
@@ -109,7 +109,7 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
 | 操作记录 | `/var/lib/microduck-helper/oplog.jsonl`（父目录 0755、日志文件 0600；私有备份子目录 0700） | 一次一行：谁、什么时候、结果。父目录允许 Studio 读取公开的 IMU 会话状态，日志和备份仍只允许 root 读取 |
 | 标定备份 | `/var/lib/microduck-helper/calib-backups/<4 位序号>-<UTC>/`（目录 0700、文件 0600，只留最新 10 组） | 每组有写之前的 `.toml`、`.saved.toml`（各备各的）、commissioning drop-in（有就备）和 `manifest.json`（原属主、权限、sha256）。序号按已有目录最大值 +1，不靠墙钟排序；回滚照 manifest 各自换回去 |
 
-**标记格式**（fork 的 robotd 照这个读）：
+**标记格式**（fork  de  robotd 照这个读）：
 
 ```
 {"schema": "microduck-handover/1", "requested_by": str, "boot_id": str, "mono_ms": int,
@@ -119,35 +119,35 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
 
 - `boot_id`、`mono_ms`（CLOCK_MONOTONIC 毫秒）由**小助手自己填**，Studio 给了也覆盖掉。
 - **ttl_ms 超过 30000 直接拒（退出码 2），不悄悄截断**，低于 1000 也拒；默认 20000。robotd 那边最多也只认 30 秒，两边说法一致。
-- id 必须正好是 10–14、20–24、30–34，每个一次；torque 必须是 1（主程序只接手 15 颗全开的）；goal、present、offset 是 −32767..32767 的整数。
+- id 必须正好是 10–14、20–24、30–34，每个一次；torque 必须是 1（主程序只接手 15 颗全开 de ）；goal、present、offset 是 −32767..32767  de 整数。
 
 **几个时间**：
 
 | 时间 | 值 |
 |---|---|
-| gate 两次读的间隔 | 0.2 s |
+| gate 两次读 de 间隔 | 0.2 s |
 | 等回站姿 | 3 s |
 | stop 到 KILL | 10 s |
 | KILL 以后再等 | 3 s |
 | robotd 读标记 | 15 s |
-| 接手后走完启动第 4 步 | 20 s |
+| 接手后走完Inicialização第 4 步 | 20 s |
 | 软交还 | 30 s |
-| 中止交接 | KILL 后等 0.5 s |
+|  em 止交接 | KILL 后等 0.5 s |
 | 写标定后等 robotd | 40 s（unit active + `/run/robotd.sock` 的 hello） |
-| 等运动模式 | 30 s（每 0.5 s 读一次 busStatus；成功还要读回 calibration-status 逐项一致） |
+| 等运动模式 | 30 s（每 0.5 s 读一次 busStatus；Sucesso还要读回 calibration-status 逐项一致） |
 | Studio 等小助手 | 180 s（超时也去读 `last-result.json`，不直接报 TimeoutExpired） |
 
 **几个环境变量**：`MICRODUCK_HELPER_DETACHED`、`MICRODUCK_HELPER_REQUEST`、`MICRODUCK_HELPER_REQUESTED_MS`（`bus-give-back` 和 `calib-commit` 都用）。
 
 - 用途：bus-give-back / 非 dry_run 的 calib-commit 第一次被调用时，用 `systemd-run --wait --pipe --collect --quiet --unit=microduck-handover-<时间>-<pid>` 把自己放进独立的临时单元再跑一遍，stdin 原样转过去，输出原样转回来。这样 Studio 死了，交还也不会断在半路。
-- 这几个变量**只**决定「不要再转一次」，以及中止请求、结果怎么对号，**不给任何权限**。sudo 默认 env_reset，调用方也传不进来。
-- **没有任何环境变量能改根目录**：测试是 import 进去、换一个假的 Ctx，不靠环境变量。
+- 这几个变量**只**决定「不要再转一次」，e em 止Por favor求、Resultado怎么对号，**不给任何权限**。sudo 默认 env_reset，调用方也传不进来。
+- **没有任何环境变量能改根Diretório**：Teste是 import 进去、换一个假 de  Ctx，不靠环境变量。
 
 **所有判断 robotd 起没起来的地方**，都看 `systemctl show robotd -p ActiveState,SubState,Result,ConditionResult`。旗在的时候 `systemctl start robotd` 返回 0，但单元停在 inactive、`ConditionResult=no`，不能当成起来了。每次拉 robotd 之前都先 `reset-failed`，防撞上 start-limit-hit。
 
-**信任边界**：能 sudo 小助手的用户（现在是 radxa）本来就能直接打开 ttyS2；robotd 又会在总线上回读核对标记。所以伪造标记不会多给权限，最坏是「保持住本来就顶着的舵机」。
+**信任边界**：能 sudo 小助手 de Usuário（现在是 radxa）本来就能直接打开 ttyS2；robotd 又会在总线Superior回读核对标记。所以伪造标记不会多给权限，最坏是「保持住本来就顶着 de Servo」。
 
-## 3. 安装（一次，SSH）
+## 3. Instalação（一次，SSH）
 
 ```sh
 # 电脑上：把 deploy 目录拷到鸭子上
@@ -165,7 +165,7 @@ cd /tmp/studio-deploy && sudo sh install.sh radxa
 
 **第 1 步只装 drop-in 的 `[Unit]` 那段。** `[Service] Environment=MICRODUCK_HANDOVER_MARKER=…` 是注释掉的：等 fork 的 robotd 装好、第 3 步（Studio 交还不卸力）验收以后，再手动打开那两行、`daemon-reload`。打开以后 robotd 下次启动才会看交接标记；没有标记就跟 V167 完全一样。旧版 robotd 不认这个变量，打开了也没影响。
 
-装完马上核对：
+装完马Superior核对：
 
 ```sh
 systemctl show robotd -p DropInPaths            # 要有 zzzz-studio-bus.conf
@@ -198,7 +198,7 @@ sudo sh uninstall.sh --purge    # 连 /var/lib/microduck-helper 一起删
 - `systemctl status microduck-bus-hold`：管理锁在不在 Studio 手里。
 - `sudo tail /var/lib/microduck-helper/oplog.jsonl`：操作记录。
 
-## 6. 上机核对清单（二号鸭，用户扶着；他说开始就连着跑，不用每次问）
+## 6. Superior机核对清单（二号鸭，Usuário扶着；他说开始就连着跑，不用每次问）
 
 **先只读核对**（不动任何东西）：
 
@@ -208,7 +208,7 @@ sudo sh uninstall.sh --purge    # 连 /var/lib/microduck-helper 一起删
   - `--pipe` 下把调用方杀掉，服务里面的进程写 stdout 会拿到 EPIPE（小助手忽略 SIGPIPE），而不是被一起杀掉；
   - 临时单元默认 `KillMode=control-group`，所以 `systemctl stop microduck-bus-hold` 会连 flock 和 sleep 一起停掉、锁跟着放掉。用 `flock -n /run/microduck-service-management.lock true; echo $?` 核对。
 
-**第 1 步的上机测试（跟小助手有关的）**：
+**第 1 步 de Superior机Teste（跟小助手有关 de ）**：
 
 | 编号 | 做什么 | 看什么 |
 |---|---|---|
@@ -220,7 +220,7 @@ sudo sh uninstall.sh --purge    # 连 /var/lib/microduck-helper 一起删
 | U4c | 旗在时连着 `systemctl start robotd` 6 次 | 看 `Result` 会不会变成 start-limit-hit。然后撤旗（`bus-give-back {"soft":true}` 会先 reset-failed）确认能起来 |
 | U5 | 会话中 `systemctl restart studio-trial` | 鸭子不软；旗、`microduck-bus-hold` 还在；Studio 起来以后 `bus-take` 返回 0，detail 里 `session_was_open=true` |
 | U6 | 软交还 | 扶住；`bus-give-back {"soft":true}` 返回 0；robotd 四步 success；padd 回来；`microduck-bus-hold` 停了 |
-| U7 | 离开舵机页 | 有保持就不交还（另一个子代理的部分，一起验） |
+| U7 | 离开Servo页 | 有保持就不交还（另一个子代理 de 部分，一起验） |
 | V0（小助手部分） | 量 `bus-take` 和 `bus-abort` 各用多久 | 看 last-result 的 `ms`；abort 目标 ≤1 秒 |
 | U8 | 在 Studio 里配一次手柄（雷神 G50 Pro，Switch Pro 模式，名字 `Pro Controller`） | 向导里「配对走的是」写小助手；`cat /run/microduck-helper/last-result.json` 的 `verb=pad-pair`、`result=paired`，`detail.stderr` 有 `paused btd …`；30 秒内 padd 认到并进按键测试。没有新版小助手时向导会提示先重装 |
 | U9 | 热点开着时 `wifi-hotspot-down {"by":"核对","ssid":"Home"}` | 退出 0、`result=hotspot_down`；关之前已有 `/run/microduck/studio-connecting.json`（root 0644，`until` 约 90 秒后，`ssid=Home`）；`nmcli connection show --active` 里没有 `Microduck-Hotspot`；手机的热点连接断开。热点本来关着再调一次 → 0、`already_down`，且不写连接窗口 |
@@ -234,10 +234,10 @@ sudo sh uninstall.sh --purge    # 连 /var/lib/microduck-helper 一起删
 
 **还没覆盖到的**：标记交还（`{"marker": …}`）要等 fork 的 robotd 装上、drop-in 打开 Environment 以后才能在板上测，那是第 4 步的 V1–V12。
 
-## 7. 已知的限制
+## 7. 已知 de 限制
 
-- bus-take 在「判完状态」到「立旗、停 robotd」之间，有大约 0.1 秒的窗口，这期间蓝牙 App 还能把策略打开。padd、gamesir 已经先停了，btd 没停。
+- bus-take 在「判完状态」到「立旗、停 robotd」之间，有大约 0.1 秒 de 窗口，这期间蓝牙 App 还能把策略打开。padd、gamesir 已经先停了，btd 没停。
 - configd 的 `system.reboot`、SSH 里直接 `poweroff` 拦不住（方案 §2.5）。重启的话，robotd 起来时照老规矩全卸。
-- 交接倒数期间手柄 Select 不起作用（padd 要等 robotd 四步都 success 才启动）；那几秒用网页卸力（走 bus-abort）或关电源。
+- 交接倒数期间手柄 Select 不起作用（padd 要等 robotd 四步都 success 才Inicialização）；那几秒用Web卸力（走 bus-abort）或关Alimentação。
 - 旧版小助手（不认 `pad-pair`）会回 `bad_verb`；Studio 把它当没有新版小助手，退回 configd → bluetoothctl。这块板（`/var/lib/robot/weird-ble`）上后备路可能配不上，向导会提示重装小助手或在鸭子上运行 `sudo robotctl pad pair`。
 - 旧版小助手（0.2.0，不认 `wifi-hotspot-down` / `wifi-hotspot-up`）也回 `bad_verb`；Studio 配网时会提示「小助手太旧，重装 deploy/install.sh」。

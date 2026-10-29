@@ -10,6 +10,6 @@ Entrada unificada para as três placas desenvolvidas pelo projeto, a Radxa ZERO 
 | **Radxa ZERO 3W** | [Compra no Taobao](https://item.taobao.com/item.htm?id=763812025816) | [Imagem oficial](../assets/hw/radxa-zero3w-official.webp) | [Documentação](https://docs.radxa.com/en/zero/zero3) e arquivos de projeto |
 | **RPI Robot HAT oficial** | [Projeto KiCad da Pollen Robotics](https://github.com/pollen-robotics/elec_RPI_Robot_HAT) | [Imagem oficial](../assets/hw/rpi-robot-hat-official.png) | Arquivos de fabricação |
 
-Os detalhes de projeto, conexões e validação estão nas páginas de cada placa. Consulte também a [lista de compras](../BOM/README.md) e o [guia de hardware](../docs/硬件入门.md).
+Os detalhes de projeto, conexões e validação estão nas páginas de cada placa. Consulte também a [lista de compras](../BOM/README.md) e o [guia de hardware](../docs/Hardware入门.md).
 
 > Tradução mantida no fork PedroTeruel. Créditos e licenças das imagens oficiais permanecem em `assets/hw/official-board-images.md`.

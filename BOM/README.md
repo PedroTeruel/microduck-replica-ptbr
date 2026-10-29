@@ -1,6 +1,6 @@
 # Lista de compras para montagem — versão Feetech
 
-**Organizada por 机械行者Robo · versão de 2026-10-23**
+**Organizada por Mecânica行者Robo · versão de 2026-10-23**
 
 **[下载完整 Excel](装配BOM-机械行者Robo-2026-10-23-带采购链接.xlsx)** · [打印件与 CAD](https://github.com/fanhao375/microduck-replica-cad) · [主仓库](https://github.com/fanhao375/microduck-replica)
 
@@ -8,7 +8,7 @@ Esta página foi organizada a partir da planilha Excel da mesma versão e conté
 
 **Versão compatível: configuração Feetech HD-1910.** A lista inclui servos Feetech e uma placa de depuração URT2; os servos XL330 e a eletrônica correspondente precisam ser conferidos separadamente. O arquivo Excel original permanece inalterado.
 
-[查看打印件](#一打印件33-项) · [查看外购件](#二外购件23-项) · [原表说明与待核对项](#三原表说明与待核对项)
+[查看Peças impressas](#一Peças impressas33-项) · [查看Itens comprados](#二Itens comprados23-项) · [Tabela originalInstruções e Itens a conferir](#三Tabela originalInstruções e Itens a conferir)
 
 ## 1. Peças impressas (33 itens)
 
@@ -16,50 +16,50 @@ Esta página foi organizada a partir da planilha Excel da mesma versão e conté
 
 **整套打印件价格记录：139 元**，对应原表合并区域 I3:I35；[采购链接](<https://item.taobao.com/item.htm?from=cart&id=1083122166800&mi_id=0000ywbZ5efl4VxxIGb0KHx-3C8BOS37n90MGBh_xmncHd4&skuId=6306393642451&spm=a1z0d.6639537%2F202410.item.d1083122166800.70527484LqKlHG&upStreamPrice=13900>)。
 
-| 序号 | 名称 | 原文件名 | 材料（原表） | 数量 | 备注（原表） |
+| 序号 | 名称 | 原Arquivo名 | Material（Tabela original） | Quantidade | Observação（Tabela original） |
 |---|---|---|---|---:|---|
-| 1 | 头部上壳 | top_head_shell_头部上壳.stp | PLA | 1 |  |
-| 2 | 头部下壳 | bottom_head_shell_头部下壳.stp | PLA | 1 |  |
+| 1 | CabeçaSuperior壳 | top_head_shell_CabeçaSuperior壳.stp | PLA | 1 |  |
+| 2 | CabeçaInferior壳 | bottom_head_shell_CabeçaInferior壳.stp | PLA | 1 |  |
 | 3 | 面部零件 | face_part_面部零件.stp | PLA | 1 |  |
-| 4 | 下巴 | jaw_下巴.stp | PLA | 1 |  |
-| 5 | 软下巴 | jaw_soft_软下巴.stp | PLA | 1 | 建议改用TPU软料 |
+| 4 | Inferior巴 | jaw_Inferior巴.stp | PLA | 1 |  |
+| 5 | 软Inferior巴 | jaw_soft_软Inferior巴.stp | PLA | 1 | 建议改用TPU软料 |
 | 6 | 软嘴顶部 | soft_mouth_top_软嘴顶部.stp | PLA | 1 | 建议改用TPU软料 |
 | 7 | 眼睛 | noenoeil_眼睛.stp | PLA | 1 |  |
-| 8 | 颈部 | neck_颈部.stp | PLA | 2 | 建议铝合金 |
-| 9 | 颈部俯仰 | neck_pitch_颈部俯仰.stp | PLA | 1 |  |
+| 8 | Pescoço | neck_Pescoço.stp | PLA | 2 | 建议铝合金 |
+| 9 | Pescoço俯仰 | neck_pitch_Pescoço俯仰.stp | PLA | 1 |  |
 | 10 | 躯干底座 | trunk_base_躯干底座.stp | PLA | 1 | 建议铝合金 |
-| 11 | 左壳 | left_shell_左壳.stp | PLA | 1 |  |
-| 12 | 右壳 | right_shell_右壳.stp | PLA | 1 |  |
-| 13 | 髋部左 | hip_l_髋部左.stp | PLA | 2 |  |
+| 11 | Esquerdo壳 | left_shell_Esquerdo壳.stp | PLA | 1 |  |
+| 12 | Direito壳 | right_shell_Direito壳.stp | PLA | 1 |  |
+| 13 | 髋部Esquerdo | hip_l_髋部Esquerdo.stp | PLA | 2 |  |
 | 14 | 偏航转横滚 | yaw2roll_偏航转横滚.stp | PLA | 1 |  |
 | 15 | 偏航横滚运动 | yaw_roll_motion_偏航横滚运动.stp | PLA | 1 |  |
-| 16 | 腿部 | leg_腿部.stp | PLA | 2 |  |
-| 17 | 左上腿 | left_upper_leg_左上腿.stp | PLA | 1 |  |
-| 18 | 右上腿 | right_upper_leg_右上腿.stp | PLA | 1 |  |
-| 19 | 上腿加固板 | upper_leg_rigidity_plate_上腿加固板.stp | PLA | 2 | 建议铝合金 |
-| 20 | 左脚 | foot_left_左脚.stp | PLA | 1 |  |
-| 21 | 右脚 | foot_right_右脚.stp | PLA | 1 |  |
-| 22 | 左脚底 | sole_left_左脚底.stp | PLA | 1 |  |
-| 23 | 右脚底 | sole_right_右脚底.stp | PLA | 1 |  |
-| 24 | 脚踝左 | ankle_left_脚踝左.stp | PLA | 1 |  |
-| 25 | 脚踝右 | ankle_right_脚踝右.stp | PLA | 1 |  |
-| 26 | 脚踝左(V1备选) | ankle_l_v1_脚踝左V1.stp | PLA | 1 |  |
-| 27 | 脚踝右(V1备选) | ankle_r_v1_脚踝右V1.stp | PLA | 1 |  |
+| 16 | Perna | leg_Perna.stp | PLA | 2 |  |
+| 17 | EsquerdoSuperior腿 | left_upper_leg_EsquerdoSuperior腿.stp | PLA | 1 |  |
+| 18 | DireitoSuperior腿 | right_upper_leg_DireitoSuperior腿.stp | PLA | 1 |  |
+| 19 | Superior腿加固板 | upper_leg_rigidity_plate_Superior腿加固板.stp | PLA | 2 | 建议铝合金 |
+| 20 | Esquerdo脚 | foot_left_Esquerdo脚.stp | PLA | 1 |  |
+| 21 | Direito脚 | foot_right_Direito脚.stp | PLA | 1 |  |
+| 22 | Esquerdo脚底 | sole_left_Esquerdo脚底.stp | PLA | 1 |  |
+| 23 | Direito脚底 | sole_right_Direito脚底.stp | PLA | 1 |  |
+| 24 | 脚踝Esquerdo | ankle_left_脚踝Esquerdo.stp | PLA | 1 |  |
+| 25 | 脚踝Direito | ankle_right_脚踝Direito.stp | PLA | 1 |  |
+| 26 | 脚踝Esquerdo(V1备选) | ankle_l_v1_脚踝EsquerdoV1.stp | PLA | 1 |  |
+| 27 | 脚踝Direito(V1备选) | ankle_r_v1_脚踝DireitoV1.stp | PLA | 1 |  |
 | 28 | 合体轮胎 | 合体轮胎.stp | PLA | 4 |  |
 | 29 | 滚轮叶片 | roller_blade_滚轮叶片.stp | PLA | 2 |  |
 | 30 | 电机支架 | motor_support_电机支架.stp | PLA | 1 |  |
-| 31 | 电源支架 | power_support_电源支架.stp | PLA | 1 |  |
+| 31 | Alimentação支架 | power_support_Alimentação支架.stp | PLA | 1 |  |
 | 32 | 香蕉形PCB锁扣 | banana_pcb_locker_香蕉形PCB锁扣.stp | PLA | 1 |  |
 | 33 | 轴承滚轮 | bearing_roll_轴承滚轮.stp | PLA | 2 | 建议铝合金 |
 
 ## 2. Itens comprados (23 itens)
 
-价格单位为元，按原表保存的数值展示。采购链接可直接点击；Excel 未填写网址的项目标为“原表未填”。
+Preço单位为元，按Tabela original保存 de 数值展示。Compra链接可直接点击；Excel 未填写网址 de 项目标为“Tabela original未填”。
 
-| 序号 | 名称 | 类别 | 数量 | 单价 | 总价（原表） | 备注（原表） | 采购入口 |
+| 序号 | 名称 | 类别 | Quantidade | 单价 | 总价（Tabela original） | Observação（Tabela original） | Compra入口 |
 |---|---|---|---:|---:|---:|---|---|
 | 1 | Radxa Zero 3W 主控板 | 电子件 | 1 | 309 | 309 |  | [采购链接](<https://item.taobao.com/item.htm?id=763812025816&last_time=1790655696&mi_id=0000M9KvAKZdKHX6irXd93nZ9S8044VLMp9XHfosSxlXgV0&scm=1007.13982.82927.0&spm=tbpc.mytb_footmark.item.goods&upStreamPrice=88800>) |
-| 2 | 64GB TF 卡 | 电子件 | 1 | 60 | 60 |  | 原表未填 |
+| 2 | 64GB TF 卡 | 电子件 | 1 | 60 | 60 |  | Tabela original未填 |
 | 3 | 树莓派机器人HAT电路板 | 电子件 | 1 | 120 | 120 | 可拼团 github | [项目入口](<https://github.com/fanhao375/microduck-replica>) |
 | 4 | imu_to_dxl电路板 | 电子件 | 1 | 80 | 80 | 可拼团github | [项目入口](<https://github.com/fanhao375/microduck-replica>) |
 | 5 | 飞特HD1901M舵机 | 电子件 | 15 | 95 | 1425 | 可拼团github | [项目入口](<https://github.com/fanhao375/microduck-replica>) |
@@ -84,38 +84,38 @@ Esta página foi organizada a partir da planilha Excel da mesma versão e conté
 
 ## 3. Observações da tabela original e itens a conferir
 
-**原表合计：2426.88 元。** Excel 原文件保持不变；以下两处需要核对：
+**Tabela original合计：2426.88 元。** Excel 原Arquivo保持Inalterado；以Inferior两处é necessário核对：
 
 - 合计公式为 `SUM(I3:I58)`，未包含最后一项“鞋底防滑垫”（I59，16 元）。
-- “NP-F550电池”一行数量为 1、单价为 17 元、总价为 47 元，单价与总价不一致。
+- “NP-F550Bateria”一行Quantidade为 1、单价为 17 元、总价为 47 元，单价 e 总价不一致。
 
 <details>
-<summary>查看作者在 Excel 中附的原始说明</summary>
+<summary>查看Autor在 Excel  em 附 de originalInstruções</summary>
 
-说明：
-🦆 人人都可以拥有属于自己的 MicroDuck！
+Instruções：
+🦆 人人都pode拥有属于自己 de  MicroDuck！
 
-💰 项目成本说明
-除 15 个舵机、HAT 板和 IMU 板 外，其余硬件成本约为 828 元。
-15 个舵机、HAT 板和 IMU 板 可以通过 GitHub 项目参与拼团，也可以根据需求在 嘉立创、淘宝 等平台自行购买。
-后续我们还会陆续开源 安装教程、调试教程，帮助大家更方便地完成 MicroDuck 的组装与调试。
-🤖 为什么要开源？
+💰 项目成本Instruções
+除 15 个Servo、HAT 板e IMU 板 外，其余Hardware成本约为 828 元。
+15 个Servo、HAT 板e IMU 板 podepor meio de GitHub 项目参 e 拼团，也podeconforme需求在 嘉立创、淘宝 等平台自行购买。
+后续我们还会陆续Código aberto Instalação教程、Depuração教程，帮助大家更方便地Concluído MicroDuck  de 组装 e Depuração。
+🤖 为什么要Código aberto？
 
-我们希望让更多人能够以更低的成本接触和学习 具身智能、机器人控制与强化学习。
+我们希望让更多人能够以更低 de 成本接触e学习 具身智能、机器人Controle e 强化学习。
 
-人人都有属于自己的一只鸭子。
+人人都有属于自己 de 一只鸭子。
 
-通过开源，我们希望和大家一起打造一个更加开放、友好的学习环境，让更多人能够动手实践，从零开始探索具身智能。
+por meio deCódigo aberto，我们希望e大家一起打造一个更加开放、友好 de 学习环境，让更多人能够动手实践，从零开始探索具身智能。
 
-如果这个项目对你有所帮助，点个赞就是对我们最大的支持 ❤️
+Se这个项目对你有所帮助，点个赞就是对我们最大 de suporta ❤️
 
-也欢迎大家关注我们的 GitHub，帮忙点个 Star ⭐！
+也欢迎大家关注我们 de  GitHub，帮忙点个 Star ⭐！
 
 🔗 GitHub：
 https://github.com/fanhao375/microduck-replica
 
-📕 小红书：机械行者
-🎵 抖音：机械行者Robo
-B站：机械行者Robo
+📕 小红书：Mecânica行者
+🎵 抖音：Mecânica行者Robo
+B站：Mecânica行者Robo
 
 </details>

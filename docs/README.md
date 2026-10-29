@@ -1,60 +1,60 @@
-# 文档导航
+# Índice da documentação
 
-[返回首页](../README.md) · [English](README.en.md)
+[Voltar ao início](../README.md) · [English](README.en.md)
 
-按要做的事找资料。初次装机从「使用与装配」开始，研究推导和旧进展放在后面的归档里。
+按要做 de 事找资料。初次装机从「Uso e montagem」开始，研究推导e旧进展放在后面 de 归档里。
 
-## 使用与装配
+## Uso e montagem
 
-| 资料 | 内容 |
+| 资料 | Conteúdo |
 |---|---|
-| [首次使用指南](上手指南/README.md) | 烧录、配网、标定、手柄与 PDF 指南 |
+| [Guia de primeiro uso](Superior手指南/README.md) | Gravação、配网、标定、手柄 e  PDF 指南 |
 | [CAD 与打印件](https://github.com/fanhao375/microduck-replica-cad) | 飞特 HD-1910 / XL330 对应版本的模型与打印工程 |
-| [BOM 采购清单](../BOM/README.md) | 2026-10-23 飞特版在线预览与 Excel 下载 |
-| [装配视频教程](../README.md#-装配视频教程) | 按部件分集的 B 站视频 |
+| [BOM Lista de compras](../BOM/README.md) | 2026-10-23 飞特版Visualização online e  Excel Baixar |
+| [Vídeos de montagem](../README.md#-Vídeos de montagem) | 按部件分集 de  B 站视频 |
 
-## 软件与训练
+## Software e 训练
 
-| 资料 | 内容 |
+| 资料 | Conteúdo |
 |---|---|
-| [Studio 网页中控](../software/studio/README.md) | 标定、遥控、设备状态与模型管理 |
-| [镜像构建与发布](../software/image/README.md) | 镜像构建方式与发布说明 |
-| [软件更新与本地语音](软件更新与语音使用说明-20261027.md) | 旧卡一次性引导、网页签名升级/回退、R3坐下与站起来 |
-| [训练平台](../software/training-studio/README.md) | 网页实验管理、评估与模型导出 |
-| [训练工程](../software/training/README.md) | 训练环境与运行方法 |
-| [训练前数据清单](HD-1910训练前数据清单.md) | 几何、舵机、IMU 与实测项 |
-| [软件来源与改动](软件来源与我们的改动.md) | 上游来源和本项目的修改 |
-| [官方更新跟踪](官方更新跟踪.md) | 正式版、开发分支、待合并 PR、摄像头与情绪动作等更新，以及本项目适配建议 |
+| [Studio Web em 控](../software/studio/README.md) | 标定、遥控、设备状态 e Modelo管理 |
+| [Imagem构建 e 发布](../software/image/README.md) | Imagem构建方式 e 发布Instruções |
+| [SoftwareAtualização e 本地语音](SoftwareAtualização e 语音Instruções de uso-20261027.md) | 旧卡一次性引导、Web签名升级/回退、R3Sentar e Levantar |
+| [Plataforma de treinamento](../software/training-studio/README.md) | Web实验管理、评估 e Modelo导出 |
+| [Projeto de treinamento](../software/training/README.md) | 训练环境 e Execução方法 |
+| [训练前Dados清单](HD-1910训练前Dados清单.md) | 几何、Servo、IMU  e 实测项 |
+| [SoftwareFonte e 改动](SoftwareFonte e 我们 de 改动.md) | upstreamFonteeeste projeto de 修改 |
+| [Acompanhamento do projeto oficial](Acompanhamento do projeto oficial.md) | 正式版、开发分支、待合并 PR、摄像头 e 情绪动作等Atualização，eeste projeto适配建议 |
 
-## 工具
+## Ferramentas
 
-[工具导航](../tools/README.md)：按烧卡、串口调试、资料和分析查找软件下载及使用说明。
+[Índice de ferramentas](../tools/README.md)：按烧卡、串口Depuração、资料e分析查找SoftwareBaixar e Instruções de uso。
 
-- [Rufus 便携版与烧卡说明](../tools/rufus/README.md) · [飞特 FD、驱动与串口助手](../tools/飞特/README.md) · [飞特官方手册与 SDK](飞特资料/README.md)
-- [网页舵机调试台](../tools/servo-web/README.md) · [HD1910M 测试工具](../tools/FeeTech_HD1910M_Servo/README.md) · [STS3215 测试工具](../tools/sts3215Servo_testtool/README.md)
-- [IMU 协议检查](../tools/imu200/imu200.py) · [步态分析](../tools/gait-analysis/README.md) · [主板分析脚本](../tools/radxa/onboard-analysis/README.md)
+- [Rufus 便携版 e 烧卡Instruções](../tools/rufus/README.md) · [飞特 FD、驱动 e 串口助手](../tools/飞特/README.md) · [飞特Oficial手册 e  SDK](飞特资料/README.md)
+- [WebServoDepuração台](../tools/servo-web/README.md) · [HD1910M TesteFerramentas](../tools/FeeTech_HD1910M_Servo/README.md) · [STS3215 TesteFerramentas](../tools/sts3215Servo_testtool/README.md)
+- [IMU ProtocoloVerificação](../tools/imu200/imu200.py) · [步态分析](../tools/gait-analysis/README.md) · [Placa principal分析脚本](../tools/radxa/onboard-analysis/README.md)
 
-## 电气与排障
+## Eletrônica e 排障
 
-| 资料 | 内容 |
+| 资料 | Conteúdo |
 |---|---|
-| [电路板工程](../hardware/README.md) · [IMU 固件](../hardware/imu_to_dxl/README.md) | 工程文件、接线与固件验证范围 |
-| [硬件入门](硬件入门.md) · [规格速查](硬件规格速查.md) | 各模块作用与参数 |
-| [踩坑记录](../踩坑记录.md) | 现象、原因与解决方法 |
-| [调试记录](../调试记录.md) · [构建日志](../构建日志.md) | 实机调试和机械装配过程 |
+| [Placa de circuito工程](../hardware/README.md) · [IMU Firmware](../hardware/imu_to_dxl/README.md) | 工程Arquivo、Fiação e FirmwareValidação范围 |
+| [Hardware入门](Hardware入门.md) · [规格速查](Hardware规格速查.md) | 各模块作用 e Parâmetros |
+| [Problemas encontrados](../Problemas encontrados.md) | 现象、原因 e 解决方法 |
+| [Registro de depuração](../Registro de depuração.md) · [Diário de construção](../Diário de construção.md) | 实机DepuraçãoeMecânica装配过程 |
 
-## 深入研究与归档
+## 深入研究 e 归档
 
-早期分析和采购记录保留原日期、方案及验证范围，装机时优先看当前指南与 BOM。
+早期分析eCompra记录Preservado原日期、方案 e Validação范围，装机时优先看Atual指南 e  BOM。
 
-| 资料 | 内容 |
+| 资料 | Conteúdo |
 |---|---|
-| [历史更新](历史更新.md) | 从首页移出的逐日更新 |
-| [社区贡献与鸭友项目](社区贡献.md) | 贡献者署名、合并记录与社区项目 |
-| [项目研究归档](项目研究归档.md) | 爆炸图、装配结构、关节参数、早期可行性与重现命令 |
-| [硬件方案逆向](硬件方案逆向.md) | 电控推导及证据出处 |
-| [执行器选型](执行器选型.md) · [紧固件反推](紧固件反推.md) | 舵机比较与孔位分析 |
-| [电控采购分析](电控采购清单.md) · [机械采购分析](机械采购清单.md) | 早期选型、采购与成本记录 |
-| [不打 HAT 的方案](不打HAT.md) | 替代方案与接线说明 |
-| [生态导航](生态导航.md) · [社区动态](社区动态.md) | 上游资源、模型和社区信息 |
-| [许可与署名](../NOTICE.md) · [模型使用条款](../software/image/overlay/usr/share/doc/microduck/模型说明.txt) | 各部分来源和使用范围 |
+| [Histórico de atualizações](Histórico de atualizações.md) | 从首页移出 de 逐日Atualização |
+| [Contribuições da comunidade e 鸭友项目](Contribuições da comunidade.md) | Contribuição者Atribuição、合并记录 e Comunidade项目 |
+| [Arquivo de pesquisa do projeto](Arquivo de pesquisa do projeto.md) | 爆炸图、装配结构、关节Parâmetros、早期可行性 e 重现Comando |
+| [Hardware方案逆向](Hardware方案逆向.md) | 电控推导 e 证据出处 |
+| [执行器选型](执行器选型.md) · [紧Firmware反推](紧Firmware反推.md) | Servo比较 e 孔位分析 |
+| [电控Compra分析](电控Lista de compras.md) · [MecânicaCompra分析](MecânicaLista de compras.md) | 早期选型、Compra e 成本记录 |
+| [不打 HAT  de 方案](不打HAT.md) | 替代方案 e FiaçãoInstruções |
+| [生态导航](生态导航.md) · [Comunidade动态](Comunidade动态.md) | upstream资源、ModeloeComunidade信息 |
+| [Licença e Atribuição](../NOTICE.md) · [Modelo使用条款](../software/image/overlay/usr/share/doc/microduck/ModeloInstruções.txt) | 各部分Fontee使用范围 |

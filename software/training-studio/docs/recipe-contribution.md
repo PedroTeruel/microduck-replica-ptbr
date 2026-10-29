@@ -1,20 +1,20 @@
 # 收录一个动作配方
 
-动作实验室是训练台内的配方库。当前由仓库维护者通过代码与 PR 收录任务，用户在页面选择配方、设置参数并训练。网页上传、远程下载、自动安装以及社区账号系统尚未实现。
+动作实验室是训练台内 de 配方库。Atual由仓库维护者por meio de代码 e  PR 收录任务，Usuário在Página选择配方、设置Parâmetros并训练。WebEnviar、远程Baixar、自动InstalaçãoeComunidade账号系统尚未实现。
 
-## 作者交付什么
+## Autor交付什么
 
-一份可收录的动作配方需要同时提供：
+一份可收录 de 动作配方é necessário同时提供：
 
-1. 动作目标、起始状态、结束状态及失败条件。
-2. 适配的机器人模型、舵机和引擎版本。
-3. 真实注册的训练任务、奖励与终止规则、合理默认值和独立实验目录。
-4. 可修改参数的类型、范围与单位；参数必须贯通训练、续训、评估、导出。
-5. 完整周期评估方法及成功判定；不可用累计奖励直接代替动作是否完成。
-6. 测试、短试跑记录、原始视频与已知限制。没有实际回放时可以先提供文字说明。
-7. 作者、源码来源、许可证和版本信息。训练好的权重作为独立可选成果，注明对应配方与目标。
+1. 动作目标、起始状态、结束状态 e Falha条件。
+2. 适配 de 机器人Modelo、Servoe引擎Versão。
+3. 真实注册 de 训练任务、奖励 e 终止规则、合理默认值e独立实验Diretório。
+4. 可修改Parâmetros de 类型、范围 e 单位；Parâmetros必须贯通训练、续训、评估、导出。
+5. Completo周期评估方法 e Sucesso判定；不可用累计奖励直接代替动作是否Concluído。
+6. Teste、短试跑记录、original视频 e 已知限制。没有实际回放时pode先提供文字Instruções。
+7. Autor、源码Fonte、LicençaeVersão信息。训练好 de 权重作为独立可选成果，注明对应配方 e 目标。
 
-## 当前收录位置
+## Atual收录位置
 
 引擎任务位于 `software/training/src/mjlab_microduck/tasks/`，在任务注册表中登记。训练台使用 `software/training-studio/training_studio/config.py` 的服务端白名单，不接受页面直接执行任意任务名或脚本。
 
@@ -31,15 +31,15 @@
 | `verification_state` / `verification_label` | 验证状态及用户可读标签 |
 | `instructions` | 这个动作的简要步骤或目标说明 |
 
-三维模型或目标示意都必须注明非训练结果。未来增加视频/图片预览类型时，需要一起记录实际策略、目标、条件与来源，不能把演示动画显示为训练成功的视频。
+三维Modelo或目标示意都必须注明非训练Resultado。未来增加视频/图片预览类型时，é necessário一起记录实际策略、目标、条件 e Fonte，不能把演示动画显示为训练Sucesso de 视频。
 
-## 怎么审核与展示验证状态
+## 怎么审核 e 展示Validação状态
 
-先审查硬件和任务接口，再运行 CPU 测试、64 环境 × 5 轮短试跑、完整动作评估和导出核对。页面分别展示：
+先审查Hardwaree任务接口，再Execução CPU Teste、64 环境 × 5 轮短试跑、Completo动作评估e导出核对。Página分别展示：
 
-- **尚未验证**：说明任务存在，尚未取得相应验证证据。
-- **短试跑通过**：训练与产物链路跑通，不代表已经学会动作。
-- **动作验证结果**：给出固定目标与条件下的成功次数、尝试次数及失败情况。
-- **真机验证结果**：单独记录硬件、部署接口与实测证据。
+- **尚未Validação**：Instruções任务存在，尚未取得相应Validação证据。
+- **短试跑por meio de**：训练 e 产物链路跑通，不代表已经学会动作。
+- **动作ValidaçãoResultado**：给出固定目标 e 条件Inferior de Sucesso次数、尝试次数 e Falha情况。
+- **真机ValidaçãoResultado**：单独记录Hardware、部署接口 e 实测证据。
 
-当前页面只有项目内置的三个配方。单脚平衡已通过真实短试跑，5 轮策略的动作成功率仍为 0/8；起伏地形尚未通过本项目的 GPU 验证。未来社区作者的配方也使用同样的证据标准。
+AtualPágina只有项目内置 de 三个配方。单脚平衡已por meio de真实短试跑，5 轮策略 de 动作Sucesso率仍为 0/8；起伏地形尚未por meio deeste projeto de  GPU Validação。未来ComunidadeAutor de 配方也使用同样 de 证据标准。

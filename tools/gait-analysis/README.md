@@ -1,7 +1,7 @@
-# 步态分析脚本（电脑上跑）
+# 步态分析脚本（电脑Superior跑）
 
-2026-10-13 夜～10-14 凌晨用来分析「走路发颤」和「蹭地」的脚本。全部**只读**：只读录像文件，不连鸭子。
-怎么用它们一步步得出结论，见 [2026-10-13 夜上机记录](../../docs/HD1910-20261013-夜-掉电-舵机D与蹭地.md)。
+2026-10-13 夜～10-14 凌晨用来分析「走路发颤」e「蹭地」 de 脚本。全部**只读**：只读录像Arquivo，不连鸭子。
+怎么用它们一步步得出结论，见 [2026-10-13 夜Superior机记录](../../docs/HD1910-20261013-夜-掉电-ServoD e 蹭地.md)。
 
 **输入**：主板上 [`duck_rec.py`](../radxa/onboard-analysis/duck_rec.py) 录的 50 Hz JSONL（关节角、目标、IMU 重力和陀螺、摇杆指令、策略状态）。拷到电脑上再跑。
 **环境**：Python 3.10+，`numpy`、`scipy`；带 `MJCF` 参数的脚本还要 `mujoco` 和官方 `microduck_rl` 仓库里的 `src/mjlab_microduck/robot/microduck/scene_backlash.xml`（正运动学用）。
@@ -18,7 +18,7 @@
 | `home_roll.py` | 站 HOME 时两只脚掌左右方向差多少、是哪个关节造成的、躯干摆正时哪条边低（相对仿真 HOME；读数和目标同一个零点，零位偏差看不出来） | `python home_roll.py MJCF 名称=录像.jsonl ...` |
 | `roll_pitch_coupling.py` | 横滚和俯仰是不是绑在一起：各频段都绑 = IMU 绕竖直轴装偏；只在步频附近绑 = 机身真的在点头 | `python roll_pitch_coupling.py 名称=录像.jsonl ...` |
 
-**注意**：
+**Atenção**：
 - 带 `@` 的写法按录像里的 `wall`（Unix 时间）截取一段，一份录像里换过参数时用；
 - `foot_clear.py` 等用 IMU 的重力方向把机身转正。IMU 零点偏 1°，两只脚在计算里就会差约 2 mm（脚间距约 98 mm）。先按 [IMU 校准](../radxa/onboard-analysis/README.md#imu-校准今晚手动做的流程) 把零点校好，再比较左右；站 HOME 那行「自检」应在 ±1 mm 以内；
 - 仿真录像也能直接喂进来（字段一样），用来做对照。

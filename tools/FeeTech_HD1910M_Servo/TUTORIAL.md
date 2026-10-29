@@ -1,51 +1,51 @@
-# HD1910M 舵机测试工具 —— Rust 实战教学手册
+# HD1910M ServoTesteFerramentas —— Rust 实战教学手册
 
-> 本手册配合源码阅读。目标：通过一个“真实能控制硬件”的项目，
-> 学会 Rust 的核心概念，同时掌握飞特（Feetech）FT-SCS 串口舵机协议。
+> 本手册配合源码阅读。目标：por meio de一个“真实能ControleHardware” de 项目，
+> 学会 Rust  de 核心概念，同时掌握飞特（Feetech）FT-SCS 串口ServoProtocolo。
 >
-> 硬件：HD1910M 舵机（6V 12kg·cm、360° 磁编码、TTL 半双工串口、带力控）
-> 软件：Rust 1.98+ / 树莓派 / CH340 USB 转串口
+> Hardware：HD1910M Servo（6V 12kg·cm、360° 磁编码、TTL 半双工串口、带力控）
+> Software：Rust 1.98+ / 树莓派 / CH340 USB 转串口
 
 ---
 
-## 目录
+## Diretório
 
-1. [硬件连接](#1-硬件连接)
-2. [五分钟上手](#2-五分钟上手)
-3. [FT-SCS 通信协议详解](#3-ft-scs-通信协议详解)
+1. [HardwareConexão](#1-HardwareConexão)
+2. [五分钟Superior手](#2-五分钟Superior手)
+3. [FT-SCS 通信Protocolo详解](#3-ft-scs-通信Protocolo详解)
 4. [内存表详解](#4-内存表详解)
-5. [项目结构与分层设计](#5-项目结构与分层设计)
+5. [项目结构 e 分层设计](#5-项目结构 e 分层设计)
 6. [Rust 知识点精讲](#6-rust-知识点精讲)
-7. [命令完整参考](#7-命令完整参考)
+7. [ComandoCompleto参考](#7-ComandoCompleto参考)
 8. [实验教程（动手做）](#8-实验教程动手做)
-9. [安全注意事项](#9-安全注意事项)
+9. [安全Atenção事项](#9-安全Atenção事项)
 10. [常见问题排查](#10-常见问题排查)
 
 ---
 
-## 1. 硬件连接
+## 1. HardwareConexão
 
-舵机引出线（AMP2.0-3P 连接器）：
+Servo引出线（AMP2.0-3P Conexão器）：
 
 | 引脚 | 线色 | 功能 | 接到哪里 |
 |------|------|------|----------|
-| 1 | 黑 | Signal（TTL 串口信号） | CH340 的 TX 与 RX（半双工，见下） |
-| 2 | 黑 | Vcc（4~8.4V，典型 6V/7.4V） | **外部电源正极**（不能靠 USB 供电！） |
-| 3 | 黑 | GND | 外部电源负极，**必须与 CH340 的 GND 共地** |
+| 1 | 黑 | Signal（TTL 串口信号） | CH340  de  TX  e  RX（半双工，见Inferior） |
+| 2 | 黑 | Vcc（4~8.4V，典型 6V/7.4V） | **外部Alimentação正极**（不能靠 USB 供电！） |
+| 3 | 黑 | GND | 外部Alimentação负极，**必须 e  CH340  de  GND 共地** |
 
 关键点：
 
-- **半双工**：舵机只有一根信号线，收发都走它。CH340 是全双工的（TX/RX 分开），
-  简易接法是把 CH340 的 TX 和 RX 短接后一起接到舵机信号线 —— 代价是自己发出去
+- **半双工**：Servo只有一根信号线，收发都走它。CH340 是全双工 de （TX/RX 分开），
+  简易接法是把 CH340  de  TX e RX 短接后一起接到Servo信号线 —— 代价是自己发出去
   的数据会被自己收回来（“回显”），这时运行程序要加 `--echo` 参数丢弃回显。
   更规范的做法是用飞特官方的半双工转接板（URT-1 等），则不需要 `--echo`。
-- **共地**：舵机 GND、电源 GND、CH340 GND 三者必须连在一起，否则通信不可靠。
-- **供电**：堵转电流可达 1.6A（6V 时），USB 口带不动，务必用独立电源。
+- **共地**：Servo GND、Alimentação GND、CH340 GND 三者必须连在一起，否则通信不可靠。
+- **供电**：堵转电流可达 1.6A（6V 时），USB 口带不动，务必用独立Alimentação。
 - 树莓派上 CH340 通常识别为 `/dev/ttyUSB0`（本工具默认值）。
 
 ---
 
-## 2. 五分钟上手
+## 2. 五分钟Superior手
 
 ```bash
 # 构建（第一次会下载依赖并编译，产物在 target/debug/）
@@ -74,7 +74,7 @@ cargo run -- scan
 ./target/debug/feetech-HD1910M-tester pid --help   # 查看某个子命令的帮助
 ```
 
-全局参数（放在子命令前后都可以）：
+全局Parâmetros（放在子Comando前后都pode）：
 
 ```
 -p / --port     串口路径，默认 /dev/ttyUSB0
@@ -87,14 +87,14 @@ cargo run -- scan
 
 ---
 
-## 3. FT-SCS 通信协议详解
+## 3. FT-SCS 通信Protocolo详解
 
 对应源码：`src/protocol.rs`
 
-舵机出厂串口配置：**1Mbps、8 数据位、无校验、1 停止位**（规格书 7-2 节）。
-协议是经典的“主从问答式”：主机（树莓派）发一条指令包，舵机回一条应答包。
+Servo出厂串口Configuração：**1Mbps、8 Dados位、无校验、1 停止位**（规格书 7-2 节）。
+Protocolo是经典 de “主从问答式”：主机（树莓派）发一条指令包，Servo回一条应答包。
 
-### 3.1 主机下发包
+### 3.1 主机Inferior发包
 
 ```
  字节:    0     1     2      3         4         5..N+4     N+5
@@ -103,13 +103,13 @@ cargo run -- scan
 
 - **帧头** `0xFF 0xFF`：固定两个字节，接收方靠它对齐一帧的起点；
 - **ID**：目标舵机站号 0~253；`0xFE` 是广播地址（所有舵机执行，但都不应答）；
-- **Length** = 参数个数 N + 2（指令 1 字节 + 校验 1 字节）；
+- **Length** = Parâmetros个数 N + 2（指令 1 字节 + 校验 1 字节）；
 - **Checksum** = `~(ID + Length + Instruction + 所有参数)` 取低 8 位。
-  接收方重新计算，不一致说明传输出错，整包丢弃。
+  接收方重新计算，不一致Instruções传输出错，整包丢弃。
 
-### 3.2 舵机应答包
+### 3.2 Servo应答包
 
-格式与下发包几乎一致，只是第 4 字节由“指令”换成了“**错误状态字**”：
+格式 e Inferior发包几乎一致，只是第 4 字节由“指令”换成了“**错误状态字**”：
 
 ```
  0xFF  0xFF   ID   Length   Error   参数...   Checksum
@@ -121,13 +121,13 @@ Error 为 0 表示正常；非 0 时按位解读（BIT0 电压 / BIT1 磁编码 
 
 | 指令 | 值 | 用途 |
 |------|-----|------|
-| PING | 0x01 | 握手，判断舵机是否在线 |
-| READ | 0x02 | 读内存表，参数 = [起始地址, 字节数] |
-| WRITE | 0x03 | 写内存表，参数 = [起始地址, 数据...]，立即生效 |
+| PING | 0x01 | 握手，判断Servo是否在线 |
+| READ | 0x02 | 读内存表，Parâmetros = [起始地址, 字节数] |
+| WRITE | 0x03 | 写内存表，Parâmetros = [起始地址, Dados...]，立即生效 |
 | REG WRITE | 0x04 | 异步写：先缓存，不执行 |
-| ACTION | 0x05 | 触发所有缓存的异步写（多舵机同步动作的关键） |
+| ACTION | 0x05 | 触发所有缓存 de 异步写（多Servo同步动作 de 关键） |
 | RESET | 0x06 | 恢复出厂设置 |
-| SYNC WRITE | 0x83 | 一条报文给多个舵机写同一地址 |
+| SYNC WRITE | 0x83 | 一条报文给多个Servo写同一地址 |
 
 ### 3.4 一个真实例子
 
@@ -144,7 +144,7 @@ Error 为 0 表示正常；非 0 时按位解读（BIT0 电压 / BIT1 磁编码 
 只保留低 8 位得 `0x2C`，按位取反 `!0x2C = 0xD3` —— 与报文最后一字节完全一致 ✔
 
 > **练习**：打开 `src/protocol.rs` 底部的单元测试（`cargo test`），
-> 里面有 PING 报文的完整断言，试着手算验证。
+> 里面有 PING 报文 de Completo断言，试着手算Validação。
 
 ---
 
@@ -152,47 +152,47 @@ Error 为 0 表示正常；非 0 时按位解读（BIT0 电压 / BIT1 磁编码 
 
 对应源码：`src/registers.rs`
 
-内存表是舵机内部的“参数登记表”，每个地址存一项参数。**两字节数据低字节在前（小端）**。
+内存表是Servo内部 de “Parâmetros登记表”，每个地址存一项Parâmetros。**两字节Dados低字节在前（小端）**。
 
 ### 4.1 五个分区
 
-| 地址 | 分区 | 权限 | 说明 |
+| 地址 | 分区 | 权限 | Instruções |
 |------|------|------|------|
-| 0~4 | 版本信息 | 只读 | 固件/舵机版本号、字节序标志 |
-| 5~39 | EPROM 配置 | 读写 | ID、波特率、PID、保护参数……**可掉电保存** |
-| 40~55 | SRAM 控制 | 读写 | 扭矩开关、目标位置/电流/速度……实时生效、掉电丢失 |
-| 56~75 | SRAM 反馈 | 只读 | 当前位置/速度/负载/电压/温度/电流 |
-| 77~86 | 出厂参数 | 只读 | 工厂标定值，不要动 |
+| 0~4 | Versão信息 | 只读 | Firmware/ServoVersão号、字节序标志 |
+| 5~39 | EPROM Configuração | 读写 | ID、波特率、PID、保护Parâmetros……**可掉电保存** |
+| 40~55 | SRAM Controle | 读写 | 扭矩开关、目标位置/电流/速度……实时生效、掉电丢失 |
+| 56~75 | SRAM 反馈 | 只读 | Atual位置/速度/负载/电压/温度/电流 |
+| 77~86 | 出厂Parâmetros | 只读 | 工厂标定值，不要动 |
 
 ### 4.2 锁标志（55 号地址）—— EPROM 掉电保存机制
 
-这是最容易踩坑的机制：
+这是最容易踩坑 de 机制：
 
-- 锁 = **1（出厂默认）**：写 EPROM 区域（5~39 号地址）只改内存中的值，**掉电后恢复原值**；
-- 锁 = **0**：写 EPROM 区域的值会真正烧入 EPROM，**掉电保存**。
+- 锁 = **1（出厂默认）**：写 EPROM 区域（5~39 号地址）只改内存 em  de 值，**掉电后恢复原值**；
+- 锁 = **0**：写 EPROM 区域 de 值会真正烧入 EPROM，**掉电保存**。
 
-所以“持久化一个配置”的标准流程是：**解锁 → 写入 → 重新上锁**。
+所以“持久化一个Configuração” de 标准流程是：**解锁 → Gravação → 重新Superior锁**。
 本工具的 `set <寄存器> <值> --save`、`set-id`、`set-baud` 都自动走这个流程
 （见 `src/servo.rs` 的 `save_reg` 函数）。
 
 > 为什么不能一直保持解锁？EPROM 有擦写寿命（约 10 万次），
-> 上锁能防止程序 bug 导致的疯狂擦写损坏舵机。
+> Superior锁能防止程序 bug 导致 de 疯狂擦写损坏Servo。
 
 ### 4.3 符号-幅值编码 —— 负数不是补码！
 
-飞特协议里带方向的量（位置、速度、电流、负载、位置偏移）**不是**用计算机常见的
+飞特Protocolo里带方向 de 量（位置、速度、电流、负载、位置偏移）**不是**用计算机常见 de 
 二进制补码表示负数，而是用“**符号位 + 绝对值**”：
 
 - 大部分量：**BIT15 是方向位**，低 15 位是绝对值。例如 `-100` 编码为 `0x8000 | 100 = 0x8064`；
-- 当前负载（60 号地址）特殊：**BIT10 是方向位**，低 10 位是绝对值。
+- Atual负载（60 号地址）特殊：**BIT10 是方向位**，低 10 位是绝对值。
 
 如果按补码去解码 `0x8064`，你会得到 -32668 而不是 -100 —— 彻底错误。
 本工具在 `src/registers.rs` 的 `decode_value`/`encode_value` 里统一处理，
 每个寄存器的 `sign_bit` 字段声明了它用哪一位做符号位。
 
-### 4.4 运行模式（33 号地址）
+### 4.4 Execução模式（33 号地址）
 
-| 值 | 模式 | 说明 |
+| 值 | 模式 | Instruções |
 |----|------|------|
 | 0 | 位置伺服模式 | 位置闭环 + 目标电流限力（可力控） |
 | 1 | 电机恒速模式 | 速度闭环，负载增加速度不降（轮式驱动用） |
@@ -200,23 +200,23 @@ Error 为 0 表示正常；非 0 时按位解读（BIT0 电压 / BIT1 磁编码 
 | 3 | PWM 开环调速 | 占空比调压，无闭环，转速随负载波动 |
 | 4 | 纯位置 PD 模式 | 比例-微分位置闭环（Sim2Real，**本机出厂默认**） |
 
-### 4.5 PID 参数的两套地址
+### 4.5 PID Parâmetros de 两套地址
 
-这是内存表设计中最精妙的一处：
+这是内存表设计 em 最精妙 de 一处：
 
-- **EPROM 配置区**（21/22/23 位置环 P/D/I，37/39 速度环 P/I，34/35 电流环 P/I）：
-  存“出厂默认值”，**上电时**被拷贝到运行区；
-- **SRAM 运行区**（50 Kp / 51 Kd / 52 Ki）：**运行时真正生效**的值，改了立即起作用，掉电丢失。
+- **EPROM Configuração区**（21/22/23 位置环 P/D/I，37/39 速度环 P/I，34/35 电流环 P/I）：
+  存“出厂默认值”，**Superior电时**被拷贝到Execução区；
+- **SRAM Execução区**（50 Kp / 51 Kd / 52 Ki）：**Execução时真正生效** de 值，改了立即起作用，掉电丢失。
 
 调参的正确姿势：先用 `pid position --kp 40 --ram` 在运行区反复试，
 满意后再 `pid position --kp 40 --save` 写进 EPROM 永久保存。
 
-注意运行区 50/51/52 的“含义随模式切换”：位置伺服模式下是位置环 PID；
-恒速模式（模式 1）下变成速度环 PI（Kd 无效）。
+AtençãoExecução区 50/51/52  de “含义随模式切换”：位置伺服模式Inferior是位置环 PID；
+恒速模式（模式 1）Inferior变成速度环 PI（Kd 无效）。
 
 ### 4.6 保护类寄存器
 
-- 13 号 最高温度上限（默认 80°C，超温关扭矩）；
+- 13 号 最高温度Superior限（默认 80°C，超温关扭矩）；
 - 14/15 号 最高/最低输入电压（0.1V 单位）；
 - 28 号 保护电流（6.5mA 单位）+ 38 号 过流保护时间（10ms 单位）：
   电流超限持续这么久就进入过流保护（重新发位置指令可清除）；
@@ -226,7 +226,7 @@ Error 为 0 表示正常；非 0 时按位解读（BIT0 电压 / BIT1 磁编码 
 
 ---
 
-## 5. 项目结构与分层设计
+## 5. 项目结构 e 分层设计
 
 ```
 FT-HD1901M_Servo/
@@ -240,9 +240,9 @@ FT-HD1901M_Servo/
 └── TUTORIAL.md         # 本手册
 ```
 
-**分层的意义**：底下两层（protocol、registers）是纯数据转换，不含任何串口操作，
+**分层 de 意义**：底Inferior两层（protocol、registers）是纯Dados转换，不含任何串口操作，
 所以可以脱离硬件做单元测试（`cargo test`）。如果所有代码揉在一起，
-测试协议逻辑就得真的接一台舵机 —— 这就是“关注点分离”。
+TesteProtocolo逻辑就得真 de 接一台Servo —— 这就是“关注点分离”。
 
 依赖关系单向流动：`main.rs → servo.rs → protocol.rs / registers.rs`，
 `error.rs` 被所有层使用。绝不出现下层引用上层。
@@ -251,7 +251,7 @@ FT-HD1901M_Servo/
 
 ## 6. Rust 知识点精讲
 
-按你在源码中遇到它们的顺序讲解。每个知识点都标注了对应的源码位置。
+按你在源码 em 遇到它们 de 顺序讲解。每个知识点都标注了对应 de 源码位置。
 
 ### 6.1 Cargo 与模块系统 —— `Cargo.toml`、`src/main.rs` 开头
 
@@ -279,7 +279,7 @@ let port = serialport::new(path, baud).open()?;
 `ServoError`，所以一个 `?` 就够。
 
 **为什么要自定义错误枚举？** 上层只面对一种错误类型，用 `match` 就能区分
-“超时”（可能只是没这个 ID，扫描时属正常）和“校验和错误”（线路有问题）。
+“超时”（可能只是没这个 ID，扫描时属正常）e“校验e错误”（线路有问题）。
 见 `servo.rs` 的 `ping()`。
 
 ### 6.3 枚举：Rust 的“王牌特性” —— `src/error.rs`、`src/protocol.rs`
@@ -294,7 +294,7 @@ pub enum ServoError {
 ```
 
 每个成员可以携带不同类型、不同数量的数据。配合 `match` 的**穷尽性检查**
-（漏处理一个成员就编译失败），重构时非常安全：
+（漏处理一个成员就编译Falha），重构时非常安全：
 
 ```rust
 match self.transact(id, Instruction::Ping, &[], true) {
@@ -307,7 +307,7 @@ match self.transact(id, Instruction::Ping, &[], true) {
 ### 6.4 Option：消灭空指针 —— `src/registers.rs` 的 `find_register`
 
 “查找可能失败”在 Rust 里返回 `Option<&Register>`（`Some(x)` 或 `None`），
-而不是 null。调用者必须显式处理 None 的情况，编译器强制保证：
+而不是 null。调用者必须显式处理 None  de 情况，编译器强制保证：
 
 ```rust
 let reg = find_register(name).ok_or_else(|| {
@@ -320,15 +320,15 @@ let reg = find_register(name).ok_or_else(|| {
 
 ### 6.5 所有权与借用：串口独占的语言级保证 —— `src/servo.rs`
 
-Rust 的核心规则：
+Rust  de 核心规则：
 
 1. 每个值有且只有一个**所有者**（owner），所有者离开作用域，值被自动释放；
 2. 可以有任意多个**不可变借用**（`&T`），或**一个**可变借用（`&mut T`），二选一；
-3. 借用不能超过所有者的生命周期。
+3. 借用不能超过所有者 de 生命周期。
 
 串口句柄被 `Servo` 结构体**拥有**；所有操作方法都要求 `&mut self`。
 编译器因此保证：同一时刻只有一处代码能操作串口。
-**“多线程同时写串口导致报文交错”这类在 C 里常见的 bug，在 Rust 里根本编译不过。**
+**“多线程同时写串口导致报文交错”这类在 C 里常见 de  bug，在 Rust 里根本编译不过。**
 
 ### 6.6 结构体与 impl —— `src/servo.rs`
 
@@ -352,10 +352,10 @@ impl Servo {                // 行为（方法）
 
 trait 类似 Java/Go 的接口。`serialport` 库在 Linux/Windows/macOS 上串口是不同类型，
 但都实现了 `SerialPort` trait。`Box<dyn SerialPort>` 表示
-“堆上一个实现了该 trait 的值”，我们只通过 trait 定义的方法使用它。
+“堆Superior一个实现了该 trait  de 值”，我们只por meio de trait 定义 de 方法使用它。
 这让代码跨平台且不依赖具体类型。
 
-### 6.8 迭代器与闭包 —— 散落各处
+### 6.8 迭代器 e 闭包 —— 散落各处
 
 ```rust
 // protocol.rs：折叠求和（闭包 |acc, &b| ... 捕获环境）
@@ -368,7 +368,7 @@ let list: Vec<String> = found.iter().map(|id| id.to_string()).collect();
 let ids: Result<Vec<u8>, _> = ids.split(',').map(|s| s.trim().parse::<u8>()).collect();
 ```
 
-迭代器是**零成本抽象**：编译后等价于手写 for 循环，没有运行时开销。
+迭代器是**零成本抽象**：编译后等价于手写 for 循环，没有Execução时开销。
 
 ### 6.9 derive 宏与 clap —— `src/main.rs`
 
@@ -416,10 +416,10 @@ mod tests {
 
 ---
 
-## 7. 命令完整参考
+## 7. ComandoCompleto参考
 
 > 所有写操作默认**只改内存（掉电恢复）**；EPROM 区域的寄存器加 `--save` 才掉电保存
-> （自动执行 解锁→写入→上锁）。这是保护 EPROM 寿命的设计。
+> （自动执行 解锁→Gravação→Superior锁）。这是保护 EPROM 寿命 de 设计。
 
 ### 查询类
 
@@ -457,7 +457,7 @@ feetech-HD1910M-tester lock off              # 解锁：EPROM 写入掉电保存
 feetech-HD1910M-tester factory-reset         # 恢复出厂设置（慎用！ID 回 1，波特率回 1M）
 ```
 
-### 运动控制
+### 运动Controle
 
 ```bash
 feetech-HD1910M-tester mode 0                        # 位置伺服模式（0~4，含义见 4.4 节）
@@ -487,7 +487,7 @@ feetech-HD1910M-tester pid velocity --kp 60 --ki 20           # 速度环（恒�
 feetech-HD1910M-tester pid current --kp 200 --ki 50           # 电流环（力控核心）
 ```
 
-### 保护与限位
+### 保护 e 限位
 
 ```bash
 feetech-HD1910M-tester protect --max-temp 80                          # 过温阈值 80°C
@@ -507,7 +507,7 @@ feetech-HD1910M-tester zero --to 1024                                 # 或标�
 
 > 按顺序做，每个实验都有“观察点”。全程建议加 `-v` 看报文。
 
-### 实验 1：通信握手与协议观察
+### 实验 1：通信握手 e Protocolo观察
 
 ```bash
 feetech-HD1910M-tester -v get pos
@@ -524,7 +524,7 @@ feetech-HD1910M-tester get mode        # 看当前运行模式（出厂 = 4 纯�
 feetech-HD1910M-tester get status      # 状态字的中文解析
 ```
 
-### 实验 3：扭矩开关与手动示教
+### 实验 3：扭矩开关 e 手动示教
 
 ```bash
 feetech-HD1910M-tester torque off      # 松轴，用手转动舵机
@@ -533,9 +533,9 @@ feetech-HD1910M-tester torque damp     # 阻尼模式：再用手转，有明显
 feetech-HD1910M-tester torque on       # 恢复扭矩
 ```
 
-### 实验 3.5：零位校准（把当前机械位置设为中位）
+### 实验 3.5：零位校准（把AtualMecânica位置设为 em 位）
 
-机械装配后零位往往对不上舵机中位 2048，这时用零位校准（等同飞特 FD 软件的“设置零位”）：
+Mecânica装配后零位往往对不SuperiorServo em 位 2048，这时用零位校准（等同飞特 FD Software de “设置零位”）：
 
 ```bash
 feetech-HD1910M-tester torque off      # 1. 松轴
@@ -544,11 +544,11 @@ feetech-HD1910M-tester zero            # 3. 立即校准：当前位置被标定
 feetech-HD1910M-tester torque on       # 4. 恢复扭矩（校准后当前读数已是 2048，不会跳变）
 ```
 
-观察点：命令会自动回读“当前位置 + 31 号位置偏移”确认校准生效。
-注意 HD-1910（HLS 系固件）**不支持**老式“扭矩开关写 128”的校准方式（写了也回成功但不生效），
+观察点：Comando会自动回读“Atual位置 + 31 号位置偏移”确认校准生效。
+Atenção HD-1910（HLS 系Firmware）**não suporta**老式“扭矩开关写 128” de 校准方式（写了也回Sucesso但不生效），
 必须用 `zero` 命令对应的 0x0B 位置校准指令。多圈模式下不要校准。
 
-### 实验 4：位置运动与反馈
+### 实验 4：位置运动 e 反馈
 
 ```bash
 feetech-HD1910M-tester monitor --count 100 &          # 后台监视（或另开终端）
@@ -557,9 +557,9 @@ feetech-HD1910M-tester goto 3072 --speed 1000
 ```
 
 观察点：`moving` 标志在运动时变 1；速度先升后降（梯形规划）；
-到位后位置稳定在目标 ±1（不灵敏区的作用）。
+到位后位置稳定在目标 ±1（不灵敏区 de 作用）。
 
-### 实验 5：PID 调参（运行区，安全可逆）
+### 实验 5：PID 调参（Execução区，安全可逆）
 
 ```bash
 # Kp 调小 → 动作变软、到位慢
@@ -592,7 +592,7 @@ feetech-HD1910M-tester protect --max-temp 40  # 温度阈值调低到 40°C
 feetech-HD1910M-tester protect --max-temp 80  # 玩完记得调回来
 ```
 
-### 实验 8：EPROM 锁机制验证
+### 实验 8：EPROM 锁机制Validação
 
 ```bash
 feetech-HD1910M-tester set resp-level 1       # 不加 --save：只改内存
@@ -604,7 +604,7 @@ feetech-HD1910M-tester set min-angle 10 --save
 feetech-HD1910M-tester set min-angle 0 --save # 实验完恢复
 ```
 
-### 实验 9：改 ID（多舵机组网的第一步）
+### 实验 9：改 ID（多Servo组网 de 第一步）
 
 ```bash
 feetech-HD1910M-tester set-id 2               # 当前舵机变成 ID 2
@@ -612,7 +612,7 @@ feetech-HD1910M-tester -i 2 dump              # 用新 ID 连接
 feetech-HD1910M-tester -i 2 set-id 1          # 改回来（单舵机练习时）
 ```
 
-### 实验 10：异步写与同步写（多舵机同步，需 2 台以上）
+### 实验 10：异步写 e 同步写（多Servo同步，需 2 台以Superior）
 
 ```bash
 feetech-HD1910M-tester -i 1 set goal-pos 1024 --defer   # 缓存，不动
@@ -622,17 +622,17 @@ feetech-HD1910M-tester action                            # 广播：两台同时
 
 ---
 
-## 9. 安全注意事项
+## 9. 安全Atenção事项
 
-1. **堵转会发热**：长时间堵转电流可达 1.6A，温度上升很快。做力控实验时
+1. **堵转会发热**：长时间堵转电流可达 1.6A，温度Superior升很快。做力控实验时
    用 `torque-limit` 或 `goal-current` 限制输出，monitor 关注温度。
 2. **EPROM 寿命**：约 10 万次擦写。调参阶段一律用 `--ram` 或不带 `--save`，
    确定后再保存。不要在循环里 `--save`！
-3. **相位寄存器（18 号）**：控制电机方向/编码器方向等底层配置，
-   乱改会导致舵机失控乱转。除非你完全理解文档 3.1 节，否则不要碰。
-4. **改 ID / 波特率前**：确认你能用新参数重新连上（记下来！）。
+3. **相位寄存器（18 号）**：Controle电机方向/编码器方向等底层Configuração，
+   乱改会导致Servo失控乱转。除非你完全理解文档 3.1 节，否则不要碰。
+4. **改 ID / 波特率前**：确认你能用新Parâmetros重新连Superior（记Inferior来！）。
    忘了的话用 `factory-reset` 或逐波特率扫描找回。
-5. **机械安装**：实验时舵机别带负载悬空甩动，避免打到手或甩飞零件。
+5. **MecânicaInstalação**：实验时Servo别带负载悬空甩动，避免打到手或甩飞零件。
 
 ---
 
@@ -644,15 +644,15 @@ feetech-HD1910M-tester action                            # 广播：两台同时
 | `串口错误: Permission denied` | 把用户加入 dialout 组：`sudo usermod -aG dialout $USER`，重新登录 |
 | `校验和错误` | 线路干扰/接触不良，检查杜邦线；或波特率不匹配 |
 | scan 扫不到但确定在线 | 用 `-t 30` 加长超时；逐波特率试：`-b 115200 scan` 等 |
-| 舵机报错“过流” | 重新发一次位置指令可清除；长期对策：调低 protect-current 或 torque-limit |
+| Servo报错“过流” | 重新发一次位置指令可清除；长期对策：调低 protect-current 或 torque-limit |
 | 改了配置重启后没了 | EPROM 写入要加 `--save`（锁机制，见 4.2 节） |
-| 位置读数是怪异的负大数 | 不会发生了——但要知道原因：符号-幅值编码被误当补码（见 4.3 节） |
+| 位置读数是怪异 de 负大数 | 不会发生了——但要知道原因：符号-幅值编码被误当补码（见 4.3 节） |
 
 ---
 
-## 附：推荐学习路径
+## 附：推荐学习Caminho
 
-1. 先跑通实验 1~4，对协议和内存表建立直觉；
+1. 先跑通实验 1~4，对Protocoloe内存表建立直觉；
 2. 通读 `src/protocol.rs`（最短，200 行），理解组包/解包；
 3. 读 `src/registers.rs`，理解“把文档表格变成代码”的思路；
 4. 读 `src/servo.rs`，重点理解 `&mut self`、Result、`?` 的串联；

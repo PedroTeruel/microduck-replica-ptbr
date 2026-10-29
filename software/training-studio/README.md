@@ -1,10 +1,10 @@
 # Microduck Training Studio
 
-小鸭子的可视化训练工作台。默认使用推荐参数，进阶设置可以展开；支持训练曲线、三维模型、检查点评估回放、暂停/继续、实验比较和成果导出。
+小鸭子 de 可视化训练工作台。默认使用推荐Parâmetros，进阶设置pode展开；suporta训练曲线、三维Modelo、Verificação点评估回放、暂停/继续、实验比较e成果导出。
 
-界面沿用机器人中控 Studio 的浅灰配色、鸭子标识、黑色按钮和手机底部导航。
+界面沿用机器人 em 控 Studio  de 浅灰配色、鸭子标识、黑色按钮e手机底部导航。
 
-动作实验室提供「训练配方」和「预训练模型」两个页签。现成模型目录固定收录官方 V8 集合的 10 个 XL330 模型及 kissqy V167 的 10 个 HD1910 模型，显示来源、硬件、版本、许可和上游获取地址。这里不自动安装、评估或续训外部 ONNX，也不将它们记录成本机实验；新建配方实验仍从零训练。部分社区权重只能从作者完整固件发布包取得。
+动作实验室提供「训练配方」e「预训练Modelo」两个页签。现成ModeloDiretório固定收录Oficial V8 集合 de  10 个 XL330 Modelo e  kissqy V167  de  10 个 HD1910 Modelo，显示Fonte、Hardware、Versão、Licençaeupstream获取地址。aqui不自动Instalação、评估或续训外部 ONNX，也不将它们记录成本机实验；新建配方实验仍从零训练。部分Comunidade权重只能从AutorCompletoFirmware发布包取得。
 
 训练详情含约每 3 秒刷新的执行端资源：GPU 型号/利用率/温度/显存、CPU 型号/利用率/温度、内存。Linux/WSL 使用 `/proc`、可用 CPU 温度传感器及有超时的 `nvidia-smi`，Windows 使用系统计数器及驱动工具；不需要安装监控依赖。缺失字段保留为空并解释原因。资源是当前执行端整体读数，WSL CPU/内存是子系统可见范围，不能当作单个实验独占或历史占用。
 
@@ -21,11 +21,11 @@ python run.py --demo --open
 
 Windows 也可以双击 `start-demo.cmd`；Linux/macOS 可执行 `sh start-demo.sh`。默认地址：<http://127.0.0.1:8093>。
 
-演示模式会启动独立的轻量子进程，生成**合成指标、文本检查点和明确标注的 SVG 示意回放**，用于体验操作流程。它不执行 GPU 策略训练。演示导出包只有记录，不包含可部署的 ONNX/PT 权重。
+演示模式会Inicialização独立 de 轻量子进程，生成**合成指标、文本Verificação点e明确标注 de  SVG 示意回放**，usado para体验操作流程。它不执行 GPU 策略训练。演示导出包只有记录，不包含可部署 de  ONNX/PT 权重。
 
 ## 实际训练
 
-在已准备好的 Linux NVIDIA GPU 电脑或 Windows WSL2 中，使用本仓库的训练工程及其锁定依赖。真实模式检查 MuJoCo 图形后端、mjlab 1.3.0、CUDA 和 HD1910 任务注册；不自动安装包、不申请云电脑，也不处理充值。本机操作见 [本机短试跑](docs/local-smoke.md)。
+在已准备好 de  Linux NVIDIA GPU 电脑或 Windows WSL2  em ，使用este repositório de Projeto de treinamento e 其锁定依赖。真实模式Verificação MuJoCo 图形后端、mjlab 1.3.0、CUDA e HD1910 任务注册；不自动Instalação包、不申Por favor云电脑，也不处理充值。本机操作见 [本机短试跑](docs/local-smoke.md)。
 
 ```sh
 cd software/training
@@ -34,7 +34,7 @@ cd ../training-studio
 ../training/.venv/bin/python run.py
 ```
 
-在本机另开终端转发端口（用户名、地址按你的云电脑填写）：
+在本机另开终端转发端口（Usuário名、地址按你 de 云电脑填写）：
 
 ```sh
 ssh -N -L 8093:127.0.0.1:8093 用户名@云电脑地址
@@ -44,32 +44,32 @@ ssh -N -L 8093:127.0.0.1:8093 用户名@云电脑地址
 
 服务默认只监听本机。确需通过其他网络入口使用时，可设置 `STUDIO_ACCESS_TOKEN` 后用 `--host 0.0.0.0` 启动；页面会要求输入令牌。从本机访问云电脑推荐使用上面的 SSH 转发；局域网直连需使用服务所在机器的监听地址。令牌仅保存在当前浏览器会话，API 和产物下载都需要 `X-Studio-Token`；Host/Origin 校验保持开启。
 
-## 一次完整练习
+## 一次Completo练习
 
 导航中的「动作实验室」是独立的配方库页面（`#/actions`），首页保留入口。可以搜索、按类别筛选、查看模型预览或文字说明，再使用配方开始训练。现有平地行走、起伏地形和单脚平衡分别标注验证状态；社区贡献的收录方式见 [动作配方贡献说明](docs/recipe-contribution.md)。
 
-其中实验性的 **HD1910 单脚平衡**允许选择支撑脚、抬脚高度（0.5–2 cm）和保持时间（1–5 秒），无需改代码。完整周期包含准备、抬脚、保持与落脚恢复。三维目标示意不代表物理平衡或训练结果。跳跃、精准转圈和视频模仿尚未接入。
+其 em 实验性 de  **HD1910 单脚平衡**允许选择支撑脚、抬脚高度（0.5–2 cm）e保持时间（1–5 秒），无需改代码。Completo周期包含准备、抬脚、保持 e 落脚恢复。三维目标示意不代表物理平衡或训练Resultado。跳跃、精准转圈e视频模仿尚未接入。
 
-零基础操作、结果判断和新增动作的开发步骤见 [动作实验室上手指南](web/custom-actions.md)，也可从侧栏或新建训练窗口打开。
+零基础操作、Resultado判断e新增动作 de 开发步骤见 [动作实验室Superior手指南](web/custom-actions.md)，也可从侧栏或新建训练窗口打开。
 
-1. 在「计算环境」确认检测通过；安装依赖后可重新检测。
-2. 新建实验，先选 **HD1910 平地行走**。首次执行固定 **64 个环境、5 轮**的短试跑，检查加载、仿真步进和保存链路。短试跑不是训练成果。
-3. 试跑成功后进入正式训练。可展开并行环境数、训练轮数、保存间隔、种子、学习率；收起后仍显示改动摘要。修改动作目标、学习率、随机种子或导入档案后，需要重新完成匹配设置的短试跑；环境数和轮数可为正式训练放大。
-4. 查看原始训练指标、轮数和日志。百分比表示计划轮数进度，不表示动作掌握程度。三维模型可以旋转；**CAD 模型和演示动作不能用来判断策略表现**。
-5. 暂停、继续，或停止任务。选择检查点后进行评估：行走任务生成 250 步回放；平衡任务进行 8 次有种子记录的完整周期尝试，提前失败也会保留视频和失败原因。页面显示成功次数与保持、落脚情况。回放对应所选检查点，不是连续实时训练画面。
-6. 比较同任务、同模式的正式实验；确认需要的检查点后导出模型包，再走既有的仿真和真机验证流程。
+1. 在「计算环境」确认检测por meio de；Instalação依赖后可重新检测。
+2. 新建实验，先选 **HD1910 平地Caminhada**。首次执行固定 **64 个环境、5 轮** de 短试跑，Verificação加载、仿真步进e保存链路。短试跑不是训练成果。
+3. 试跑Sucesso后进入正式训练。可展开并行环境数、训练轮数、保存间隔、种子、学习率；收起后仍显示改动摘要。修改动作目标、学习率、随机种子或导入档案后，é necessário重新Concluído匹配设置 de 短试跑；环境数e轮数可为正式训练放大。
+4. 查看original训练指标、轮数e日志。百分比表示计划轮数进度，不表示动作掌握程度。三维Modelopode旋转；**CAD Modeloe演示动作不能用来判断策略表现**。
+5. 暂停、继续，或停止任务。选择Verificação点后进行评估：Caminhada任务生成 250 步回放；平衡任务进行 8 次有种子记录 de Completo周期尝试，提前Falha也会Preservado视频eFalha原因。Página显示Sucesso次数 e 保持、落脚情况。回放对应所选Verificação点，不是连续实时训练画面。
+6. 比较同任务、同模式 de 正式实验；确认é necessário de Verificação点后导出Modelo包，再走既有 de 仿真e真机Validação流程。
 
 | 操作 | 行为 |
 |---|---|
-| 暂停 | Linux 使用进程组 SIGSTOP，保留策略、优化器和显存；演示子进程确认暂停后才更新界面 |
-| 继续 | 暂停状态使用原进程继续；停止/完成状态从选定检查点新建实验并记录来源 |
-| 停止 | 结束拥有的训练进程，保留已完成写入的检查点；不保证保存尚未写入的迭代 |
-| 评估 | 训练停止后，对选定检查点运行有步数上限的推理并生成视频 |
+| 暂停 | Linux 使用进程组 SIGSTOP，Preservado策略、优化器e显存；演示子进程确认暂停后才Atualização界面 |
+| 继续 | 暂停状态使用原进程继续；停止/Concluído状态从选定Verificação点新建实验并记录Fonte |
+| 停止 | 结束拥有 de 训练进程，Preservado已ConcluídoGravação de Verificação点；不保证保存尚未Gravação de 迭代 |
+| 评估 | 训练停止后，对选定Verificação点Execução有步数Superior限 de 推理并生成视频 |
 | 导出 | 调用引擎 `scripts/export.py`，保留其内置观测归一化，并打包 ONNX、检查点、配置及来源记录 |
 
-暂停仍占用显存，**不会自动关停云电脑或停止平台计费**。同一服务一次只执行一个训练、评估或导出操作。重新启动服务会将未结束的旧任务标记为中断，不凭记录中的 PID 操作其他进程。
+暂停仍占用显存，**不会自动关停云电脑或停止平台计费**。同一Serviço一次只执行一个训练、评估或导出操作。重新InicializaçãoServiço会将未结束 de 旧任务标记为 em 断，不凭记录 em  de  PID 操作其他进程。
 
-## 档案与结果
+## 档案 e Resultado
 
 支持导入 `microduck-studio-duck-profile/v1` JSON（最多 64 KiB）。档案随实验保存用于核对，**不会自动覆盖训练中的质量、惯量、关节零位或舵机配置**。当前 HD1910 配方是仿真基线，仍需独立验证自己的实物。
 
@@ -77,11 +77,11 @@ ssh -N -L 8093:127.0.0.1:8093 用户名@云电脑地址
 
 平衡任务使用独立的 `microduck_hd1910_balance` 实验目录，并把 `skill.json` 用于训练、续训、评估和导出。导出包包含命令约定。虽然策略仍是 61 维观测、14 维动作、50 Hz，它的命令槽位含义已经改变，现有行走部署端需要适配阶段调度；单脚平衡尚未完成真机验证。
 
-单脚平衡已完成左右两组真实 GPU 短试跑、8 次评估和 ONNX 一致性检查。当前 5 轮策略成功率为 0/8，只证明链路可用。详见 [动作实验室验收](docs/action-lab-verification.md)。社区动作配方库的定位和贡献流程见 [设计说明](docs/action-lab-design.md#后续定位社区动作配方库)，分享与自动安装尚未实现。
+单脚平衡已ConcluídoEsquerdoDireito两组真实 GPU 短试跑、8 次评估e ONNX 一致性Verificação。Atual 5 轮策略Sucesso率为 0/8，只证明链路可用。详见 [动作实验室验收](docs/action-lab-verification.md)。Comunidade动作配方库 de 定位eContribuição流程见 [设计Instruções](docs/action-lab-design.md#后续定位Comunidade动作配方库)，分享 e 自动Instalação尚未实现。
 
-HD1910 平地任务已在 WSL2 / RTX 5060 Ti 上完成真实 64 环境、5 轮训练、PT 保存、250 步视频评估及 ONNX 导出，并独立核对 PT/ONNX 推理一致性。详见 [验收记录](docs/verification.md)。起伏地形、长训练、目标云电脑和真机部署仍需分别验收；短试跑不证明动作已经训练成熟。
+HD1910 平地任务已在 WSL2 / RTX 5060 Ti SuperiorConcluído真实 64 环境、5 轮训练、PT 保存、250 步视频评估 e  ONNX 导出，并独立核对 PT/ONNX 推理一致性。详见 [验收记录](docs/verification.md)。起伏地形、长训练、目标云电脑e真机部署仍需分别验收；短试跑不证明动作已经训练成熟。
 
-## 开发验证
+## 开发Validação
 
 ```console
 python -m unittest discover -s tests -v
@@ -98,8 +98,8 @@ node dev/browser-check.mjs
 
 动作指南以 `web/custom-actions.md` 为源文件。修改后，在安装了 Python-Markdown 的文档编辑环境运行 `python dev/build-guide.py`，同步提交生成的 `web/guide.html`。网页直接使用已生成文件；运行训练台无需安装 Markdown 或执行构建。
 
-## 署名
+## Atribuição
 
-本目录原创代码采用仓库 Apache-2.0；文档按仓库对应文档许可保留。共享模型、网页库和训练引擎遵循各自许可证，见 [NOTICE.md](NOTICE.md)。
+本Diretório原创代码采用仓库 Apache-2.0；文档按仓库对应文档LicençaPreservado。共享Modelo、Web库e训练引擎遵循各自Licença，见 [NOTICE.md](NOTICE.md)。
 
-同类项目对比与下一步优先级见 [kissqy 训练中控对比](docs/reference-comparison-2026-10-23.md)。
+同类项目对比 e Inferior一步优先级见 [kissqy 训练 em 控对比](docs/reference-comparison-2026-10-23.md)。

@@ -10,9 +10,9 @@ Projeto independente de réplica completa do robô [Microduck da Pollen Robotics
 
 **A versão com Feetech HD-1910 foi validada no robô físico: ficar em pé, caminhar, dar uma cambalhota para a frente e se levantar novamente.** A configuração principal usa **15 servos Feetech HD-1910**. O projeto fornece uma **imagem de sistema pronta para gravação** e o **painel web Microduck Studio** para configurar a rede, calibrar e controlar o robô pelo navegador do celular ou computador.
 
-**O procedimento de primeiro uso também foi executado no robô físico:** gravar a imagem → configurar a rede pelo ponto de acesso → calibrar servos e IMU → parear o controle e testar a parada de emergência → ficar em pé e caminhar. [Registros de validação no robô físico](docs/历史更新.md#最近更新)
+**O procedimento de primeiro uso também foi executado no robô físico:** gravar a imagem → configurar a rede pelo ponto de acesso → calibrar servos e IMU → parear o controle e testar a parada de emergência → ficar em pé e caminhar. [Registros de validação no robô físico](docs/Histórico de atualizações.md#最近Atualização)
 
-<a id="鸭子现在的样子"></a>
+<a id="鸭子现在 de 样子"></a>
 ## O robô em ação
 
 **2026-10-24 · Movimentos validados no robô físico:** os dois vídeos abaixo mostram uma cambalhota para a frente seguida da recuperação da postura em pé e uma caminhada sobre a mesa.
@@ -38,17 +38,17 @@ Os GIFs são prévias sem som; os arquivos MP4 incluem o vídeo completo e o áu
 
 ---
 
-<a id="适用版本"></a>
+<a id="Versões compatíveis"></a>
 ### Versões compatíveis
 
 - **Feetech HD-1910 + Radxa Zero 3W:** use a imagem de sistema e o painel web Studio deste projeto.
 - **Dynamixel XL330:** há arquivos CAD e materiais de montagem específicos; é necessário usar software de execução compatível.
 
-[Escolher peças para impressão e lista de compras](#打印件与采购清单) · [Comparação detalhada dos servos](docs/执行器选型.md)
+[Escolher peças para impressão e lista de compras](#Peças impressas e Lista de compras) · [Comparação detalhada dos servos](docs/执行器选型.md)
 
 ---
 
-<a id="交流群"></a>
+<a id="Comunidade"></a>
 ## Comunidade
 
 O grupo no WeChat reúne pessoas trabalhando na réplica para discutir o progresso, problemas encontrados e compra de componentes.
@@ -64,7 +64,7 @@ O código abaixo é do **Grupo de Réplica do Microduck 13** (o WeChat desativa 
 
 ---
 
-<a id="-装配视频教程"></a>
+<a id="-Vídeos de montagem"></a>
 ## 📺 Vídeos de montagem
 
 **[Série no Bilibili “MicroDuck 从零安装教程” (montagem do zero)](https://space.bilibili.com/312747174/lists/9279084?type=season)** — gravada por **机械行者Robo**, autor dos desenhos CAD e da lista de materiais de montagem. Começa pela lista de peças e monta um subconjunto por episódio. São 8 episódios; até 2026-10-12, 6 haviam sido publicados.
@@ -90,7 +90,7 @@ Ao lado da lista de episódios estão as contas do autor, na ordem **Bilibili, X
 </tbody>
 </table>
 
-<a id="打印件与采购清单"></a>
+<a id="Peças impressas e Lista de compras"></a>
 ### Peças para impressão e lista de compras
 
 Escolha os arquivos de impressão conforme a versão dos servos e depois providencie os componentes correspondentes.
@@ -99,7 +99,7 @@ Escolha os arquivos de impressão conforme a versão dos servos e depois provide
 |---|---|---|
 | **Peças para impressão e CAD** | **Feetech HD-1910** | [Seção Feetech](https://github.com/fanhao375/microduck-replica-cad#飞特-hd-1910-打印资料): projeto de impressão, arquivos CAD e notas de atualização |
 | **Peças para impressão e CAD** | **Dynamixel XL330** | [Seção XL330](https://github.com/fanhao375/microduck-replica-cad#dynamixel-xl330-打印资料): arquivos CAD e instruções de impressão específicos |
-| **Lista de compras para montagem** | **Feetech HD-1910** | **[Visualizar online](BOM/README.md)** · **[Baixar Excel](BOM/装配BOM-机械行者Robo-2026-10-23-带采购链接.xlsx)**: organizada por 机械行者Robo, versão de 2026-10-23, com quantidades, materiais e links de compra |
+| **Lista de compras para montagem** | **Feetech HD-1910** | **[Visualizar online](BOM/README.md)** · **[Baixar Excel](BOM/装配BOM-Mecânica行者Robo-2026-10-23-带Compra链接.xlsx)**: organizada por Mecânica行者Robo, versão de 2026-10-23, com quantidades, materiais e links de compra |
 
 As peças de encaixe das duas versões de servos não são intercambiáveis. As versões dos arquivos e as datas de atualização são mantidas nas respectivas seções do repositório CAD. Esta lista de compras segue a configuração Feetech; os servos XL330 e a eletrônica correspondente precisam ser conferidos separadamente.
 
@@ -108,11 +108,11 @@ As peças de encaixe das duas versões de servos não são intercambiáveis. As 
 <a id="现在做到哪了"></a>
 ## Estado atual do projeto
 
-Até **2026-10-25**, **a réplica completa com Feetech, o procedimento de primeiro uso e os movimentos haviam sido validados no robô físico**. As seções abaixo apresentam os resultados e as extensões do projeto. Consulte o [histórico de atualizações](docs/历史更新.md) para conhecer o escopo dos testes e o desenvolvimento.
+Até **2026-10-25**, **a réplica completa com Feetech, o procedimento de primeiro uso e os movimentos haviam sido validados no robô físico**. As seções abaixo apresentam os resultados e as extensões do projeto. Consulte o [histórico de atualizações](docs/Histórico de atualizações.md) para conhecer o escopo dos testes e o desenvolvimento.
 
 ---
 
-<a id="-软件--复刻镜像与-microduck-studio"></a>
+<a id="-Software--复刻Imagem e -microduck-studio"></a>
 ## 💻 Software · Imagem de sistema e Microduck Studio
 
 **2026-10-28 · Atualização de software (sem regravar o cartão SD):** quem já tem a opção de atualização nas configurações deve instalar primeiro o pacote web / voz `2026.10.28`. Após reconectar, sustente o robô e desative o torque dos servos, confirme explicitamente a atualização do programa principal e selecione `Qinmo · Feetech` na página da IMU para verificar a orientação. A atualização automática do programa principal só aceita a base conhecida 20261027; as placas existentes continuam usando detecção automática por padrão. A validação física do Qinmo e da atualização completa desta versão ainda está pendente. Os movimentos sincronizados com música e a conversa livre por voz com IA continuam sem solução. [Pacote e arquivos de instalação inicial](https://github.com/fanhao375/microduck-replica/releases/tag/microduck-software-v2026.10.28) · [Atualização para usuários existentes](docs/软件更新与Qinmo使用说明-20261028.md) · [Uso do Qinmo pela web](docs/Qinmo-IMU-网页使用.md)
@@ -129,23 +129,23 @@ A imagem é gratuita e destinada apenas a réplicas pessoais sem fins comerciais
 
 ---
 
-<a id="-机械--一站式打印与装配"></a>
+<a id="-Mecânica--一站式打印 e 装配"></a>
 ## 🔧 Mecânica · Impressão e montagem
 
-**机械行者Robo mantém materiais separados para Feetech HD-1910 e Dynamixel XL330.** Os modelos, projetos de impressão e notas de atualização estão concentrados no repositório CAD. Escolha a versão correspondente aos seus servos.
+**Mecânica行者Robo mantém materiais separados para Feetech HD-1910 e Dynamixel XL330.** Os modelos, projetos de impressão e notas de atualização estão concentrados no repositório CAD. Escolha a versão correspondente aos seus servos.
 
 | O que você precisa | Acesso |
 |---|---|
 | **Impressão em um só projeto** | **[Bambu MakerWorld (Feetech)](https://makerworld.com.cn/zh/models/2963569-microduck#profileId-3478428)** · [Projeto 3MF para Bambu Studio](https://github.com/fanhao375/microduck-replica-cad#打印) |
 | **Modelos e arquivos de impressão** | **[Seção Feetech HD-1910](https://github.com/fanhao375/microduck-replica-cad#飞特-hd-1910-打印资料)** · **[Seção XL330](https://github.com/fanhao375/microduck-replica-cad#dynamixel-xl330-打印资料)** |
 | **Tutoriais de montagem** | **[Manual de montagem em PDF](https://github.com/fanhao375/microduck-replica-cad/blob/master/安装说明书/microduck装配安装说明书.pdf)** · **[Vídeos por episódio](#-装配视频教程)**; use as peças estruturais correspondentes à sua versão |
-| **Lista de compras** | **[Visualizar BOM online](BOM/README.md)** · **[Baixar Excel](BOM/装配BOM-机械行者Robo-2026-10-23-带采购链接.xlsx)**: versão Feetech de 2026-10-23; os servos XL330 e sua eletrônica precisam ser conferidos separadamente |
+| **Lista de compras** | **[Visualizar BOM online](BOM/README.md)** · **[Baixar Excel](BOM/装配BOM-Mecânica行者Robo-2026-10-23-带Compra链接.xlsx)**: versão Feetech de 2026-10-23; os servos XL330 e sua eletrônica precisam ser conferidos separadamente |
 
 [Repositório CAD e versões publicadas](https://github.com/fanhao375/microduck-replica-cad/releases) · [Diário de construção](构建日志.md)
 
 ---
 
-<a id="-电气--五块电路板"></a>
+<a id="-Eletrônica--五块Placa de circuito"></a>
 ## 🔌 Eletrônica · Cinco placas de circuito
 
 Este repositório fornece os projetos da placa IMU de barramento, do hub de servos e da placa de conexão da bateria. A placa principal é a **Radxa ZERO 3W**, acompanhada da **RPI Robot HAT**, disponibilizada como hardware aberto pela Pollen Robotics.
@@ -180,14 +180,14 @@ As três primeiras imagens são prévias 3D das placas desenvolvidas pelo projet
 
 ---
 
-<a id="-算法--飞特官方-bam"></a>
+<a id="-Algoritmos--飞特Oficial-bam"></a>
 ## 🧠 Modelagem de atuadores · BAM oficial da Feetech
 
 O [**BAM oficial da Feetech para HD-1910**](https://gitee.com/ftservo/ftservo-bam) fornece modelos dinâmicos dos servos e parâmetros identificados como referência para treinamento em simulação. Este repositório inclui o [projeto de treinamento](software/training/README.md) e a [bancada web de treinamento](software/training-studio/README.md), ambos de código aberto. Consulte as [notas dos parâmetros](docs/HD-1910-M6参数来源.md) para conhecer a configuração dos modelos e as fontes utilizadas.
 
 ---
 
-<a id="-开源训练平台--microduck-training-studio"></a>
+<a id="-Código abertoPlataforma de treinamento--microduck-training-studio"></a>
 ## 🖥️ Plataforma aberta de treinamento · Microduck Training Studio
 
 O projeto também desenvolveu o **Microduck Training Studio**: pelo navegador do computador, você pode criar experimentos de treinamento, visualizar curvas, pausar e retomar execuções, avaliar checkpoints e exportar modelos ONNX. A plataforma de treinamento e o Studio executado no robô são serviços independentes.
@@ -200,7 +200,7 @@ O fluxo com uma execução curta em GPU real, reprodução da avaliação e expo
 
 ---
 
-<a id="-工具--烧卡调试与资料"></a>
+<a id="-Ferramentas--烧卡Depuração e 资料"></a>
 ## 🧰 Ferramentas · Gravação, depuração e referências
 
 Os programas e utilitários de desenvolvimento estão organizados no [índice de ferramentas](tools/README.md). Escolha conforme a tarefa.
@@ -214,7 +214,7 @@ Os programas e utilitários de desenvolvimento estão organizados no [índice de
 
 ---
 
-<a id="-鸭友贡献"></a>
+<a id="-鸭友Contribuição"></a>
 ## 🦆 Contribuições da comunidade
 
 Este repositório é um trabalho coletivo. Aqui estão os créditos pelo código incorporado e pelas conclusões verificadas em testes físicos.
@@ -223,11 +223,11 @@ Este repositório é um trabalho coletivo. Aqui estão os créditos pelo código
 |---|---|
 | [@yoyojacky](https://github.com/yoyojacky) | **Ferramenta em Rust para testar servos Feetech** ([PR #27](https://github.com/fanhao375/microduck-replica/pull/27), incorporado). Implementação própria e mínima do protocolo STS/SCS: montagem de quadros, soma de verificação, ping, leitura e escrita de registradores e interpretação do estado. A linha de comando permite varrer o barramento com barra de progresso, ler o estado, mover para uma posição e executar testes individuais ou em lote. Informa desvio de posição, corrente e carga de pico, tensão e temperatura, com resultado PASS/FAIL. Um comando gera a tabela de aceitação em bancada → [`tools/sts3215Servo_testtool/`](tools/sts3215Servo_testtool/) |
 | [@Abo1ish](https://github.com/Abo1ish) | **Firmware da placa IMU e visualização de orientação na bancada** ([PR #32](https://github.com/fanhao375/microduck-replica/pull/32), incorporado). Base de firmware STM32G031 para a placa imu_to_dxl cujo firmware oficial não foi disponibilizado. Validado na placa física, com testes no computador e um [`VALIDATION.md`](hardware/imu_to_dxl/firmware/VALIDATION.md) que explicita seus limites → [`hardware/imu_to_dxl/firmware/`](hardware/imu_to_dxl/firmware/). Também integrou a leitura da orientação da IMU via J-Link à bancada web, fazendo o tronco do modelo 3D acompanhar a placa real (`--imu-jlink`; sem placa, use `--imu-demo`) → [`tools/servo-web/`](tools/servo-web/) |
-| Integrante do grupo no WeChat | **Procedimento de inicialização da Radxa Zero 3W V1.12J.** Nesse lote, com Wi-Fi AIC8800DS2, substituir apenas o carregador de inicialização da Radxa não bastava. Os testes mostraram que também era necessária a árvore de dispositivos da Radxa B1: **bootloader B1 + DTB B1 + kernel Armbian 6.1.115 + sistema Trixie**. A combinação funcionou e foi registrada no [diário de problemas](踩坑记录.md#软件) e no [guia da imagem](tools/radxa/镜像使用说明.md#6-如果你的板子不是这一批) |
+| Integrante do grupo no WeChat | **Procedimento de inicialização da Radxa Zero 3W V1.12J.** Nesse lote, com Wi-Fi AIC8800DS2, substituir apenas o carregador de inicialização da Radxa não bastava. Os testes mostraram que também era necessária a árvore de dispositivos da Radxa B1: **bootloader B1 + DTB B1 + kernel Armbian 6.1.115 + sistema Trixie**. A combinação funcionou e foi registrada no [diário de problemas](Problemas encontrados.md#Software) e no [guia da imagem](tools/radxa/ImagemInstruções de uso.md#6-Se你 de 板子不是这一批) |
 
 ---
 
-<a id="鸭友的项目"></a>
+<a id="鸭友 de 项目"></a>
 ## Projetos da comunidade
 
 Alguns participantes desenvolvem projetos relacionados ao Microduck em seus próprios repositórios. Estes são alguns destaques:
@@ -257,19 +257,19 @@ Os caminhos são relativos à raiz deste repositório. O CAD mecânico é mantid
 | Plataforma e projeto de treinamento | [software/training-studio/](software/training-studio/README.md)<br>[software/training/](software/training/README.md) | Bancada web, ambiente de simulação e exportação de modelos |
 | Eletrônica e firmware | [hardware/](hardware/README.md) | [Projetos de placas](hardware/README.md) · [Firmware da IMU](hardware/imu_to_dxl/README.md) |
 | Depuração e análise | [tools/](tools/README.md) | [Índice de ferramentas](tools/README.md) · Gravação de cartões, depuração serial, referências Feetech e análise |
-| Documentação e registros | [docs/](docs/README.md) | [Índice completo em pt-BR](docs/README.pt-BR.md) · [Problemas encontrados](踩坑记录.md) · [Depuração](调试记录.md) · [Construção](构建日志.md) |
-| Histórico e comunidade | [docs/](docs/README.md#深入研究与归档) | [Acompanhamento do projeto oficial](docs/官方更新跟踪.md) · [Histórico de atualizações](docs/历史更新.md) · [Contribuições da comunidade](docs/社区贡献.md) |
+| Documentação e registros | [docs/](docs/README.md) | [Índice completo em pt-BR](docs/README.pt-BR.md) · [Problemas encontrados](Problemas encontrados.md) · [Depuração](Registro de depuração.md) · [Construção](Diário de construção.md) |
+| Histórico e comunidade | [docs/](docs/README.md#深入研究 e 归档) | [Acompanhamento do projeto oficial](docs/Acompanhamento do projeto oficial.md) · [Histórico de atualizações](docs/Histórico de atualizações.md) · [Contribuições da comunidade](docs/Contribuições da comunidade.md) |
 
 ---
 
-<a id="许可与来源"></a>
+<a id="Licença e Fonte"></a>
 ## Licenças e fontes
 
-Código, recursos de simulação e modelos incluídos na imagem têm licenças distintas. Consulte [licenças e atribuições](NOTICE.md) e os [termos dos modelos](software/image/overlay/usr/share/doc/microduck/模型说明.txt). **A imagem da réplica destina-se apenas a construções pessoais sem fins comerciais e não pode ser distribuída com produtos pagos.**
+Código, recursos de simulação e modelos incluídos na imagem têm licenças distintas. Consulte [licenças e atribuições](NOTICE.md) e os [termos dos modelos](software/image/overlay/usr/share/doc/microduck/ModeloInstruções.txt). **A imagem da réplica destina-se apenas a construções pessoais sem fins comerciais e não pode ser distribuída com produtos pagos.**
 
 Este projeto independente não tem vínculo com a Pollen Robotics nem é endossado por ela.
 
-<a id="-支持作者"></a>
+<a id="-suportaAutor"></a>
 ### ❤️ Apoie o autor original
 
 Este projeto cresceu com trabalho de montagem, depuração, desenvolvimento de software e documentação. Se os materiais e ferramentas ajudaram você, deixe uma estrela ⭐, relate problemas ou compartilhe sua experiência de construção. Também é possível oferecer uma contribuição voluntária ao autor original para apoiar a manutenção. Obrigado a todos que contribuem com o projeto.

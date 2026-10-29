@@ -139,4 +139,4 @@ Local evidence is under `artifacts/software-release-20261028/`, including
 Physical old-card upgrade, power-loss restoration, Qinmo board and walking
 acceptance remain pending. Music following and free-form spoken AI conversation
 are not delivered by this release. User steps are in
-[the existing-card guide](../../软件更新与Qinmo使用说明-20261028.md).
+[the existing-card guide](../../SoftwareAtualização e QinmoInstruções de uso-20261028.md).

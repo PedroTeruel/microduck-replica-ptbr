@@ -1,23 +1,23 @@
-# 更新日志（CHANGELOG）
+# Atualização日志（CHANGELOG）
 
-本文件记录 HD1910M 舵机测试工具的所有重要变更。
+本Arquivo记录 HD1910M ServoTesteFerramentas de 所有重要变更。
 
 ## [0.2.0] - 2026-10-03
 
-作者：漂移菌
+Autor：漂移菌
 
-本次更新的主线：**补齐与飞特 FD 调试软件对标的"零位校准"和"活动区间限制"能力**，
-并在 microduck 实机（15 颗 HD-1910，固件 3.46）上完成全量验证。
+本次Atualização de 主线：**补齐 e 飞特 FD DepuraçãoSoftware对标 de "零位校准"e"活动区间限制"能力**，
+并在 microduck 实机（15 颗 HD-1910，Firmware 3.46）SuperiorConcluído全量Validação。
 
 ### 新增功能
 
 #### 1. 零位校准 `zero`（0x0B 位置校准指令）—— 核心新增
 
-等同飞特 FD 调试软件的"设置零位/中位校准"按钮：把舵机**当前机械位置**标定为指定读数
-（默认中位 2048），舵机自动计算并修改 31 号位置偏移寄存器。
+等同飞特 FD DepuraçãoSoftware de "设置零位/ em 位校准"按钮：把Servo**AtualMecânica位置**标定为指定读数
+（默认 em 位 2048），Servo自动计算并修改 31 号位置偏移寄存器。
 
-> 为什么不能用老办法：HD-1910（HLS 系固件 ≥3.43）**不支持**"扭矩开关写 128"的中位校准
-> （写了回"成功"但偏移寄存器不变）。0x0B 是本机型唯一正确的校准指令。
+> 为什么不能用老办法：HD-1910（HLS 系Firmware ≥3.43）**não suporta**"扭矩开关写 128" de  em 位校准
+> （写了回"Sucesso"但偏移寄存器Inalterado）。0x0B 是本机型唯一正确 de 校准指令。
 
 使用方法（装机时逐颗操作）：
 
@@ -29,23 +29,23 @@ feetech-HD1910M-tester torque on       # 4. 恢复扭矩
 feetech-HD1910M-tester zero --to 1024  # 也可以标定为任意读数（0~4095）
 ```
 
-命令内部流程：读校准前位置 → 解锁 EPROM → 发 0x0B → 重新上锁 → 延时 →
-**回读"当前位置 + 位置偏移"双重确认**（偏差 >4 个单位即报错）。
-因为飞特对不支持的操作也可能回"成功"，一切以回读为准。
+Comando内部流程：读校准前位置 → 解锁 EPROM → 发 0x0B → 重新Superior锁 → 延时 →
+**回读"Atual位置 + 位置偏移"双重确认**（偏差 >4 个单位即报错）。
+因为飞特对não suporta de 操作也可能回"Sucesso"，一切以回读为准。
 
 #### 2. 重启命令 `reboot`（0x08）
 
-等效断电重上电：SRAM 从 EPROM 重新加载。用于**不物理断电**验证 EPROM 写入是否落盘
-（robotd 更换舵机流程用的也是这条指令）。
+等效断电重Superior电：SRAM 从 EPROM 重新加载。usado para**不物理断电**Validação EPROM Gravação是否落盘
+（robotd 更换Servo流程用 de 也是这条指令）。
 
 ```bash
 feetech-HD1910M-tester reboot          # 重启后等约 1 秒再通信
 ```
 
 验证 EPROM 落盘的技巧：先写一个 SRAM 标记值（如 `torque-limit 300`）→ `reboot` →
-读回发现恢复为EPROM/上电默认值（1000），即证明重启真实发生，此时 EPROM 项读回什么就是什么。
+读回发现恢复为EPROM/Superior电默认值（1000），即证明重启真实发生，此时 EPROM 项读回什么就是什么。
 
-#### 3. 协议层新增指令
+#### 3. Protocolo层新增指令
 
 `Instruction::Reboot = 0x08`、`Instruction::ResetTurns = 0x0A`（多圈圈数重置）、
 `Instruction::Calibrate = 0x0B`，附组包单元测试。
@@ -56,10 +56,10 @@ feetech-HD1910M-tester reboot          # 重启后等约 1 秒再通信
 
 - 新增 `--deg`：直接按角度输入，如 `limits 90 270 --deg --save`（0~360° 对应 0~4095）
 - 新增交叉校验：`min >= max` 直接拒绝；多圈模式的 `0 0` 特判放行
-  （原来会被 max-angle 名义下限 1 误拒）
+  （原来会被 max-angle 名义Inferior限 1 误拒）
 - `--save` 改为**一次解锁/上锁写两个寄存器**（EPROM 往返减半），
-  且任何一步失败都保证重新上锁
-- 写入后**回读确认**并按角度显示
+  且任何一步Falha都保证重新Superior锁
+- Gravação后**回读确认**并按角度显示
 
 ```bash
 feetech-HD1910M-tester limits 1024 3072 --save   # 原始值：中位 ±90°
@@ -76,22 +76,22 @@ feetech-HD1910M-tester limits 90 270 --deg       # 角度值：只改内存，�
 - `Register::check_value()`：范围校验从三处重复代码收敛为一处
 - `ServoError::Malformed` 改为携带 `String`，可报告动态错误信息
 - 简化 `pid` 命令中的冗余分支
-- 新增单元测试：0x0B 组包、check_value 边界（共 8 个测试全过）
+- 新增单元Teste：0x0B 组包、check_value 边界（共 8 个Teste全过）
 
-### 实机验证记录（microduck，15 颗 HD-1910，固件 3.46）
+### 实机Registro de validação（microduck，15 颗 HD-1910，Firmware 3.46）
 
-- **0x0B 校准实测**：位置 2958（+80°）→ 校准后精确 2048，偏移寄存器自动写入 910
-  （= 2958−2048，实测确认偏移语义为"反馈值 = 原始值 − 偏移量"），掉电保存
-- **0x08 重启实测可用**（项目文档"台架待验"事项可以划掉）
-- **15 颗全量验收**：ID 表（10-14/20-24/30-34）、固件 3.46、字节序 0、波特率 1M、
+- **0x0B 校准实测**：位置 2958（+80°）→ 校准后精确 2048，偏移寄存器自动Gravação 910
+  （= 2958−2048，实测确认偏移语义为"反馈值 = original值 − 偏移量"），掉电保存
+- **0x08 重启实测可用**（项目文档"台架待验"事项pode划掉）
+- **15 颗全量验收**：ID 表（10-14/20-24/30-34）、Firmware 3.46、字节序 0、波特率 1M、
   应答级别 1、模式 4、电压窗口 4.0~10.0V、卸载条件 13（电压+过热+过流）全部达标；
-  各关节读数与站姿目标偏差 ≤4 个单位
+  各关节读数 e 站姿目标偏差 ≤4 个单位
 
 ---
 
-## [0.1.0] - 初始版本
+## [0.1.0] - 初始Versão
 
-- FT-SCS 协议完整实现：PING / READ / WRITE / REG WRITE / ACTION / SYNC WRITE / 恢复出厂
+- FT-SCS ProtocoloCompleto实现：PING / READ / WRITE / REG WRITE / ACTION / SYNC WRITE / 恢复出厂
 - 覆盖官方 HLS_2 内存表全部寄存器的 `dump` / `get` / `set`（支持键名/十进制/十六进制地址）
 - `scan` 总线扫描、`monitor` 实时监控（位置/速度/负载/电压/温度/电流）
 - `goto` / `angle` / `swing` 运动控制，`torque` / `torque-limit` / `goal-current` 力控

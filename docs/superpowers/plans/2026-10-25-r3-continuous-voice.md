@@ -4,7 +4,7 @@
 
 **Goal:** R3 单击开关持续语音，停顿后自动处理口令或复读。
 
-**Architecture:** 新增有界分句器和持续 ALSA 输入控制器，复用 VoiceControl 与现有播放模块；保留 hold 路径用于回退。单一流接口为后续音乐分析提供入口。
+**Architecture:** 新增有界分句器e持续 ALSA 输入Controle器，复用 VoiceControl  e 现有播放模块；Preservado hold Caminhousado para回退。单一流接口为后续音乐分析提供入口。
 
 **Tech Stack:** Python 标准库、ALSA arecord/aplay、现有 Vosk、evdev、unittest。
 

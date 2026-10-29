@@ -1,13 +1,13 @@
-# 上机分析脚本
+# Superior机分析脚本
 
 2026-10-12 夜第一台上机时用来定位问题的脚本（10-13 夜更新了录像服务）。走路的步态分析在电脑上跑，见 [`tools/gait-analysis/`](../../gait-analysis/)。都是**只读**的：只订阅 robotd 的状态、读日志，不发任何控制指令（`webpad_probe.py` 例外，它只发「不按键、摇杆归零」的空帧）。
-怎么用它们一步步找到「一接管就猛冲」的根因，见 [2026-10-12 夜上机记录](../../../docs/HD1910-20261012-夜-IMU校准与首次迈步.md)。
+怎么用它们一步步找到「一接管就猛冲」 de 根因，见 [2026-10-12 夜Superior机记录](../../../docs/HD1910-20261012-夜-IMU校准 e 首次迈步.md)。
 
 脚本假定的环境：主板上跑 kissqy 的 R17（robotd 套接字 `/run/robotd.sock`），录像放在 `/home/duck/r17/rec/`，脚本放在 `/home/duck/tools/`。
 
-## 先把数据录下来
+## 先把Dados录Inferior来
 
-| 文件 | 在哪跑 | 干什么 |
+| Arquivo | 在哪跑 | 干什么 |
 |---|---|---|
 | `duck_rec.py` | 主板 | 订阅 robotd 的 `robot.subscribe`，50 Hz 记关节角、目标、关节速度、IMU、安全状态、摇杆指令、策略状态，存 JSONL。`python3 duck_rec.py 秒数 输出文件`。追加写、**每秒写盘一次**；robotd 重启时记一行 `rec_error` 并自己重连 |
 | `duck_health_log.py` | 主板 | 每 0.5 秒记一次 `robotctl health --json`：舵机电压、最热舵机、CPU 温度和频率、WiFi 和蓝牙状态，存 CSV |
@@ -20,7 +20,7 @@
 
 ## 出了问题怎么查
 
-| 文件 | 回答什么问题 |
+| Arquivo | 回答什么问题 |
 |---|---|
 | `walk_now.py` | 最近一段模型接管（policy=walk）里，机身倾斜、角速度、腿目标偏离 HOME 多少、跟踪误差、摇杆指令 |
 | `walk_report.py` | 最近 N 分钟推了几次摇杆，每次两条腿有没有交替迈步（左右膝角差的摆幅和换腿次数），倒没倒 |
@@ -33,17 +33,17 @@
 | `judge_block.py` | **电脑上跑**。BNO085 陀螺融合上机用的停止规则：模型看到的姿态在直立走路时有没有「陀螺说没转、姿态却跳了 5° 以上」，按融合判定分硬 / 软 / 豁免；HOME 静站时融合跟芯片差多少。chip 模式下顺带给出芯片那一路的跳变数当基线。只用标准库。来龙去脉见 [10-15 记录](../../../docs/HD1910-20261015-IMU乱跳根因与陀螺融合上机.md) §5.5 |
 | `ab_blocks.py` | **电脑上跑**。几段录像分别数摔倒（`safety.fallen` 上升沿，3 s 内来回跳算一次）、推摇杆时间、每推杆分钟摔几次、芯片跳变、机身颤；标签以 chip / gyro 开头的两组加总，给出率比、95% 区间和 p 值。录像里实际是哪种模式它自己认，标签写反会报错 |
 
-## IMU 校准（今晚手动做的流程）
+## IMU 校准（今晚手动做 de 流程）
 
-**第一步：方向检查**（第一次装 IMU、拆下来重装以后做）
+**第一步：方向Verificação**（第一次装 IMU、拆Inferior来重装以后做）
 
-鸭子扶竖直，往前、后、左（鸭子自己的左边）、右各倾斜约 20°，每个方向停 3 秒、回正。然后：
+鸭子扶竖直，往前、后、Esquerdo（鸭子自己 de Esquerdo边）、Direito各倾斜约 20°，每个方向停 3 秒、回正。Depois：
 
 ```
 python3 imu_tilt_check.py 120        # 最近 120 秒，每 0.5 s 一行，偏离起点超过 8° 的标 ←
 ```
 
-四段读数应该依次是「前倾 +」「前倾 −（后仰）」「右倾 −（左倾）」「右倾 +」，陀螺仪转动方向也要跟着对上。有一段符号反了，就是安装方向的轴配错了。
+四段读数应该依次是「前倾 +」「前倾 −（后仰）」「Direito倾 −（Esquerdo倾）」「Direito倾 +」，陀螺仪转动方向也要跟着对Superior。有一段符号反了，就是Instalação方向 de 轴配错了。
 
 **第二步：零点校准**（摔狠了、碰过 IMU、换过线以后做）
 
@@ -53,11 +53,11 @@ python3 imu_tilt_check.py 120        # 最近 120 秒，每 0.5 s 一行，偏�
 2. 主板：`python3 capture_home.py home-capture.json`（取最后 100 帧的平均关节角和重力）；
 3. 把 JSON 拷到装了 mujoco 和官方 `microduck_rl` 的电脑上：
    `python sim_home_tilt.py <microduck_rl>/src/mjlab_microduck/robot/microduck/scene_backlash.xml home-capture.json`
-   输出「按真机关节角，机身应该前倾多少」和「IMU 安装偏差（实测 − 应有）」；
+   输出「按真机关节角，机身应该前倾多少」e「IMU Instalação偏差（实测 − 应有）」；
 4. `python imu_mount_fix.py <前倾偏差> <右倾偏差> <当前安装四元数 w x y z>` 算出新的安装四元数；
 5. 鸭子**卸力**以后，备份 `/etc/robot/feetech-ft5/hd1910-calibration.toml`，把 `["imu_mounts"."bno08x"]` 下的 `"quat"` 换成新值，`sudo systemctl restart robotd`；
 6. 再站一次 HOME，重复 2～3，偏差应在 1° 以内。
 
 2026-10-12 第一台：两种站姿算出的偏差是前倾 8.2° / 8.9°、右倾 1.7° / 1.8°，补 8.54° / 1.78° 后，复测剩 −0.55° / −0.47°。写进去的四元数是 `[0.454164155, 0.544101455, 0.527409117, 0.468538313]`（当时用两组数据做最小二乘，`imu_mount_fix.py 8.54 1.78` 算出的值与它差不到 0.01°）。
 
-以后要把这套做成按钮式的手动校准工具（不自动改，每次校准都记日志），见上机记录的「下一步」。
+以后要把这套做成按钮式 de 手动校准Ferramentas（不自动改，每次校准都记日志），见Superior机记录 de 「Inferior一步」。
