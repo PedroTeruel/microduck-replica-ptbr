@@ -1,60 +1,60 @@
 # Índice da documentação
 
-[Voltar ao início](../README.md) · [English](README.en.md)
+[Voltar ao início](../README.md) · [English](README.en.md) · [Português brasileiro](README.pt-BR.md)
 
-按要做 de 事找资料。初次装机从「Uso e montagem」开始，研究推导e旧进展放在后面 de 归档里。
+Encontre os materiais pela tarefa. Para a primeira montagem, comece por “Uso e montagem”; pesquisas, derivações e registros antigos ficam no arquivo histórico.
 
 ## Uso e montagem
 
-| 资料 | Conteúdo |
+| Material | Conteúdo |
 |---|---|
-| [Guia de primeiro uso](Superior手指南/README.md) | Gravação、配网、标定、手柄 e  PDF 指南 |
-| [CAD 与打印件](https://github.com/fanhao375/microduck-replica-cad) | 飞特 HD-1910 / XL330 对应版本的模型与打印工程 |
-| [BOM Lista de compras](../BOM/README.md) | 2026-10-23 飞特版Visualização online e  Excel Baixar |
-| [Vídeos de montagem](../README.md#-Vídeos de montagem) | 按部件分集 de  B 站视频 |
+| [Guia de primeiro uso](上手指南/README.md) | Gravação, rede, calibração, controle e guia em PDF |
+| [CAD e peças para impressão](https://github.com/fanhao375/microduck-replica-cad) | Modelos e projetos de impressão para Feetech HD-1910 / XL330 |
+| [Lista de materiais (BOM)](../BOM/README.md) | Prévia online e planilha da versão Feetech de 2026-10-23 |
+| [Vídeos de montagem](../README.md#-Vídeos de montagem) | Vídeos do Bilibili organizados por componente |
 
-## Software e 训练
+## Software e treinamento
 
-| 资料 | Conteúdo |
+| Material | Conteúdo |
 |---|---|
-| [Studio Web em 控](../software/studio/README.md) | 标定、遥控、设备状态 e Modelo管理 |
-| [Imagem构建 e 发布](../software/image/README.md) | Imagem构建方式 e 发布Instruções |
-| [SoftwareAtualização e 本地语音](SoftwareAtualização e 语音Instruções de uso-20261027.md) | 旧卡一次性引导、Web签名升级/回退、R3Sentar e Levantar |
-| [Plataforma de treinamento](../software/training-studio/README.md) | Web实验管理、评估 e Modelo导出 |
-| [Projeto de treinamento](../software/training/README.md) | 训练环境 e Execução方法 |
-| [训练前Dados清单](HD-1910训练前Dados清单.md) | 几何、Servo、IMU  e 实测项 |
-| [SoftwareFonte e 改动](SoftwareFonte e 我们 de 改动.md) | upstreamFonteeeste projeto de 修改 |
-| [Acompanhamento do projeto oficial](Acompanhamento do projeto oficial.md) | 正式版、开发分支、待合并 PR、摄像头 e 情绪动作等Atualização，eeste projeto适配建议 |
+| [Painel web Studio](../software/studio/README.md) | Calibração, controle remoto, estado do dispositivo e gestão de modelos |
+| [Construção e publicação da imagem](../software/image/README.md) | Como construir a imagem e notas de publicação |
+| [Atualização de software e voz local](软件更新与语音使用说明-20261027.md) | Preparação única de cartões antigos, atualização / reversão web assinada, sentar com R3 e levantar |
+| [Plataforma de treinamento](../software/training-studio/README.md) | Gestão de experimentos web, avaliação e exportação de modelos |
+| [Projeto de treinamento](../software/training/README.md) | Ambiente de treinamento e formas de execução |
+| [Lista de dados antes do treinamento](HD-1910训练前数据清单.md) | Geometria, servos, IMU e medições necessárias |
+| [Fontes do software e nossas alterações](软件来源与我们的改动.md) | Origens upstream e modificações deste projeto |
+| [Acompanhamento do projeto oficial](官方更新跟踪.md) | Versões oficiais, branches de desenvolvimento, PRs pendentes, câmera, ações de expressão e recomendações de adaptação |
 
 ## Ferramentas
 
-[Índice de ferramentas](../tools/README.md)：按烧卡、串口Depuração、资料e分析查找SoftwareBaixar e Instruções de uso。
+[Índice de ferramentas](../tools/README.md): downloads e instruções organizados por gravação de cartão, depuração serial, documentos e análise.
 
-- [Rufus 便携版 e 烧卡Instruções](../tools/rufus/README.md) · [飞特 FD、驱动 e 串口助手](../tools/飞特/README.md) · [飞特Oficial手册 e  SDK](飞特资料/README.md)
-- [WebServoDepuração台](../tools/servo-web/README.md) · [HD1910M TesteFerramentas](../tools/FeeTech_HD1910M_Servo/README.md) · [STS3215 TesteFerramentas](../tools/sts3215Servo_testtool/README.md)
-- [IMU ProtocoloVerificação](../tools/imu200/imu200.py) · [步态分析](../tools/gait-analysis/README.md) · [Placa principal分析脚本](../tools/radxa/onboard-analysis/README.md)
+- [Rufus portátil e gravação do cartão](../tools/rufus/README.md) · [Drivers Feetech FD e assistente serial](../tools/飞特/README.md) · [Manuais oficiais Feetech e SDK](飞特资料/README.md)
+- [Bancada web de depuração de servos](../tools/servo-web/README.md) · [Ferramenta de teste HD1910M](../tools/FeeTech_HD1910M_Servo/README.md) · [Ferramenta de teste STS3215](../tools/sts3215Servo_testtool/README.md)
+- [Verificação do protocolo da IMU](../tools/imu200/imu200.py) · [Análise da marcha](../tools/gait-analysis/README.md) · [Scripts de análise da placa principal](../tools/radxa/onboard-analysis/README.md)
 
-## Eletrônica e 排障
+## Eletrônica e diagnóstico
 
-| 资料 | Conteúdo |
+| Material | Conteúdo |
 |---|---|
-| [Placa de circuito工程](../hardware/README.md) · [IMU Firmware](../hardware/imu_to_dxl/README.md) | 工程Arquivo、Fiação e FirmwareValidação范围 |
-| [Hardware入门](Hardware入门.md) · [规格速查](Hardware规格速查.md) | 各模块作用 e Parâmetros |
-| [Problemas encontrados](../Problemas encontrados.md) | 现象、原因 e 解决方法 |
-| [Registro de depuração](../Registro de depuração.md) · [Diário de construção](../Diário de construção.md) | 实机DepuraçãoeMecânica装配过程 |
+| [Projetos de hardware](../hardware/README.md) · [Firmware da IMU](../hardware/imu_to_dxl/README.md) | Arquivos de projeto, conexões e escopo da validação do firmware |
+| [Introdução ao hardware](硬件入门.md) · [Consulta rápida de especificações](硬件规格速查.md) | Função e parâmetros dos módulos |
+| [Problemas encontrados](../踩坑记录.md) | Sintomas, causas e soluções |
+| [Registros de depuração](../调试记录.md) · [Diário de construção](../构建日志.md) | Depuração no robô e montagem mecânica |
 
-## 深入研究 e 归档
+## Pesquisa e arquivo
 
-早期分析eCompra记录Preservado原日期、方案 e Validação范围，装机时优先看Atual指南 e  BOM。
+Os registros antigos de análise e compras preservam as datas, propostas e escopo de validação originais. Para montar, consulte primeiro os guias atuais e a BOM.
 
-| 资料 | Conteúdo |
+| Material | Conteúdo |
 |---|---|
-| [Histórico de atualizações](Histórico de atualizações.md) | 从首页移出 de 逐日Atualização |
-| [Contribuições da comunidade e 鸭友项目](Contribuições da comunidade.md) | Contribuição者Atribuição、合并记录 e Comunidade项目 |
-| [Arquivo de pesquisa do projeto](Arquivo de pesquisa do projeto.md) | 爆炸图、装配结构、关节Parâmetros、早期可行性 e 重现Comando |
-| [Hardware方案逆向](Hardware方案逆向.md) | 电控推导 e 证据出处 |
-| [执行器选型](执行器选型.md) · [紧Firmware反推](紧Firmware反推.md) | Servo比较 e 孔位分析 |
-| [电控Compra分析](电控Lista de compras.md) · [MecânicaCompra分析](MecânicaLista de compras.md) | 早期选型、Compra e 成本记录 |
-| [不打 HAT  de 方案](不打HAT.md) | 替代方案 e FiaçãoInstruções |
-| [生态导航](生态导航.md) · [Comunidade动态](Comunidade动态.md) | upstream资源、ModeloeComunidade信息 |
-| [Licença e Atribuição](../NOTICE.md) · [Modelo使用条款](../software/image/overlay/usr/share/doc/microduck/ModeloInstruções.txt) | 各部分Fontee使用范围 |
+| [Histórico de atualizações](历史更新.md) | Registros diários de atualização reunidos fora da página inicial |
+| [Contribuições da comunidade e projetos de outros donos](社区贡献.md) | Créditos de contribuidores, histórico de integração e projetos da comunidade |
+| [Arquivo de pesquisa do projeto](项目研究归档.md) | Vistas explodidas, estrutura de montagem, parâmetros das juntas, viabilidade inicial e comandos de reprodução |
+| [Reconstrução da solução de hardware](硬件方案逆向.md) | Derivações eletrônicas e fontes das evidências |
+| [Seleção de atuadores](执行器选型.md) · [Reconstrução dos fixadores](紧固件反推.md) | Comparação de servos e análise dos furos |
+| [Análise de compras eletrônicas](电控采购清单.md) · [Análise de compras mecânicas](机械采购清单.md) | Seleções, compras e custos registrados anteriormente |
+| [Solução sem HAT](不打HAT.md) | Alternativa e instruções de conexão |
+| [Navegação do ecossistema](生态导航.md) · [Atualizações da comunidade](社区动态.md) | Recursos upstream, modelos e informações da comunidade |
+| [Licenças e atribuições](../NOTICE.md) · [Termos de uso dos modelos](../software/image/overlay/usr/share/doc/microduck/模型说明.txt) | Origem e condições de uso de cada componente |

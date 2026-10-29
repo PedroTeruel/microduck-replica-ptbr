@@ -1,141 +1,140 @@
-# servo-web · 飞特ServoWebDepuração台
+# servo-web · Bancada web de depuração Feetech
 
-> 页面里的 3D 模型用于调试显示，仍基于上游仿真几何，**不能导出后当最新飞特打印件使用**。结构件与装配模型统一从 [microduck-replica-cad](https://github.com/fanhao375/microduck-replica-cad) 获取。
+> O modelo 3D da página serve para visualização durante a depuração e ainda usa a geometria de simulação upstream. **Não o exporte como se fosse o modelo mais recente das peças imprimíveis Feetech.** Os modelos estruturais e de montagem ficam no repositório [microduck-replica-cad](https://github.com/fanhao375/microduck-replica-cad).
 
-接Superior串口，浏览器里拖滑块让Servo动，3D 鸭子跟着转。给装机、校零、台架验收用，也是[飞特适配架构](../../software/飞特适配架构.md)台架清单 0–8 项 de Ferramentas。
+Conecte a porta serial e arraste os controles no navegador para mover os servos e ver o pato 3D acompanhar. A ferramenta serve para montagem, ajuste do zero e validação de bancada; também é usada nos itens 0–8 da lista de bancada da [arquitetura de adaptação Feetech](../../software/飞特适配架构.md).
 
-![界面](../../assets/servo-web.png)
+![Interface](../../assets/servo-web.png)
 
-- 15 个滑块按Esquerdo腿 / 头颈 / Direito腿分组，黄线是Servo实际位置，每颗有扭矩开关。**开扭矩前先把目标对准Atual位置**：扭矩关着时用手掰过关节、发过姿势ou校准过，目标寄存器里还是旧值，不对齐 de 话一开扭矩就冲过去；读不到位置 de 那颗不开
-- 实时回读：位置、电压、温度、负载、电流、状态位（过流 / 过热 / 过载会标红）
-- 3D 模型跟着实际位置动（用的是 [microduck_rl](https://github.com/apirrone/microduck_rl) 的 MuJoCo 模型，Apache-2.0）；每颗关节旁的 ± 是关节方向，存在 `directions.json` 里所有页面共用，3D、站姿、序列、灵动都按它换算，不动舵机；「复制 robotd 方向表」生成 `robotd.toml` 要的那行。实机逐颗核对过：15 颗全是反的（HD-1910 读数增大的方向跟 XL330 相反，装法照搬 XL330，所以整体反了一次）
-- 姿态：把当前实际位置存成一个姿态，一键发回去；带 `steps` 的 JSON 是序列（自带「站起来」三步）。所有姿态 / 站姿 / 零位都按「过渡时间」从当前位置线性插过去，随时点「停」
-- 一键校准（只给飞特做，XL330 没有这个功能）：把鸭子摆成「基准」 de 样子，一键把选 em Servo「现在 de 位置」读数改成基准值。基准三种：
-  - **零位 2048**：扭矩开着用滑块调到腿伸直、脚板垂直、头平视、嘴闭Superior，托住再点。存 de 姿态自动换算到新零点
-  - **官方折叠（头颈摆正）**（推荐）：鸭子折好趴稳，不用悬空扶。膝折到踝刚好贴上大腿舵机（零件顶住，每次都一样），髋 pitch 用直角尺摆到跟躯干垂直，髋 yaw/roll、踝摆正，脖子竖直、头平视、嘴闭上。目标读数：腿按官方 FOLD 角度和 ± 算（± 全 −1 时 22/23 = 1025、12/13 = 3071），其余 2048；校完零点就是官方的 2048，存的姿态自动换算，15 颗一起标。头颈不按官方 FOLD 的 57°：那不是接触点，靠眼睛摆不准（见 [`tools/fold_contact`](../fold_contact/)）。膝的目标按官方 1.57 rad（90.0°）算，官方几何里踝贴上大腿舵机是 89.6°，零点因此差约 0.36°（4 步）。扭矩关着用手摆就行，校完扭矩还是关着。选这个基准时 3D 自动叠加「校准用折叠」，照着摆
-  - **存 de 姿态**（比如「缩」）：鸭子自己缩着放稳，靠Mecânica接触定位，不用手扶。零位还是Oficial de  2048，Oficial代码e策略不用加 offset；别 de 姿态跟基准是同一套读数，不挪
+- Há 15 controles deslizantes, agrupados por perna esquerda, cabeça e pescoço, e perna direita. A linha amarela indica a posição real do servo; cada um tem um controle de torque. **Antes de ativar o torque, alinhe o alvo com a posição atual**: se a junta foi movida à mão, recebeu uma pose ou foi calibrada enquanto o torque estava desligado, o registrador de alvo ainda conserva o valor antigo. Sem alinhar, o servo pode avançar bruscamente ao ativar o torque. O torque não pode ser ativado se a posição não puder ser lida.
+- Leitura de retorno em tempo real: posição, tensão, temperatura, carga, corrente e bits de estado (sobrecorrente, superaquecimento e sobrecarga ficam em vermelho).
+- O modelo 3D acompanha as posições reais (usa o modelo MuJoCo do [microduck_rl](https://github.com/apirrone/microduck_rl), Apache-2.0). O sinal ± ao lado de cada junta representa sua direção; fica em `directions.json`, compartilhado por todas as páginas. O 3D, a pose em pé, as sequências e as animações usam esse mapeamento, sem mover o servo. “Copiar tabela de direções do robotd” gera a linha necessária no `robotd.toml`. A direção dos 15 servos foi conferida na unidade real: todos estavam invertidos (a direção de aumento das leituras do HD-1910 é oposta à do XL330, e a montagem copiou a orientação do XL330).
+- **Poses**: salve as posições atuais como uma pose e envie-as novamente com um clique. Arquivos JSON com `steps` representam sequências, incluindo a sequência de três passos “levantar”. Poses, postura em pé e posição zero fazem uma transição linear a partir da posição atual durante o tempo configurado; é possível interrompê-la a qualquer momento.
+- **Calibração com um clique** (somente Feetech; o XL330 não tem este recurso): coloque o pato na pose de referência e ajuste a leitura de posição “atual” do servo selecionado para o valor de referência. Há três referências:
+  - **Zero 2048**: com torque ativado, use o controle deslizante para estender as pernas, deixar as solas verticais, a cabeça olhando para frente e a boca fechada. Apoie o robô antes de calibrar. As poses salvas são convertidas automaticamente para o novo zero.
+  - **Dobrada oficial (cabeça e pescoço alinhados)** (recomendado): dobre e apoie o pato, sem segurá-lo suspenso. Flexione os joelhos até os tornozelos encostarem nos servos das coxas (contato mecânico repetível); use um esquadro para deixar o pitch do quadril perpendicular ao tronco; alinhe yaw / roll do quadril, tornozelos, pescoço, cabeça e boca. Valores-alvo: ângulos FOLD oficiais das pernas convertidos pelo sinal ± (com todos os sinais em −1, 22/23 = 1025 e 12/13 = 3071); os demais ficam em 2048. Depois, o zero corresponde ao 2048 oficial e as poses salvas são convertidas automaticamente; os 15 servos são calibrados juntos. Não use os 57° FOLD oficiais para cabeça e pescoço: esse valor não é um ponto de contato e não pode ser ajustado com precisão a olho (veja [`tools/fold_contact`](../fold_contact/)). O alvo dos joelhos é calculado a partir do 1,57 rad (90,0°) oficial; na geometria oficial, o tornozelo encosta no servo da coxa a 89,6°, então a diferença do zero é cerca de 0,36° (4 passos). É possível posicionar as juntas à mão com o torque desligado; ele continuará desligado após a calibração. Ao escolher esta referência, o 3D sobrepõe automaticamente a “dobra para calibração” como guia.
+  - **Pose salva** (por exemplo, “encolhido”): deixe o pato encolhido e estável; o contato mecânico posiciona as peças sem precisar segurá-las. O zero continua sendo o 2048 oficial, sem adicionar offset ao código ou à política oficial; poses diferentes usam a mesma leitura de referência e não são deslocadas.
 
-  点按钮先弹确认框，逐颗列出「现在 → 写成、差几度」（Serviço端算 de ，跟真校准同一份）。**差 30° 以Superior de 再确认一次，但不拦**：装舵盘时转了半圈就是差 180°，校准正好把它纠回来；方向 ± 设反了也会差 180° EsquerdoDireito（折叠时 ±90°  de 关节），那样校进去是错 de ，所以提醒先核 ±（扭矩关着用手掰一点，看 3D 是不是往同一边转）。校完日志里把差得多 de 单独列出来。
+  Ao clicar, aparece uma confirmação com cada servo listado como “agora → novo valor, diferença em graus” (calculada no backend, igual à calibração real). **Diferenças de 30° ou mais pedem uma segunda confirmação, mas não bloqueiam a operação**: um braço do servo montado meia volta fora produz diferença de 180°, que a calibração deve corrigir; porém, uma direção ± invertida também produz 180° de diferença entre esquerda e direita (juntas a ±90° na dobra). Nesse caso, o valor calibrado seria incorreto. Confira primeiro o sinal ±: com torque desligado, mova a junta um pouco à mão e veja se o modelo 3D se move na mesma direção. Depois, o log destaca os servos com diferenças grandes.
 
-  用 0x0B 位置校准指令（HD-1910 不认扭矩开关写 128，见下）。逐颗 解锁 → 读位置 → 关扭矩 → 0x0B → 读回 → 对上才改目标 → 扭矩复原 → 加锁；扭矩只关几毫秒，关节不会被重力压下去，也不会跳；没对上就原地不动报失败；中途出错也会加锁。原偏移备份在 `calib/`，可撤销（只挪回当次挪过的姿态）。收尾只放开速度和加速度（41、46），不再连目标 42 一起写
-- 单颗操作：Inferior拉选Servo（带关节名，离线 de 标出来），导出 0–86 全部寄存器（JSON / Markdown 表，做**寄存器底账**用）、重启 0x08、 em 位校准、改 ID（旧 ID 只列在线 de ，新 ID 列 15 个标准位、占用 de 标出来）、写寄存器（Inferior拉带寄存器名，EEPROM 区自动勾解锁，写完回读核对）
-- 串口original收发全进日志Arquivo（十六进制 + 寄存器名 + Servo应答），排查飞特那些「回Sucesso但没执行」 de 操作靠它
-- 日志分 系统 / 总线 / 运动 / 校准 / 寄存器 / 姿态 / 方向 / IMU / 页面，警告、错误标色并计数，可按类筛选、只看警告错误、一键复制。每条同时写进 `logs/servo-web-日期.log`，出错的带 traceback；校准每颗一行：读数前后、偏移前后、每一步的应答。出问题把这个文件发过来就能查
-- `sync_read` 时序测试：15 颗一次读 200 遍，报 min / avg / p99 / max 和失败数
-- 舵机体检（命令行，**只读**）：`python servo_report.py --port COM5`，读出每颗的保护开关（卸载条件 19）、状态位、温度、电压、电流、偏移、角度限位，按《调试记录》第 5 步判红黄，存成 `logs/体检-时间.md` 和同名 `.json`（0–86 原值）。只接一颗用 `--ids 21`，不知道 ID 用 `--scan-all`。串口不能同时被调试台或 FD 占着
-- 远程排查：[`远程排查交接.md`](远程排查交接.md) 是写给另一台电脑上的 Claude Code 的流程（体检 → 单颗排查 → 开保护 → 折叠校准），在那边说「先读 tools/servo-web/远程排查交接.md，按里面的流程带我做」
-- 自检：`python selftest.py`，不接舵机。[`sim_bus.py`](sim_bus.py) 是协议级的 HD-1910 模拟器（按字节收发飞特包，模拟锁、扭矩、0x0B、HD-1910 不认 128、偏移、掉线），让真实的 `feetech.py` + `server.py` 把校准、撤销、改 ID、写寄存器、导出都跑一遍。改了跟舵机打交道的代码先跑它再上真机
-- 后端不依赖飞特 SDK，[`feetech.py`](feetech.py) 直接按 2026 版协议手册发包（[`docs/飞特资料/`](../../docs/飞特资料/)），一百多行
-
-## 跑起来
+  A calibração usa o comando de posição 0x0B (o HD-1910 não reconhece a escrita 128 no controle de torque; veja abaixo). Para cada servo: desbloqueia → lê posição → desliga torque → envia 0x0B → lê de volta → só ajusta o alvo se a leitura conferiu → restaura o torque → bloqueia. O torque fica desligado por apenas alguns milissegundos, sem deixar a junta ceder à gravidade ou saltar. Se a leitura não conferir, não move a junta e informa falha; se houver erro no meio, volta a bloquear. O offset anterior é guardado em `calib/` e pode ser restaurado (somente para as poses deslocadas naquela operação). Ao finalizar, libera apenas os limites de velocidade e aceleração (41, 46), sem reescrever o alvo 42.
+- **Operações por servo**: selecione-o em uma lista suspensa com o nome da junta e indicação de offline; exporte todos os registradores 0–86 (JSON / tabela Markdown) para o **inventário de registradores**; reinicie com 0x08; calibre o zero; altere o ID (IDs antigos mostram apenas os online; os novos mostram 15 posições padrão e indicam conflitos); grave registradores por uma lista com nomes, desbloqueando automaticamente a área EEPROM e conferindo a leitura após a gravação.
+- Toda a comunicação serial bruta é gravada em log (hexadecimal, nome do registrador e resposta do servo). Isso ajuda a diagnosticar operações Feetech que respondem “sucesso” sem terem sido executadas.
+- Os logs são separados por sistema, barramento, movimento, calibração, registradores, poses, direções, IMU e página. Avisos e erros são coloridos e contabilizados; é possível filtrar por categoria, mostrar somente avisos / erros e copiar tudo. Cada evento também é salvo em `logs/servo-web-data.log`; erros incluem traceback. Na calibração, há uma linha por servo com leituras, offsets e respostas de cada etapa. Envie esse arquivo para investigar um problema.
+- **Teste de temporização `sync_read`**: lê os 15 servos em conjunto 200 vezes e informa min / média / p99 / máximo e número de falhas.
+- **Diagnóstico de servos** (linha de comando, **somente leitura**): `python servo_report.py --port COM5` lê os protetores (condição de descarga 19), bits de estado, temperatura, tensão, corrente, offset e limites angulares. Classifica alertas conforme a etapa 5 do “Registro de depuração” e salva `logs/diagnostico-data.md` e um `.json` correspondente com os valores brutos 0–86. Para uma única unidade, use `--ids 21`; se não souber o ID, use `--scan-all`. A porta serial não pode estar sendo usada pela bancada ou pelo FD ao mesmo tempo.
+- **Diagnóstico remoto**: [`远程排查交接.md`](远程排查交接.md) descreve um fluxo para Claude Code em outro computador (diagnóstico → inspeção individual → ativar proteção → calibração dobrada). Na outra máquina, peça: “Leia `tools/servo-web/远程排查交接.md` e me guie pelo procedimento”.
+- **Autoteste**: `python selftest.py`, sem servos conectados. [`sim_bus.py`](sim_bus.py) é um simulador de protocolo HD-1910 que transmite pacotes Feetech byte a byte e simula bloqueio, torque, 0x0B, a recusa do HD-1910 à escrita 128, offsets e desconexões. Ele permite que o `feetech.py` e o `server.py` reais executem calibração, reversão, alteração de ID, gravação e exportação. Ao alterar código que controla servos, rode-o antes de testar no robô.
+- O backend não depende do SDK Feetech. [`feetech.py`](feetech.py), com pouco mais de cem linhas, constrói os pacotes conforme o manual de protocolo de 2026 (em [`docs/飞特资料/`](../../docs/飞特资料/)).
+## Como executar
 
 ```bash
 pip install -r requirements.txt
-python server.py --port COM5                 # Windows + URT-2，串口号看设备管理器
-python server.py --port /dev/ttyUSB0         # 板子上，URT-2 插板子的 USB 口
-python server.py --port /dev/ttyS2           # 板子上走 40 脚的 UART2（要先接半双工转接，见下）
-python server.py --fake                      # 没舵机：模拟模式，舵机是虚拟的
+python server.py --port COM5                 # Windows + URT-2; confira a porta no Gerenciador de Dispositivos
+python server.py --port /dev/ttyUSB0         # na placa, com URT-2 na porta USB
+python server.py --port /dev/ttyS2           # UART2 pelo conector de 40 pinos (requer adaptador half-duplex; veja abaixo)
+python server.py --fake                      # sem servos: modo de simulação
 ```
 
-**模拟模式**（没接串口时）：虚拟舵机按真舵机的速度、加速度寄存器走梯形曲线，姿势、滑块、序列、灵动、官方姿势都会在 3D 里动，快慢跟真机一样；扭矩默认开，没有重力。右上「模拟」一栏能选 IMU：不接 / 接虚拟小板（假总线上的 ID 200，跟 `--imu-bus` 同一条路）/ 虚拟小板掉线（看调试台怎么把 200 出列、单独 PING、再接回来）。插上 USB 在顶栏选串口点「连接」就切到真舵机，这一栏自动藏起来，虚拟小板也跟着拔掉。
+**Modo de simulação** (sem porta serial): os servos virtuais seguem curvas trapezoidais conforme os registradores de velocidade e aceleração reais. Poses, controles, sequências, animações e posturas oficiais movem o 3D na mesma velocidade do hardware real. O torque começa ativado, sem gravidade. No painel “Simulação”, no alto à direita, escolha uma IMU: nenhuma; uma placa virtual no ID 200 do barramento simulado (mesmo caminho de `--imu-bus`); ou uma placa virtual desconectada, para observar como a bancada remove o ID 200 da leitura conjunta, faz PING separado e o adiciona de volta. Conecte o USB, escolha a porta serial na barra superior e clique em “Conectar” para usar os servos reais; o painel de simulação some e a placa de IMU virtual é desconectada.
 
-模拟里也能彩排一键校准和撤销：只改虚拟舵机，备份放系统临时目录，**不碰 `calib/` 和 `poses/`**（虚拟舵机的偏移要是混进 `calib/`，接上真舵机点「撤销」会写进真舵机）。存姿态、改 ± 是明确的操作，照常写文件。
+A simulação também permite ensaiar a calibração em um clique e a reversão: ela altera apenas os servos virtuais e guarda a cópia de segurança no diretório temporário do sistema, **sem tocar em `calib/` ou `poses/`**. Se um offset virtual fosse parar em `calib/`, clicar em “Reverter” com servos reais conectados o gravaria neles. Salvar uma pose ou mudar o sinal ± continua sendo uma operação explícita e grava arquivos normalmente.
 
-串口打不开不会崩：Página照样开（假总线），顶栏会出现串口Inferior拉，插好 USB 选一个点「Conexão」就接管，不用重启。
+Se não conseguir abrir a porta serial, a aplicação não cai: a página abre com o barramento simulado. A barra superior mostra um seletor serial; conecte o USB, escolha a porta e clique em “Conectar” para alternar sem reiniciar.
 
-浏览器开 `http://127.0.0.1:8080`；在板子上跑就用板子 IP，手机也能开。默认管的 ID 是 `20-24,30-34,10-14`，别的用 `--ids`。3D 模型的文件在 `model/`，已经生成好；要重新生成：
+Abra `http://127.0.0.1:8080` no navegador. Se a aplicação estiver rodando na placa, use o IP dela; o celular também pode acessar. Os IDs padrão são `20-24,30-34,10-14`; informe outros com `--ids`. Os arquivos do modelo 3D estão prontos em `model/`. Para gerá-los novamente:
 
 ```bash
 python build_model.py --src <microduck_rl>/src/mjlab_microduck/robot/microduck
 ```
 
-### Placa principal + HAT，经 WiFi Depuração
+### Depurar pela rede Wi-Fi com placa principal + HAT
 
-先确认主板已经取得 WiFi 地址、SSH 能登录，按[主板镜像说明](../radxa/镜像使用说明.md#4-连-wifi)配置。将本目录和依赖放到主板，确认 `robotd` 等程序没有占用 `/dev/ttyS2` 后运行：
+Confirme que a placa obteve um endereço Wi-Fi e aceita login SSH; siga as [instruções da imagem da placa](../radxa/镜像使用说明.md#4-连-wifi). Copie este diretório e as dependências para a placa. Confirme que programas como `robotd` não estão usando `/dev/ttyS2` e execute:
 
 ```bash
 python server.py --port /dev/ttyS2 --ids 20-24,30-33,10-14 --host 0.0.0.0 --http-port 8080
 ```
 
-电脑/手机连接同一可互通的局域网，在浏览器打开 `http://主板IP:8080`。这个示例排除了嘴部；如要加入，按实际 ID 调整。网页内可操作实体舵机，只在可信局域网使用。0.15.2 起，启动/连接串口只做扫描和相位读取，不再自动放开速度和加速度限制；页面上的运动、校准等按钮仍会实际发出控制指令。
+Conecte o computador ou celular à mesma rede local e abra `http://IP-da-placa:8080`. O exemplo exclui a boca; ajuste os IDs se quiser incluí-la. A página pode controlar os servos físicos: use apenas em uma rede confiável. Desde a versão 0.15.2, iniciar ou conectar a serial apenas faz a varredura e lê a fase; não remove mais automaticamente os limites de velocidade e aceleração. Os botões de movimento e calibração ainda enviam comandos reais.
 
-0.15.4 起，真实Servo状态回读eWeb推送 de 目标频率为 **50 Hz**（原为 10 Hz）；模拟模式仍为 30 Hz。顶栏“刷新”是Web实际收到状态 de 频率，受串口耗时、超时、系统调度eRede影响。提高回读频率不改变姿势、使能状态或运动指令节拍，也不等于已经Validação了包含 IMU、策略推理e指令Gravação de Completo 50 Hz Controle循环。
+Desde a versão 0.15.4, a frequência-alvo de leitura do estado dos servos reais e de envio à web é **50 Hz** (antes, 10 Hz); o modo de simulação continua em 30 Hz. “Atualização”, na barra superior, indica a frequência com que a web realmente recebe o estado e depende do tempo serial, timeouts, escalonamento do sistema e rede. Aumentar a frequência de leitura não altera poses, habilitação ou cadência dos comandos e não significa que o ciclo completo de controle a 50 Hz, incluindo IMU, inferência da política e gravação dos comandos, tenha sido validado.
 
-滑块只写目标位置，会沿用Servo原来 de 速度/加速度设置；若该相位定义“速度 0 = 停止”且Atual速度为 0，拖滑块可能不动。é necessário运动时应确认保护、支撑 e Mecânica范围，再使用明确设置速度 de 平滑过渡功能。
+Os controles deslizantes escrevem apenas a posição-alvo e preservam as configurações atuais de velocidade / aceleração do servo. Se a fase definir velocidade 0 como parada e o valor atual for 0, arrastar o controle pode não mover a junta. Antes de mover, confirme as proteções, o apoio e o espaço mecânico; use a função explícita de transição suave com velocidade definida.
 
-需要对照“电脑 USB 转串口直连”时，先停止主板上的调试程序，再正常关机、断电换线。重新供电后在电脑运行 `python server.py --port COM实际编号 --ids 23`，用同一颗舵机比较；不要让 HAT 主控和 USB 转串口同时向同一总线发指令。只读报告也可用 `python servo_report.py --port COM实际编号 --ids 23`。
+Para comparar com uma conexão direta do adaptador USB-serial ao computador, primeiro pare o programa de depuração da placa; depois desligue o sistema normalmente, corte a alimentação e troque os cabos. Com a alimentação restabelecida, no computador execute `python server.py --port COM<número-real> --ids 23` para comparar o mesmo servo. Não deixe o controlador HAT e o adaptador USB-serial enviarem comandos simultaneamente ao mesmo barramento. O relatório somente leitura também pode ser gerado com `python servo_report.py --port COM<número-real> --ids 23`.
 
-## Oficial姿势：去那个姿势 / 3D 叠加对比
+## Poses oficiais: mover até a pose e comparar com sobreposição 3D
 
-「官方姿势」一栏是 microduck_rl `scene.xml` 里的四个 keyframe：**零位**（全 2048）、**站**（STAND）、**坐**（SIT）、**折叠**（FOLD）。
+A aba “Poses oficiais” contém quatro keyframes do `scene.xml` do microduck_rl: **zero** (todos em 2048), **em pé** (STAND), **sentado** (SIT) e **dobrado** (FOLD).
 
-- 「去」：按官方角度、每颗的 ± 和现在的零点换算成读数，照「过渡时间」走过去。**折叠发的时候膝只折 88°**：按精确网格算，官方几何里髋 90°、踝 0° 时膝折到 89.6° 踝就碰到大腿上的舵机，官方 90° 会让舵机顶着零件使劲（见 [`tools/fold_contact`](../fold_contact/)）
-- 「3D 叠加」：在 3D 里多画一只半透明蓝色 de 鸭子摆成Oficial姿势，abaixo逐关节列出「实际 − Oficial」差多少度（>2° 黄、>5° 红）。鸭子摆成那个姿势时，差值就是零点偏了多少
+- **“Mover”** converte os ângulos oficiais em leituras, aplicando o sinal ± de cada servo e o zero atual, e faz a transição pelo tempo configurado. **Ao enviar a pose dobrada, os joelhos flexionam apenas 88°**: pela malha exata, na geometria oficial o tornozelo encosta no servo da coxa quando o quadril está a 90°, o tornozelo a 0° e o joelho a 89,6°. Os 90° oficiais pressionariam o servo contra a peça (veja [`tools/fold_contact`](../fold_contact/)).
+- **“Sobreposição 3D”** desenha um segundo pato azul semitransparente na pose oficial e lista, abaixo, a diferença angular por junta entre “real − oficial” (amarelo acima de 2°, vermelho acima de 5°). Quando o robô está nessa pose, a diferença mostra o erro do zero.
 
-## 可选：IMU 躯干姿态（Servo总线 / ST-Link / DAPLink / J-Link）
+## Opcional: orientação do tronco pela IMU (barramento de servos / ST-Link / DAPLink / J-Link)
 
-调试台可以在**同一个模型**上组合两种读数：舵机关节角继续驱动原有的关节，IMU 四元数驱动躯干姿态。沿用本服务、`/ws`、模型文件和 CDN，不启动第二个网页服务。不给 IMU 参数时隐藏该区域，原有串口功能照常。
+A bancada pode combinar duas fontes no **mesmo modelo**: os ângulos das juntas dos servos continuam movimentando as articulações e o quaternion da IMU controla a orientação do tronco. Reutiliza o serviço, `/ws`, os arquivos de modelo e o CDN; não inicia outro serviço web. Sem parâmetros de IMU, essa área fica oculta e a função serial existente continua normal.
 
-适用已验证的 **STM32G031F8P6 + LSM6DSV16X 同款板**；J-Link 模式需要 Windows x64、Python 3.11+、自己安装的 SEGGER J-Link USB 驱动和 `JLink_x64.dll`。裸板固件与烧录步骤见 [`hardware/imu_to_dxl/firmware/`](../../hardware/imu_to_dxl/firmware/)，原理图和接线见[硬件目录](../../hardware/imu_to_dxl/)。J3.1 接 GND、J3.2 接 SWCLK、J3.3 接 SWDIO、**J3.6 接 VTref**；J3.4/5 是串口，不能接成电源参考。
+Compatível com a placa já validada **STM32G031F8P6 + LSM6DSV16X**. O modo J-Link requer Windows x64, Python 3.11 ou superior, driver USB SEGGER J-Link instalado à parte e `JLink_x64.dll`. O firmware da placa e as instruções de gravação estão em [`hardware/imu_to_dxl/firmware/`](../../hardware/imu_to_dxl/firmware/); esquemas e conexões, no [índice de hardware](../../hardware/imu_to_dxl/). J3.1 vai a GND, J3.2 a SWCLK, J3.3 a SWDIO e **J3.6 a VTref**; J3.4/5 são seriais e não devem ser usados como referência de alimentação.
 
-1. 将 `imu-jlink.example.json` 复制为 `imu-jlink.json`，填写自己的 `dll` 和 `probe_serial`。文件已被 Git 忽略。
-2. 让 Keil、J-Link Commander 等退出Depuração，释放探针；板Superior应已Execução配套 HEX。
-3. 在 `tools/servo-web/` 运行以下命令，浏览器仍打开 `http://127.0.0.1:8080`：
-
-```bash
-python server.py --port COM5 --imu-jlink imu-jlink.json  # 舵机串口 + 真 IMU
-python server.py --fake --imu-jlink imu-jlink.json       # 只有 IMU 裸板，关节为演示值
-python server.py --fake --imu-demo                       # 两者都是演示，不接硬件
-```
-
-JSON 中的路径相对于该配置文件；DLL 可使用 `E:/SEGGER/JLink/JLink_x64.dll` 这类完整路径，但必须改成自己的实际安装位置。`firmware` 可省略，默认使用仓库的 `hardware/imu_to_dxl/firmware/Build/imu_to_dxl.hex`；`hz` 为 1–20；`resume` 默认为 `false`。只在明确需要恢复暂停的 CPU 时设置 `resume: true`，也必须先通过固件校验。序列号没有默认值，不自动选择探针。
-
-首次收到有效姿态时自动设显示零位，也可平放板子后点“归零”。安装方向默认绕 Y +90°（`DEFAULT_MOUNT`），按实物安装方向调整后重新归零。这些操作只影响网页，不写 IMU、舵机或 Flash。归零后的画面显示相对姿态；“原始姿态”也只是相对 IMU 启动参考。
-
-### 最省事：`--imu-bus`，直接从舵机总线读
-
-小板挂在Servo总线Superior（Firmware 0.2.0 起是飞特Protocolo），**不用任何Depuração器**，URT-2 一根线Servoe IMU 一起读：
+1. Copie `imu-jlink.example.json` para `imu-jlink.json` e preencha `dll` e `probe_serial`. O arquivo está ignorado pelo Git.
+2. Feche o modo de depuração do Keil, J-Link Commander e similares para liberar a sonda; o firmware HEX correspondente já deve estar executando na placa.
+3. Em `tools/servo-web/`, execute um dos comandos abaixo; o navegador continua em `http://127.0.0.1:8080`:
 
 ```bash
-python server.py --port COM5 --imu-bus      # 真总线：15 颗舵机 + ID 200
-python server.py --fake --imu-bus           # 没硬件：假总线上挂一块假小板，看效果
+python server.py --port COM5 --imu-jlink imu-jlink.json  # serial dos servos + IMU real
+python server.py --fake --imu-jlink imu-jlink.json       # somente placa IMU; juntas demonstrativas
+python server.py --fake --imu-demo                       # ambas as fontes são simuladas
 ```
 
-- 发的是跟主控每 tick **同一条** sync_read：地址 56、长度 15、**ID 200 排第一**，后面跟舵机。舵机状态照旧解，200 的块按主控的判据解（全 0 四元数 = 融合没出数；norm² > 1.02 拒绝；12 字节连续 25 帧不变 = frozen；保留字节必须是 0；状态位 BIT1/BIT2 是板子自己报的故障），跟 `tools/imu200` 同一套。
-- 规格里写了：板子不应答时，同一条 sync_read 里后面 de ServoDados会跟着丢。所以 200 **连续 5 帧不应答就出列**，Servo单独读，每 2 秒单独 PING 一次 200，应答了再放回来 —— 没接小板时Depuração台照样能用，日志 IMU 分类里写明卡在哪。
-- 兼容原版 DXL 2.0 协议的 `imu_to_dxl` 板：网页可切换协议，或用 `--imu-bus-protocol dxl2`；默认仍为飞特协议。DXL2 读取 ID 200、地址 124、长度 12。
-- 只有Web连着 de 时候才轮询（跟Servo状态同一个循环）；校准期间停。台架Superior只接小板、扫描没扫到Servo也照样读 200。
-- 真总线按目标 50 Hz 读时，120 Hz 固件通常在两次读取间刷新约 2–3 次；实际周期拉长时，BIT3（「读得太慢」）仍可能出现。0.15.3 及以前按 10 Hz 读，两次间约刷新 12 次。调试台仍不把 BIT3 单独作为报警，原始状态位保留在帧里（`status_bits`）。
-- 固件是 0.1.0（Dynamixel 2.0）的板子在默认飞特模式下不会应答：保留原固件时切换到 DXL2 兼容模式即可；也可按 [`firmware/`](../../hardware/imu_to_dxl/firmware/) 烧 0.2.0，使用默认飞特模式。DXL2 模式把 IMU 与飞特舵机分成两个串口事务，飞特模式仍沿用上面的同步读。
+Os caminhos do JSON são relativos ao próprio arquivo. `dll` pode conter um caminho completo como `E:/SEGGER/JLink/JLink_x64.dll`, mas deve apontar para a instalação real. `firmware` é opcional; por padrão, usa `hardware/imu_to_dxl/firmware/Build/imu_to_dxl.hex` do repositório. `hz` aceita 1–20; `resume` é `false` por padrão. Defina `resume: true` apenas se precisar explicitamente retomar a CPU pausada e depois de validar o firmware. Não há número de série padrão e a sonda não é selecionada automaticamente.
 
-### 没有 J-Link：`--imu-swd`（ST-Link / DAPLink，经 pyOCD）
+Ao receber a primeira orientação válida, a referência visual zero é definida automaticamente; também é possível apoiar a placa e clicar em “Zerar”. A montagem padrão aplica rotação de +90° em Y (`DEFAULT_MOUNT`); ajuste conforme a montagem física e zere novamente. Essas ações afetam apenas a página: não gravam nada na IMU, nos servos ou na Flash. A tela zerada mostra orientação relativa; “orientação bruta” também é relativa à referência da inicialização da IMU.
 
-读法跟上面一样：先查目标电压，再逐字节比对板上 Flash，然后读同一块 RAM 快照，不烧写、不写内存。区别是走 [pyOCD](https://pyocd.io/)，**ST-Link、CMSIS-DAP（DAPLink）都能用**，不用配置文件。**J-Link 请用上面的 `--imu-jlink`**：经 pyOCD 连 J-Link 会默认从 19 脚供 5 V、可能静默升级探针固件，绕开了那条路的保护，所以 `--imu-swd` 会直接拒绝 J-Link。
+### Mais simples: `--imu-bus`, leitura direta do barramento de servos
+
+Com a placa pequena conectada ao barramento de servos (desde o firmware 0.2.0, protocolo Feetech), **não é necessário nenhum depurador**: o URT-2 lê servos e IMU pela mesma conexão.
+
+```bash
+python server.py --port COM5 --imu-bus      # barramento real: 15 servos + ID 200
+python server.py --fake --imu-bus           # sem hardware: uma placa falsa no barramento simulado
+```
+
+- Envia a mesma chamada `sync_read` do controlador principal a cada ciclo: endereço 56, tamanho 15, **ID 200 primeiro**, seguido pelos servos. A resposta dos servos é decodificada como antes; o bloco 200 usa os critérios do controlador (quaternion totalmente zero = fusão ainda sem saída; rejeita norm² > 1,02; 25 quadros consecutivos sem alteração nos 12 bytes = congelado; bytes reservados precisam ser zero; bits BIT1/BIT2 indicam falhas reportadas pela própria placa), iguais aos de `tools/imu200`.
+- A especificação diz que, se a placa não responder, as respostas dos servos posteriores na mesma chamada sync_read também podem se perder. Por isso, após **5 quadros consecutivos sem resposta do 200**, ele é removido da leitura conjunta; os servos são lidos sozinhos e o ID 200 recebe um PING separado a cada 2 s. Quando responder, é reintegrado. A bancada continua útil sem a placa e o log da categoria IMU explica a falha.
+- Compatível com a placa `imu_to_dxl` no protocolo DXL 2.0 original: altere o protocolo na página ou use `--imu-bus-protocol dxl2`; o padrão continua Feetech. O modo DXL2 lê ID 200, endereço 124, tamanho 12.
+- A leitura contínua ocorre apenas enquanto a interface web está conectada, no mesmo ciclo de atualização do estado dos servos; é pausada durante calibração. Na bancada, é possível conectar somente a placa IMU: mesmo que a varredura não encontre servos, o ID 200 ainda é lido.
+- Com taxa-alvo de 50 Hz no barramento real, o firmware de 120 Hz normalmente atualiza 2–3 vezes entre leituras. Se o ciclo real ficar mais lento, o BIT3 (“leitura muito lenta”) ainda pode aparecer. Até a versão 0.15.3, a leitura era 10 Hz e havia cerca de 12 atualizações entre leituras. A bancada não trata BIT3 isoladamente como alarme; preserva os bits originais no quadro (`status_bits`).
+- Uma placa com firmware 0.1.0 (Dynamixel 2.0) não responde no modo Feetech padrão. Mantenha o firmware e escolha o modo compatível DXL2, ou grave o 0.2.0 indicado em [`firmware/`](../../hardware/imu_to_dxl/firmware/) e use o modo Feetech padrão. No DXL2, a IMU e os servos Feetech são lidos em duas transações seriais; no modo Feetech, continua sendo usada a leitura conjunta descrita acima.
+
+### Sem J-Link: `--imu-swd` (ST-Link / DAPLink via pyOCD)
+
+O processo é o mesmo: verifica a tensão-alvo, compara byte a byte a Flash da placa e lê o mesmo snapshot da RAM. Não grava firmware nem memória. Usa [pyOCD](https://pyocd.io/); **funciona com ST-Link e CMSIS-DAP (DAPLink)** sem arquivo de configuração. **Para J-Link, use `--imu-jlink`**: conectar o J-Link via pyOCD pode aplicar 5 V pelo pino 19 e atualizar silenciosamente o firmware da sonda, contornando as proteções daquele caminho; por isso `--imu-swd` rejeita J-Link.
 
 ```bash
 pip install pyocd
-python server.py --fake --imu-swd                           # 只插一个调试器：自动选
-python server.py --fake --imu-swd 301612179216303030303032  # 插了多个：用 UID 指定（pyocd list 查）
-python server.py --port COM5 --imu-swd                      # 舵机串口 + 真 IMU
+python server.py --fake --imu-swd                           # com uma sonda, seleciona automaticamente
+python server.py --fake --imu-swd 301612179216303030303032  # com várias, indique o UID (consulte com pyocd list)
+python server.py --port COM5 --imu-swd                      # serial dos servos + IMU real
 ```
 
-- Fiação同Superior：J3.1 GND、J3.2 SWCLK、J3.3 SWDIO、J3.6 接Depuração器 de  **VTref / TVCC**（只测电压，不供电）。板子自己从总线口供电；Depuração器若有 3.3 V 输出脚（有 de  ST-LINK/V2 是 19 脚），**别跟总线Alimentação同时接**。
-- ST-LINK/V2  de  20 针有不同Versão：有 de  4/6/8/10 脚是 GND，有 de 是 UART、BOOT0、SWIM。**GND 只用 12/18/20 脚**。
-- 用 `attach` 模式连接：不复位、不暂停，断开时也不发 Go；不加载当前目录的 `pyocd.yaml` / 用户脚本。它仍会写调试寄存器（DHCSR.C_DEBUGEN 等），断开后 C_DEBUGEN 保持置位，所以不能算对目标零影响。实测（2026-09-22，ST-LINK/V2 V2J43S7，100 kHz）：连续连接 3 次，芯片计时跟墙钟对得上，**不会让板子重启**；刷新约 20 Hz，数据年龄 6–11 ms。
-- 连芯片之前先查目标电压：只有 ST-Link 测得出来，不在 3.0–3.5 V 就拒绝（接近 0 V 会提示 VTref/TVCC 没接或板子没Superior电）；DAPLink 读不到电压，Web显示「—」，不拦。出错会分清是「Depuração器打不开」（被 Keil/CubeProgrammer 占用、ST-Link Firmware太旧）还是「连不Superior芯片」（Fiação、供电）。
-- 要回 Keil 或 CubeProgrammer，先停本Serviço，释放Depuração器。
+- A fiação é igual à anterior: J3.1 GND, J3.2 SWCLK, J3.3 SWDIO, J3.6 ao **VTref / TVCC** da sonda (somente medição de tensão; não alimenta a placa). A placa recebe alimentação pelo barramento. Se o depurador tiver uma saída de 3,3 V (o pino 19 de alguns ST-LINK/V2, por exemplo), **não a conecte junto à alimentação do barramento**.
+- O conector de 20 pinos ST-LINK/V2 varia conforme a versão: pinos 4/6/8/10 podem ser GND; outros podem ser UART, BOOT0 ou SWIM. **Use apenas os pinos 12/18/20 para GND.**
+- Conecta em modo `attach`: não reinicia nem pausa a CPU e não envia Go ao desconectar. Não carrega `pyocd.yaml` nem scripts do usuário no diretório atual. Ainda grava registradores de depuração (DHCSR.C_DEBUGEN etc.) e deixa C_DEBUGEN ligado após desconectar; portanto, não tem impacto absolutamente nulo. Na medição de 2026-09-22, com ST-LINK/V2 V2J43S7 a 100 kHz, três conexões consecutivas mantiveram o temporizador do chip sincronizado com o relógio e **não reiniciaram a placa**; atualização em cerca de 20 Hz e idade dos dados de 6–11 ms.
+- Antes de conectar ao chip, verifica a tensão-alvo. Apenas ST-Link consegue medi-la: fora de 3,0–3,5 V, a conexão é recusada (próximo de 0 V, avisa para conferir VTref/TVCC ou a alimentação da placa). O DAPLink não informa tensão; a página mostra “—” e não bloqueia. As mensagens distinguem “não foi possível abrir o depurador” (ocupado pelo Keil / CubeProgrammer ou firmware ST-Link antigo) de “não foi possível conectar ao chip” (fiação ou alimentação).
+- Para voltar ao Keil ou CubeProgrammer, pare este serviço para liberar o depurador.
 
-连接、异常、状态变化和显示校准记入同一个 `logs/servo-web-日期.log`，分类为 **IMU**；数据不逐帧写日志。停止服务会释放调试器（J-Link / ST-Link / DAPLink）；要回 Keil 调试请先停止本服务，单独关闭浏览器标签不会释放探针。当前没有网页端探针重连或复位操作，连接异常处理完后重启服务。
+Conexões, erros, mudanças de estado e calibração visual são gravados em `logs/servo-web-data.log`, na categoria **IMU**; não são registrados todos os quadros. Ao parar o serviço, a sonda J-Link / ST-Link / DAPLink é liberada. Para usar o Keil, primeiro pare o serviço; fechar apenas a aba do navegador não libera a sonda. A interface ainda não permite reconectar ou reiniciar a sonda pela web; após resolver uma falha, reinicie o serviço.
 
-### Firmware校验 e Validação范围
+### Verificação do firmware e escopo da validação
 
-- 只提交一份 `.hex`，不需要下载 `.bin` 或 `.map`。SWD / J-Link 后端校验 Intel HEX 记录和连续 Flash 镜像，解码后为 **10724 字节**（固件 0.2.0），SHA-256 为 `66bc7c532f5a1ad87e3dfff71a4b51f8c4f20840a8f62436874fa5b7c665938e`，RAM 布局 `sample=0x2000006C`、`tick=0x20000A34`。只有此镜像才使用已审核的 RAM 布局，连接后还会逐字节比对实际 Flash；不同固件拒绝读取姿态或恢复 CPU。
-- 修改Firmware后先Verificação新 de  MAP  em 结构、地址 e 大小，再Atualização对应 de 已Validação哈希e布局。不能只取消哈希校验。本Ferramentas不执行Gravação。
-- 此前 J-Link 9.78、SWD 100 kHz 实板Leitura约 20 Hz；SDK 建连曾导致板Superior程序重启，不能视为无扰动观察。Atual整合版另做无Hardware自检，**尚未Validação真Servo e 真 IMU 同时Execução**，需Superior机核对轴向 e 长时间稳定性。
-- **附带固件 0.2.0 已是飞特协议**（ID 200、地址 56 的 15 字节块），真协议代码在模拟总线上通过了 `imu200.py check`；但**真总线还没测**，SWD 画面正常也不代表真总线、`FeetechIo` 验收通过。上整机前跑 `imu200.py check --port`。
-- 六轴 IMU 航向会漂移，Web不测平移、不判断真实脚底接触。重心e支撑区仍是Modelo几何估计，不能据此判定整机能够稳定Ficar em pé或Caminhada；断流时Preservado最后姿态并标记失效。
+- Envie somente um arquivo `.hex`; não é necessário baixar `.bin` ou `.map`. Os backends SWD / J-Link verificam os registros Intel HEX e a imagem contínua da Flash. Após decodificação, o firmware 0.2.0 tem **10.724 bytes**, SHA-256 `66bc7c532f5a1ad87e3dfff71a4b51f8c4f20840a8f62436874fa5b7c665938e` e layout de RAM `sample=0x2000006C`, `tick=0x20000A34`. Apenas essa imagem usa o layout de RAM revisado; após conectar, o conteúdo real da Flash também é comparado byte a byte. Firmware diferente não permite ler a orientação nem retomar a CPU.
+- Ao mudar o firmware, confira primeiro a estrutura, os endereços e os tamanhos no novo MAP; depois atualize o hash e o layout validados. Não remova apenas a verificação do hash. Esta ferramenta não grava firmware.
+- Leituras anteriores em placa real com J-Link 9.78 e SWD a 100 kHz chegaram a cerca de 20 Hz; uma sessão SDK chegou a reiniciar a placa e não pode ser considerada observação sem perturbação. A versão integrada passou por autotestes sem hardware, mas **a operação simultânea com servo real e IMU real ainda não foi validada**; precisa ser conferida no robô quanto aos eixos e à estabilidade prolongada.
+- **O firmware 0.2.0 incluído já usa o protocolo Feetech** (ID 200, bloco de 15 bytes no endereço 56). O código do protocolo real passou em `imu200.py check` com barramento simulado, mas **o barramento físico ainda não foi testado**. Uma imagem SWD normal não comprova a validação do barramento real nem do `FeetechIo`. Antes de integrar ao robô, execute `imu200.py check --port`.
+- O rumo da IMU de seis eixos deriva com o tempo. A página não mede translação nem confirma contato físico dos pés. O centro de massa e a área de apoio continuam estimativas da geometria do modelo; não comprovam que o robô completo consegue ficar em pé ou caminhar de forma estável. Em caso de perda do fluxo, a última orientação é preservada e marcada como inválida.
 
-### 无Hardware回归Verificação
+### Regressão sem hardware
 
 ```bash
 pip install -r requirements-test.txt
@@ -144,67 +143,67 @@ python -m pytest test_feetech_sync.py test_imu_bridge.py test_imu_server.py test
 node --test test_imu_attitude.cjs
 ```
 
-Node.js 只usado para前端数学Teste，正常使用Depuração台不é necessário。Firmware主机Teste e Histórico实板记录见 [VALIDATION.md](../../hardware/imu_to_dxl/firmware/VALIDATION.md)。
+Node.js é usado apenas nos testes matemáticos da interface; não é necessário para usar normalmente a bancada. Os testes de host do firmware e registros de testes em placa real estão em [VALIDATION.md](../../hardware/imu_to_dxl/firmware/VALIDATION.md).
 
 ## Atenção
 
-- **URT-2 先插 USB，再给ServoSuperior电。** 反了总线电平会卡在 2.1 V，扫描一颗都没有、只有广播能收到几个 0，见[Problemas encontrados](../../Problemas encontrados.md#Ferramentas)。
-- **板子上用 ttyS2 前先 `sudo systemctl stop robotd`**。官方守护进程每秒都在开这个口找舵机，两边一起发会撞包。用 URT-2 走 ttyUSB0 没这个问题。
-- **ttyS2 直接飞线到Servo是收不到应答 de **。瑞莎 de  UART 是全双工 3.3 V 两根线，飞特总线是单线半双工， em 间要么三态缓冲（Oficial HAT  de 做法），要么拆一块 URT-2  de 芯片方案。转接板做好以后先用PáginaSuperior de 时序Teste看有没有回显：有回显会表现为全部"无应答"。
--  em 位校准e改 ID 写 EEPROM，Página会弹确认。改 ID 时总线Superior只接那一颗。
-- **HD-1910（Firmware 3.46）不认扭矩开关写 128**。内存表里写着能 em 位校准，实测 4 轮 15 颗：解锁、扭矩关着写 128，Servo回「Sucesso」，偏移一个都没变。Protocolo手册 4.9  de 表里 HLS ≥3.43 也写着não suporta。校准一律走 0x0B。
-- "全部回 2048" 对扭矩开着 de Servo是立刻执行 de ，装在腿Superior de 先关扭矩ou一颗一颗来。
-- Página从 jsdelivr 加载 three.js，开Página de 电脑要能Superior网；后端本身不é necessário。
-- 嘴（ID 34）Modelo里没有这个关节，滑块能动Servo，3D 不显示。
+- **Conecte o USB do URT-2 antes de alimentar os servos.** Se fizer o contrário, o nível do barramento pode ficar preso em 2,1 V; a varredura não encontra nenhum servo e só recebe alguns zeros em broadcast. Veja [problemas encontrados](../../踩坑记录.md#工具).
+- **Antes de usar `ttyS2` na placa, execute `sudo systemctl stop robotd`**. O daemon oficial abre essa porta a cada segundo para procurar servos; se os dois programas transmitirem ao mesmo tempo, os pacotes colidem. Usar URT-2 em `ttyUSB0` evita esse conflito.
+- **Não ligue `ttyS2` diretamente aos fios do servo esperando resposta.** A UART da Radxa é full-duplex, com dois fios de 3,3 V; o barramento Feetech é half-duplex e de fio único. É necessário um buffer tri-state (como no HAT oficial) ou um circuito adaptador baseado no chip do URT-2. Depois de montar o adaptador, use o teste de temporização da página para verificar eco: um eco faz todos os servos parecerem “sem resposta”.
+- Calibrar o zero e alterar IDs grava a EEPROM; a página pede confirmação. Ao trocar um ID, deixe somente aquele servo conectado ao barramento.
+- **HD-1910 (firmware 3.46) não reconhece o valor 128 para ativar / desativar torque.** Embora a tabela de memória diga que esse valor calibra o zero, em quatro rodadas com 15 servos cada, desbloquear, desligar torque e gravar 128 retornou “sucesso”, mas não alterou nenhum offset. A tabela 4.9 do manual de protocolo também informa que HLS ≥3.43 não oferece suporte. Use sempre 0x0B para calibrar.
+- “Todos para 2048” move imediatamente qualquer servo cujo torque esteja ligado. Nos servos montados nas pernas, desligue o torque primeiro ou opere um de cada vez.
+- A página carrega three.js pelo jsdelivr; o computador precisa de acesso à internet para abrir a página. O backend não precisa.
+- O modelo não inclui a junta da boca (ID 34); o controle ainda move o servo, mas ele não aparece no 3D.
 
 ## Versão
 
-页面标题旁显示版本号。页面和服务的版本不一致时标红，并提示先重启 `server.py` 再 Ctrl+F5；这通常是浏览器还在用旧页面。改代码时 `server.py` 的 `VERSION` 和 `index.html` 的 `PAGE_VERSION` 一起加。
+A versão aparece ao lado do título da página. Se a versão da página e a do serviço forem diferentes, a página fica vermelha e pede para reiniciar `server.py` e usar Ctrl+F5; normalmente o navegador ainda está usando arquivos antigos. Ao alterar o código, atualize juntos `VERSION` em `server.py` e `PAGE_VERSION` em `index.html`.
 
-| Versão | 日期 | 改了什么 |
+| Versão | Data | Alterações |
 |---|---|---|
-| 0.15.6 | 2026-10-23 | 修复 DXL 2.0 IMU 正常轮询持续写入原始日志；沿用总线 `trace_skip` 设置，保留失败请求及手动诊断日志 |
-| 0.15.5 | 2026-10-17 | 新增原版 DXL 2.0 `imu_to_dxl` 兼容模式及网页协议切换，默认飞特协议不变 |
-| 0.15.4 | 2026-09-28 | 真实Servo状态回读 e Web推送目标频率由 10 Hz 提高为 50 Hz；模拟模式保持 30 Hz，动作e使能逻辑Inalterado |
-| 0.15.3 | 2026-09-28 | 同步Leitura按应答包实际 ID 归档，修复缺一包后把后续正常应答连带判Falha de 问题；真实漏读仍Preservado，不靠增加重试隐藏；补充Protocolo字节流回归Teste |
-| 0.15.2 | 2026-09-28 | Inicialização/Conexão串口时只Leitura相位，不再自动写速度 e 加速度寄存器；补充Placa principal + HAT  de  WiFi Depuração e  USB 转串口对照方法 |
-| 0.15.1 | 2026-09-22 | 舵机体检 `servo_report.py`（只读，协议模拟器上验证过一个写指令都不发）；`远程排查交接.md`；校准确认框里踝的说法改成「脚板跟小腿成直角」（原来的「对齐」容易理解反） |
-| 0.15.0 | 2026-09-22 | 按审查修（subagent 审的）：开扭矩前先把目标对准当前位置（扭矩关着校完、用手展开再开扭矩会甩回折叠）；校准收尾不再用回读的 67 重写目标 42；模拟里校准 / 撤销不碰 `calib/`、`poses/`；假总线的偏移按符号-幅值编码；接上真串口时拔掉模拟的虚拟 IMU，接 / 拔广播给所有页面。校准确认框逐颗列「现在 → 写成、差几度」，差 30° 以上再确认一次、不拦；3D 可叠加「校准用折叠」；零点没校准前别按「折叠」的提醒 |
-| 0.14.0 | 2026-09-22 | 模拟模式：虚拟Servo按速度 / 加速度寄存器走梯形曲线（原来只有扭矩开着才一阶跟随），扭矩默认开，30 Hz 推状态；「模拟」一栏能随时接 / 拔虚拟 IMU 小板。3D 改成有变化才画（40 多万三角面一直按 60 帧画，点按钮半天才弹确认框）。一键校准加基准「Oficial折叠」：目标按Oficial FOLD 角度 × ± 算，校完零点是Oficial 2048，存 de 姿态跟着换算；腿按Oficial折叠、头颈摆正，15 颗一起标 |
-| 0.13.0 | 2026-09-22 | 「Oficial姿势」一栏：零位 / 站 / 坐 / 折叠四个按钮（Oficial keyframe 按 ± 换算，折叠 de 膝少折 2° 不顶零件）；3D 叠加半透明 de Oficial姿势，逐关节列「实际 − Oficial」 de 角度差，用来看零点偏了多少 |
-| 0.12.0 | 2026-09-22 | 可选 `--imu-bus`：直接从舵机总线读 IMU 小板，跟主控同一条 sync_read（地址 56、长度 15、200 排第一），按主控判据解块（未就绪、拒绝、frozen、保留字节、板子故障位）；200 连续 5 帧不应答就出列、每 2 秒单独 PING，没接小板时舵机照样读；`--fake --imu-bus` 有假小板可看效果。配套固件 0.2.0（飞特协议），SWD/J-Link 观察器的 HEX 哈希和 RAM 地址跟着更新 |
-| 0.11.0 | 2026-09-22 | 可选 `--imu-swd`：经 pyOCD 用 ST-Link / DAPLink 读 IMU 姿态，不用 J-Link DLL 和配置文件（J-Link 仍走 `--imu-jlink`，`--imu-swd` 会拒绝它）。跟 J-Link 路径同一套保护：连芯片前先查电压、比对板上 Flash、只读 RAM、CPU 暂停不自动恢复；attach 模式连接，实测不会让板子重启。只插一个调试器时自动选，多个时要写 UID。ST-Link 顺带显示目标电压；pyOCD 的警告也记进 IMU 日志。网页标签显示实际调试器名 |
-| 0.10.0 | 2026-09-21 | 可选 `--imu-jlink`：同一个 WebSocket、日志和 3D 模型组合舵机关节角与 IMU 躯干姿态；保留安装方向/显示归零，支持无硬件 `--imu-demo`，未启用 IMU 时原界面不变。配套固件与硬件资料放在一起，仓库只保留 HEX |
-| 0.9.1 | 2026-09-20 | 串口原始收发进日志文件：每包发了什么、舵机回了什么，十六进制 + 寄存器名（`→ #32 位置校准 ff ff 20 02 0b f2` / `← #32 状态0x00 …`）。飞特不支持的操作照样回「成功」，只有对着原始字节才分得清「真做了」和「装作做了」。10 Hz 的状态轮询不记，不然日志全是它 |
-| 0.9.0 | 2026-09-20 | 按代码审核重写校准（subagent 审出来 de ，全是"会把关节拉走"那一类）：判据从「读数等于目标」改成「偏移寄存器变没变」，因为飞特não suporta de 操作照样回Sucesso；**重力Inferior垂补偿** —— 关扭矩那几毫秒关节会掉（实测Pescoço 0.62 步/ms，而 USB 串口一个来回 1~16 ms），Inferior垂量由「校准前读数、目标、偏移变化」算出来再补回去，16 ms 慢总线Inferior零位误差从 99 步降到 0；关扭矩后回读确认（这包丢了会导致 0x0B 在扭矩开着时执行，偏移一改就满速拉）；目标位置永远写Atual读数、绝不写目标值；出错也在 finally 里写目标、恢复扭矩、加锁；校准期间独占总线并压低加速度e速度；偏移符号方向开机探一次（±1 步）不再每颗试错；寄存器 31/42/46 改用符号-幅值编码（原来负数写成补码会被理解成 -32763 撞限位）；偏移量程收到 ±2047；撤销时校准后新存 de 姿态也跟着挪回；备份原子写、先落盘再挪姿态。模拟器加了重力Inferior垂e总线延迟，这类 bug 现在测得出来 |
-| 0.8.1 | 2026-09-20 | 串口打不开也把Página起起来（USB 没插、口号变了、被占用都不再崩），退到假总线并在日志里列出现有串口；顶栏加串口Inferior拉e「Conexão」按钮，插好 USB 点一Inferior就接管，不用重启Serviço |
-| 0.8.0 | 2026-09-20 | 校准从写 128 换成 0x0B 指令（HD-1910 实测不认 128，0.7.x  de 「Sucesso」其实是读数本来就接近 2048）；Sucesso要读数真 de 变成目标；pode选存 de 姿态当基准（「缩」着校准）；扭矩只关几毫秒（0.7.x 关着等 30–130 ms，Pescoço被压Inferior去 80 步）；撤销只挪当次挪过 de 姿态（0.7.x 撤销把之后新存 de 「站」「缩」反向挪了，已按日志恢复）；备份Arquivo名带毫秒；单颗校准按基准走 |
-| 0.7.3 | 2026-09-20 | 修 0.7.1 校准 15 颗全失败（`'_thread.lock' object is not callable`：串口互斥锁叫 `self.lock`，盖住了加 EEPROM 锁的 `lock()` 方法）；导出读到 86 为止（原来读到 90，真机回「short read」）；校准中途出错也加锁，出错不恢复扭矩；日志分类 + 写文件 + 筛选复制；单颗操作改下拉；协议级模拟器和自检 |
-| 0.7.2 | 2026-09-20 | 姿态可以删除（× 按钮，挪进 `poses/.trash/` 能找回）；同名姿态按钮带日期 |
-| 0.7.1 | 2026-09-20 | 修 em 位校准：0.7.0 在扭矩开着、锁着时写 128，Servo回"Sucesso"但根本没校准，随后把目标写成 2048 反而把关节拉回旧零位。改成逐颗 解锁 → 关扭矩 → 写 128 → 读回确认 → 目标 → 扭矩复原 → 加锁；没校准Sucesso就原地不动 |
-| 0.7.0 | 2026-09-20 | 一键 em 位校准（全部或指定 ID）+ 撤销；顶栏在线数、刷新率、平均电压；每颗显示关节角度（借鉴群友 de Depuração台）；方向 15 颗全反 |
-| 0.6.0 | 2026-09-20 | 关节方向存到 `directions.json`，所有页面共用；实机核对 23、13、30–34 反向；「复制 robotd 方向表」；页面禁止浏览器缓存；版本号 |
-| 0.5.0 | 2026-09-19 | 「灵动」Cabeça动作；平滑运动改成不阻塞后端；修相位 BIT3=0 时速度寄存器写 0 等于停 |
-| 0.4.0 | 2026-09-18 | 3D 里 de 重心投影e支撑区；平滑运动（Servo自己走梯形曲线）；目标位置回读核对、没到 de 重发 |
-| 0.3.0 | 2026-09-18 | 姿态存取、「缩起来」「站姿」按钮、Levantar / 缩回去序列、过渡时间 |
-| 0.2.0 | 2026-09-17 | 嘴 de 铰链、扭矩没开时 de 提示、Oficial站姿按钮、默认端口改 8080 |
-| 0.1.0 | 2026-09-17 | 第一版：滑块、实时回读、3D 跟随、寄存器导出、时序Teste、改 ID、 em 位校准 |
+| 0.15.6 | 2026-10-23 | Corrigida a gravação contínua de logs brutos durante a leitura normal da IMU DXL 2.0; mantida a configuração `trace_skip` do barramento e preservados os pedidos com falha e logs de diagnóstico manual. |
+| 0.15.5 | 2026-10-17 | Adicionado modo compatível com a placa `imu_to_dxl` DXL 2.0 original e seleção de protocolo pela página; Feetech continua como padrão. |
+| 0.15.4 | 2026-09-28 | Frequência-alvo de leitura do estado real dos servos e envio à web aumentada de 10 para 50 Hz; simulação permanece em 30 Hz e a lógica de movimento / habilitação não mudou. |
+| 0.15.3 | 2026-09-28 | Leitura conjunta passou a associar respostas pelo ID real do pacote; corrigido o caso em que a ausência de um pacote fazia respostas seguintes normais serem marcadas como falha. Leituras realmente perdidas continuam visíveis, sem escondê-las com tentativas extras; adicionados testes de regressão do fluxo de bytes do protocolo. |
+| 0.15.2 | 2026-09-28 | Na inicialização / conexão serial, apenas a fase é lida; não são mais gravados automaticamente registradores de velocidade e aceleração. Acrescentado o método de comparação entre depuração por Wi-Fi com placa + HAT e conexão USB-serial. |
+| 0.15.1 | 2026-09-22 | Adicionado `servo_report.py`, diagnóstico somente leitura (validado no simulador de protocolo, sem emitir comandos de gravação), e `远程排查交接.md`. A confirmação da calibração esclarece que a sola fica perpendicular à perna; “alinhada” podia ser entendido de outra forma. |
+| 0.15.0 | 2026-09-22 | Revisões corrigiram a ativação de torque: alinhar o alvo à posição atual antes de ligar o torque (calibrar sem torque e abrir a junta à mão podia fazê-la voltar bruscamente à posição dobrada); ao finalizar a calibração, não reescrever o alvo 42 com a leitura 67; a calibração e reversão simuladas não tocam `calib/` nem `poses/`; offsets do barramento simulado usam codificação sinal-magnitude; ao conectar a serial real, desconectar a IMU virtual e propagar conexão / desconexão a todas as páginas. A confirmação lista “agora → novo valor, diferença em graus”; pede nova confirmação para diferenças ≥30°, sem bloquear. Sobreposição 3D da dobra de calibração e aviso para não selecionar “dobrado” antes de calibrar o zero. |
+| 0.14.0 | 2026-09-22 | Simulação com servos virtuais seguindo curvas trapezoidais de velocidade / aceleração (antes havia apenas acompanhamento de primeira ordem com torque ligado), torque ligado por padrão e estado a 30 Hz; opção de conectar / desconectar uma IMU virtual. O 3D só redesenha quando há alterações (antes, mais de 400 mil triângulos eram renderizados a 60 fps e atrasavam a confirmação dos botões). A calibração em um clique ganhou a referência “dobra oficial”: alvos calculados pelos ângulos FOLD oficiais × sinal ±, zero final em 2048 oficial e conversão das poses salvas; pernas dobradas e cabeça / pescoço alinhados, os 15 servos calibrados juntos. |
+| 0.13.0 | 2026-09-22 | Aba “Poses oficiais”: quatro botões para zero / em pé / sentado / dobrado (keyframes oficiais convertidos pelo sinal ±; joelhos flexionam 2° a menos na dobra para não encostar nas peças). Sobreposição 3D semitransparente e diferença angular por junta para visualizar erro do zero. |
+| 0.12.0 | 2026-09-22 | Opção `--imu-bus`: leitura da placa de IMU diretamente pelo barramento, com o mesmo `sync_read` do controlador (endereço 56, tamanho 15, ID 200 primeiro), usando os critérios principais (não pronta, rejeição, congelamento, bytes reservados e bits de falha). Após 5 quadros sem resposta, remove 200 da leitura conjunta e faz PING separado a cada 2 s; os servos continuam funcionando sem a placa. `--fake --imu-bus` demonstra uma placa simulada. Firmware 0.2.0 Feetech; atualizado o hash HEX e os endereços RAM do observador SWD/J-Link. |
+| 0.11.0 | 2026-09-22 | Opção `--imu-swd`: leitura da IMU via ST-Link / DAPLink usando pyOCD, sem DLL nem configuração J-Link (J-Link continua em `--imu-jlink`, e `--imu-swd` o rejeita). Proteções iguais ao caminho J-Link: verificar tensão antes de conectar, comparar a Flash, ler somente RAM e não retomar a CPU automaticamente. Modo attach testado sem reinicialização da placa. Seleção automática com uma sonda ou UID explícito com várias; ST-Link exibe a tensão-alvo; avisos pyOCD registrados no log da IMU; a aba mostra o nome real do depurador. |
+| 0.10.0 | 2026-09-21 | Opção `--imu-jlink`: combinação dos ângulos dos servos e orientação do tronco da IMU na mesma interface WebSocket, log e modelo 3D; mantém montagem e zeragem visual, oferece `--imu-demo` sem hardware e preserva a interface original quando a IMU não é ativada. Firmware e materiais de hardware reunidos; só o HEX fica no repositório. |
+| 0.9.1 | 2026-09-20 | Comunicação serial bruta passa a ser gravada com bytes hexadecimais, nomes de registradores e respostas dos servos. Como operações Feetech sem suporte podem responder “sucesso” sem agir, os bytes permitem conferir o resultado real. Polling de estado a 10 Hz fica fora do log para evitar excesso de dados. |
+| 0.9.0 | 2026-09-20 | Calibração reescrita após revisão de código: verificar se o registrador de offset mudou, e não apenas se a leitura corresponde ao alvo, pois comandos não suportados podem responder “sucesso”. Compensação da queda por gravidade durante o intervalo sem torque (pescoço medido a 0,62 passo/ms, ida e volta serial USB de 1–16 ms); leitura de confirmação após desligar o torque; gravar sempre a leitura atual como alvo; restaurar alvo, torque e bloqueio mesmo em caso de erro; barramento exclusivo e velocidade / aceleração reduzidas durante a calibração; sentido do offset detectado uma vez na inicialização (±1 passo); registradores 31/42/46 passam a usar sinal-magnitude em vez de complemento de dois; faixa de offset limitada a ±2047; reversão também desloca poses salvas depois da calibração; cópia de segurança atômica antes de mover as poses. O simulador passou a modelar gravidade e latência do barramento. |
+| 0.8.1 | 2026-09-20 | Se a porta serial não abrir (USB desconectado, número alterado ou porta ocupada), a página ainda inicia no barramento simulado e lista as portas disponíveis. Seletor serial e botão “Conectar” na barra superior permitem assumir uma porta USB sem reiniciar o serviço. |
+| 0.8.0 | 2026-09-20 | Calibração mudou da gravação de 128 para o comando 0x0B (HD-1910 não reconhece 128; o “sucesso” da versão 0.7.x ocorria porque a leitura já estava perto de 2048); sucesso requer leitura realmente igual ao alvo; opção de usar uma pose salva como referência; torque desligado por poucos milissegundos; reversão desloca apenas poses movidas naquela operação; nomes de cópia de segurança incluem milissegundos; calibração individual segue a referência. |
+| 0.7.3 | 2026-09-20 | Corrigida falha de calibração de todos os 15 servos na versão 0.7.1 (`'_thread.lock' object is not callable`: `self.lock` escondia o método `lock()` da EEPROM); exportação termina no registrador 86 (90 causava `short read` na placa real); erros no meio da calibração também bloqueiam o servo, sem restaurar torque automaticamente; logs categorizados, em arquivo, com filtros e cópia; operações individuais em lista; simulador de protocolo e autoteste. |
+| 0.7.2 | 2026-09-20 | Poses podem ser excluídas com o botão ×, movendo-as para `poses/.trash/` para recuperação; botões de poses homônimas mostram a data. |
+| 0.7.1 | 2026-09-20 | Corrigida a calibração de zero: a versão 0.7.0 gravava 128 com torque ligado e servo bloqueado; ele respondia “sucesso” sem calibrar e a gravação posterior de 2048 puxava a junta de volta ao zero antigo. Novo fluxo: desbloquear → desligar torque → gravar 128 → confirmar leitura → atualizar alvo → restaurar torque → bloquear; se a calibração não for confirmada, não mover. |
+| 0.7.0 | 2026-09-20 | Calibração de zero com um clique (todos ou IDs selecionados) e reversão; contagem online, frequência de atualização e tensão média no topo; ângulos das juntas por servo; direção invertida nos 15 servos. |
+| 0.6.0 | 2026-09-20 | Direções das juntas salvas em `directions.json` e compartilhadas entre páginas; conferidos os sentidos invertidos nos IDs 23, 13 e 30–34; botão para copiar a tabela do `robotd`; cache do navegador desativado e número de versão adicionado. |
+| 0.5.0 | 2026-09-19 | Animação de cabeça “灵动”; movimento suave sem bloquear o backend; corrigido o registrador de velocidade igual a zero quando BIT3=0, que significa parada. |
+| 0.4.0 | 2026-09-18 | Projeção do centro de massa e área de apoio no 3D; movimento suave com trajetória trapezoidal no servo; leitura de confirmação da posição-alvo e reenvio quando não alcançada. |
+| 0.3.0 | 2026-09-18 | Salvar e carregar poses, botões “encolher” e “em pé”, sequências para levantar / voltar a encolher e duração da transição. |
+| 0.2.0 | 2026-09-17 | Dobradiça da boca, aviso quando torque está desligado, botão de postura oficial e porta padrão alterada para 8080. |
+| 0.1.0 | 2026-09-17 | Primeira versão: controles deslizantes, leitura em tempo real, acompanhamento 3D, exportação de registradores, teste de temporização, alteração de ID e calibração de zero. |
 
-## Arquivo
+## Arquivos
 
-| Arquivo | 干什么 |
+| Arquivo | Função |
 |---|---|
-| `server.py` | HTTP + WebSocket 服务，starlette + uvicorn |
-| `feetech.py` | 飞特协议：PING / READ / WRITE / SYNC_READ / SYNC_WRITE / REBOOT，寄存器名表 |
-| `sim_bus.py` / `selftest.py` | 协议级舵机模拟器 / 后端自检 |
-| `servo_report.py` / `test_servo_report.py` | 舵机体检（只读）/ 对着 `sim_bus` 的测试 |
-| `远程排查交接.md` | 给另一台电脑上的 AI 的排查、校准流程 |
-| `logs/` `calib/` | 运行日志、校准前的偏移备份，本机的，不进仓库 |
-| `index.html` | 单文件前端，three.js 从 CDN 来 |
-| `imu_bridge.py` / `test_imu_bridge.py` | J-Link / pyOCD 读取、固件验证、样本解码及无硬件测试 |
-| `test_imu_swd.py` | `--imu-swd`（pyOCD）读取器测试：用假 pyocd 模块，不接探针 |
-| `imu_bus.py` / `dxl2.py` | `--imu-bus`：IMU 总线读取及 DXL2 兼容适配 |
-| `imu_attitude.js` / `test_imu_attitude.cjs` | IMU 四元数、安装方向与显示参考转换及回归测试 |
-| `imu-jlink.example.json` / `test_imu_server.py` | 个人配置模板 / 现有服务的 IMU 整合测试 |
-| `build_model.py` | MuJoCo XML + STL → `model/model.json` + `model/meshes.bin`（顶点 int16 量化，21 MB 变 2.9 MB） |
-| `model/` | 生成好的模型，14 个关节 |
+| `server.py` | Serviço HTTP + WebSocket com starlette + uvicorn |
+| `feetech.py` | Protocolo Feetech: PING / READ / WRITE / SYNC_READ / SYNC_WRITE / REBOOT e nomes dos registradores |
+| `sim_bus.py` / `selftest.py` | Simulador de servo no nível do protocolo / autoteste do backend |
+| `servo_report.py` / `test_servo_report.py` | Diagnóstico somente leitura / teste com `sim_bus` |
+| `远程排查交接.md` | Fluxo de diagnóstico e calibração para um assistente de IA em outro computador |
+| `logs/` `calib/` | Logs de execução e cópias dos offsets anteriores à calibração; dados locais, não incluídos no repositório |
+| `index.html` | Interface de arquivo único; carrega three.js de um CDN |
+| `imu_bridge.py` / `test_imu_bridge.py` | Leitura J-Link / pyOCD, validação de firmware, decodificação de amostras e testes sem hardware |
+| `test_imu_swd.py` | Teste do leitor `--imu-swd` (pyOCD) com módulo simulado, sem sonda |
+| `imu_bus.py` / `dxl2.py` | Leitura de IMU pelo barramento `--imu-bus` e adaptação compatível com DXL2 |
+| `imu_attitude.js` / `test_imu_attitude.cjs` | Conversão de quaternion, montagem da IMU e referência visual; testes de regressão |
+| `imu-jlink.example.json` / `test_imu_server.py` | Modelo de configuração pessoal / teste de integração da IMU no serviço |
+| `build_model.py` | MuJoCo XML + STL → `model/model.json` + `model/meshes.bin` (vértices quantizados int16; 21 MB reduzidos para 2,9 MB) |
+| `model/` | Modelo gerado, com 14 juntas |

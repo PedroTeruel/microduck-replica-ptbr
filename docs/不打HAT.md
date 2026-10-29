@@ -1,244 +1,239 @@
-# 不打 HAT · 用 ¥70  de 模块飞线替代
+# Sem HAT · substitua por módulos de ¥70 e fios
 
 **Chinês simplificado**
 
-> Oficial HAT 是 4 层板、双面贴装、110 个器件 —— 打样贴片一次Superior千块，**很多人觉得划不来**。
-> 这份就是替代方案：一个降压模块 + 一个半双工转接板，剩Inferior de 飞线。**功能Superior只少了板载音频e关机检测信号。**
+> O HAT oficial é uma placa de quatro camadas, com componentes nos dois lados e 110 componentes. Fazer um protótipo e montá-lo custa mais de mil yuans, o que muita gente considera caro demais.
+> Esta é uma alternativa: um módulo conversor de tensão, uma placa adaptadora half-duplex e o restante com fios. **As únicas funções perdidas são o áudio integrado e o sinal de detecção de desligamento.**
 
-先看 [Hardware入门](Hardware入门.md) 知道 HAT 本来干什么，再看这份知道怎么不用它。
+Leia primeiro a [introdução ao hardware](Hardware入门.md), que explica a função do HAT; depois, este guia mostra como usá-lo sem a placa.
 
-[![不打 HAT Fiação图](../assets/hw/不打HAT-Fiação图.png)](不打HAT-Fiação图.html)
+[![Diagrama de fiação sem HAT](../assets/hw/不打HAT-Fiação图.png)](不打HAT-Fiação图.html)
 
-> **图的源文件是 [`不打HAT-接线图.html`](不打HAT-接线图.html)** —— 内联 SVG，下载后浏览器打开，能缩放、能选字、能打印 A3。
-> 换模块、换脚位直接改它。Superior面这张 PNG 只是 GitHub 里 de 预览。
+> **O arquivo-fonte do diagrama é [`不打HAT-接线图.html`](不打HAT-接线图.html)** — contém SVG embutido; abra-o no navegador para ampliar, selecionar texto e imprimir em A3.
+> Altere esse arquivo para trocar o módulo ou os pinos. A imagem PNG acima é apenas uma prévia no GitHub.
 
-**目标**：主控从Bateria取电、经转接板跟Servo总线通信、ToF 挂Superior I²C —— **不打 HAT 板**，¥70  de 模块顶替Superior千块 de 打样。
+**Objetivo**: alimentar a placa principal pela bateria, comunicar-se com o barramento de servos através da placa adaptadora e ligar o ToF ao I²C da placa principal — **sem montar o HAT**. Módulos de ¥70 substituem um protótipo que custaria mais de mil yuans.
 
-> ⚠️ **这一章是计划，还没做过。** 接线部分来自规格书和官方原理图，软件部分来自官方 `setup-board.sh` 的源码。
-> 做 de 时候哪步不对就改aqui。做完把「没做过、要Validação de 」那节清掉。
+> ⚠️ **Este guia é um plano ainda não executado.** A fiação vem das especificações e dos esquemas oficiais; o software foi analisado a partir do código oficial `setup-board.sh`.
+> Corrija aqui qualquer etapa que não funcionar durante a montagem. Depois de validar, remova a seção “Ainda não testado; precisa validar”.
 
-## 要买什么
+## Lista de compras
 
-淘宝链接会失效，**搜索词e要看 de 数不会**。每行按「搜索词」搜，按「买之前看」挑。找到合适 de 把链接贴到 [电控Lista de compras](电控Lista de compras.md) 里。
+Links de lojas podem expirar; **termos de busca e especificações tendem a durar**. Pesquise cada item e use os critérios de seleção. Depois de escolher, inclua o link na [lista de compras do controle eletrônico](电控Lista de compras.md).
 
-| 东西 | 搜索词 | 买之前看 | 约价 |
-|---|---|---|---|
-| **降压模块** | 「UBEC 5V 3A 2S」 | **输入Inferior限 ≤ 6 V**（很多标 2–6S  de 实际 7 V 起，2S 快没电先掉出稳压）· 输出 ≥ 2 A 连续 · 同步降压，**别买 LM2596** | ¥10–15 |
-| **半双工转接板** | 「串口总线Servo驱动板 ST SC」 | TTL 版或 USB 版都行。**逻辑供电范围含 3.3 V**（有 de 只吃 5 V，那就不能接主控）· Servo侧Alimentação能过 8.4 V。**已有 FE-URT-2  de 话它就是 USB 版，可先不买**（见第 4 步） | ¥22 |
-| 2×20 排针 | 「树莓派 彩色排针 2x20」 | 2.54 mm · 立式 · 彩色 de 好数脚 | ¥1 |
-| 高耐久 microSD ×2 | 「SanDisk 高耐久 64G」或「海康 PLUS 64G」 | **京东自营** · 标 High Endurance / 监控专用 · **不是** Ultra / EVO 那种普通卡 | ¥90×2 |
-| 读卡器 | 「USB3.0 读卡器 TF」 | USB 3.0 | ¥15 |
-| 硅胶线 | 「18AWG 硅胶线 红黑」 | 18 或 20 AWG · 硅胶皮（软，耐温）· 红黑各 1 m | ¥10 |
-| 保险丝座 + 管 | 「5x20 保险丝座 带线」+「5A 保险丝 5x20」 | 座子带线 de 省焊 · 快熔 5 A | ¥5 |
-| Alimentação开关 | 「船型开关 KCD1」 | 额定 ≥ 6 A · 单刀单掷就行 | ¥3 |
-| PH2.0 3P 端子线 ×5 | 「PH2.0 3P 端子线 单头」 | 2.0 mm 间距 · 3 针 · 单头带线（另一头裸线） | ¥5 |
-| 杜邦线 | 「杜邦线 母对母 20cm」 | 母对母 · 20 cm · 一排 40 根 | ¥5 |
-| 470 µF 电解 | 「470uF 16V 电解电容」 | 16 V 或以Superior · 105 ℃ | ¥1 |
-| *（可选）USB 声卡* | 「USB 声卡 免驱 3.5mm」 | **免驱**（Linux 认 UAC 标准）· 带麦克风口 | ¥15 |
-| *（可选）小喇叭* | 「3W 4欧 小喇叭」 | 4 Ω 3 W · 接声卡 de  3.5 mm 口要经功放，或直接买带功放 de  USB 小音箱 | ¥5 |
+| Item | Termo de busca | O que conferir antes de comprar | Preço aproximado |
+|---|---|---|---:|
+| **Conversor de tensão** | “UBEC 5V 3A 2S” | **Limite inferior de entrada ≤6 V** (muitos módulos anunciados para 2–6S só regulam a partir de 7 V; a bateria 2S quase descarregada cai abaixo disso) · saída de pelo menos 2 A contínuos · conversor síncrono; **não compre LM2596** | ¥10–15 |
+| **Adaptador half-duplex** | “placa controladora servo de barramento serial ST SC” | Versão TTL ou USB. **A alimentação lógica deve aceitar 3,3 V** (se aceitar apenas 5 V, não conecte à placa principal) · lado dos servos deve suportar até 8,4 V. **Se já tiver uma FE-URT-2, ela é a versão USB e pode dispensar esta compra** (veja a etapa 4) | ¥22 |
+| Barra de pinos 2×20 | “barra de pinos colorida Raspberry Pi 2x20” | 2,54 mm · vertical · cores ajudam a contar os pinos | ¥1 |
+| 2 cartões microSD de alta resistência | “SanDisk High Endurance 64G” ou “Hikvision PLUS 64G” | **Loja oficial JD** · rótulo High Endurance / uso em câmeras · **não** modelos comuns Ultra / EVO | ¥90 cada |
+| Leitor de cartões | “leitor TF USB 3.0” | USB 3.0 | ¥15 |
+| Fio de silicone | “fio de silicone 18AWG vermelho preto” | 18 ou 20 AWG · capa de silicone (flexível e resistente ao calor) · 1 m de cada cor | ¥10 |
+| Porta-fusível e fusível | “porta-fusível 5x20 com fios” + “fusível 5A 5x20” | Porta-fusível com fios facilita a solda · fusível rápido de 5 A | ¥5 |
+| Interruptor de alimentação | “interruptor basculante KCD1” | Corrente nominal ≥6 A · simples, de um polo | ¥3 |
+| 5 cabos PH2.0 de 3 pinos | “cabo PH2.0 3P ponta única” | Passo de 2,0 mm · 3 pinos · fios em apenas uma ponta e fios desencapados na outra | ¥5 |
+| Fios Dupont | “fios Dupont fêmea-fêmea 20cm” | fêmea-fêmea · 20 cm · fileira de 40 fios | ¥5 |
+| Capacitor eletrolítico de 470 µF | “capacitor eletrolítico 470uF 16V” | 16 V ou mais · 105 °C | ¥1 |
+| *(Opcional) placa de som USB* | “placa de som USB plug and play 3,5 mm” | **Sem driver** (Linux reconhece o padrão UAC) · entrada para microfone | ¥15 |
+| *(Opcional) alto-falante pequeno* | “alto-falante 3W 4 ohm” | 4 Ω, 3 W · para usar a saída de 3,5 mm da placa de som, é preciso amplificador; alternativamente, compre uma caixa USB com amplificador | ¥5 |
 
-不打 HAT 会失去：**关机检测信号**（LM5050-1 IO_06）、板载 BMI088（OficialSoftware本就不用）、**板载音频** —— 音频pode用 USB 声卡补回来，见第 8 步。
-没有关机信号 + microSD = 硬断电伤卡，**先Software关机再断电**。
+Sem o HAT, perde-se: **o sinal de detecção de desligamento** (LM5050-1 IO_06), o BMI088 integrado (o software oficial já não o usa) e **o áudio integrado** — é possível substituí-lo por uma placa de som USB, veja a etapa 8.
+Sem o sinal de desligamento e usando microSD, o corte abrupto de energia pode danificar o cartão: **desligue o software antes de cortar a alimentação**.
 
-## 第 1 步 · 主控点亮，什么都别接
+## Etapa 1 · Ligue a placa principal, sem conectar mais nada
 
-> ⚠️ **2024-11 以后买 de  Zero 3W 是 V1.12 版（WiFi 模组 AIC8800），Armbian OficialImagem直接烧是起不来 de **：
-> 灯双闪、永远进不了系统、局域网里找不到。原因是 Armbian 给这块板配 de 主线 U-Boot（内存初始化Firmware是 2024-01  de  v1.21）
-> 带不起新板，换成瑞莎自家 de 引导程序就好。瑞莎Oficial系统能起、Armbian 起不来，就是这个。
-> 我们花了两天、烧了九次卡才定位到，见[Problemas encontrados](../Problemas encontrados.md)。abaixo de 做卡脚本已经把这一步e其它坑一起处理了。
+> ⚠️ **Os Radxa Zero 3W comprados a partir de novembro de 2024 são da versão V1.12 (módulo Wi-Fi AIC8800), que não inicia com a imagem oficial do Armbian gravada diretamente**:
+> os LEDs piscam em pares, o sistema nunca inicia e a placa não aparece na rede. A causa é o U-Boot principal incluído pelo Armbian (firmware de inicialização da memória v1.21 de 2024-01), que não suporta a placa nova. Use o carregador de inicialização da própria Radxa. O sistema oficial Radxa inicia, enquanto o Armbian não.
+> Foram necessários dois dias e nove gravações de cartões para descobrir isso; veja [problemas encontrados](../Problemas encontrados.md). O script de preparação abaixo já resolve esse e outros problemas.
 
-**Imagem**：Armbian **26.2.1 · Debian 13 (trixie) · minimal · vendor 内核 6.1.115**，Pollen Oficial文档指定 de Versão。
-国内Imagem站现在只剩 26.8.1，26.2.1 在这（376 MB）：
+**Imagem**: Armbian **26.2.1 · Debian 13 (trixie) · minimal · kernel do fabricante 6.1.115**, versão indicada pela documentação oficial da Pollen.
+Os espelhos chineses só mantêm a 26.8.1; a imagem 26.2.1 (376 MB) está aqui:
 
 ```
 https://fi.mirror.armbian.de/archive/radxa-zero3/archive/Armbian_26.2.1_Radxa-zero3_trixie_vendor_6.1.115_minimal.img.xz
 ```
 
-别选 `current_6.18`（主线内核，官方运行时不认），别选桌面版。
+Não escolha `current_6.18` (kernel principal, incompatível com o runtime oficial) nem a versão desktop.
 
-**1a · 做卡**（把 WiFi、密码、引导程序、串口全打进Imagem，烧完插Superior就能 ssh）
+**1a · Prepare o cartão** (inclui Wi-Fi, senhas, carregador de inicialização e serial na imagem; depois de gravar, basta inserir e conectar por SSH)
 
-仓库 [`tools/radxa/`](../tools/radxa/) 三个文件复制到本地任一目录，电脑上要有 WSL2（没有就管理员 PowerShell 跑 `wsl --install`，重启一次）：
+Copie os três arquivos de [`tools/radxa/`](../tools/radxa/) para qualquer pasta local. No computador, é necessário ter WSL2 (se não tiver, execute `wsl --install` no PowerShell como administrador e reinicie uma vez):
 
-1. 记事本打开 `card.conf`，改 WiFi 名和密码。用户名密码默认 `duck` / `duck1234`。国内要装官方软件的话，`HTTP_PROXY=` 填电脑上代理的地址（比如 Clash 开「允许局域网」，填 `http://电脑IP:7890`）。
-2. 右键 `1-做卡.ps1` → 「使用 PowerShell 运行」，选下载的 `.img.xz`。它在 WSL 里解压、换引导、写配置，一分钟出一个 `xxx-鸭子卡.img`（2.2 GB）。
-3. 排针先焊好：先焊对角两针，翻过来看立直了没，再焊其余 38 个。
+1. Abra `card.conf` no Bloco de Notas e altere o nome e a senha do Wi-Fi. O usuário e senha padrão são `duck` / `duck1234`. Para instalar software oficial na China, configure `HTTP_PROXY=` com o endereço do proxy no computador (por exemplo, ative “Permitir acesso pela rede local” no Clash e informe `http://IP-do-computador:7890`).
+2. Clique com o botão direito em `1-做卡.ps1` → “Executar com PowerShell” e selecione o arquivo `.img.xz` baixado. O script extrai a imagem no WSL, troca o carregador e grava as configurações. Em cerca de um minuto, cria um arquivo `xxx-鸭子卡.img` (2,2 GB).
+3. Solde primeiro dois pinos diagonais da barra: vire a placa para conferir se está perpendicular e, em seguida, solde os outros 38.
 
-**1b · 烧卡**（Rufus 便携版，2 MB 不用装）
+**1b · Grave o cartão** (Rufus portátil, 2 MB, sem instalação)
 
-1. [rufus.ie](https://rufus.ie/zh/) 下 `rufus-x.xxp.exe`。读卡器插电脑，**只插这一个 U 盘类设备**，双击 Rufus。问要不要联网查更新，点**否**：
+1. Baixe `rufus-x.xxp.exe` em [rufus.ie](https://rufus.ie/zh/). Conecte o leitor ao computador e **deixe conectado apenas esse dispositivo USB**, depois abra o Rufus. Se perguntar se deve verificar atualizações pela internet, selecione **Não**:
 
    <img src="../assets/flash/烧卡-1-Rufus问Atualização-点否.png" width="420">
 
-2. 「设备」会自动选中读卡器。点「**选择**」，挑上面生成的 `xxx-鸭子卡.img`：
+2. O leitor aparecerá selecionado em “Dispositivo”. Clique em **Selecionar** e escolha o arquivo `xxx-鸭子卡.img` criado acima:
 
    <img src="../assets/flash/烧卡-2-设备自动选 em -点选择.png" width="380">
 
-3. 「**开始**」，弹「卡SuperiorDados将被清除」点确定，Gravação约 2 分钟：
+3. Clique em **Iniciar**. Quando avisar que os dados do cartão serão apagados, confirme. A gravação leva cerca de dois minutos:
 
    <img src="../assets/flash/烧卡-3-正在Gravação.png" width="380">
 
-4. 状态栏回到「准备就绪」就完了，关掉 Rufus，拔卡。** em 间 Windows 会弹好几次「是否格式化磁盘」，全部点取消**，它不认 Linux 分区，正常。
+4. Quando a barra de estado voltar a “Pronto”, terminou. Feche o Rufus e remova o cartão. **O Windows pode perguntar várias vezes se deseja formatar o disco; clique em Cancelar em todas**, pois não reconhece as partições Linux.
 
    <img src="../assets/flash/烧卡-4-Concluído-准备就绪.png" width="380">
 
-**1c · 开机、找 IP、ssh**
+**1c · Inicie a placa, encontre o IP e conecte por SSH**
 
-卡插 Radxa，5V 充电头（苹果 20W 那种就行，别用华为快充头）插 **`5V IN / USB_OTG` 口**（板子背面丝印，靠 TF 卡槽那头）。
-等 2 到 3 分钟，它自己连 WiFi。看灯：**双闪几秒 → 双闪两分钟 → 常亮** 就是起来了；一直双闪Inalterado，就是没起来。
-路由器后台找一台叫 `radxa-zero3` 的设备拿 IP，Windows 自带 ssh：
+Insira o cartão na Radxa. Conecte uma fonte USB de 5 V (pode ser um carregador Apple de 20 W; não use carregador Huawei de carga rápida) à porta **`5V IN / USB_OTG`** (identificada no verso da placa, perto do cartão TF).
+Aguarde de 2 a 3 minutos para ela conectar ao Wi-Fi. Os LEDs devem piscar em pares por alguns segundos, continuar piscando assim por cerca de dois minutos e depois ficar acesos continuamente. Se continuarem piscando sem parar, a inicialização falhou.
+No roteador, encontre o dispositivo `radxa-zero3` e copie o IP. No Windows, use o SSH incluído:
 
 ```
-ssh duck@那个IP        # 密码就是 card.conf 里那个
+ssh duck@IP-da-placa        # a senha está em card.conf
 ```
 
-**多一条命：这根 USB 线同时是串口。** 把板子的 `5V IN` 口插到电脑 USB 口（电脑给它供电），设备管理器里会多一个「USB 串行设备 (COMx)」，
-串口终端 115200 打开就是登录提示，root 密码在 `card.conf`。WiFi 连不上、ssh 进不去，都从这儿进去看。
+**Uma forma extra de acesso: o cabo USB também transmite a serial.** Conecte a porta `5V IN` da placa a uma porta USB do computador (que fornecerá energia). O Gerenciador de Dispositivos mostrará “Dispositivo serial USB (COMx)”. Abra um terminal serial a 115200 baud para ver o prompt de login; a senha do root está em `card.conf`. Se o Wi-Fi ou o SSH não funcionar, use esse acesso para investigar.
 
-点亮了、能 ssh 了再往Inferior。**点不亮 de 问题别跟Fiação de 问题混在一起。**
+Só avance quando a placa ligar e aceitar SSH. **Não misture problemas de inicialização com problemas de fiação.**
 
-## 第 2 步 · 让 `/dev/ttyS2` 出现
+## Etapa 2 · Fazer `/dev/ttyS2` aparecer
 
-做卡脚本已经开好了：extlinux 里挂了 `uart2-m0` overlay，内核控制台放在 tty1，`serial-getty@ttyS2` 和 `ttyFIQ0` 都 mask 掉了。ssh 进去确认一下：
+O script de preparação já habilita a porta: adiciona o overlay `uart2-m0` ao extlinux, mantém o console do kernel em `tty1` e desativa (`mask`) `serial-getty@ttyS2` e `ttyFIQ0`. Conecte por SSH e confirme:
 
 ```bash
-ls -l /dev/ttyS2            # 有
-sudo fuser -v /dev/ttyS2    # 没人占
-cat /proc/cmdline           # 里面没有 console=ttyS2 / ttyFIQ0
+ls -l /dev/ttyS2            # deve existir
+sudo fuser -v /dev/ttyS2    # nenhum processo deve estar usando
+cat /proc/cmdline           # não deve conter console=ttyS2 nem ttyFIQ0
 ```
 
-官方 `setup-board.sh` 会去改 `/boot/armbianEnv.txt` 的 `overlay_prefix` / `overlays` / `console`，在这张卡上不生效（瑞莎 U-Boot 走 extlinux，不读 boot.scr），
-但它自己的检查项都能过，照跑不误。**`apt upgrade` 升级了内核包的话 extlinux.conf 里的文件名要跟着改**，升级前先看 `/boot/extlinux/extlinux.conf`。
+O `setup-board.sh` oficial tenta alterar `overlay_prefix`, `overlays` e `console` em `/boot/armbianEnv.txt`, mas isso não funciona neste cartão: o U-Boot da Radxa usa extlinux e não lê `boot.scr`. As verificações do script ainda passam, então pode executá-lo normalmente. **Se `apt upgrade` atualizar o pacote do kernel, o nome dos arquivos em `extlinux.conf` precisa ser atualizado**; confira `/boot/extlinux/extlinux.conf` antes de atualizar.
 
-同理，以后要加 overlay（比如摄像头 `rk3568-radxa-zero3-rpi-camera-v2.dtbo`，`setup-board.sh` 会把它镜像到这个名字），往 extlinux.conf 的 `fdtoverlays` 那行末尾加路径，重启。没接摄像头时 `mediad` 会一直重启，`robotctl health` 其它项不受影响，正常。
+Da mesma forma, para acrescentar outro overlay (por exemplo, o da câmera `rk3568-radxa-zero3-rpi-camera-v2.dtbo`, que `setup-board.sh` copia com esse nome), acrescente o caminho ao fim da linha `fdtoverlays` em `extlinux.conf` e reinicie. Sem câmera conectada, `mediad` reiniciará continuamente; os outros itens de `robotctl health` não são afetados.
 
-## 第 3 步 · Alimentação，每接一段量一次
-
-```
-NP-F550 ──► 开关 ──► 保险丝 5A ──┬──► 降压模块 ──► 5 V ──► Radxa pin 2（或 4）
-                                 │        │
-                                 │        └── 输入端并 470 µF
-                                 │
-                                 └──► 舵机总线 VDD（原压，18 AWG）
-共地：电池负极 · 降压输出地 · Radxa pin 6 · 舵机总线 GND
-```
+## Etapa 3 · Alimentação: meça a cada conexão
 
 ```
-1  接开关、保险丝，量：开关闭合时保险丝两端应导通
-2  接降压模块，先别接 Radxa，量输出：5.0 V ±0.2，极性对
-3  ⚠️ 确认极性再插 Radxa —— pin 2/4 是无保护的，接反烧板
-4  Radxa 拔掉 USB-C，靠 pin 2 的 5 V 点亮，ssh 能进
-5  再接舵机总线的 VDD
+NP-F550 ──► interruptor ──► fusível 5 A ──┬──► conversor ──► 5 V ──► pino 2 (ou 4) da Radxa
+                                          │        │
+                                          │        └── capacitor de 470 µF na entrada
+                                          │
+                                          └──► VDD do barramento dos servos (tensão original, fio 18 AWG)
+Terra comum: negativo da bateria · terra da saída do conversor · pino 6 da Radxa · GND do barramento
 ```
 
-## 第 4 步 · Servo总线接主控
-
 ```
-Radxa 40 针                     转接板 MCU 侧
-pin 1   3.3 V    ──────────►   VCC       ⚠️ 只能 3.3 V，接 5 V 它的 TX 会打坏主控 RX
-pin 8   UART2_TX ──────────►   RX        ← 交叉
-pin 10  UART2_RX ◄──────────   TX        ← 交叉
-pin 6   GND      ──────────►   GND
-
-转接板舵机侧
-DATA  ──► 舵机总线 S
-V     ◄── 舵机总线 VDD（电池原压，第 3 步接的）
-G     ──► 共地
+1. Conecte o interruptor e o fusível; meça: com o interruptor fechado, deve haver continuidade nos terminais do fusível.
+2. Conecte o conversor, ainda sem a Radxa. Meça a saída: 5,0 V ±0,2 e polaridade correta.
+3. ⚠️ Confira a polaridade antes de conectar a Radxa: os pinos 2/4 não têm proteção; inverter a ligação queima a placa.
+4. Desconecte o USB-C da Radxa e ligue-a pelos 5 V no pino 2; confirme que o SSH funciona.
+5. Só então conecte o VDD do barramento dos servos.
 ```
 
-**USB 版转接板**：不用接 pin 1/8/10，插 Radxa 的 USB 口，串口变成 `/dev/ttyUSB0` 或 `/dev/ttyACM0`，
-之后 `robotd.toml` 里 `port` 改成那个。省事，但第 2 步的 uart2-m0 overlay 就用不上了（agetty 照样 mask，无害）。
-
-> 💡 **飞特 FE-URT-2 Depuração板就是 USB 版转接板** —— 配完 ID 直接挪到机器人Superior：USB-C 插 Radxa host 口，TTL 口 S 接总线，G 接总线地。
-> **Bateria原压直接给Servo总线，不进 URT-2  de  V1 端子** —— V1 可能跟 USB 5 V 直通，灌 7.4 V 会反灌进 Radxa。
-> 板Superior拨码是信号电平（3.3 / 5 V），拨 5 V。转接板pode先不买。
-> 先验 Radxa 认不认 CH343：`dmesg | tail` 看有没有 `ttyACM0`；没有的话 WCH 官网有 Linux 驱动源码。
-> 它是唯一 de Depuração板，装进去就不能在电脑Superior配Servo了 —— **15 颗 ID 全配完再挪**。
-
-**总线怎么分支** —— 头、Esquerdo腿、Direito腿在躯干分三路。半双工单线总线是**并联**不是链，星形树形都通，菊花链只是走线方便：
+## Etapa 4 · Conectar o barramento dos servos à placa principal
 
 ```
-转接板 TTL ──┬──► 头颈   30 → 31 → 32 → 33 → 34
-             ├──► 左腿   20 → 21 → 22 → 23 → 24
-             └──► 右腿   10 → 11 → 12 → 13 → 14
-             （imu_to_dxl 200 挂躯干里任一路）
+Pinos 40 vias da Radxa          Lado MCU da placa adaptadora
+pino 1   3,3 V    ──────────►   VCC       ⚠️ somente 3,3 V; com 5 V, o TX pode danificar o RX da placa principal
+pino 8   UART2_TX ──────────►   RX        ← cruzado
+pino 10  UART2_RX ◄──────────   TX        ← cruzado
+pino 6   GND      ──────────►   GND
+
+Lado dos servos na placa adaptadora
+DATA  ──► S do barramento dos servos
+V     ◄── VDD do barramento (tensão original da bateria, conectada na etapa 3)
+G     ──► terra comum
 ```
 
-分法：URT-2 自带两个 TTL 口各出一路、第三路从Servo再分；或买「Servo总线分线板 3P」一进四出（¥5）；或三根线并焊。
-**V 和 G 用 18 AWG 单独走到三个支路**，S 随便走。⚠️ **别把三路电流全走 `imu_to_dxl` 板** —— 它四个座子虽是并联，但 2 层板直通铜皮没按几安培设计，会烧。它挂一路的末端或中间。
+**Placa adaptadora USB**: não conecte os pinos 1/8/10; ligue a placa a uma porta USB da Radxa. A serial aparecerá como `/dev/ttyUSB0` ou `/dev/ttyACM0`; altere `port` em `robotd.toml` para corresponder. É mais simples, mas o overlay `uart2-m0` da etapa 2 fica sem uso (o `agetty` continuará desativado, sem causar problema).
 
-## 第 5 步 · 一颗ServoValidação通信
+> 💡 **A placa de depuração Feetech FE-URT-2 já é uma placa adaptadora USB** — depois de configurar os IDs, transfira-a para o robô: USB-C na porta host da Radxa, pino TTL S no barramento e G no terra do barramento.
+> **A tensão original da bateria deve ir diretamente ao barramento dos servos, nunca ao terminal V1 da URT-2** — na V1, a alimentação pode estar conectada diretamente aos 5 V do USB; aplicar 7,4 V pode devolver corrente à Radxa.
+> As chaves na placa selecionam o nível lógico (3,3/5 V); selecione 5 V. Nesse caso, pode dispensar a placa adaptadora separada.
+> Primeiro verifique se a Radxa reconhece o CH343: execute `dmesg | tail` e procure `ttyACM0`; se não aparecer, o site da WCH oferece o código-fonte do driver Linux.
+> É sua única placa de depuração: depois de instalá-la no robô, não poderá configurar os servos pelo computador. **Configure os IDs dos 15 servos antes de transferi-la.**
 
-只挂**一颗**配好 ID  de Servo（比如Esquerdo膝 23），主控Superior：
+**Derivações do barramento** — cabeça, perna esquerda e perna direita se ramificam no tronco. O barramento half-duplex de fio único é **paralelo**, não em série: estrela e árvore funcionam; o encadeamento é apenas uma forma conveniente de passar os fios.
+
+```
+TTL da placa adaptadora ──┬──► cabeça e pescoço  30 → 31 → 32 → 33 → 34
+                          ├──► perna esquerda   20 → 21 → 22 → 23 → 24
+                          └──► perna direita    10 → 11 → 12 → 13 → 14
+                              (imu_to_dxl 200 em qualquer derivação no tronco)
+```
+
+Opções: usar as duas saídas TTL da URT-2 e derivar a terceira a partir de um servo; comprar uma “placa divisora de barramento servo 3P” com uma entrada e quatro saídas (¥5); ou soldar três fios juntos.
+**Passe V e G em fios 18 AWG separados até as três derivações**; o fio S pode seguir qualquer percurso. ⚠️ **Não passe toda a corrente das três derivações pela placa `imu_to_dxl`** — os quatro conectores são paralelos, mas as trilhas de cobre da placa de duas camadas não foram dimensionadas para vários ampères e podem queimar. Instale-a no meio ou no fim de apenas uma derivação.
+
+## Etapa 5 · Verificar a comunicação com um único servo
+
+Conecte **apenas um servo**, com o ID já configurado (por exemplo, o joelho esquerdo, ID 23). Na placa principal:
 
 ```bash
-# 官方运行时带的总线基准工具（第 7 步装完才有），或先用 Python 快速 ping：
-pip install feetech-servo-sdk    # 或 scservo_sdk
-# 1 Mbps，ping ID 23 —— 回了就通了
+# Use a ferramenta de referência do barramento incluída no runtime oficial (disponível após a etapa 7), ou faça um ping rápido em Python:
+pip install feetech-servo-sdk    # ou scservo_sdk
+# 1 Mbps; faça ping ao ID 23 — se responder, a comunicação funciona
 ```
 
-不通按顺序查：`ls /dev/ttyS2` 有没有 → `fuser` 有没有人占 → TX/RX 是不是交叉 → 转接板 VCC 是不是 3.3 V → S 线接触。
+Se não funcionar, verifique nesta ordem: se `/dev/ttyS2` existe (`ls /dev/ttyS2`) → se algum processo ocupa a porta (`fuser`) → se TX e RX estão cruzados → se VCC da placa adaptadora é 3,3 V → contato do fio S.
 
-## 第 6 步 · ToF
+## Etapa 6 · ToF
 
 ```
-VL53L8CX          Radxa 40 针
-SDA      ◄──►    pin 3
-SCL      ◄──►    pin 5
-3V3      ◄───    pin 17     （pin 1 给转接板了，分开用）
-GND      ────►   pin 6
+VL53L8CX          Pinos 40 vias da Radxa
+SDA      ◄──►    pino 3
+SCL      ◄──►    pino 5
+3V3      ◄───    pino 17     (o pino 1 já alimenta a placa adaptadora; use uma saída separada)
+GND      ────►   pino 6
 ```
 
-pin 3/5 板载带Superior拉，不用外加。
+A placa já tem resistores pull-up nos pinos 3 e 5; não é preciso instalar outros.
 
-⚠️ **I²C 还要一个 overlay。** 官方是 `i2c3` 重 mux 到 M0（就是 pin 3/5），代价是失去 USB-C PD 协商。
-官方的 overlay 在 `deploy/audio/i2c3-pihat.dts`，是给 HAT 写的，**不打 HAT 能不能直接用，待验证**。
+⚠️ **O I²C também precisa de um overlay.** A configuração oficial remultiplexa `i2c3` para M0 (os pinos 3/5), mas isso desativa a negociação USB-C PD.
+O overlay oficial está em `deploy/audio/i2c3-pihat.dts` e foi feito para o HAT. **Ainda precisa ser verificado se funciona sem o HAT.**
 
-## 第 7 步 · 跑OficialExecução时
+## Etapa 7 · Instalar e executar o runtime oficial
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pollen-robotics/microduck/main/scripts/provision.sh -o /tmp/provision.sh
 sudo sh /tmp/provision.sh
-# = setup-board.sh → migrate-network.sh → 重启 → install.sh，全自动
+# Executa setup-board.sh → migrate-network.sh → reinicialização → install.sh, tudo automaticamente
 robotctl health
 ```
 
-`robotd.toml` 在 `/etc/robot/`，串口默认 `/dev/ttyS2`，USB 版转接板改成 `/dev/ttyUSB0`。
+O `robotd.toml` fica em `/etc/robot/`; a porta serial padrão é `/dev/ttyS2`. Com uma placa adaptadora USB, altere-a para `/dev/ttyUSB0`.
 
-## 第 8 步 · 想要声音（可选）
+## Etapa 8 · Adicionar som (opcional)
 
-不打 HAT 就没有 codec，Oficial de 叫声、摸头识别、ToF 电子琴、多鸭合唱都用不了 —— **但机器人走路不受影响**，Oficial注释原话「没有 codec  de 板子走路完全一样，只是不出声」。
+Sem o HAT não há codec: os sons oficiais, a detecção por toque na cabeça, o teclado musical do ToF e o coro de vários patos não funcionam. **A caminhada continua funcionando normalmente**; segundo um comentário do código oficial, “sem a placa de codec, a caminhada é exatamente igual; apenas não há som”.
 
-想要回来，插个 **USB 声卡**（免驱那种，Linux 直接认）：
+Para recuperar o áudio, conecte uma **placa de som USB** sem necessidade de driver (reconhecida diretamente pelo Linux):
 
 ```bash
-aplay -l                          # 看到 USB Audio 那张卡的名字，比如 card 1: Device
+aplay -l                          # encontre o nome da placa USB, por exemplo, card 1: Device
 sudo nano /etc/robot/robotd.toml
 ```
 
 ```toml
 [audio]
 enabled = true
-device = "plughw:CARD=Device"     # 换成 aplay -l 看到的名字，官方默认是 plughw:aic3104
+device = "plughw:CARD=Device"     # substitua pelo nome mostrado por aplay -l; o padrão oficial é plughw:aic3104
 ```
 
 ```bash
 sudo systemctl restart robotd
 ```
 
-喇叭接声卡 de  3.5 mm 口（小喇叭要功放，直接买带功放 de  USB 小音箱最省事），麦克风接声卡 de  mic 口。
+Conecte o alto-falante à saída de 3,5 mm da placa de som (um alto-falante pequeno precisa de amplificador; a opção mais simples é uma caixa USB com amplificador integrado) e o microfone à entrada de microfone.
 
-⚠️ **没验证过**：官方 `sounds` 和 `pet_detect` 是按 aic3104 的采样率和通道数写的，USB 声卡不一定对得上。跑通了把这条改掉。
+⚠️ **Ainda não verificado**: os programas oficiais `sounds` e `pet_detect` usam taxa de amostragem e número de canais específicos do aic3104; uma placa USB pode não corresponder. Quando funcionar, atualize esta nota.
 
-## 没做过、要Validação de 
+## Ainda não testado; precisa validar
 
-| 项 | 疑问 | 怎么验 |
+| Item | Dúvida | Como verificar |
 |---|---|---|
-| 第三方转接板 @ 1 Mbps | 官方 HAT 的方向电路是 `1G08+1G125+1G126`，¥22 的板子方向切换够不够快 | 第 5 步通了、`bench_dynamixel_bus` 错误计数为 0 |
-| `i2c3-pihat.dts` 不打 HAT 能不能用 | 那个 overlay 是给 HAT 写的 | 第 6 步 `i2cdetect -y 3` 看到 0x29 |
-| 降压模块扛不扛得住ServoInicialização压降 | 15 颗同时动Bateria会跌 | 走路时主控不重启；不行就加大输入电容 |
-| Armbian 具体哪个Imagem | Oficial说 26.2.x，没说 minimal 还是 desktop | 第 1 步能 ssh 进去就行 |
-| USB 声卡能不能替代 aic3104 | 官方音频代码按 codec 的采样率写的 | 第 8 步 `robotctl health` 音频那行不报错、开机有叫声 |
+| Placa adaptadora de terceiros a 1 Mbps | O circuito de direção do HAT oficial usa `1G08+1G125+1G126`; a comutação de direção da placa de ¥22 será rápida o bastante? | Concluir a etapa 5 e confirmar que `bench_dynamixel_bus` registra zero erros |
+| Overlay `i2c3-pihat.dts` sem o HAT | O overlay foi feito para o HAT | Na etapa 6, `i2cdetect -y 3` deve encontrar 0x29 |
+| Capacidade do conversor durante a queda de tensão na partida dos servos | Ao se moverem simultaneamente, os 15 servos podem derrubar a tensão da bateria | Caminhar sem reiniciar a placa principal; se falhar, aumentar o capacitor de entrada |
+| Imagem Armbian exata | A documentação oficial informa 26.2.x, mas não especifica minimal ou desktop | Basta conseguir conexão SSH na etapa 1 |
+| Placa de som USB como substituta do aic3104 | O código de áudio oficial espera taxas de amostragem próprias do codec | Na etapa 8, `robotctl health` não deve relatar erro de áudio e deve haver som durante a inicialização |
 
-接线图见文首，源文件是同目录的 `不打HAT-接线图.html`。
-
+Veja o diagrama no início do documento; o arquivo-fonte está em `不打HAT-接线图.html`, neste mesmo diretório.

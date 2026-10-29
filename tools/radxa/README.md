@@ -1,49 +1,46 @@
-# Radxa Zero 3W · 做一张能直接开机 de  Armbian 卡
+# Radxa Zero 3W · Criar um cartão Armbian que inicializa diretamente
 
-> **2026-10-21：9 月的两个底包镜像（20260920、20260929）已从 Releases 撤下**，太旧了。要现成的卡请用[复刻镜像](https://github.com/fanhao375/microduck-replica/releases/latest)：烧了就能用，带主程序、走路模型和 Studio。这个目录的做卡脚本保留，自己做卡照旧可用；下面提到那两个 Release 的地方只是历史记录。
+> **2026-10-21: as duas imagens-base de setembro (20260920 e 20260929) foram removidas de Releases** porque ficaram antigas. Para um cartão pronto, use a [imagem da réplica](https://github.com/fanhao375/microduck-replica/releases/latest): basta gravar; ela inclui o programa principal, o modelo de caminhada e o Studio. Os scripts deste diretório foram mantidos e continuam disponíveis para quem quiser criar o próprio cartão; as referências às duas Releases abaixo são históricas.
 
-配合 [不打 HAT · 第 1 步](../../docs/不打HAT.md#第-1-步--主控点亮什么都别接) 用。
-此前本机 V1.12 板（AIC8800 Wi-Fi）使用所测 Armbian 原版镜像启动失败，经引导程序对照和替换后解决；不同批次见镜像说明。**双闪本身不是故障码**，2026-09-28 官方 B1 在正常联网和采集时也使用 `heartbeat` 双闪。
-此前排查指向 Armbian 所用主线 U-Boot / 内存初始化Firmware e 本机 de 兼容性，换用瑞莎引导后能够Inicialização。
-这个Diretório把换引导、写 WiFi、Configuração DHCP、开串口、开 USB Controle台打进Imagem里，供首次Inicialização联网使用。
+Usado com a [etapa 1 de “Sem HAT”](../../docs/不打HAT.md#第-1-步--主控点亮什么都别接).
+A imagem original do Armbian testada anteriormente não inicializava nesta placa V1.12 (Wi-Fi AIC8800); o problema foi resolvido após comparar e substituir o carregador de inicialização. Consulte a instrução de uso da imagem para diferenças entre lotes. **A luz piscando duas vezes não é, por si só, um código de erro**: em 2026-09-28, a placa oficial B1 também usava o padrão `heartbeat` enquanto estava conectada e coletava dados normalmente.
+A investigação apontou incompatibilidade entre o U-Boot principal / firmware de inicialização de memória usado pelo Armbian e esta placa; com o carregador da Radxa, ela inicializou.
+Os scripts deste diretório integram na imagem a troca do carregador, configuração Wi-Fi e DHCP, ativação da serial e console de controle USB para permitir a conexão de rede no primeiro uso.
 
-2026-09-28 已修正做卡脚本遗漏 `wlan0` DHCP 的问题；9 月 20 日 Release 的镜像和校验值仍为旧文件，没有包含此修复。已经烧录旧镜像的用户按[联网步骤](镜像使用说明.md#4-连-wifi)补配置即可，不必仅为此重刷；卡内的旧联网提示也以这篇说明为准。本机修复后的个人镜像已实测取得 DHCP 地址并通过 SSH 登录；这不代表所有板卡和路由器均已验证，见[实测记录](联网与HAT调试记录-20260928.md)。
+Em 2026-09-28, foi corrigida a ausência da configuração DHCP de `wlan0` nos scripts de criação do cartão. A imagem e os hashes da Release de 20 de setembro continuam sendo os arquivos antigos e não incluem a correção. Quem já gravou a imagem antiga pode adicionar a configuração conforme as [instruções de rede](镜像使用说明.md#4-连-wifi); não precisa regravar o cartão só por isso. A imagem pessoal corrigida foi testada nesta placa: obteve endereço DHCP e aceitou login SSH. Isso não significa que todos os modelos de placa e roteadores tenham sido verificados; veja o [registro de testes](联网与HAT调试记录-20260928.md).
 
-**不想自己做卡？** 用[复刻镜像](https://github.com/fanhao375/microduck-replica/releases/latest)（烧了就能用，带主程序和 Studio）。下面这段是 9 月底包镜像的历史说明（不带 WiFi，插 USB 当串口进去连），
-首次Configuraçãoe板卡批次差异见[ImagemInstruções de uso](ImagemInstruções de uso.md)。更换电脑不影响系统；更换 WiFi 需重新填写Conexão信息，不必重刷。
+**Não quer criar o cartão?** Use a [imagem da réplica](https://github.com/fanhao375/microduck-replica/releases/latest), pronta para gravar e com programa principal e Studio. O parágrafo seguinte descreve historicamente a imagem-base do fim de setembro, sem Wi-Fi configurado (conexão inicial pelo USB serial). Para a configuração inicial e diferenças entre lotes, veja as [instruções da imagem](镜像使用说明.md). Trocar de computador não altera o sistema; ao mudar de rede Wi-Fi, informe novamente as credenciais, sem regravar o cartão.
 
-**首次登录勘误（2026-09-29）：`root / 1234`。** 完成 Armbian 向导后才创建 `duck / duck1234` 并改 root 密码；`card.conf` 中的用户名密码是向导预设，不是首次认证凭据。请随即改掉默认密码。新的 20260929 候选镜像预置 DHCP、更新卡内说明并移除预生成 SSH 主机密钥，经过离线检查，尚未烧卡实测。旧卡不必重刷，按指南修复 DHCP 和重建 SSH 主机密钥即可。
+**Correção do primeiro login (2026-09-29): `root / 1234`.** O usuário `duck / duck1234` só é criado e a senha root alterada depois de concluir o assistente do Armbian. O usuário e a senha em `card.conf` são valores predefinidos para o assistente, não as credenciais da primeira autenticação. Troque as senhas padrão logo depois. A imagem candidata 20260929 inclui DHCP pré-configurado, instruções atualizadas no cartão e remoção das chaves de host SSH pré-geradas; passou por verificação offline, mas ainda não foi testada após gravação. Não é necessário regravar cartões antigos: corrija o DHCP e gere novamente as chaves SSH conforme o guia.
 
-| Arquivo | 干什么 |
+| Arquivo | Função |
 |---|---|
-| `card.conf` | 改 WiFi 名 / 密码；首次 `root / 1234` 登录后，向导默认创建 `duck` / `duck1234`。国内要装官方软件时可填 HTTP 代理。**WiFi 两行留空 = 公开镜像模式**，不写 WiFi 认证信息，仍预置 DHCP |
-| `镜像使用说明.md` | 给 release 里那张镜像用的：烧卡、USB 串口登录、连 WiFi、换引导救别的批次的板子 |
-| [摄像头Registro de depuração-20260928.md](摄像头Registro de depuração-20260928.md) | 排线Fiação参考图、Oficial B1 对照Resultado、IMX219 识别 e 限量抓帧Comando；原 Armbian 正确Fiação复测Pendente |
-| [联网 e HATRegistro de depuração-20260928.md](联网 e HATRegistro de depuração-20260928.md) | DHCP 修复后 de Placa principal登录、HAT Servo只读通讯Resultadoe待排查项 |
-| `1-做卡.ps1` | Windows 右键「使用 PowerShell 运行」，选下载的 `.img.xz`，出一个 `xxx-鸭子卡.img`，Rufus 烧它 |
-| `build-armbian-card.sh` | 实际干活的脚本，Linux / WSL 里 `sudo bash build-armbian-card.sh xxx.img.xz card.conf` |
-| `kissqy-r1-v112.sh` | 在 kissqy 的「一键系统镜像 R1」上换瑞莎引导、写 extlinux，让 V1.12 板能开机；他的固件、模型、首次配网原样保留。可选 `--no-camera`、`--no-tof`、`--overlay i2c4-m0`。`sudo bash kissqy-r1-v112.sh microduck-zero3w-0.15.1-R1.img.xz [选项]`。为什么要改、离线验证结果见 [kissqy 镜像 R1 分析](../../docs/HD1910-20261012-kissqy镜像R1分析.md)；**还没上机** |
+| `card.conf` | Edite o nome e a senha do Wi-Fi; no primeiro login, `root / 1234`, o assistente cria por padrão `duck / duck1234`. Para instalar software oficial a partir da China, informe o proxy HTTP. **Deixar vazios os dois campos de Wi-Fi ativa o modo de imagem pública**: nenhuma credencial é gravada, mas o DHCP continua pré-configurado. |
+| `镜像使用说明.md` | Guia da imagem publicada: gravação, login pelo USB serial, conexão ao Wi-Fi e recuperação de outros lotes da placa com outro carregador. |
+| [Registro de depuração da câmera 20260928](摄像头调试记录-20260928.md) | Referência visual da conexão do cabo, comparação com a Radxa B1 oficial, reconhecimento de IMX219 e captura limitada de quadros; novo teste com o Armbian original ainda pendente. |
+| [Registro de rede e HAT 20260928](联网与HAT调试记录-20260928.md) | Resultados do login na placa e comunicação somente leitura com os servos no HAT após corrigir o DHCP, além de itens pendentes de diagnóstico. |
+| `1-做卡.ps1` | No Windows, clique com o botão direito e selecione “Executar com PowerShell”; escolha o arquivo `.img.xz` baixado para criar `xxx-鸭子卡.img` e grave-o com Rufus. |
+| `build-armbian-card.sh` | Script principal; no Linux / WSL, execute `sudo bash build-armbian-card.sh xxx.img.xz card.conf`. |
+| `kissqy-r1-v112.sh` | Troca o carregador da imagem de instalação única R1 do kissqy pelo carregador Radxa e configura extlinux para permitir a inicialização da placa V1.12. Preserva o firmware, os modelos e a configuração de rede iniciais do kissqy. Opções: `--no-camera`, `--no-tof` e `--overlay i2c4-m0`. Uso: `sudo bash kissqy-r1-v112.sh microduck-zero3w-0.15.1-R1.img.xz [opções]`. Veja a [análise da imagem kissqy R1](../../docs/HD1910-20261012-kissqy镜像R1分析.md) para a motivação e os resultados offline; **ainda não foi testada no robô**. |
 
-两个脚本都会先找同目录下的瑞莎引导包 `u-boot-rk2410_2017.09-64-39cd993_arm64.deb`，没有才去 radxa-repo.github.io 下载。WSL 里 curl 下这个站偶尔 SSL 中断，这时先在 Windows 上下好，放到脚本同目录（校验值脚本会核对）。用完删掉，别把这个 .deb 提交进仓库。
+Os dois scripts procuram primeiro, no mesmo diretório, o pacote de inicialização Radxa `u-boot-rk2410_2017.09-64-39cd993_arm64.deb`; se não existir, baixam-no de radxa-repo.github.io. Às vezes o curl no WSL perde a conexão SSL com esse site. Nesse caso, baixe o pacote no Windows e coloque-o no diretório do script; o hash será verificado. Apague o `.deb` depois de usar e não o envie ao repositório.
 
-Imagem用 **Armbian 26.2.1 trixie vendor 6.1.115 minimal**（Pollen Oficial指定；国内Imagem站只剩 26.8.1，
-26.2.1 在 `https://fi.mirror.armbian.de/archive/radxa-zero3/archive/`）。瑞莎引导程序从
-`radxa-repo.github.io` 的 `u-boot-rk2410` 包自动下载，脚本里锁了版本和 sha256。
+A imagem usa **Armbian 26.2.1 trixie, kernel vendor 6.1.115, minimal** (versão indicada pela documentação oficial da Pollen; os espelhos chineses só mantêm 26.8.1; 26.2.1 está em `https://fi.mirror.armbian.de/archive/radxa-zero3/archive/`). O carregador Radxa é baixado automaticamente do pacote `u-boot-rk2410` em `radxa-repo.github.io`; o script fixa sua versão e SHA256.
 
-脚本做 de 五件事：
+O script faz cinco coisas:
 
-1. 扇区 64 写 `idbloader.img`，扇区 16384 写 `u-boot.itb`（瑞莎 u-boot-rk2410 2017.09-64，DDR v1.25，BL31 v1.46）
-2. `/boot/extlinux/extlinux.conf`：瑞莎 U-Boot 认 extlinux 不认 Armbian 的 boot.scr；挂 `uart2-m0`（舵机串口 `/dev/ttyS2`）和 `dwc3-peripheral`（OTG 口当 USB 串口）两个 overlay，内核控制台放 tty1
-3. 首次登录向导预设 `/root/.not_logged_in_yet`（用户、密码、时区、locale），在认证后才应用；`wpa_supplicant-wlan0.conf` 配置 WiFi 认证，`/etc/systemd/network/25-wlan0.network` 配置无线 DHCP；移除底包预生成的 SSH 主机密钥，保留原系统的首次启动生成服务
-4. `g_serial` + `serial-getty@ttyGS0`：板子插电脑多出一个 COM 口，115200，root 能登
-5. mask 掉 `serial-getty@ttyS2` / `ttyFIQ0`，登录控制台不占舵机串口
+1. Grava `idbloader.img` no setor 64 e `u-boot.itb` no setor 16384 (Radxa u-boot-rk2410 2017.09-64, DDR v1.25, BL31 v1.46).
+2. Configura `/boot/extlinux/extlinux.conf`: o U-Boot Radxa reconhece extlinux, mas não o `boot.scr` do Armbian; inclui os overlays `uart2-m0` (serial dos servos `/dev/ttyS2`) e `dwc3-peripheral` (porta OTG como USB serial) e deixa o console do kernel em tty1.
+3. Pré-configura `/root/.not_logged_in_yet` para o assistente inicial (usuário, senha, fuso e locale), aplicado depois da autenticação; configura Wi-Fi em `wpa_supplicant-wlan0.conf` e DHCP sem fio em `/etc/systemd/network/25-wlan0.network`; remove as chaves SSH de host pré-geradas da imagem-base e mantém o serviço original que cria novas chaves na primeira inicialização.
+4. Ativa `g_serial` e `serial-getty@ttyGS0`: ao conectar a placa ao computador aparece uma porta COM em 115200, com login root.
+5. Bloqueia `serial-getty@ttyS2` / `ttyFIQ0`, para que o console de login não ocupe a serial dos servos.
 
-完成首次登录向导和网络配置后，路由器里找 `radxa-zero3`，用 `ssh duck@IP` 登录。基础镜像不含完整机器人控制环境，不能仅凭联网就认为网页或舵机控制已经可用。
+Depois de concluir o primeiro login e configurar a rede, localize `radxa-zero3` no roteador e conecte-se com `ssh duck@IP`. A imagem-base não inclui o ambiente completo de controle do robô; ter rede não significa que o painel web ou os servos já estejam prontos para uso.
 
-后续安装可参考 Pollen 官方 [install-dev.md](https://github.com/pollen-robotics/microduck/blob/main/docs/robot/install-dev.md)，但**本镜像不能直接照搬 `migrate-network.sh` → 重启的步骤**。当前检查的上游迁移脚本从 netplan 导入无线凭据，不会读取本镜像的 `wpa_supplicant-wlan0.conf`，也不会自动退出独立的 `wpa_supplicant@wlan0` / `25-wlan0.network` 配置。应先保留现有联网方式，待适配凭据导入、旧服务退出和失联恢复后再迁移，避免重启失联。
+Para instalar componentes depois, consulte o [install-dev.md oficial da Pollen](https://github.com/pollen-robotics/microduck/blob/main/docs/robot/install-dev.md), mas **não copie diretamente o fluxo `migrate-network.sh` → reiniciar nesta imagem**. O script upstream verificado importa credenciais sem fio do netplan; não lê `wpa_supplicant-wlan0.conf` desta imagem nem desativa automaticamente os serviços independentes `wpa_supplicant@wlan0` / `25-wlan0.network`. Mantenha primeiro o método de rede atual e só migre depois de adaptar a importação das credenciais, a saída dos serviços antigos e a recuperação de conexão, para evitar perder o acesso após reiniciar.
 
-安装脚本对 `armbianEnv.txt` 的修改也需核对到实际启动使用的 `extlinux.conf`，不能只依据脚本的检查结果判断硬件已配置完成。
+Também é necessário conferir se as alterações do instalador em `armbianEnv.txt` chegam ao arquivo realmente usado na inicialização, `extlinux.conf`; não conclua que o hardware está configurado apenas porque as verificações do script passaram.
 
-## Superior机分析脚本
+## Scripts de análise na placa
 
-[`onboard-analysis/`](onboard-analysis/)：2026-10-12 夜用来查「模型一接管就猛冲」的脚本，全部只读。包括 50 Hz 录像（开机自启服务）、电压温度记录、IMU 自洽检查、四方向检查、**IMU 零点校准**（站 HOME → 仿真算应有倾斜 → 新安装四元数）、失控转折点、推摇杆迈步统计、IMU 断线分析。
+[`onboard-analysis/`](onboard-analysis/) reúne scripts usados na noite de 2026-10-12 para investigar o avanço brusco do modelo, todos somente leitura: gravação a 50 Hz por serviço iniciado na inicialização, registro de tensão e temperatura, consistência da IMU, testes em quatro direções, **calibração do zero da IMU** (parado em HOME → inclinação esperada pela simulação → novo quaternion de montagem), pontos de mudança antes da perda de controle, estatísticas de passos com joystick e análise de desconexões da IMU.

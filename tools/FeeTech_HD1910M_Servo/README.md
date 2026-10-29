@@ -1,38 +1,35 @@
-# HD1910M ServoTesteFerramentas（feetech-HD1910M-tester）
+# Testador de servo Feetech HD1910M (`feetech-HD1910M-tester`)
 
-基于 Rust 实现 de 飞特 HD1910M 串口Servo（FT-SCS Protocolo）TesteFerramentas，
-覆盖Oficial内存表全部可读写寄存器：ID/波特率设置、位置/速度/电流三环 PID、
-扭矩 e 力控、Execução模式、保护Parâmetros、角度限制 e 零位校准（0x0B）、EPROM 锁存、实时监控等。
+Ferramenta de teste serial para o servo Feetech HD-1910M, implementada em Rust com o protocolo FT-SCS. Abrange todos os registradores legíveis e graváveis da tabela de memória oficial: configuração de ID e baud rate, controle PID de posição / velocidade / corrente, torque e controle de força, modos de operação, parâmetros de proteção, limites de ângulo, calibração de zero (0x0B), bloqueio da EEPROM e monitoramento em tempo real.
 
-## 快速开始
+## Início rápido
 
 ```bash
 cargo build
-./target/debug/hd1910-tester scan      # 扫描舵机（带进度条）
-./target/debug/hd1910-tester dump      # 读整张内存表
-./target/debug/hd1910-tester monitor   # 实时监控反馈
-./target/debug/hd1910-tester --help    # 全部命令
+./target/debug/hd1910-tester scan      # procura servos (com barra de progresso)
+./target/debug/hd1910-tester dump      # lê toda a tabela de memória
+./target/debug/hd1910-tester monitor   # monitora o retorno em tempo real
+./target/debug/hd1910-tester --help    # mostra todos os comandos
 ```
 
-## 文档
+## Documentação
 
-Completo de  em 文教学手册（Protocolo讲解 + Rust 知识点 + 实验教程）见 **[TUTORIAL.md](TUTORIAL.md)**。
+O manual completo para iniciantes, com explicação do protocolo, conceitos de Rust e tutoriais experimentais, está em **[TUTORIAL.md](TUTORIAL.md)**.
 
-## 附带 de 两份飞特规格书
+## Duas folhas de especificações Feetech incluídas
 
-| Arquivo | 是什么 | 跟鸭子 de 关系 |
+| Arquivo | Descrição | Relação com o robô |
 |---|---|---|
-| [`HD-1910-C001串型规格书20260907.pdf`](HD-1910-C001串型规格书20260907.pdf) | **本项目用的舵机**。4–8.4 V，减速比 1:320，堵转 15 kg·cm @7.4 V。过压保护阈值 10 V、欠压 4 V，所以 2S 电池满电 8.4 V 在范围内 | ✅ 整只鸭子 15 颗都是它 |
-| [`HL-2915-C002串型规格书20260227.pdf`](HL-2915-C002串型规格书20260227.pdf) | 飞特另一款舵机。**9–14 V（3S 电池）**，22.5 g，减速比 1:320 | ⚠️ **本项目不用，仅供参考**。电压跟鸭子的 2S 电池不兼容，想换 3S 方案时可以对照看 |
+| [`HD-1910-C001串型规格书20260907.pdf`](HD-1910-C001串型规格书20260907.pdf) | **Servo usado neste projeto**. 4–8,4 V, redução 1:320, torque de bloqueio 15 kg·cm a 7,4 V. Proteção contra sobretensão em 10 V e subtensão em 4 V; a bateria 2S totalmente carregada fornece 8,4 V e está dentro da faixa. | ✅ Os 15 servos do robô são deste modelo. |
+| [`HL-2915-C002串型规格书20260227.pdf`](HL-2915-C002串型规格书20260227.pdf) | Outro servo Feetech. **9–14 V (bateria 3S)**, 22,5 g, redução 1:320. | ⚠️ **Não usado neste projeto; apenas para referência.** A tensão não é compatível com a bateria 2S do robô. Pode servir de comparação para uma futura configuração 3S. |
 
-两份都是飞特发 de 规格书原件，规格Conteúdo一字未改。**联系人 de 姓名e手机号/微信已抹掉**
-（原件里印 de 是销售个人 de 联系方式，不适合挂在公开仓库）；HD-1910 那份用 de 是联系方式为公司座机 de OficialVersão。
-要联系飞特走官网 [www.feetech.cn](https://www.feetech.cn) 或公司电话 0755-89335266。
+Os dois arquivos são cópias originais das especificações fornecidas pela Feetech; o conteúdo técnico não foi alterado. **O nome e o telefone / WeChat do contato foram removidos** (o original trazia o contato pessoal de um vendedor, inadequado para publicação em um repositório aberto). A cópia do HD-1910 usa a versão oficial com o telefone fixo da empresa.
+Para entrar em contato com a Feetech, use o site [www.feetech.cn](https://www.feetech.cn) ou o telefone comercial 0755-89335266.
 
-飞特的协议手册、内存表等官网公开资料在仓库的 [`docs/飞特资料/`](../../docs/飞特资料/)。
+Os manuais públicos da Feetech sobre protocolo, tabelas de memória e outros materiais estão em [`docs/飞特资料/`](../../docs/飞特资料/).
 
-## Teste
+## Testes
 
 ```bash
-cargo test    # 协议层/内存表层单元测试（无需硬件）
+cargo test    # testes unitários do protocolo e da tabela de memória (não exigem hardware)
 ```
