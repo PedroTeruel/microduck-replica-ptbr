@@ -1,25 +1,25 @@
-# 音乐律动在Web后台持续Execução
+# Manter o movimento musical em execução em segundo plano na Web
 
-Usuário明确要求“后台也持续工作”。现有实现把音乐律动放入前台遥控会话，blur、滚出区域、动作500ms心跳缺失会结束；因此Usuário切到聊天后，音乐采集继续但动作停止。本轮将独立音乐律动交给StudioServiço端持续调度。
+O usuário pediu explicitamente que “continue funcionando também em segundo plano”. A implementação atual mantém o movimento musical na sessão de controle em primeiro plano; perde o foco, sai da área ou deixa de receber o heartbeat de movimento de 500 ms e encerra. Assim, quando o usuário muda para o chat, a captação continua, mas o movimento para. Nesta rodada, a execução contínua do movimento musical será transferida para o serviço Studio.
 
-## 方案选择
+## Escolha da solução
 
-采用Serviço端管理已有独立音乐会话：后台Web不é necessário高频发送动作心跳。继续依赖浏览器计时器会受后台限速；独立新增常驻运动进程又会造成Controle权竞争，均不采用。使用已有有序发送锁、Modelo身份、停止 e  em 立清理机制。
+O serviço gerenciará a sessão musical independente já existente; a Web em segundo plano não precisa enviar heartbeats de movimento frequentes. Não continuar dependendo do timer do navegador, que é limitado em segundo plano, nem criar outro processo permanente de movimento, o que causaria disputa pela autoridade de controle. Usar o bloqueio de envio ordenado, a identidade do modelo e os mecanismos existentes de parada e limpeza.
 
-## 行为 e 边界
+## Comportamento e limites
 
-- 仅独立`idle_motion + idle_kind=music`可在网页失焦、隐藏、滚出遥控区后继续；普通灵动、录制（包括录音乐）、回放、摇杆和按键规则不变。启动仍须登录、在遥控区、站稳且策略就绪、实体手柄断开、状态新鲜。
-- 原WebWebSocket真正断开、显式停止音乐律动/R3关闭监听或音乐模式、实体手柄连Superior、另一个Web接管/人工动作开始、急停/卸力、策略/Modelo变化、关键状态失效时，结束会话并清理一次。恢复Fonte或Conexão不自动复活旧会话。暂não suporta关闭Página后继续。
-- Serviço端必须独立维持新鲜 de 机器人反馈 e 实体手柄状态，不可跳过原有新鲜度/扭矩/姿态Verificação。音乐Fonte未知节拍时等待；不合成假节拍、不更换运动Modelo。
-- 同一Página后台仍可被其它Página接管；后台音乐不能重新夺回已转移 de Controle权。清理 e 输出使用现有有序锁，停止后不得发送已排队旧音乐帧。
-- 前端在后台音乐会话 em 不因blur/activity失活主动发送stop，也不继续假装发送高频心跳；断线仍 em 断。返回Página显示Atual会话/节拍状态，提供停止入口。Instruções文案明确后台继续、断开停止。
-- 同一WebSocket内切换`/pad`与`/logs`等路由也保留已经确认的独立音乐会话。未确认启动的页面销毁、真正断线及过期回复使用会话token隔离。
-- 通用网页30秒应用心跳超时保持。独立音乐所有者在JavaScript心跳暂停时，通过本地`studio.ws_protocol`提供的原生WebSocket Ping/Pong确认连接存活：随机匹配payload，最多等5秒，失败即关闭并结束会话。不编辑vendored依赖、不伪造应用心跳或观测者活动。
+- Somente a sessão independente `idle_motion + idle_kind=music` continua depois que a página perde o foco, fica oculta ou sai da área de controle. As regras comuns de movimento expressivo, gravação (inclusive gravar música), reprodução, joystick e botões permanecem inalteradas. Para iniciar, ainda é necessário estar autenticado e na área de controle, com o pato estável em pé e a política pronta, controle físico desconectado e estado atualizado.
+- Encerrar a sessão e limpá-la uma única vez quando o WebSocket original da Web realmente desconectar; quando o usuário parar explicitamente o movimento musical, desligar a escuta R3 ou o modo música; quando o controle físico conectar; quando outra sessão Web assumir o controle ou começar uma ação manual; em caso de parada de emergência/desativação de torque, mudança de política/modelo ou expiração de um estado essencial. Restaurar a fonte ou reconectar não reativa uma sessão antiga. Ainda não é compatível com continuar depois de fechar a página.
+- O serviço precisa manter de forma independente o feedback atualizado do robô e o estado do controle físico; não pode ignorar as verificações existentes de atualidade, torque ou postura. Se o ritmo da fonte musical for desconhecido, aguardar; não inventar batidas nem trocar o modelo de movimento.
+- Outra página ainda pode assumir o controle enquanto a música toca em segundo plano; a sessão musical não pode retomar o controle depois que ele for transferido. A limpeza e a saída usam o bloqueio ordenado existente; depois da parada, não enviar quadros antigos de música que ainda estejam na fila.
+- Com a sessão musical em segundo plano, a interface não envia stop só porque perdeu o foco ou ficou inativa, nem finge continuar enviando heartbeats frequentes. A desconexão continua sendo tratada como desconexão. Ao voltar à página, exibir o estado atual da sessão e do ritmo e oferecer um controle para parar. As instruções informam que a execução continua em segundo plano e para quando a conexão cai.
+- Manter a sessão musical independente já confirmada ao trocar de rota dentro do mesmo WebSocket, por exemplo entre `/pad` e `/logs`. Destruição da página antes de confirmar o início, desconexão real e respostas expiradas são isoladas por token de sessão.
+- Manter o timeout geral de 30 s do heartbeat de aplicação da Web. Se o heartbeat JavaScript pausar, o proprietário da sessão musical independente confirma que a conexão permanece ativa usando Ping/Pong nativo do WebSocket fornecido por `studio.ws_protocol`: payload aleatório correspondente, espera máxima de 5 s; em caso de falha, fecha a conexão e encerra a sessão. Não editar dependências vendorizadas, simular heartbeat da aplicação nem atividade do observador.
 
 ## Validação
 
-先用FalhaTeste覆盖后台超过500mse10秒无人观看后 de 继续、前台普通会话仍停止、断开/接管/手柄/失效/音源关闭停且不复活。ProtocoloTeste覆盖正确/错误/缺失Ponge父Protocolo事件处理；本地真实Edge过滤JavaScript应用心跳，保持原生Pong，切日志页超过30秒后仍有输出，返回可停止，真正断开后不复活。真机只做已站稳策略Execução条件Inferior de 小幅Cabeça音乐动作观察。不将接口accepted或假机器人输出当成实物动作验收。现用Modelo未训练身体姿态跟随，仍如实标记身体限制。
+Primeiro, criar testes que falhem cobrindo a continuidade em segundo plano após mais de 500 ms e 10 s sem observador, a parada de sessões comuns em primeiro plano e a parada sem reativação em caso de desconexão, tomada de controle, controle físico, estado expirado ou fonte de áudio desligada. Testes do protocolo cobrem Pong correto/incorreto/ausente e o tratamento dos eventos do protocolo pai. No Edge local real, filtrar o heartbeat de aplicação JavaScript, manter o Pong nativo e deixar a página de logs aberta por mais de 30 s: a saída deve continuar, deve ser possível voltar e parar, e uma desconexão real não deve reativar a sessão. No robô, observar apenas movimento musical pequeno da cabeça, com a política ativa e o pato já estável em pé. Não tratar uma resposta de interface accepted nem a saída de um robô simulado como validação de movimento físico. O modelo atual não foi treinado para acompanhar a postura do corpo; essa limitação deve ser informada claramente.
 
-## 范围
+## Escopo
 
-本轮只更改音乐会话生命周期，不改DSPAlgoritmos、Controle幅度、Modelo、Rede、ServoParâmetros或音频录放。停止条件eDados状态Validação优先于后台持续。
+Esta rodada altera somente o ciclo de vida da sessão musical; não modifica algoritmos DSP, amplitude de controle, modelo, rede, parâmetros dos servos nem gravação/reprodução de áudio. As condições de parada e a validação do estado dos dados têm prioridade sobre a continuidade em segundo plano.
