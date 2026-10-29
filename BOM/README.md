@@ -1,16 +1,16 @@
-# 飞特版装配采购清单
+# Lista de compras para montagem — versão Feetech
 
-**机械行者Robo整理 · 2026-10-23 版**
+**Organizada por 机械行者Robo · versão de 2026-10-23**
 
 **[下载完整 Excel](装配BOM-机械行者Robo-2026-10-23-带采购链接.xlsx)** · [打印件与 CAD](https://github.com/fanhao375/microduck-replica-cad) · [主仓库](https://github.com/fanhao375/microduck-replica)
 
-本页由同版 Excel 整理，包含 **33 项打印件、23 项外购件**。数量、材料、备注、价格及采购链接保留原表内容。
+Esta página foi organizada a partir da planilha Excel da mesma versão e contém **33 peças impressas e 23 itens comprados**. Quantidades, materiais, observações, preços e links de compra preservam o conteúdo da tabela original.
 
-**适用版本：飞特 HD-1910 方案。** 清单包含飞特舵机和 URT2 调试板；XL330 版的舵机及配套电控需另行核对。Excel 原文件保持不变。
+**Versão compatível: configuração Feetech HD-1910.** A lista inclui servos Feetech e uma placa de depuração URT2; os servos XL330 e a eletrônica correspondente precisam ser conferidos separadamente. O arquivo Excel original permanece inalterado.
 
 [查看打印件](#一打印件33-项) · [查看外购件](#二外购件23-项) · [原表说明与待核对项](#三原表说明与待核对项)
 
-## 一、打印件（33 项）
+## 1. Peças impressas (33 itens)
 
 打印模型请到 [CAD 仓库](https://github.com/fanhao375/microduck-replica-cad) 选择对应舵机版本。材料同时核对该版本的打印说明；下表显示的是 Excel 原文。
 
@@ -52,7 +52,7 @@
 | 32 | 香蕉形PCB锁扣 | banana_pcb_locker_香蕉形PCB锁扣.stp | PLA | 1 |  |
 | 33 | 轴承滚轮 | bearing_roll_轴承滚轮.stp | PLA | 2 | 建议铝合金 |
 
-## 二、外购件（23 项）
+## 2. Itens comprados (23 itens)
 
 价格单位为元，按原表保存的数值展示。采购链接可直接点击；Excel 未填写网址的项目标为“原表未填”。
 
@@ -82,7 +82,7 @@
 | 22 | 乐泰螺纹胶243 | 标准件 | 1 | 9 | 9 |  | [采购链接](<https://item.taobao.com/item.htm?adType=orgqzt&from=cart&id=1056442610986&mi_id=0000wOojFoJyiP5dQudTpjmjzfZLEEq7GLdMEB8DaDqMa7Y&skuId=6099342537028&spm=a1z0d.6639537%2F202410.item.d1056442610986.44d57484Ny8pKV&upStreamPrice=900&xxc=qzt_taobaoSearch>) |
 | 23 | 鞋底防滑垫 | 标准件 | 1 | 16 | 16 |  | [采购链接](<https://detail.tmall.com/item.htm?id=888852278057&mi_id=0000Bug6nFYlEVkT2CGWMwXKqUSbi-0G_VP4pnfiGwBOnrU&spm=tbpc.boughtlist.suborder_itemtitle.1.c3892e8dY9OLZg&skuId=5902232407790>) |
 
-## 三、原表说明与待核对项
+## 3. Observações da tabela original e itens a conferir
 
 **原表合计：2426.88 元。** Excel 原文件保持不变；以下两处需要核对：
 
