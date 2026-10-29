@@ -1,367 +1,367 @@
-# ServoSCS通信Protocolo
+# Protocolo de comunicação do servo SCS
 
-# 1 通信Protocolo概要
-&emsp;&emsp;通讯电平采用兼容高速通信 de TTL电平方式 e 具有较强抗干扰能力 de RS485方式，通讯仍是采用异步双工，发送 e 接收信号是异步处理。
-&emsp;&emsp;Controle器eServo之间采用问答方式通信，Controle器发出指令帧，Servo返回应答帧。
-&emsp;&emsp;一个总线ControleRede em 允许有多个Servo，所以每个Servo都分配有一个Rede内唯一 de ID号。Controle器发出 de Controle指令 em 包含ID信息，只有匹配SuperiorID号 de Servo才能Completo接收这条指令，并返回应答信息。
-通信方式为串行异步方式，一帧Dados分为1位起始位，8位Dados位e1位停止位，无奇偶校验位，共10位。
-&emsp;&emsp;内存表 de 部分Parâmetros采用两个字节 de 值域时，两个字节顺序conformeServo型号区分，电位器类型Servo为大端格式（高字节在前低字节在后），磁编码类型Servo为小端格式（低字节在前高字节在后）。每款Servo因功能略有不同，因此实际Controle时Por favor参照具体型号 de 内存表为准。
+# 1. Visão geral do protocolo de comunicação
+&emsp;&emsp;A comunicação utiliza níveis TTL, compatíveis com comunicação de alta velocidade, e o método RS-485, com maior imunidade a interferências. A comunicação é assíncrona e full-duplex; transmissão e recepção são processadas de forma assíncrona.
+&emsp;&emsp;O controlador e o servo se comunicam no formato pergunta-resposta: o controlador envia um quadro de comando e o servo retorna um quadro de resposta.
+&emsp;&emsp;Uma rede de barramento pode conter vários servos; por isso, cada servo recebe um ID exclusivo nessa rede. Os comandos do controlador contêm o ID, e somente o servo cujo ID corresponda pode receber o comando e retornar uma resposta.
+A comunicação é serial assíncrona. Cada quadro contém 1 bit de início, 8 bits de dados e 1 bit de parada, sem bit de paridade, totalizando 10 bits.
+&emsp;&emsp;Para alguns parâmetros de dois bytes na tabela de memória, a ordem dos bytes depende do modelo do servo. Servos com potenciômetro usam formato big-endian (byte mais significativo primeiro); servos com encoder magnético usam little-endian (byte menos significativo primeiro). Como as funções variam um pouco entre modelos, consulte a tabela de controle de memória do modelo específico durante a operação.
 
-# 2 指令帧
-|字头|ID号|Dados长度|指令|Parâmetros|校验e|
+# 2. Quadro de comando
+| Cabeçalho | ID | Comprimento dos dados | Instrução | Parâmetros | Soma de verificação |
 |-|-|-|-|-|-|
 |0xFF 0xFF|ID|Length|Instruction|Parameter1 ...Parameter N|Check Sum|
 
-- 字头：连续收到两个0xFF ,表示有Dados包到达。
-ID号：每个Servo都有一个ID号。ID号范围0～253,转换为十六进制0x00～0xFD。
-- 广播ID：ID号254为广播ID,若Controle器发出 de ID号为254(0xFE)，所有 de Servo均接收指令，除PING指令外其它指令均不返回应答信息(多个ServoConexão在总线Superior不能使用广播PING指令)。
-- Dados长度：等于待发送 de ParâmetrosN加Superior2，即“N+2”。
-- 指令：Dados包操作功能码，详见4指令类型。
-- Parâmetros：除指令另外é necessário补充 de Controle信息，Parâmetros最大suporta双字节Parâmetros表示一个内存值，字节顺序参考Servo使用手册内存Controle表(不同型号Servo字节顺序不一样)。
-- 校验e：校验eCheck Sum，计算方法如Inferior
-Check Sum = ~ (ID + Length + Instruction + Parameter1 + ... Parameter N) 若括号内 de 计算e超出255, 则取最低 de 一个字节，“~”表示取反。
+- **Cabeçalho:** a recepção de dois bytes `0xFF` consecutivos indica a chegada de um pacote de dados.
+**ID:** cada servo tem um ID. A faixa é de 0 a 253, ou `0x00` a `0xFD` em hexadecimal.
+- **ID de broadcast:** o ID 254 é reservado para broadcast. Quando o controlador envia o ID 254 (`0xFE`), todos os servos recebem o comando. Exceto para PING, os demais comandos não geram resposta. Não use PING por broadcast quando vários servos estiverem conectados ao barramento.
+- **Comprimento dos dados:** número de parâmetros a enviar, N, mais 2; isto é, `N+2`.
+- **Instrução:** código da operação do pacote de dados. Consulte os tipos de instrução na seção 4.
+- **Parâmetros:** informações de controle adicionais à instrução. Suporta no máximo um valor de memória representado por dois bytes; para a ordem dos bytes, consulte a tabela de controle de memória do manual do servo (ela varia conforme o modelo).
+- **Soma de verificação:** calculada assim:
+`Check Sum = ~ (ID + Length + Instruction + Parameter1 + ... + Parameter N)`. Se a soma dentro dos parênteses exceder 255, use somente o byte menos significativo. `~` significa inversão dos bits.
 
-# 3 应答帧
-|字头|ID号|Dados长度|状态码|Parâmetros|校验e|
+# 3. Quadro de resposta
+| Cabeçalho | ID | Comprimento dos dados | Código de estado | Parâmetros | Soma de verificação |
 |-|-|-|-|-|-|
 |0xFF 0xFF|ID|Length|ERROR|Parameter1 ...Parameter N|Check Sum|
 
-返回 de 应答帧包含Servo de Atual状态ERROR，若ServoAtual工作状态不正常，会por meio de这个字节反映出来（各状态所代表意义详见手册内存Controle表），若ERROR为0，则Servo无报错信息。
+O quadro de resposta contém o estado atual do servo no campo ERROR. Se o servo não estiver funcionando normalmente, esse byte indica a condição (consulte os significados na tabela de controle de memória do manual). Se ERROR for 0, não há erro informado.
 
-# 4 指令类型
-|指令|功能|值|Parâmetros长度|
+# 4. Tipos de instrução
+| Instrução | Função | Valor | Comprimento dos parâmetros |
 |-|-|-|-|
-|PING（查询）|查询工作状态|0x01|0|
-|READ DATA（读）|查询Controle表里 de Dados|0x02|2|
-|WRITE DATA（写）|往Controle表里GravaçãoDados|0x03|不小于2|
-|REGWRITE DATA（异步写）|类似于WRITE DATA，但是Controle字符Gravação后并不马Superior动作，直到ACTION指令到达|0x04|不小于4|
-|ACTION（执行异步写）|触发REG WRITEGravação de 动作|0x05|0|
-|SYCNREAD DATA（同步读）|usado para同时查询多个Servo|0x82|不小于3|
-|SYCNWRITE DATA（同步写））|usado para同时Controle多个Servo|0x83|不小于2|
-|RESET（状态重置）|重置Servo状态(重置Servo圈数)|0x0A|0|
-|位置校准|Atual位置重校准为指令值|0x0B|0|
-|Parâmetros恢复指令|恢复Servo除ID号外 de 其它Parâmetros|0x06|0|
-|Parâmetros备份指令|备份AtualParâmetros，usado para恢复指令|0x09|0|
-|重启指令|usado para重启Servo|0x08|0|
+| PING (consulta) | Consultar estado de funcionamento | 0x01 | 0 |
+| READ DATA (leitura) | Consultar dados da tabela de controle | 0x02 | 2 |
+| WRITE DATA (gravação) | Gravar dados na tabela de controle | 0x03 | Pelo menos 2 |
+| REGWRITE DATA (gravação assíncrona) | Semelhante a WRITE DATA, mas os dados preparados não entram em ação até a chegada de ACTION | 0x04 | Pelo menos 4 |
+| ACTION (executar gravação assíncrona) | Acionar a gravação REG WRITE | 0x05 | 0 |
+| SYNC READ DATA (leitura síncrona) | Consultar vários servos ao mesmo tempo | 0x82 | Pelo menos 3 |
+| SYNC WRITE DATA (gravação síncrona) | Controlar vários servos ao mesmo tempo | 0x83 | Pelo menos 2 |
+| RESET (redefinição de estado) | Redefinir o estado do servo (zerar a contagem de voltas) | 0x0A | 0 |
+| Calibração de posição | Recalibrar a posição atual para o valor de comando | 0x0B | 0 |
+| Comando para restaurar parâmetros | Restaurar os parâmetros do servo, exceto o ID | 0x06 | 0 |
+| Comando para fazer backup dos parâmetros | Salvar os parâmetros atuais para uso pelo comando de restauração | 0x09 | 0 |
+| Comando de reinicialização | Reiniciar o servo | 0x08 | 0 |
 
-## 4.1 查询状态指令PING
-- 功能：LeituraServo de 工作状态
-- 长度：0x02
-- 指令：0x01
-- Parâmetros：无
-- PING指令使用广播地址，Servo同样返回应答信息。
+## 4.1 Instrução PING para consultar o estado
+- **Função:** ler o estado de funcionamento do servo.
+- **Comprimento:** `0x02`.
+- **Instrução:** `0x01`.
+- **Parâmetros:** nenhum.
+- A instrução PING pode usar o endereço de broadcast; nesse caso, os servos também retornam respostas.
 
-**例1：LeituraID号为1 de Servo de 工作状态。**
-指令帧：FF FF 01 02 01 FB（按十六进制发送）
+**Exemplo 1: ler o estado de funcionamento do servo de ID 1.**
+Quadro de comando: `FF FF 01 02 01 FB` (enviar em hexadecimal).
 ```language
-字头：FF FF
-ID：01
-长度：02
-指令：01
-校验和：FB
+Cabeçalho: FF FF
+ID: 01
+Comprimento: 02
+Instrução: 01
+Soma de verificação: FB
 ```
 
-应答帧： FF FF 01 02 00 FC（十六进制显示）
+Quadro de resposta: `FF FF 01 02 00 FC` (exibido em hexadecimal).
 ```language
-字头：FF FF
-ID：01
-长度：02
-状态：00
-校验和：FC
+Cabeçalho: FF FF
+ID: 01
+Comprimento: 02
+Estado: 00
+Soma de verificação: FC
 ```
 
-## 4.2 读指令READ DATA
-- 功能：从Servo内存Controle表里读出Dados
-- 长度：0x04
-- 指令：0x02
-- Parâmetros1：Dados读出段 de 首地址
-- Parâmetros2：LeituraDados de 长度
+## 4.2 Instrução READ DATA
+- **Função:** ler dados da tabela de controle da memória do servo.
+- **Comprimento:** `0x04`.
+- **Instrução:** `0x02`.
+- **Parâmetro 1:** endereço inicial do trecho de dados a ler.
+- **Parâmetro 2:** comprimento dos dados a ler.
 
-**例2：LeituraID为1 de Servo de Atual位置（低位字节在前，高位字节在后）。位置Parâmetros内存表地址为0X38，连续二个字节。**
+**Exemplo 2: ler a posição atual do servo de ID 1 (byte menos significativo primeiro, depois o mais significativo). O endereço da posição na tabela de memória é `0x38`; são dois bytes consecutivos.**
 
-指令帧：FF FF 01 04 02 38 02 BE（按十六进制发送）
+Quadro de comando: `FF FF 01 04 02 38 02 BE` (enviar em hexadecimal).
 ```language
-字头：FF FF
-ID：01
-长度：04
-指令：02
-参数：38 02（当前位置地址 读数据长度）
-校验和：BE
+Cabeçalho: FF FF
+ID: 01
+Comprimento: 04
+Instrução: 02
+Parâmetros: 38 02 (endereço da posição atual, comprimento dos dados a ler)
+Soma de verificação: BE
 ```
 
-应答帧：FF FF 01 04 00 18 05 DD（十六进制显示）
+Quadro de resposta: `FF FF 01 04 00 18 05 DD` (exibido em hexadecimal).
 ```language
-字头：FF FF
-ID：01
-长度：04
-状态：00
-参数：18 05
-校验和：DD
+Cabeçalho: FF FF
+ID: 01
+Comprimento: 04
+Estado: 00
+Parâmetros: 18 05
+Soma de verificação: DD
 ```
-读出两个字节Dados分别是（小端结构）：低位字节L 0x18  高位字节H 0x05，两字节合成16位Dados0X0518，用十进制表示Atual de 位置为1304。
+Os dois bytes lidos estão em formato little-endian: byte menos significativo L = `0x18`, byte mais significativo H = `0x05`. Juntos formam o valor de 16 bits `0x0518`; em decimal, a posição atual é 1304.
 
-## 4.3 写指令WRITE DATA
-- 功能：写Dados到Servo内存Controle表
-- 长度：N+2（N为Parâmetros长度）
-- 指令：0x03
-- Parâmetros1：DadosGravação段 de 首地址
-- Parâmetros2：Gravação第1个Dados
-- Parâmetros3：Gravação第2个Dados
-...
-- ParâmetrosN：Gravação第n个Dados，N=n+1
-
-**例3：使用广播ID (0xFE)把任意编号Servo de ID设置为1，在内存表里保存ID号 de 地址为5。**
-指令帧：FF FF FE 04 03 05 01 F4 (按十六进制发送)
-```language
-字头：FF FF
-ID：01
-长度：04
-指令：03
-参数：05 01（ID地址 新ID值）
-校验和：F4
-```
-
-因为采用广播ID发送指令，所以不会有Dados返回。另外内存表EPROM 具有保护锁开关，修改ID前é necessário把它关掉（置0），不然示例ID号掉电将不保存。详细操作Por favor查阅具体Servo型号 de 内存表或操作手册。
-
-**例4：ControleID1Servo以1000步每秒 de 速度转动到2048 de 位置。内存表目标位置 de 首地址为0x2A，所以在地址0x2A处开始Gravação连续六个字节Dados。**
-
-- 位置Dados0x0800(2048)
-- 预留Dados0x0000(0)
-- 速度Dados0x03E8(1000)
-
-指令帧：FF FF 01 09 03 2A 00 08 00 00 E8 03 D5（按十六进制发送）
-```language
-字头：FF FF
-ID：01
-长度：09
-指令：03
-参数：
-2A（首地址）
-00 08（位置）
-00 00（预留）
-E8 03（速度）
-校验和：D5
-```
-
-应答帧：FF FF 01 02 00 FC（十六进制显示）
-```language
-字头：FF FF
-ID：01
-长度：02
-状态：00
-校验和：FC
-```
-返回工作状态为0，表示Servo正确无错接收到指令并已开始执行。发送指令包 de ID使用非广播ID (0xFE)，所以指令接收Concluído后Servo将返回状态包。
-
-## 4.4 异步写指令REG WRITE
-REG WRITE指令相似于WRITE DATA，只是执行 de 时间不同。当收到REG WRITE指令帧时，把收到 de Dados储存在缓冲区备用，并把异步写标志寄存器置1。当收到ACTION指令后，储存 de 指令最终被执行。
-- 长度：N+2（N为Parâmetros长度）
-- 指令：0x04
-- Parâmetros1：Dados要Gravação区 de 首地址
-- Parâmetros2：Gravação de 第1个Dados
-- Parâmetros3：Gravação de 第2个Dados
-- ParâmetrosN：Gravação de 第n个Dados，N=n+1
-
-**例5：ControleID1到ID10Servo以1000每秒 de 速度转动到2048 de 位置。**
-
-```language
-ID 1：异步写指令帧：FF FF 01 09 04 2A 00 08 00 00 E8 03 D4 
-ID 1：应答帧：FF FF 01 02 00 FC
-ID 2：异步写指令帧：FF FF 02 09 04 2A 00 08 00 00 E8 03 D3 
-ID 2：应答帧：FF FF 02 02 00 FB
-ID 3：异步写指令帧：FF FF 03 09 04 2A 00 08 00 00 E8 03 D2 
-ID 3：应答帧：FF FF 03 02 00 FA
-ID 4：异步写指令帧：FF FF 04 09 04 2A 00 08 00 00 E8 03 D1 
-ID 4：应答帧：FF FF 04 02 00 F9
-ID 5：异步写指令帧：FF FF 05 09 04 2A 00 08 00 00 E8 03 D0 
-ID 5：应答帧：FF FF 05 02 00 F8
-ID 6：异步写指令帧：FF FF 06 09 04 2A 00 08 00 00 E8 03 CF 
-ID 6：应答帧：FF FF 06 02 00 F7
-ID 7：异步写指令帧：FF FF 07 09 04 2A 00 08 00 00 E8 03 CE 
-ID 7：应答帧：FF FF 07 02 00 F6
-ID 8：异步写指令帧：FF FF 08 09 04 2A 00 08 00 00 E8 03 CD 
-ID 8：应答帧：FF FF 08 02 00 F5
-ID 9：异步写指令帧：FF FF 09 09 04 2A 00 08 00 00 E8 03 CC 
-ID 9：应答帧：FF FF 09 02 00 F4
-ID10：异步写指令帧：FF FF 0A 09 04 2A 00 08 00 00 E8 03 CB
-ID10：应答帧：FF FF 0A 02 00 F3
-```
-
-## 4.5 执行异步写指令ACTION
-- 功能：触发REG WRITE指令
-- 长度：0x02
-- 指令：0x05
-- Parâmetros：无
-
-1、ACTION 指令在同时Controle多个Servo时非常有用。
-2、在Controle多个Servo时，使用ACTION指令pode使第一个e最后一个Servo同时执行各自 de 动作， em 间无延时。
-3、对多个Servo发送ACTION指令时，要用到广播ID（0xFE）因此，发送此指令不会有Dados帧返回。
-
-**例6：ControleID1到ID10Servo以1000每秒 de 速度转动到2048 de 位置 de 异步写指令发完后，é necessário执行异步写指令。**
-```
-指令帧：FF FF FE 02 05 FA
-应答帧：无
-```
-
-## 4.6 同步写指令SYNC WRITE
-- 功能：usado para同时Controle多个Servo。
-- ID：0xFE
-- 长度：(L+1)*n+4（L：发给每个Servo de Dados长度，n：Servo de 个数）
-- 指令：0x83
-- Parâmetros1：GravaçãoDados de 首地址
-- Parâmetros2：Gravação de Dados de 长度(L)
-- Parâmetros3：第1个Servo de ID号
-- Parâmetros4：Gravação第1个Servo de 第1个Dados
-- Parâmetros5：Gravação第1个Servo de 第2个Dados
-...
-- ParâmetrosL+3：Gravação第1个Servo de 第L个Dados
-- ParâmetrosL+4：第2个Servo de ID号
-- ParâmetrosL+5：Gravação第2个Servo de 第1个Dados
-- ParâmetrosL+6：Gravação第2个Servo de 第2个Dados
+## 4.3 Instrução WRITE DATA
+- **Função:** gravar dados na tabela de controle da memória do servo.
+- **Comprimento:** `N+2` (N é o comprimento dos parâmetros).
+- **Instrução:** `0x03`.
+- **Parâmetro 1:** endereço inicial do trecho onde os dados serão gravados.
+- **Parâmetro 2:** primeiro dado a gravar.
+- **Parâmetro 3:** segundo dado a gravar.
 …
-- Parâmetros2L+4：Gravação第2个Servo de 第L个Dados
+- **Parâmetro N:** enésimo dado a gravar; `N=n+1`.
+
+**Exemplo 3: usar o ID de broadcast (`0xFE`) para definir como 1 o ID de qualquer servo. O endereço do ID na tabela de memória é 5.**
+Quadro de comando: `FF FF FE 04 03 05 01 F4` (enviar em hexadecimal).
+```language
+Cabeçalho: FF FF
+ID: FE
+Comprimento: 04
+Instrução: 03
+Parâmetros: 05 01 (endereço do ID, novo valor de ID)
+Soma de verificação: F4
+```
+
+Como o comando usa o ID de broadcast, não haverá retorno de dados. A memória EPROM tem um bloqueio de proteção; antes de alterar o ID, é necessário desativá-lo (definir como 0), caso contrário o novo ID do exemplo não será salvo após desligar. Consulte a tabela de memória ou o manual de operação do modelo específico para obter instruções detalhadas.
+
+**Exemplo 4: controlar o servo de ID 1 para girar até a posição 2048 à velocidade de 1000 passos por segundo. O endereço inicial da posição-alvo na tabela de memória é `0x2A`; portanto, grave seis bytes consecutivos a partir do endereço `0x2A`.**
+
+- Posição: `0x0800` (2048)
+- Reservado: `0x0000` (0)
+- Velocidade: `0x03E8` (1000)
+
+Quadro de comando: `FF FF 01 09 03 2A 00 08 00 00 E8 03 D5` (enviar em hexadecimal).
+```language
+Cabeçalho: FF FF
+ID: 01
+Comprimento: 09
+Instrução: 03
+Parâmetros:
+2A (endereço inicial)
+00 08 (posição)
+00 00 (reservado)
+E8 03 (velocidade)
+Soma de verificação: D5
+```
+
+Quadro de resposta: `FF FF 01 02 00 FC` (exibido em hexadecimal).
+```language
+Cabeçalho: FF FF
+ID: FE
+Comprimento: 02
+Estado: 00
+Soma de verificação: FC
+```
+O estado de funcionamento retornado é 0, o que indica que o servo recebeu o comando corretamente, sem erros, e começou a executá-lo. Como o comando foi enviado a um ID que não é o de broadcast (`0xFE`), o servo retorna um quadro de estado após receber o pacote.
+
+## 4.4 Instrução de gravação assíncrona REG WRITE
+A instrução REG WRITE é semelhante a WRITE DATA, mas o momento de execução é diferente. Ao receber um quadro REG WRITE, os dados são armazenados temporariamente no buffer e o registrador de gravação assíncrona é definido como 1. Quando chega a instrução ACTION, os dados armazenados são finalmente aplicados.
+- **Comprimento:** `N+2` (N é o comprimento dos parâmetros).
+- **Instrução:** `0x04`.
+- **Parâmetro 1:** endereço inicial do trecho onde os dados serão gravados.
+- **Parâmetro 2:** primeiro dado a gravar.
+- **Parâmetro 3:** segundo dado a gravar.
+- **Parâmetro N:** enésimo dado a gravar; `N=n+1`.
+
+**Exemplo 5: comandar os servos de ID 1 a ID 10 para girar até a posição 2048 à velocidade de 1000 passos por segundo.**
+
+```language
+ID 1 — quadro REG WRITE: FF FF 01 09 04 2A 00 08 00 00 E8 03 D4
+ID 1 — resposta: FF FF 01 02 00 FC
+ID 2 — quadro REG WRITE: FF FF 02 09 04 2A 00 08 00 00 E8 03 D3
+ID 2 — resposta: FF FF 02 02 00 FB
+ID 3 — quadro REG WRITE: FF FF 03 09 04 2A 00 08 00 00 E8 03 D2
+ID 3 — resposta: FF FF 03 02 00 FA
+ID 4 — quadro REG WRITE: FF FF 04 09 04 2A 00 08 00 00 E8 03 D1
+ID 4 — resposta: FF FF 04 02 00 F9
+ID 5 — quadro REG WRITE: FF FF 05 09 04 2A 00 08 00 00 E8 03 D0
+ID 5 — resposta: FF FF 05 02 00 F8
+ID 6 — quadro REG WRITE: FF FF 06 09 04 2A 00 08 00 00 E8 03 CF
+ID 6 — resposta: FF FF 06 02 00 F7
+ID 7 — quadro REG WRITE: FF FF 07 09 04 2A 00 08 00 00 E8 03 CE
+ID 7 — resposta: FF FF 07 02 00 F6
+ID 8 — quadro REG WRITE: FF FF 08 09 04 2A 00 08 00 00 E8 03 CD
+ID 8 — resposta: FF FF 08 02 00 F5
+ID 9 — quadro REG WRITE: FF FF 09 09 04 2A 00 08 00 00 E8 03 CC
+ID 9 — resposta: FF FF 09 02 00 F4
+ID 10 — quadro REG WRITE: FF FF 0A 09 04 2A 00 08 00 00 E8 03 CB
+ID 10 — resposta: FF FF 0A 02 00 F3
+```
+
+## 4.5 Instrução ACTION para executar a gravação assíncrona
+- **Função:** acionar a instrução REG WRITE.
+- **Comprimento:** `0x02`.
+- **Instrução:** `0x05`.
+- **Parâmetros:** nenhum.
+
+1. A instrução ACTION é muito útil ao controlar vários servos ao mesmo tempo.
+2. Ao controlar vários servos, ACTION permite que o primeiro e o último servo executem suas respectivas ações simultaneamente, sem atraso entre eles.
+3. Para enviar ACTION a vários servos, use o ID de broadcast (`0xFE`); por isso, essa instrução não retorna um quadro de dados.
+
+**Exemplo 6: depois de enviar as instruções de gravação assíncrona para comandar os servos de ID 1 a 10 até a posição 2048, a 1000 passos por segundo, execute a gravação assíncrona.**
+```
+Quadro de comando: `FF FF FE 02 05 FA`.
+Resposta: nenhuma.
+```
+
+## 4.6 Instrução de gravação síncrona SYNC WRITE
+- **Função:** controlar vários servos ao mesmo tempo.
+- **ID:** `0xFE`.
+- **Comprimento:** `(L+1)*n+4` (L: comprimento dos dados enviados a cada servo; n: número de servos).
+- **Instrução:** `0x83`.
+- **Parâmetro 1:** endereço inicial do trecho onde os dados serão gravados.
+- **Parâmetro 2:** comprimento dos dados enviados a cada servo (L).
+- **Parâmetro 3:** ID do primeiro servo.
+- **Parâmetro 4:** primeiro dado a gravar no primeiro servo.
+- **Parâmetro 5:** segundo dado a gravar no primeiro servo.
+…
+- **Parâmetro L+3:** enésimo dado a gravar no primeiro servo.
+- **Parâmetro L+4:** ID do segundo servo.
+- **Parâmetro L+5:** primeiro dado a gravar no segundo servo.
+- **Parâmetro L+6:** segundo dado a gravar no segundo servo.
+…
+- **Parâmetro 2L+4:** enésimo dado a gravar no segundo servo.
 …
 
-不同于REG WRITE+ACTION指令 de 是实时性比它更高，一条SYNC WRITE指令可一次修改多个Servo de Controle表Conteúdo，而REG WRITE+ACTION指令是分步做到 de 。 尽管如此，使用SYNC WRITE指令时，Gravação de Dados长度e保存Dados de 首地址必须相同。
+Diferentemente de REG WRITE + ACTION, SYNC WRITE tem maior imediatismo: uma única instrução pode alterar de uma vez o conteúdo da tabela de controle de vários servos, enquanto REG WRITE + ACTION faz isso em etapas. Mesmo assim, todos os dados gravados por SYNC WRITE precisam ter o mesmo comprimento e o mesmo endereço inicial.
 
-**例7：对ID1-ID4共4个Servo首地址0x2AGravação位置0x0800时间0X0000e速度0x03E8 (低位字节在前，高位节位在后)。**
-指令帧: FF FF FE 20 83 2A 06 01 00 08 00 00 E8 03 02 00 08 00 00 E8 03 03 00 08 00 00 E8 03 04 00 08 00 00 E8 03 58（按十六进制发送）
+**Exemplo 7: gravar nos quatro servos de ID 1 a 4, começando no endereço `0x2A`, posição `0x0800`, tempo `0x0000` e velocidade `0x03E8` (byte menos significativo primeiro).**
+Quadro de comando: `FF FF FE 20 83 2A 06 01 00 08 00 00 E8 03 02 00 08 00 00 E8 03 03 00 08 00 00 E8 03 04 00 08 00 00 E8 03 58` (enviar em hexadecimal).
 ```language
-字头：FF FF
-ID：FE
-有效数据长度：20
-指令：83
-参数：
-2A 06（首地址 数据长度）
-01 00 08 00 00 E8 03（ID1舵机指令）
-02 00 08 00 00 E8 03（ID2舵机指令）
-03 00 08 00 00 E8 03（ID3舵机指令）
-04 00 08 00 00 E8 03（ID4舵机指令）
-校验和：58
+Cabeçalho: FF FF
+ID: FE
+Comprimento dos dados válidos: 20
+Instrução: 83
+Parâmetros:
+2A 06 (endereço inicial, comprimento dos dados)
+01 00 08 00 00 E8 03 (comando para o servo ID 1)
+02 00 08 00 00 E8 03 (comando para o servo ID 2)
+03 00 08 00 00 E8 03 (comando para o servo ID 3)
+04 00 08 00 00 E8 03 (comando para o servo ID 4)
+Soma de verificação: 58
 ```
 
-## 4.7 同步读指令SYNC READ
-- 功能：usado para同时查询多个Servo。
-- ID：0xFE
-- 长度：n+4（n为Servo个数）
-- 指令：0x82
-- Parâmetros1：读Dados de 首地址
-- Parâmetros2：读Dados de 长度
-- Parâmetros3：第1个Servo de ID号
-- Parâmetros4：第2个Servo de ID号
+## 4.7 Instrução de leitura síncrona SYNC READ
+- **Função:** consultar vários servos ao mesmo tempo.
+- **ID:** `0xFE`.
+- **Comprimento:** `n+4` (n é o número de servos).
+- **Instrução:** `0x82`.
+- **Parâmetro 1:** endereço inicial dos dados a ler.
+- **Parâmetro 2:** comprimento dos dados a ler.
+- **Parâmetro 3:** ID do primeiro servo.
+- **Parâmetro 4:** ID do segundo servo.
 …
-- ParâmetrosN：第n个Servo de ID号，N=n+2
+- **Parâmetro N:** ID do enésimo servo; `N=n+2`.
 
-一条SYNC READ指令可一次查询多个Servo de Controle表Conteúdo，同步读指令 em 指定了é necessário查询Servo de ID，Servo返回应答包顺序按指令包 em ID顺序返回，使用SYNC READ指令时，所有查询 de Dados长度eDados de 首地址必须相同（此指令针对部分串行总线Servo开放）。
+Uma única instrução SYNC READ consulta o conteúdo da tabela de controle de vários servos. A instrução especifica os IDs a consultar; as respostas são retornadas na mesma ordem dos IDs no comando. Todos os dados consultados precisam ter o mesmo comprimento e endereço inicial. Esta instrução está disponível em alguns servos de barramento serial.
 
-**例8：查询ID1-ID2共2个Servo de Atual位置、Atual速度、Atual负载、Atual电压、Atual温度（首地址0x38，共8字Dados，低位字节在前，高位节位在后）。**
+**Exemplo 8: consultar posição, velocidade, carga, tensão e temperatura atuais dos servos de ID 1 e 2. O endereço inicial é `0x38`, total de 8 palavras de dados, com o byte menos significativo primeiro.**
 
-指令帧：FF FF FE 06 82 38 08 01 02 36
+Quadro de comando: `FF FF FE 06 82 38 08 01 02 36`.
 ```language
-字头：FF FF
-ID：FE
-长度：06
-指令：82
-参数：
-38 08（数据首地址 数据长度）
-01 02（ID01 ID02）
-校验和：36
+Cabeçalho: FF FF
+ID: FE
+Comprimento: 06
+Instrução: 82
+Parâmetros:
+38 08 (endereço inicial dos dados, comprimento)
+01 02 (IDs 01 e 02)
+Soma de verificação: 36
 ```
 
-应答帧：
+Quadros de resposta:
 ```language
-ID01舵机：FF FF 01 0A 00 00 08 00 00 00 00 79 1E 55 
-ID02舵机：FF FF 02 0A 00 FF 07 00 00 00 00 77 23 53
+Servo ID 01: FF FF 01 0A 00 00 08 00 00 00 00 79 1E 55
+Servo ID 02: FF FF 02 0A 00 FF 07 00 00 00 00 77 23 53
 ```
-应答帧可按读指令进行解码
+Os quadros de resposta podem ser decodificados conforme a instrução READ DATA.
 
-## 4.8 状态重置指令RESET
-- 功能：重置Servo状态（重置Servo圈数）
-- 长度：0x02
-- 指令：0x0A
-- Parâmetros：无
+## 4.8 Instrução RESET para redefinir o estado
+- **Função:** redefinir o estado do servo (zerar a contagem de voltas).
+- **Comprimento:** `0x02`.
+- **Instrução:** `0x0A`.
+- **Parâmetros:** nenhum.
 
-**例9：复位Servo，ID号为01。**
+**Exemplo 9: redefinir o servo de ID 01.**
 ```language
-指令帧：FF FF 01 02 0A F2（按十六进制发送）
-应答帧：FF FF 01 02 00 FC（十六进制显示）
-```
-
-## 4.9 位置校准指令
-- 功能：Atual位置重校准为设定值
-- 长度：0x02或0x04
-- 指令：0x0B
-- Parâmetros：无或设定值
-
-**Observação：位置校准指令无Parâmetros表示Atual位置校准为 em 位；校准指令只suporta部分型号Servo，Servo型号suporta情况查阅Inferior表Instruções。**
-
-**例10：Atual位置重校准为 em 位。**
-```language
-指令帧：FF FF 01 02 0B F1（按十六进制发送）
-应答帧：FF FF 01 02 00 FC（十六进制显示）
+Quadro de comando: `FF FF 01 02 0A F2` (enviar em hexadecimal).
+Quadro de resposta: `FF FF 01 02 00 FC` (exibido em hexadecimal).
 ```
 
-**例11：Atual位置重校准为1024。**
-指令帧：FF FF 01 04 0B 00 04 EB（按十六进制发送）
+## 4.9 Instrução de calibração da posição
+- **Função:** recalibrar a posição atual para o valor definido.
+- **Comprimento:** `0x02`.
+- **Instrução:** `0x0B`.
+- **Parâmetros:** nenhum.
+
+**Observação:** sem parâmetros, a instrução de calibração define a posição atual como zero. A calibração só é compatível com alguns modelos; consulte a tabela abaixo para verificar a compatibilidade.
+
+**Exemplo 10: recalibrar a posição atual como zero.**
 ```language
-字头：FF FF
-ID：01
-长度：04
-指令：0B
-设定值：00 04（1024）
-校验和：EB
+Quadro de comando: `FF FF 01 02 0B F1` (enviar em hexadecimal).
+Quadro de resposta: `FF FF 01 02 00 FC` (exibido em hexadecimal).
 ```
 
-应答帧：FF FF 01 02 00 FC（十六进制显示）
+**Exemplo 11: recalibrar a posição atual para 1024.**
+Quadro de comando: `FF FF 01 04 0B 00 04 EB` (enviar em hexadecimal).
 ```language
-字头：FF FF
-ID：01
-长度：02
-状态：00
-校验和：FC
+Cabeçalho: FF FF
+ID: 01
+Comprimento: 04
+Instrução: 0B
+Valor definido: 00 04 (1024)
+Soma de verificação: EB
 ```
 
-|Servo型号|FirmwareVersão|生效条件|Observação|
+Quadro de resposta: `FF FF 01 02 00 FC` (exibido em hexadecimal).
+```language
+Cabeçalho: FF FF
+ID: 01
+Comprimento: 02
+Estado: 00
+Soma de verificação: FC
+```
+
+| Modelo de servo | Versão do firmware | Condição de funcionamento | Observação |
 |-|-|-|-|
-|SMSServo|<=2.54|无|suporta扭矩开关写128实现 em 位校准|
-|STSServo|>=3.10|无|suporta无Parâmetros e 有Parâmetros指令，suporta扭矩开关写128实现 em 位校准|
-|HLSServo|>=3.43|无|suporta无Parâmetros e 有Parâmetros指令，não suporta扭矩开关写128实现 em 位校准|
+| Servo SMS | <=2.54 | Nenhuma | Compatível com calibração de zero ao gravar 128 no controle de torque |
+| Servo STS | >=3.10 | Nenhuma | Compatível com instruções com e sem parâmetros; compatível com calibração de zero ao gravar 128 no controle de torque |
+| Servo HLS | >=3.43 | Nenhuma | Compatível com instruções com e sem parâmetros; não é compatível com calibração de zero ao gravar 128 no controle de torque |
 
-## 4.10 Parâmetros恢复指令
-- 功能：恢复Servo除ID号外其它Parâmetros
-- 长度：0x02
-- 指令：0x06
-- Parâmetros：无
+## 4.10 Instrução para restaurar parâmetros
+- **Função:** restaurar os parâmetros do servo, exceto o ID.
+- **Comprimento:** `0x02`.
+- **Instrução:** `0x06`.
+- **Parâmetros:** nenhum.
 
-**例11：恢复ServoParâmetros。**
+**Exemplo 11: restaurar os parâmetros do servo.**
 ```language
-指令帧：FF FF 01 02 06 F6（按十六进制发送）
-应答帧：FF FF 01 02 00 FC（十六进制显示）
+Quadro de comando: `FF FF 01 02 06 F6` (enviar em hexadecimal).
+Quadro de resposta: `FF FF 01 02 00 FC` (exibido em hexadecimal).
 ```
-**Observação：恢复ServoParâmetros前先解锁epromParâmetros**
+**Observação:** desbloqueie os parâmetros da EEPROM antes de restaurar os parâmetros do servo.
 
-## 4.11 Parâmetros备份指令
-- 功能：Parâmetros备份（usado paraParâmetros恢复指令）
-- 长度：0x02
-- 指令：0x09
-- Parâmetros：无
+## 4.11 Instrução para fazer backup dos parâmetros
+- **Função:** fazer backup dos parâmetros para uso pela instrução de restauração.
+- **Comprimento:** `0x02`.
+- **Instrução:** `0x09`.
+- **Parâmetros:** nenhum.
 
-**例12：备份ServoParâmetros。**
+**Exemplo 12: fazer backup dos parâmetros do servo.**
 ```language
-指令帧：FF FF 01 02 09 F3（按十六进制发送）
-应答帧：FF FF 01 02 00 FC（十六进制显示）
+Quadro de comando: `FF FF 01 02 09 F3` (enviar em hexadecimal).
+Quadro de resposta: `FF FF 01 02 00 FC` (exibido em hexadecimal).
 ```
-**Observação：备份ServoParâmetros前先解锁epromParâmetros**
+**Observação:** desbloqueie os parâmetros da EEPROM antes de fazer backup dos parâmetros do servo.
 
-## 4.12 重启指令
-- 功能：重启指令（重启Servo）
-- 长度：0x02
-- 指令：0x08
-- Parâmetros：无
+## 4.12 Instrução de reinicialização
+- **Função:** reiniciar o servo.
+- **Comprimento:** `0x02`.
+- **Instrução:** `0x08`.
+- **Parâmetros:** nenhum.
 
-**例13：重启Servo。**
+**Exemplo 13: reiniciar o servo.**
 ```language
-指令帧：FF FF 01 02 08 F4（按十六进制发送）
-应答帧：无（重启时间约800ms）
+Quadro de comando: `FF FF 01 02 08 F4` (enviar em hexadecimal).
+Resposta: nenhuma.
 ```
-**Observação：重启Servo前，先关闭扭矩开关**
+**Observação:** desligue o controle de torque antes de reiniciar o servo.
