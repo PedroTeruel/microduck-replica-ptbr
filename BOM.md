@@ -178,7 +178,7 @@ Consulte a coluna TSSOP-20 da **Tabela 12 (“Pin assignment and description”)
 | Pino | Nome | Função alternativa |
 |---|---|---|
 | 2 | `PC14-OSC32_IN` | `OSC32_IN`, **`OSC_IN`** |
-| 3 | `PC15-OSC32_OUT` | `OSC32_OUT`（**没有 `OSC_OUT`**）；交替功能里有 `OSC_EN` |
+| 3 | `PC15-OSC32_OUT` | `OSC32_OUT` (**sem `OSC_OUT`**); a função alternativa inclui `OSC_EN` |
 
 Na coluna TSSOP-20, `PF0-OSC_IN` / `PF1-OSC_OUT` aparecem como `-`, **ou seja, não estão disponíveis**. Um cristal passivo precisa dos dois pinos, `OSC_IN` e `OSC_OUT`, para oscilar. Portanto:
 
@@ -230,24 +230,23 @@ Oscilador de 10 mA → total de 16 mA → 82 mW → aumento de 8–13 °C na tem
 
 Ambos são seguros (F1 suporta 200 mA, muito acima desses valores), mas **o dobro da dissipação se soma diretamente à preocupação levantada na revisão de que “o aquecimento do LDO pode afetar a IMU”**. O modelo de 5 mA custa apenas ¥ 0,4 a mais; não há motivo para escolher o de 10 mA.
 
-###### ⚠️ 换料时 de 陷阱：四脚同封装，引脚定义相反
+###### ⚠️ Cuidado ao substituir: mesmo encapsulamento de quatro pinos, pinagem oposta
 
-立创搜 `3225` 出来的**绝大多数是无源晶体**，其中 `C13738`（YSX321SL，基础库、
-免换料费、十几万现货）看起来最像 —— 同样 SMD3225-4P、同样四个焊盘。
-**但它贴Superior去，一Superior电就是 3.3 V 对地短路。**
+**A maioria dos resultados da busca por `3225` na LCSC são cristais passivos**. O `C13738` (YSX321SL, biblioteca básica, sem taxa de abastecimento e com mais de cem mil unidades em estoque) parece ser o substituto ideal: mesmo encapsulamento SMD3225-4P e os mesmos quatro pads.
+**Mas, se for instalado, ao ligar a placa haverá um curto entre 3,3 V e o terra.**
 
-| 脚 | 有源晶振（本板按此画） | 4 脚无源晶体 |
+| Pino | Oscilador ativo (usado no projeto desta placa) | Cristal passivo de 4 pinos |
 |---|---|---|
-| 1 | 使能 OE | 晶体端子 |
-| 2 | GND | **金属外壳（接地）** |
-| 3 | 输出 OUT | 晶体端子 |
-| 4 | **VDD** | **金属外壳（接地）** |
+| 1 | Habilitação OE | Terminal do cristal |
+| 2 | GND | **Carcaça metálica (terra)** |
+| 3 | Saída OUT | Terminal do cristal |
+| 4 | **VDD** | **Carcaça metálica (terra)** |
 
 Os pinos 2 e 4 de um cristal passivo são ligados internamente pela mesma tampa metálica. Nesta placa, `X1.2 = GND` e `X1.4 = 3.3V`; instalar um cristal passivo provocaria **um curto entre 3,3 V e o terra pela tampa metálica**.
 
 **Ao substituir a peça, aceite somente componentes descritos como “oscilador ativo”, “oscilador” ou “OSC”**. Os identificados como `XTAL`, “cristal ressonador” ou “passivo” não servem. Isso é obrigatório: o STM32G031 em TSSOP-20 **não disponibiliza o pino `OSC_OUT`**, portanto um cristal passivo não pode ser conectado a este MCU.
 
-接法：
+Ligação:
 
 ```
                      3.3V
@@ -256,7 +255,7 @@ Os pinos 2 e 4 de um cristal passivo são ligados internamente pela mesma tampa 
            ┌───────────┐
            │    X1     │
            └───────────┘
-    GND ── 2 GND  OUT 3 ── R3 33Ω ── OSC_IN ── U1 脚2 (PC14/OSC_IN)
+    GND ── 2 GND  OUT 3 ── R3 33Ω ── OSC_IN ── pino 2 do U1 (PC14/OSC_IN)
 ```
 
 Também é possível ligar `OE` ao pino 3 do U1 (função alternativa `OSC_EN` de `PC15`) para habilitar o oscilador por software; isso acrescenta uma responsabilidade ao firmware. Por padrão, ligue-o diretamente a 3,3 V para mantê-lo sempre ativo.
