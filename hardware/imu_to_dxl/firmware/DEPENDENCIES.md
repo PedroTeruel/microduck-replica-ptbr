@@ -1,40 +1,40 @@
-# Firmware依赖 e 构建Ferramentas
+# Dependências e ferramentas de construção do firmware
 
-编译所需的芯片与传感器驱动源码已保存在本目录。驱动无需在构建时联网下载；Keil、Arm Compiler、器件支持包和调试器工具需使用者自行合法安装。临时产物位于工程的 `Build` 目录。
+O código-fonte dos drivers do microcontrolador e do sensor necessários à compilação está incluído neste diretório. Os drivers não são baixados pela internet durante a construção. Keil, Arm Compiler, o pacote de suporte ao dispositivo e as ferramentas de depuração devem ser instalados legalmente por quem utiliza o projeto. Os arquivos temporários ficam no diretório `Build` do projeto.
 
-| 组件 | 固定Fonte | Licença e 本地改动 |
-| --- | --- | --- |
-| CMSIS Core 6.2.0 | [ARM-software/CMSIS_6 v6.2.0](https://github.com/ARM-software/CMSIS_6/tree/v6.2.0) | Apache-2.0；仅收录 Cortex-M0+ 与 Arm Compiler 6 所需头文件，内容未修改；许可证 `Drivers/CMSIS/LICENSE` |
-| STM32G0 CMSIS Device v1.4.5 | [STMicroelectronics/cmsis-device-g0](https://github.com/STMicroelectronics/cmsis-device-g0/tree/f576c24e123edf3332988ecd49512c0f35f85186)，commit `f576c24e123edf3332988ecd49512c0f35f85186` | Apache-2.0；器件头与 system 源文件未修改；许可证 `Drivers/CMSIS/Device/ST/STM32G0xx/LICENSE.md` |
-| STM32G031 启动代码 | 同一 ST commit 的 `Source/Templates/arm/startup_stm32g031xx.s` | 栈从1024改为2048字节；堆从512改为0字节。向量表、Reset_Handler 和弱 IRQ 名保留 ST 实现 |
-| LSM6DSV16X PID 驱动 | [STMicroelectronics/lsm6dsv16x-pid](https://github.com/STMicroelectronics/lsm6dsv16x-pid/tree/2808e5cd6b85f91b66758e1dd0faab5f043aba07)，commit `2808e5cd6b85f91b66758e1dd0faab5f043aba07` | ST BSD-3-Clause；许可证、驱动原文件与来源记录在 `Drivers/LSM6DSV16X/` |
-| Keil 器件支持包 | 验证版本 `Keil.STM32G0xx_DFP.2.1.0` | 提供设备描述、SVD 和 `CMSIS/Flash/STM32G0xx_64.FLM`；本工程另行收录官方 CMSIS 启动文件，避免 RTE 重复添加 |
-| Arm Compiler for Embedded | ValidaçãoVersão 6.24（0.1.0）、6.22（0.2.0，Keil MDK 5.41）；≥ 6.10 才能编 CMSIS 6 | 需有效Ferramentas授权；使用 Arm Compiler 6、旧语法 armasm e MicroLIB，仅隐藏旧汇编器弃用通知 A1950W |
+| Componente | Fonte fixada | Licença e alterações locais |
+|---|---|---|
+| CMSIS Core 6.2.0 | [ARM-software/CMSIS_6 v6.2.0](https://github.com/ARM-software/CMSIS_6/tree/v6.2.0) | Apache-2.0. Inclui somente os cabeçalhos necessários ao Cortex-M0+ e ao Arm Compiler 6, sem modificações. Licença: `Drivers/CMSIS/LICENSE`. |
+| STM32G0 CMSIS Device v1.4.5 | [STMicroelectronics/cmsis-device-g0](https://github.com/STMicroelectronics/cmsis-device-g0/tree/f576c24e123edf3332988ecd49512c0f35f85186), commit `f576c24e123edf3332988ecd49512c0f35f85186` | Apache-2.0. Os cabeçalhos do dispositivo e o arquivo-fonte do sistema não foram modificados. Licença: `Drivers/CMSIS/Device/ST/STM32G0xx/LICENSE.md`. |
+| Código de inicialização STM32G031 | `Source/Templates/arm/startup_stm32g031xx.s` do mesmo commit da ST | A pilha foi ampliada de 1024 para 2048 bytes; o heap passou de 512 para 0 bytes. A tabela de vetores, `Reset_Handler` e os nomes fracos de IRQ continuam iguais aos da ST. |
+| Driver PID LSM6DSV16X | [STMicroelectronics/lsm6dsv16x-pid](https://github.com/STMicroelectronics/lsm6dsv16x-pid/tree/2808e5cd6b85f91b66758e1dd0faab5f043aba07), commit `2808e5cd6b85f91b66758e1dd0faab5f043aba07` | ST BSD-3-Clause. A licença, o driver original e o registro da fonte estão em `Drivers/LSM6DSV16X/`. |
+| Pacote de suporte a dispositivos Keil | Versão verificada `Keil.STM32G0xx_DFP.2.1.0` | Fornece a descrição do dispositivo, SVD e `CMSIS/Flash/STM32G0xx_64.FLM`. O projeto também inclui os arquivos oficiais CMSIS de inicialização, para evitar que o RTE os adicione duas vezes. |
+| Arm Compiler for Embedded | Versão verificada 6.24 (0.1.0) e 6.22 (0.2.0, Keil MDK 5.41); CMSIS 6 requer 6.10 ou superior | Requer licença válida da ferramenta. Usa Arm Compiler 6, sintaxe antiga de armasm e MicroLIB; somente o aviso de depreciação do assembler antigo A1950W é ocultado. |
 
-## 构建入口
+## Como construir
 
-可用 VS Code 编辑源码，并在FirmwareDiretório de  PowerShell 终端执行：
+Edite o código no VS Code e execute o comando abaixo em um terminal PowerShell no diretório do firmware:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\build.ps1 -ToolchainRoot 'E:\Keil_v5\ARM\ARMCLANG'
 ```
 
-将示例Caminho换成自己 de  Arm Compiler InstalaçãoDiretório。仓库未附带 VS Code 任务Configuração。
-构建会替换 `Build` 中的固件；仅使用姿态网页时应保留随工程提供的 `Build/imu_to_dxl.hex`，无需重新编译。
-仓库只保留这一个预编译 HEX；`.bin/.map/.axf`、构建日志及测试产物均留在本地并由 `.gitignore` 排除。
+Substitua o caminho de exemplo pelo diretório de instalação do Arm Compiler no seu computador. O repositório não inclui configuração de tarefas do VS Code.
+A compilação substitui o firmware em `Build`. Se você só usa a página web de orientação, mantenha o `Build/imu_to_dxl.hex` fornecido com o projeto; não é necessário recompilar.
+O repositório mantém apenas esse HEX pré-compilado. `.bin`, `.map`, `.axf`, registros de compilação e resultados de teste ficam localmente e são ignorados pelo `.gitignore`.
 
-Keil 可打开 `MDK-ARM/imu_to_dxl_jlink.uvprojx`（J-Link）或 `imu_to_dxl.uvprojx`（ST-LINK），首次使用核对自己的编译器、器件包、探针和烧录算法。J-Link 脚本将 SWD 速度设为已验证的100kHz。构建输出 `.axf/.hex/.bin/.map`；CLI脚本另生成构建日志和产物 SHA-256 清单。
+No Keil, abra `MDK-ARM/imu_to_dxl_jlink.uvprojx` (J-Link) ou `imu_to_dxl.uvprojx` (ST-LINK). Na primeira utilização, confira o compilador, o pacote do dispositivo, a sonda e o algoritmo de gravação instalados no seu computador. O script J-Link configura a velocidade SWD verificada de 100 kHz. A construção gera `.axf/.hex/.bin/.map`; o script de linha de comando também gera o registro da compilação e a lista de hashes SHA-256 dos artefatos.
 
-两种入口使用 Cortex-M0+、C11、`-Oz`、软件浮点、短枚举、MicroLIB、`STM32G031xx` 和 `HSE_VALUE=16000000`。
-链接布局：Flash `0x08000000..0x0800FFFF`，数据 RAM `0x20000000..0x200017FF`，最后2KiB `0x20001800..0x20001FFF` 为栈，初始 SP `0x20002000`。修改栈大小必须同时修改启动文件与 scatter 文件。
+Ambas as formas de construção usam Cortex-M0+, C11, `-Oz`, ponto flutuante por software, enums curtos, MicroLIB, `STM32G031xx` e `HSE_VALUE=16000000`.
+Mapa de memória do linker: Flash `0x08000000..0x0800FFFF`; RAM de dados `0x20000000..0x200017FF`; os últimos 2 KiB (`0x20001800..0x20001FFF`) são usados pela pilha; SP inicial `0x20002000`. Se alterar o tamanho da pilha, altere também o arquivo de inicialização e o arquivo scatter.
 
-`tools/servo-web` 的 SWD / J-Link 观察器从 HEX 解码 10,724 字节镜像（0.2.0），使用 SHA-256
+O observador SWD/J-Link em `tools/servo-web` decodifica 10.724 bytes da imagem HEX (versão 0.2.0) e usa o SHA-256
 `66bc7c532f5a1ad87e3dfff71a4b51f8c4f20840a8f62436874fa5b7c665938e`
-绑定已验证的 `sample=0x2000006C`（60字节）与 `tick=0x20000A34`（4字节），不依赖仓库提交 MAP。
-重新编译后Por favor用本地 MAP 复核符号 e 大小，并审核新 de Imagem哈希后再Atualização观察器。
+para confirmar as posições verificadas de `sample=0x2000006C` (60 bytes) e `tick=0x20000A34` (4 bytes), sem depender de um MAP commitado no repositório.
+Após recompilar, confira os símbolos e seus tamanhos no MAP local e aprove o novo hash da imagem antes de atualizar o observador.
 
-## 主机Teste e ArquivoCompleto性
+## Testes no computador e integridade dos arquivos
 
-主机 C 测试需 MSVC；请先启动 **x64 Native Tools Command Prompt / Developer PowerShell**，再运行 `Tools/test.ps1 -PythonExe '自己的Python路径'`。测试入口不安装软件，也不连接硬件。
+Os testes C no computador requerem MSVC. Primeiro, abra **x64 Native Tools Command Prompt** ou **Developer PowerShell**; depois, execute `Tools/test.ps1 -PythonExe 'caminho-do-seu-Python'`. A entrada de testes não instala programas nem conecta ao hardware.
 
-`Drivers/CMSIS/dependency-hashes.json` 记录收录驱动文件的 SHA-256；ST 源 commit 元数据见 `Drivers/CMSIS/Device/ST/STM32G0xx/source-commit.json`。构建和实板验证范围见 [VALIDATION.md](VALIDATION.md)。
+`Drivers/CMSIS/dependency-hashes.json` registra o SHA-256 dos arquivos de drivers incluídos. Os metadados do commit ST estão em `Drivers/CMSIS/Device/ST/STM32G0xx/source-commit.json`. O escopo da construção e da validação na placa física está em [VALIDATION.md](VALIDATION.md).
