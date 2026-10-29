@@ -1,48 +1,46 @@
-# 飞特Servo资料 e  SDK
+# Documentação de servos Feetech e SDK
 
-[返回工具导航](../../tools/README.md) · [飞特官方电子手册](http://doc.feetech.cn/#/prodinfodownload?srcType=FTServo-emanual-ab4947a479784a71a8cb7928)
+[Voltar à navegação das ferramentas](../../tools/README.md) · [Manuais eletrônicos oficiais da Feetech](http://doc.feetech.cn/#/prodinfodownload?srcType=FTServo-emanual-ab4947a479784a71a8cb7928)
 
-## 官网现行资料
+## Documentação oficial atual
 
-2026-10-25 核对飞特文档站的官方索引和正文接口。下表更新时间来自官网 `lastModifiedDate`，不等同于文档封面的发布日期。
+Em 25/10/2026, conferimos o índice oficial e as interfaces dos documentos no site da Feetech. As datas de atualização da tabela vêm do campo oficial lastModifiedDate e não correspondem necessariamente à data impressa na capa.
 
-| 资料 | 官网标注Versão | 官网最后Atualização时间（UTC+8） |
+| Documento | Versão indicada no site oficial | Última atualização no site (UTC+8) |
 |---|---|---|
-| [SCS 通信协议](http://doc.feetech.cn/#/f?q=2506ba160b93) | 1.0 | 2026-10-08 |
-| [STS 内存表](http://doc.feetech.cn/#/f?q=2506abfb1cb0) | 1.1 | 2026-10-08 |
-| [SMS 内存表](http://doc.feetech.cn/#/f?q=2602a06ca658) | 1.1 | 2026-10-08 |
-| [FD 调试软件及串口工具](https://gitee.com/ftservo/fddebug) | 按官方仓库发布 | [本仓下载与说明](../../tools/飞特/README.md) |
-| [HD-1910-C001 规格书](../../tools/FeeTech_HD1910M_Servo/HD-1910-C001串型规格书20260907.pdf) | Arquivo标注 2026-09-07 | 本仓已有型号规格书 |
+| [Protocolo de comunicação SCS](http://doc.feetech.cn/#/f?q=2506ba160b93) | 1.0 | 2026-10-08 |
+| [Tabela de memória STS](http://doc.feetech.cn/#/f?q=2506abfb1cb0) | 1.1 | 2026-10-08 |
+| [Tabela de memória SMS](http://doc.feetech.cn/#/f?q=2602a06ca658) | 1.1 | 2026-10-08 |
+| [Software de depuração FD e ferramentas seriais](https://gitee.com/ftservo/fddebug) | Conforme as publicações do repositório oficial | [Download e instruções neste repositório](../../tools/飞特/README.md) |
+| [Ficha técnica HD-1910-C001](../../tools/FeeTech_HD1910M_Servo/HD-1910-C001串型规格书20260907.pdf) | Arquivo marcado como 2026-09-07 | Já há uma ficha deste modelo neste repositório |
 
-## 离线副本（2026-09-17 快照）
+## Cópias offline (captura de 17/09/2026)
 
-abaixo是 2026-09-17 保存 de 电子手册副本，便于检索 e 对照[飞特适配架构](../../software/飞特适配架构.md)。**官网已有后续修改，离线副本Preservado原日期；AtualConteúdo以官网为准。**
+Abaixo estão cópias dos manuais eletrônicos salvas em 17/09/2026 para busca e comparação com a [arquitetura de integração Feetech](../../software/飞特适配架构.md). **O site oficial recebeu alterações posteriores; as cópias offline mantêm a data original. Use o conteúdo atual do site como referência.**
 
-| Arquivo | Versão | 官网Atualização日期 | 用途 |
+| Arquivo | Versão | Data de atualização no site oficial | Finalidade |
 |---|---|---|---|
-| [`SCS通信协议-v1.0-2026-06-09.md`](SCS通信协议-v1.0-2026-06-09.md) | v1.0 | 2026-06-09 | 包格式、指令表。**这版有重启指令 0x08、参数备份 0x09、状态重置 0x0A**，2019 版没有 |
-| [`磁编码STS内存表手册-v1.1-2026-08-27.md`](磁编码STS内存表手册-v1.1-2026-08-27.md) | v1.1 | 2026-08-27 | HD-1910 所属的 STS 系列内存表：EEPROM / SRAM 分区、出厂值、锁标志语义、状态位定义 |
-| [`磁编码SMS内存表手册-v1.1-2026-08-27.md`](磁编码SMS内存表手册-v1.1-2026-08-27.md) | v1.1 | 2026-08-27 | 同上，SMS（RS485）版。跟 STS 的差别：7 是应答返回延时（STS 是预留）、33 运行模式范围 0~2、40 扭矩开关没有阻尼值 2、83 是 Hts、相位 BIT5 含义不同 |
-| `磁编码SMS&STS&HTS-十六进制指令生成表-250508.xlsx` | 250508 | 2025-05-08 | 官方 Excel，填参数自动生成十六进制指令帧，串口助手直接发；有解锁 / 改 ID / 清圈数 / 中位校准的现成例子 |
+| [Protocolo de comunicação SCS v1.0 — 09/06/2026](SCS通信协议-v1.0-2026-06-09.md) | v1.0 | 2026-06-09 | Formato dos pacotes e tabela de comandos. **Esta versão inclui reinicialização 0x08, backup de parâmetros 0x09 e redefinição de estado 0x0A**, ausentes na versão de 2019 |
+| [Tabela de memória dos servos STS com encoder magnético v1.1 — 27/08/2026](磁编码STS内存表手册-v1.1-2026-08-27.md) | v1.1 | 2026-08-27 | Tabela de memória da série STS, que inclui o HD-1910: divisões EEPROM/SRAM, valores de fábrica, significado do bloqueio e definição dos bits de estado |
+| [Tabela de memória dos servos SMS com encoder magnético v1.1 — 27/08/2026](磁编码SMS内存表手册-v1.1-2026-08-27.md) | v1.1 | 2026-08-27 | Equivalente para a versão SMS (RS485). Diferenças em relação ao STS: endereço 7 é o atraso de resposta (reservado no STS); modo de operação 33 aceita 0–2; chave de torque 40 não tem o valor de amortecimento 2; endereço 83 é Hts; e o significado do BIT5 de fase difere |
+| Planilha oficial de geração de comandos hexadecimais SMS/STS/HTS | 250508 | 2025-05-08 | Planilha oficial que monta quadros de comando hexadecimais a partir dos parâmetros, prontos para envio por um terminal serial; inclui exemplos de desbloqueio, alteração de ID, limpeza das voltas acumuladas e calibração do ponto central |
 
-HD-1910-C001  de 定制差异（出厂模式 4、扭矩、减速比）见 [HD-1910 训练前Dados清单](../HD-1910训练前Dados清单.md)，型号规格书见Superior表。
+As diferenças específicas do HD-1910-C001 em relação ao modelo personalizado (modo de fábrica 4, torque e relação de redução) estão na [lista de dados necessária antes do treinamento do HD-1910](../HD-1910训练前数据清单.md). A ficha técnica do modelo aparece na tabela acima.
 
-## Oficial SDK
+## SDKs oficiais
 
-| 开发环境 | Oficial源码 |
+| Ambiente de desenvolvimento | Código-fonte oficial |
 |---|---|
 | Python | [FTServo_Python](https://gitee.com/ftservo/FTServo_Python) |
 | Linux / C++ | [FTServo_Linux](https://gitee.com/ftservo/FTServo_Linux) |
 | Arduino | [FTServo_Arduino](https://gitee.com/ftservo/FTServo_Arduino) |
 | STM32 HAL | [FTServo_stm32HAL](https://gitee.com/ftservo/FTServo_stm32HAL) |
 
-## Versão核对方法
+## Como conferir versões
 
-怎么拉 de （文档站 de 接口，Inferior次Atualização用）：
+Como obter os dados (interface do site de documentação, para a próxima atualização):
 
-```text
-索引  http://longbos.com:9009/workflow/yf-specification/getBysrcType/FTServo-emanual-ab4947a479784a71a8cb7928
-正文  http://longbos.com:9009/workflow/yf-specification/getQr/<q>     q 取索引正文里 #/f?q=… 的值
-       STS 内存表 2506abfb1cb0 · SMS 内存表 2602a06ca658 · SCS 协议 2506ba160b93
-返回 JSON，data.mdcontent 是 Markdown 正文，data.lastModifiedDate 是更新时间
-```
+- Índice: http://longbos.com:9009/workflow/yf-specification/getBysrcType/FTServo-emanual-ab4947a479784a71a8cb7928
+- Conteúdo: http://longbos.com:9009/workflow/yf-specification/getQr/<q>; o valor de q vem do link #/f?q=… no índice.
+- Tabela de memória STS: 2506abfb1cb0 · tabela SMS: 2602a06ca658 · protocolo SCS: 2506ba160b93.
+- A resposta é JSON. data.mdcontent contém o Markdown do documento; data.lastModifiedDate contém a data de atualização.
