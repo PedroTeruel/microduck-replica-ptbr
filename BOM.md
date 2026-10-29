@@ -1,149 +1,141 @@
-# 整机物料清单（BOM）
+# Lista de materiais do robô completo (BOM)
 
-> **实物打印件、材料与装配数量以 [CAD 仓库](https://github.com/fanhao375/microduck-replica-cad#装配-bom) 对应版本为准。** 本文的 MJCF 引用数和几何推算是上游分析，不是最新飞特打印清单。
+> **Para peças impressas, materiais e quantidades de montagem, consulte a versão correspondente no [repositório CAD](https://github.com/fanhao375/microduck-replica-cad#装配-bom).** As contagens de referências MJCF e estimativas geométricas deste documento analisam o projeto original e não representam a lista mais recente de peças Feetech para impressão.
 
-> **仓库里有四份清单加一份打印Instruções，各管各 de ：**
+> **O repositório tem quatro listas e um guia de impressão, cada qual com sua função:**
 >
-> | 文档 | 管什么 | 不管什么 |
+> | Documento | Abrangência | Fora do escopo |
 > |---|---|---|
-> | **BOM**（就是这份） | **总表**：全部物料、Quantidade（从 MJCF  de  geom 引用数出来 de ）、成本量级、还没解决 de 空白 | 具体买哪家、怎么打印 |
-> | [电控Lista de compras](docs/电控Lista de compras.md) | 电控件**买哪家**：主控 / 摄像头 / ToF / Alimentação / 两块 PCB / 线材，淘宝实链 + 避坑 | Quantidade依据、Mecânica件 |
-> | [MecânicaLista de compras](docs/MecânicaLista de compras.md) | Mecânica件**买哪家**：轴承 / 紧Firmware / 耗材，淘宝实链 | 电控件 |
-> | [Hardware规格速查](docs/Hardware规格速查.md) | **Parâmetros**：接口、电压、Protocolo、Software侧必须对齐 de 值 | Preçoe店铺 |
-> | [print/README](print/README.md) | **打印入口**：在 CAD 仓库选择Versão、MaterialeQuantidade | Compra |
+> | **BOM** (este documento) | **Visão geral**: todos os materiais, quantidades (contadas pelas referências de `geom` no MJCF), faixa de custos e itens ainda não resolvidos | Onde comprar cada item e como imprimir |
+> | [Lista de compras de eletrônica](docs/电控采购清单.md) | **Onde comprar a eletrônica**: placa principal, câmera, ToF, alimentação, duas PCBs e fios; links reais do Taobao e alertas | Base das quantidades e peças mecânicas |
+> | [Lista de compras mecânicas](docs/机械采购清单.md) | **Onde comprar as peças mecânicas**: rolamentos, fixadores e consumíveis; links reais do Taobao | Peças eletrônicas |
+> | [Consulta rápida de especificações de hardware](docs/硬件规格速查.md) | **Parâmetros**: interfaces, tensão, protocolos e valores que precisam corresponder no software | Preços e lojas |
+> | [print/README](print/README.md) | **Impressão**: escolha versão, material e quantidade no repositório CAD | Compras |
 >
-> 装配用的件号与螺丝对应在 [CAD 仓库](https://github.com/fanhao375/microduck-replica-cad#装配-bom)。
+> Os números das peças e parafusos usados na montagem correspondem aos do [repositório CAD](https://github.com/fanhao375/microduck-replica-cad#装配-bom).
 
 
-**Chinês simplificado** · [English](BOM.en.md)
+**Português (Brasil)** · [English](BOM.en.md)
 
-复刻一台 Microduck 需要的全部东西。数量取自上游 `robot_walk.xml` 的 geom 引用计数
-（**38 种网格 / 75 个实例**），不是估 de 。
+Tudo o que é necessário para montar um Microduck. As quantidades foram obtidas pela contagem das referências a `geom` em `robot_walk.xml` no projeto original (**38 tipos de malha / 75 instâncias**); não são estimativas.
 
-> ⚠️ **Oficial从未公布过 BOM。** 这份清单是从公开 de  MJCF、STL、Rust 源码e KiCad 工程反推 de 。
-> 每一项都标了依据。Preço随地区e时间变化很大，**只作量级参考**。
+> ⚠️ **A Pollen nunca publicou uma BOM.** Esta lista foi reconstruída a partir dos arquivos públicos MJCF e STL, do código Rust e do projeto KiCad.
+> Cada item informa sua base. Os preços variam muito conforme a região e a data; **use-os apenas como ordem de grandeza**.
 >
-> 核对日期：**2026-09-04**。⚠️ **上游基线待核**：此前本仓 `print/` 中的旧 STL（现已移除）与本地
-> `microduck_rl` 工作副本逐字节相同，而该副本是 depth-1 浅克隆、HEAD = **`d424a0c`（2026-08-27）**。
-> 此前记录的基线 `29e887e` / 重导出 `8dfc08f` 在本地对象库中不存在，**因此"重导出前后 geom
-> 计数相同"这句无法验证**。下文所有计数均出自 `d424a0c`。
+> Conferido em **2026-09-04**. ⚠️ **A revisão de referência do projeto original ainda precisa ser confirmada**: os antigos arquivos STL de `print/` deste repositório (já removidos) eram idênticos, byte a byte, aos da cópia local de trabalho de `microduck_rl`, um clone raso de profundidade 1 cujo HEAD era **`d424a0c` (2026-08-27)**.
+> As revisões `29e887e` e `8dfc08f` (reexportação) citadas anteriormente não existem na base de objetos local; **portanto, não foi possível verificar a afirmação de que a contagem de `geom` era igual antes e depois da reexportação**. Todas as contagens abaixo vêm de `d424a0c`.
 
 ---
 
-## 一、成本速览
+## 1. Visão geral dos custos
 
-| 类别 | Quantidade | 量级 |
+| Categoria | Quantidade | Ordem de grandeza |
 |---|---|---|
-| **Servo** | 15 | **$359 – €629**（见Inferior，地区差极大） |
-| 主控 e 传感器 | 4 类 | 约 $80 – 120 |
-| Bateria e 供电 | 2 件 | 约 $30 – 50 |
-| 轴承 | 14 | 约 $15 – 30 |
-| 紧Firmware | 约 325 件 | 约 $15 – 25 |
-| **PCB 打样（2 块）** | 2 | 约 $60 – 150（含 SMT） |
-| 打印耗材 | — | 约 $15 – 30 |
+| **Servos** | 15 | **US$ 359 – € 629** (consulte abaixo; grande variação regional) |
+| Placa principal e sensores | 4 tipos | cerca de US$ 80–120 |
+| Bateria e alimentação | 2 itens | cerca de US$ 30–50 |
+| Rolamentos | 14 | cerca de US$ 15–30 |
+| Fixadores | cerca de 325 peças | cerca de US$ 15–25 |
+| **Fabricação de PCBs (2 placas)** | 2 | cerca de US$ 60–150 (com montagem) |
+| Filamento de impressão | — | cerca de US$ 15–30 |
 
-**Servo占绝对大头**，而且渠道差价巨大：ROBOTIS 国际站 $23.90 × 15 ≈ **$359**（低于整机售价），
-美国站 $27.49 × 15 ≈ **$412**（约等于售价），欧洲含税则要 **€603–629**（远超）。
+**Os servos são de longe o maior custo**, e a diferença entre fornecedores é enorme: a loja internacional da ROBOTIS cobra US$ 23,90 × 15 ≈ **US$ 359** (menos que o preço de varejo do robô); nos EUA, US$ 27,49 × 15 ≈ **US$ 412** (aproximadamente o preço do robô); na Europa, com impostos, são **€ 603–629** (bem acima).
 
-> $399 是矽递规模化量产 + Oficial供应链 de Preço，**个人复刻不可能达到**。
+> O preço de US$ 399 depende da produção em escala da Seeed e da cadeia de fornecimento da Pollen. **Uma montagem individual não consegue chegar a esse valor.**
 
 ---
 
-## 二、Servo（成本核心）
+## 2. Servos (principal componente do custo)
 
-| 型号 | Quantidade | 依据 |
+| Modelo | Quantidade | Base |
 |---|---|---|
-| **Dynamixel XL330-M288-T** | **15** | `robot_walk.xml` 中 `xl330` 网格引用 15 次 |
+| **Dynamixel XL330-M288-T** | **15** | A malha `xl330` é referenciada 15 vezes em `robot_walk.xml` |
 
-- 14 个进策略动作空间，**第 15 个是嘴**（`JOINT_NAMES[9] = "mouth"`，`MOUTH_INDEX = 9`），
-  不进策略动作空间（所有 alpha 策略都是 61 维观测 / 14 维动作）。
-  ⚠️ **MJCF 里根本没有这个关节** —— `robot_walk.xml` 只有 14 个 hinge joint / 14 个 actuator，
-  嘴在所有 MJCF 里都是刚性并进 `jaw_soft` body；`passive_*` default class 在步行模型里零引用
-- ID 分配：Esquerdo腿 20–24 ／ 颈头嘴 30–34 ／ Direito腿 10–14
-- ⚠️ **型号是推断**：源码只有 `motor_name="xl330"` 无后缀。M288-T 的依据见
-  [执行器选型](docs/执行器选型.md#型号是怎么定Inferior来 de )
+- 14 servos fazem parte do espaço de ações da política; **o 15.º aciona o bico/mandíbula** por meio de articulações `passive_*`.
+- IDs: perna esquerda 20–24 / pescoço, cabeça e boca 30–34 / perna direita 10–14.
+- ⚠️ **O modelo foi inferido**: o código-fonte informa apenas `motor_name="xl330"`, sem sufixo. A justificativa para M288-T está em [Seleção dos atuadores](docs/执行器选型.md#型号是怎么定下来的).
 
-**Preço参考**（2026-09-04）：
+**Preços de referência** (2026-09-04):
 
-| 渠道 | 单价 | 15 个 |
+| Fornecedor | Unitário | 15 unidades |
 |---|---|---|
-| Robotis 美国官网 | **$27.49** | **$412** |
-| Generation Robots（欧，不含税） | €33.50 | €503 |
-| Generation Robots（欧，含税） | €40.20 | €603 |
+| ROBOTIS EUA | **US$ 27,49** | **US$ 412** |
+| Generation Robots (Europa, sem impostos) | € 33,50 | € 503 |
+| Generation Robots (Europa, com impostos) | € 40,20 | € 603 |
 | MyBotShop | €41.95 | €629 |
 
-> ⚠️ **超压ExecuçãoAviso**：XL330 额定 3.7–6.0 V，而 Microduck 给它 6.6–8.2 V。
-> 官方 HAT 原理图里 Dynamixel 接口直接接 `+BATT`（电池原电压），板上唯一的 5 V 降压是给树莓派的。
-> 这是Oficial de 选择，不是笔误。详见 [电压真相](docs/执行器选型.md#-电压真相xl330-被超压Execução)。
+> ⚠️ **Aviso de sobretensão**: o XL330 é especificado para 3,7–6,0 V, mas o Microduck o alimenta com 6,6–8,2 V.
+> No esquema oficial do HAT, a interface Dynamixel está ligada diretamente a `+BATT` (a tensão da bateria); o único conversor de 5 V da placa alimenta o Raspberry Pi.
+> Essa é uma escolha do projeto original, não um erro de digitação. Consulte [A tensão real: o XL330 opera em sobretensão](docs/执行器选型.md#-电压真相xl330-被超压执行).
 
-> 🛒 **国内Compra淘宝实链**：[电控Lista de compras](docs/电控Lista de compras.md)（主控/摄像头/ToF/Alimentação/PCB/线材）、
-> [MecânicaLista de compras](docs/MecânicaLista de compras.md)（轴承/紧Firmware/热熔螺母/螺纹胶/耗材）。
+> 🛒 **Links de compra no Taobao**: [lista de compras de eletrônica](docs/电控采购清单.md) (placa principal, câmera, ToF, alimentação, PCBs e fios) e [lista de compras mecânicas](docs/机械采购清单.md) (rolamentos, fixadores, porcas de inserção, trava-roscas e consumíveis).
 
 ---
 
-## 三、电子件
+## 3. Componentes eletrônicos
 
-| 部件 | 型号 | Quantidade | 依据 / Observação |
+| Componente | Modelo | Quantidade | Base / observação |
 |---|---|---|---|
-| 主控 | **Radxa Zero 3W** | 1 | 设备树 `compatible = "radxa,zero-3w"`。有多档 RAM/eMMC。官方资料写的是 **1 GB 内存、32 GB 存储**（没说是 eMMC）；**复刻买 1G 或 2G 的无 eMMC 裸板 + 32 GB microSD 卡即可**，只走官方渠道，见 [电控采购清单](docs/电控采购清单.md#该买哪个配置)（2026-10-12 更正，此前建议 2G/16G eMMC 没必要）；系统镜像必须带 Rockchip 厂商内核（Armbian 系），否则 NPU 不存在 |
-| 摄像头 | 树莓派 Camera v2（**IMX219**） | 1 | `setup-board.sh` 用 `radxa-zero3-rpi-camera-v2` overlay。⚠️ **装歪了四分之一圈，要软件补偿**：当前代码 `mediad/src/main.rs:82` 的 `--rotate` 默认 **90**，注释原文「the head camera is mounted **a quarter turn off**, and this is the one place that fact is written down」。`media-bringup.md:472` 的 180° 是 **alpha 机**数据。**以代码为准 = 90°** |
-| 深度 | **VL53L5CX** 模块（或 L8CX） | 1 | 固件只认这两颗（revision `0x02` / `0x0C`），**L7CX 会被直接拒绝**；推荐 L5CX：板子 15.8 × 10 mm，L8CX 常见板型 33.4 mm 脸壳装不下（[实测](踩坑记录.md#买东西)）；地址 `0x29` 或 `0x52`；Stemma/Qwiic 接口 |
-| Bateria | **索尼 NP-F550**（2S，7.4 V） | 1 | ⚠️ 见Inferior方勘误 |
-| 电池卡座 | NP-F 系列通用卡座 | 1 | 上游只有打印件 `power_support`，**没有触点模型** —— 取电方案需自行解决 |
-| 喇叭 | 小型扬声器 | 1 | `speaker` 网格 ×1；HAT 上有 PAM8406 功放和 Wago 端子 |
+| Placa principal | **Radxa Zero 3W** | 1 | Árvore de dispositivos: `compatible = "radxa,zero-3w"`. Há versões com diferentes capacidades de RAM/eMMC. O material oficial informa **1 GB de RAM e 32 GB de armazenamento** (sem especificar eMMC); **para a réplica, basta uma placa sem eMMC de 1 GB ou 2 GB e um cartão microSD de 32 GB**. Compre de distribuidores oficiais; veja a [lista de compras de eletrônica](docs/电控采购清单.md) (correção de 2026-10-12: a recomendação anterior de 2 GB/16 GB eMMC era desnecessária). A imagem do sistema precisa incluir o kernel de fabricante Rockchip (família Armbian), senão o NPU não estará disponível |
+| Câmera | Raspberry Pi Camera v2 (**IMX219**) | 1 | `setup-board.sh` usa o overlay `radxa-zero3-rpi-camera-v2`. ⚠️ **A câmera fica montada com rotação de um quarto de volta, corrigida por software**: o padrão atual de `--rotate` em `mediad/src/main.rs:82` é **90°**. O comentário do código diz que a câmera da cabeça foi montada com um quarto de volta e que esse é o único lugar onde isso está registrado. Os 180° de `media-bringup.md:472` são dados do protótipo alpha. **Considere o valor do código: 90°.** |
+| Sensor de profundidade | Módulo **VL53L5CX** (ou L8CX) | 1 | O firmware reconhece os dois modelos (revisões `0x02` e `0x0C`); **o L7CX é rejeitado**. Recomendamos o L5CX: sua placa mede 15,8 × 10 mm; as placas comuns do L8CX, com 33,4 mm, não cabem na carcaça do rosto ([medição prática](踩坑记录.md#买东西)). Endereço `0x29` ou `0x52`; interface Stemma/Qwiic |
+| Bateria | **Sony NP-F550** (2S, 7,4 V) | 1 | ⚠️ Consulte a correção abaixo |
+| Suporte da bateria | Suporte genérico para a série NP-F | 1 | O projeto original inclui apenas a peça impressa `power_support`, **sem modelo dos contatos**; será necessário resolver por conta própria como captar a energia |
+| Alto-falante | Alto-falante compacto | 1 | Uma malha `speaker`; o HAT tem amplificador PAM8406 e terminais Wago |
 
-### ⚠️ Bateria型号勘误：是 NP-F550，不是 F970
+### ⚠️ Correção do modelo da bateria: NP-F550, não F970
 
-上游网格文件名叫 `np_f970`，**但这是误导**：
+O arquivo de malha do projeto original se chama `np_f970`, **mas o nome é enganoso**:
 
 | | |
 |---|---|
-| 网格实测包围盒 | **70.8 × 38.6 × 20.6 mm** ← 这是 **NP-F550/F570**  de 尺寸 |
-| 真 NP-F970 | 厚约 **60 mm**、重约 300 g |
-| 源码中出现的型号 | **只有 NP-F550**（`model.rs`、`robotd-design.md`），全库搜不到 F970 |
+| Dimensões medidas da malha | **70,8 × 38,6 × 20,6 mm** — dimensões de uma **NP-F550/F570** |
+| NP-F970 verdadeira | Cerca de **60 mm** de espessura e 300 g |
+| Modelo citado no código-fonte | **Somente NP-F550** (`model.rs`, `robotd-design.md`); não há nenhuma ocorrência de F970 no repositório |
 
-**买 F970 会装不进去，而且 300 g 会吃掉整机 800 g 预算 de 三分之一以Superior。**
-este repositório此前多处写「NP-F970」，已统一更正。
+**A F970 não cabe e seus 300 g consumiriam mais de um terço do limite de 800 g do robô.**
+Versões anteriores deste repositório mencionavam “NP-F970” em vários lugares; essas referências foram corrigidas.
 
 ---
 
-## 四、Placa de circuito（2 块，都要自己送厂）
+## 4. Placas de circuito (2; ambas precisam ser encomendadas a uma fábrica)
 
-### 板 1：RPI Robot HAT —— Oficial已Código aberto，Baixar即打样
+### Placa 1: RPI Robot HAT — projeto oficial aberto; baixe os arquivos e encomende a fabricação
 
 | | |
 |---|---|
-| 来源 | [`pollen-robotics/elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT)（Apache-2.0） |
-| 生产文件 | `production/`：Gerber、BOM、贴片坐标、原理图 PDF、STEP |
-| **层数** | **4 层**（`F.Cu / In1.Cu / In2.Cu / B.Cu`） |
-| **板厚** | **1.0 mm**（KiCad `(thickness 1)`。STL 量出的 0.84 mm 是仿真网格近似值，下单以 KiCad 为准） |
-| 尺寸 | **65.0 × 30.9 mm**（KiCad `Edge.Cuts` 实测，圆角 R3.5）。比 Pi Zero 宽 0.9 mm |
+| | |
+|---|---|
+| Origem | [`pollen-robotics/elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT) (Apache-2.0) |
+| Arquivos de fabricação | `production/`: Gerbers, BOM, coordenadas de montagem, PDF do esquema e STEP |
+| **Camadas** | **4** (`F.Cu / In1.Cu / In2.Cu / B.Cu`) |
+| **Espessura** | **1,0 mm** (KiCad `(thickness 1)`. Os 0,84 mm medidos no STL são uma aproximação da malha de simulação; use o valor do KiCad ao encomendar) |
+| Dimensões | **65,0 × 30,9 mm** (medidas na camada `Edge.Cuts` do KiCad, cantos R3,5). É 0,9 mm mais larga que uma Pi Zero |
 
-> ⚠️ **别拿 STL 或它转出 de  STEP 做Mecânica配合。** 仿真网格实测 **65.025 × 30.025 × 0.840 mm**，
->  e 真板框差 **宽 0.875 mm、厚 0.16 mm** —— 宽度这一项在 30 mm  de 边Superior是 3%，做卡槽、支柱、
-> 开孔会对不上。**机械配合一律按 65.0 × 30.9 × 1.0 走，板框以 Gerber 的 `Edge_Cuts` 层为准。**
-> STL/STEP 只适合做 3D 干涉Verificação e 大致定位。
+> ⚠️ **Não use o STL nem o STEP convertido dele para projetar encaixes mecânicos.** A malha de simulação mede **65,025 × 30,025 × 0,840 mm**,
+> diferente em **0,875 mm na largura e 0,16 mm na espessura** do contorno da placa real. A diferença de largura representa 3% no lado de 30 mm; ranhuras, espaçadores e furos não vão alinhar. **Para encaixes, use sempre 65,0 × 30,9 × 1,0 mm e considere como referência o contorno `Edge_Cuts` dos Gerbers.**
+> Use STL/STEP apenas para verificar interferências 3D e posicionamento aproximado.
 >
-> （对照：`pcb__raspberry_pi_zero_2_w` 那个网格是 65.000 × 30.000 × 1.600 mm，是标准 Pi Zero 尺寸，倒是准的 —— 但它只是占位块，实机用 Radxa Zero 3W。）
-| BOM | 47 行 / **123 颗元件**，其 em  **5 行 DNP 不贴** |
-| 贴片位 | `POS.csv` **117 行**，含 3 个基准点 FID1–3 和 H3 → **实际元件 113 个** |
-| 手焊可行性 | ❌ **不可能** —— 含 VQFN-32 codec e LGA-16 IMU，必须选 SMT Serviço |
+> (Para comparação: a malha `pcb__raspberry_pi_zero_2_w` mede 65,000 × 30,000 × 1,600 mm, as dimensões padrão da Pi Zero. Ela é precisa, mas serve apenas como bloco de referência; o robô real usa a Radxa Zero 3W.)
+| BOM | 47 linhas / **123 componentes**, dos quais **5 linhas são DNP** (não montar) |
+| Posições de montagem | `POS.csv` tem **117 linhas**, incluindo 3 fiduciais (FID1–3) e H3 → **113 componentes reais** |
+| Soldagem manual | ❌ **Não é viável**: há um codec VQFN-32 e uma IMU LGA-16; encomende montagem SMT |
 
-**关键器件**（可usado para估价 e 替代）：
+**Componentes principais** (para estimativa de custo e substituições):
 
-| 位号 | 器件 | 作用 |
+| Referência | Componente | Função |
 |---|---|---|
-| U2 | TLV320AIC3104IRHBR | 音频 codec（I²C `0x18`） |
-| U1 | PAM8406D | D 类功放 |
-| MK1 | MEMS 麦克风（LCSC **C7587901**） | 板载。⚠️ 官方 BOM 的 Value 只写 `Microphone_MEMS`，原理图旁只有「Onboard Mic.」，**未给具体型号**；本仓库此前写的 LMA2718 无出处，已撤回 |
-| U11 | BMI088 | IMU —— **贴了但Software不用**（即所谓「第二颗 IMU」） |
-| U8 | SIT3088E | RS-485 收发器 |
-| U10 | LM5050-1 | 理想二极管 OR-ing ＋ 关机检测。⚠️ 位于 buck 之后的 `+5V` 路，非电池输入端防反接 |
-| U9 | AP63205 | 降压 |
-| U4 | CAT24C32 | EEPROM —— **DNP 不贴**，所以这不是自识别 HAT |
+| U2 | TLV320AIC3104IRHBR | Codec de áudio (I²C `0x18`) |
+| U1 | PAM8406D | Amplificador classe D |
+| MK1 | Microfone MEMS (LCSC **C7587901**) | Integrado à placa. ⚠️ O campo Value da BOM oficial informa apenas `Microphone_MEMS`, e o esquema identifica o componente como “Onboard Mic.”, **sem especificar o modelo**. A referência LMA2718, anteriormente usada neste repositório, não tinha fonte e foi removida |
+| U11 | BMI088 | IMU — **instalada, mas não usada pelo software** (a chamada “segunda IMU”) |
+| U8 | SIT3088E | Transceptor RS-485 |
+| U10 | LM5050-1 | OR-ing por diodo ideal e detecção de desligamento. ⚠️ Fica na linha `+5V`, depois do conversor buck; não protege a entrada da bateria contra inversão de polaridade |
+| U9 | AP63205 | Conversor abaixador de tensão |
+| U4 | CAT24C32 | EEPROM — **DNP** (não montar); portanto, este HAT não se identifica automaticamente |
 | J13/J14 | JST EH 3P | Dynamixel **TTL** |
 | J3/J11 | JST EH 4P | Dynamixel **RS-485** |
-| J5–J8 | JST SH 1mm 4P | Qwiic / Stemma（接 ToF） |
+| J5–J8 | JST SH 1 mm 4P | Qwiic / Stemma (para o ToF) |
 
 ⚠️ **打样前必读**：
 
