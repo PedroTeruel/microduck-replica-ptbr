@@ -1,26 +1,26 @@
-# Studio 摄像头 e  ToF
+# Câmera e ToF no Studio
 
-Usuário提出新增摄像头、ToF，并明确确认：两项放在Esquerdo侧导航 de 「手柄」e「Servo」之间，分别作为独立Página，提供画面、读数eConexão状态。继续仅本地开发，不Conexão或Atualização板子。
+O usuário propôs adicionar câmera e ToF e confirmou que ambos devem ficar na navegação lateral esquerda, entre “Controle” e “Servos”, como páginas independentes com imagem/leitura e estado da conexão. Continuar somente o desenvolvimento local, sem conectar nem atualizar a placa.
 
-## Página e 范围
+## Páginas e escopo
 
-- 导航为总览、手柄、摄像头、ToF、Servo、IMU、Modelo、日志、设置。手机也能进入这两页，触控入口保持可用。
-- 摄像头页接现有 mediad  de  LAN WebRTC 视频信令（默认8443）。不嵌入带运动Controle de 旧Controle台。Página能开始/停止预览、重新Conexão，显示Conexão/协商/播放/Falha、实际视频尺寸e接收情况。初次进入自动Conexão，离开或隐藏Página关闭视频e信令，返回后重新Conexão。
-- 摄像头Fonte区分Configuração em  de  camera/test/未知， e Execução端 producer simulated 元Dados；ConfiguraçãoFonte不能冒充已Validação de 真实Hardware。已有Imagem默认为Teste画面时明确提示。仅Por favor求 media.video 元Dados，不发送运动、改设置、录音或Enviar视频。
-- ToF 页提供8×8距离热力图、有效格数、最近/最远有效距离、传感器型号eAtualização时间。每格pode查看毫米值 e original状态；5/9且距离>0才为有效，255为无目标，其余为无效；不把无目标/错误画成0mm障碍。
-- ToF 使用现有 tofd  de  tof.stream 只读接口，按需取最新帧；后台/离开停止轮询，不持续占用串口或运动RPC。几何固定8×8，严格校验数组、数值、消息大小 e 读超时；缺传感器、Serviço不在线、等待首帧、坏Dadose断开分别Instruções。
-- 本轮不增加避障/导航、不改变Servo或运动保护、不Inicialização/重启系统Serviço、不修改ImagemConfiguração。Serviço不可用如实显示，不能用演示Dados冒充Hardware。
+- A navegação contém Painel geral, Controle, Câmera, ToF, Servos, IMU, Modelos, Logs e Configurações. As duas páginas também podem ser abertas no celular, mantendo os controles de toque disponíveis.
+- A página da câmera usa a sinalização de vídeo WebRTC pela LAN do mediad existente (porta padrão 8443). Não incorporar o antigo painel de controle com movimento. Permite iniciar/parar a prévia e reconectar; mostra conexão/negociação/reprodução/falha, dimensões reais do vídeo e recebimento. Na primeira abertura, conecta automaticamente; ao sair ou ocultar a página, fecha vídeo e sinalização; ao voltar, conecta novamente.
+- Distinguir a fonte da câmera entre câmera configurada, teste e desconhecida, além dos metadados simulados do produtor no executor. A fonte configurada não pode ser apresentada como validação de hardware real. Se a imagem instalada usa a tela de teste por padrão, avisar claramente. Solicitar somente os metadados media.video; não enviar comandos de movimento, alterar configurações, gravar áudio nem enviar vídeo.
+- A página ToF exibe mapa térmico de distância 8×8, número de células válidas, distância válida mais próxima e mais distante, modelo do sensor e horário da atualização. Cada célula permite consultar valor em milímetros e estado original. Somente estados 5/9 com distância > 0 são válidos; 255 significa sem alvo e os demais são inválidos. Não representar ausência de alvo ou erro como obstáculo a 0 mm.
+- ToF usa a interface somente de leitura `tofd`/`tof.stream` existente e busca o quadro mais recente sob demanda. Interrompe a consulta em segundo plano ou ao sair da página; não ocupa continuamente a serial nem a RPC de movimento. A geometria é fixa em 8×8; validar rigorosamente arrays, valores numéricos, tamanho das mensagens e timeout de leitura. Informar separadamente sensor ausente, serviço offline, aguardando primeiro quadro, dados inválidos e desconexão.
+- Esta rodada não adiciona desvio de obstáculos nem navegação, não altera proteções de servos/movimento, não inicia nem reinicia serviços do sistema e não modifica a configuração da imagem. Se o serviço estiver indisponível, mostrar isso claramente; nunca apresentar dados de demonstração como hardware.
 
-## 边界 e 架构
+## Limites e arquitetura
 
-Studio 新增 sensors.py，提供Configuração只读汇总 CameraInfo  e 按需 ToF 快照。HTTP 端点 GET /api/camera e GET /api/tof 均沿用现有登录/Host校验并no-store。ToF读使用独立Conexão、总超时e并发合并，不阻塞急停。ToF JSONSuperior限64KiB，不接受任意客户端地址。CLI提供受控 de 开发/Instalação地址Configuração，不在Web接受socket或URL。
+O Studio adiciona sensors.py, com um resumo somente de leitura da configuração CameraInfo e snapshots ToF sob demanda. Os endpoints HTTP GET /api/camera e GET /api/tof reutilizam as verificações de login/Host existentes e usam no-store. A leitura ToF usa conexão independente, timeout total e consolidação de chamadas concorrentes, sem bloquear a parada de emergência. JSON ToF limitado a 64 KiB; não aceitar endereço arbitrário do cliente. A CLI permite configurar de forma controlada os endereços de desenvolvimento/instalação, mas a Web não aceita socket ou URL.
 
-CameraInfo: `{source:'camera'|'test'|'unknown', source_label, source_basis:'config', source_verified:false, signaling_port:8443, error:null}`。默认HTTP成功只代表读到了配置；实际视频状态由浏览器与mediad握手及视频播放确认。配置找不到时仍可尝试信令，不把配置缺失当摄像头缺失。
+CameraInfo: `{source:'camera'|'test'|'unknown', source_label, source_basis:'config', source_verified:false, signaling_port:8443, error:null}`. Um HTTP bem-sucedido por padrão confirma somente que a configuração foi lida; o estado real do vídeo é confirmado pelo handshake entre navegador e mediad e pela reprodução do vídeo. Se não encontrar a configuração, ainda pode tentar a sinalização; ausência de configuração não significa ausência da câmera.
 
-ToFView: `{state:'ready'|'unavailable'|'waiting'|'error', connected, sensor, reason, rows:8,cols:8,hz, seq, age_ms, distance_mm:[64],status:[64],valid_count,nearest_mm,farthest_mm, zones:[{kind:'range'|'no_target'|'unusable',mm,status}], simulated:false}`。运行端 sensor 为 sim/fake 时 simulated 必须为 true。没有有效帧时数组为空/统计为空，不能显示旧数值为当前值。tofd 不支持 hello，连接后直接请求 tof.stream。
+ToFView: `{state:'ready'|'unavailable'|'waiting'|'error', connected, sensor, reason, rows:8,cols:8,hz,seq,age_ms,distance_mm:[64],status:[64],valid_count,nearest_mm,farthest_mm,zones:[{kind:'range'|'no_target'|'unusable',mm,status}],simulated:false}`. Se o sensor informado pelo executor for sim/fake, simulated precisa ser true. Sem quadro válido, os arrays e estatísticas ficam vazios; não mostrar valores antigos como atuais. `tofd` não oferece hello; depois de conectar, solicitar diretamente `tof.stream`.
 
-WebRTC 客户端独立 camera-link.js，复用现有 GStreamer welcome/list/startSession/sessionStarted/peer/endSession Protocolo。严格对应sessionId，串行处理SDP/ICE，RTCDataChannel只发送media.video读Por favor求；不导入旧Controle台 de Controle部分。媒体/信令均有Falha状态、停止释放、隐藏释放e超时；候选/协商消息有大小界限。没有可识别本机producer时明确Falha。
+O cliente WebRTC fica isolado em camera-link.js e reutiliza o protocolo existente do GStreamer: welcome/list/startSession/sessionStarted/peer/endSession. Deve corresponder estritamente o sessionId, processar SDP/ICE em série e usar RTCDataChannel somente para solicitações de leitura media.video. Não importar a parte de controle do painel antigo. Mídia e sinalização têm estados de falha, liberação ao parar/ocultar e timeout; mensagens de candidatos/negociação têm limites de tamanho. Se não houver produtor local reconhecível, mostrar falha explicitamente.
 
 ## Validação
 
-先写Falha用例再实现：ToF有效/无目标/无效/负距、数组错误、首帧超时、断连、读合并esocket释放；相机FonteConfiguração、只读HTTP会话保护；WebRTC信令顺序 e 视频状态真实回读、错误/停止释放/重连；浏览器两页导航、8×8图、空/错误态、离开/后台停止Por favor求、手机布局。Teste可使用明确标记 de 假传感器e视频流。真机验收留待Usuário另行确认Conexão后进行。
+Primeiro, escrever testes de falha e depois implementar: ToF válido/sem alvo/inválido/distância negativa, array malformado, timeout do primeiro quadro, desconexão, consolidação de leitura e liberação do socket; configuração de fonte da câmera e proteção de sessão HTTP somente de leitura; ordem da sinalização WebRTC e confirmação de retorno do estado real do vídeo, erro/liberação ao parar/reconexão; navegação entre as duas páginas no navegador, mapa 8×8, estados vazios/de erro, interrupção de solicitações ao sair ou ir para segundo plano e layout para celular. Os testes podem usar sensores e fluxos de vídeo simulados com identificação explícita. A validação no hardware real fica para confirmação posterior do usuário, após autorizar a conexão.
