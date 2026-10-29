@@ -1,40 +1,40 @@
-# 本地音乐跟拍修复计划
+# Plano de correção do acompanhamento musical local
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. 按Inferior列任务顺序执行，每项先ExecuçãoFalha回归，再实现并审查。
+> **Para agentes de trabalho:** sub-habilidade obrigatória: desenvolvimento orientado por subagentes. Execute as tarefas na ordem abaixo; para cada item, primeiro crie uma regressão que falhe, depois implemente e revise.
 
-**Goal:** 修复真实麦克风音乐Inferior节拍无法稳定驱动头/身体 de 问题，明确等待节拍 e 实际运动状态，Validação实体手柄 de 接管边界。
+**Objetivo:** corrigir o problema de a música captada pelo microfone não produzir batidas estáveis para conduzir a cabeça/o corpo, deixar explícitos os estados de espera e movimento real e validar os limites de tomada de controle pelo controle físico.
 
-**Architecture:** Preservado单路麦克风、现有 robot.head/robot.pose 接口e运动策略。采集Por favor求20ms周期；节拍使用按样本推进 de 有限音量包络 e 周期性证据，对不稳定输入不生成动作。Web端继续Preservado录制/回放原有保护，音乐Controle权仅在证据充分时允许闲置手柄，不删除通用保护。
+**Arquitetura:** manter um único microfone, as interfaces atuais robot.head/robot.pose e a política de movimento. Solicitar captura em períodos de 20 ms; detectar o ritmo por envelope de volume finito atualizado conforme as amostras e evidências periódicas; não gerar movimento para entradas instáveis. A Web mantém as proteções existentes de gravação/reprodução; só permite que a música use um controle ocioso quando houver evidências suficientes, sem remover proteções gerais.
 
-**Tech Stack:** Python 标准库、ALSA arecord、Studio Python/Preact、现有 Unix RPC  e 旁路手柄Dados。
+**Tecnologias:** biblioteca padrão do Python, ALSA arecord, Studio Python/Preact, RPC Unix existente e dados paralelos do controle.
 
-## 已取得证据
+## Evidências obtidas
 
-2026-10-26 用户在播放音乐时进行两组8秒只保存数值的采集：默认周期6000帧/125ms；请求 `--period-time=20000 --buffer-time=80000` 后实际周期960帧/20ms，均正常结束。小周期真实音乐的旧检测器0个稳定快照；同段音量包络在约0.6s延迟存在重复性，不能仅靠相邻帧1.65倍增幅定位鼓点。证据在根工作区 artifacts/music-local-fix-20261026/capture-ab.json，PCM没有落盘。
+Em 26/10/2026, durante a reprodução de música, o usuário fez duas captações de 8 s salvando somente valores numéricos: período padrão de 6000 quadros/125 ms; após solicitar `--period-time=20000 --buffer-time=80000`, período real de 960 quadros/20 ms. Ambas terminaram normalmente. O detector antigo não encontrou snapshots estáveis na música real com período curto; o envelope de volume do mesmo trecho mostrou repetição com atraso de cerca de 0,6 s. Portanto, não se deve localizar batidas apenas por um aumento de 1,65× entre quadros adjacentes. Evidências em artifacts/music-local-fix-20261026/capture-ab.json; o PCM não foi salvo.
 
-## 任务1：采集时间轴 e 真实音乐节拍
+## Tarefa 1: eixo temporal da captação e ritmo da música real
 
-Files: `software/duck-echo/continuous_audio.py`, `music_feel.py`, `test_music_feel.py`, `test_alsa_linux.py`；如需额外测试可新增同目录 `test_music_timing.py`。
+Arquivos: `software/duck-echo/continuous_audio.py`, `music_feel.py`, `test_music_feel.py`, `test_alsa_linux.py`; se forem necessários testes adicionais, criar `test_music_timing.py` no mesmo diretório.
 
-- [ ] 加入先Falha回归：同一固定PCM、20ms均匀输入e125ms成批输入应获得相近BPM e 有效且不在未来 de last_beat；输入分块边界不得改变能量时间线。
-- [ ] 加入真实音乐 de 数值包络回归（取capture-ab de 小周期一段）；BPM须来自重复证据，非固定100/120。Preservado强鼓点75/125、摇摆、持续等音量、静音/过期、换速等原有用例。
-- [ ] capturePor favor求20ms period/80ms buffer；Validação语音分句/提示声/取消不回退。有限窗口周期估计在无可靠节奏时保持unknown，并在停止声音后释放旧节拍。
-- [ ] 对照测试命令：`python -X utf8 -m unittest test_music_feel test_music_timing test_continuous_audio`；全套 `python -X utf8 -m unittest discover -p 'test_*.py'`。设备Linux运行全部测试再部署。
-- [ ] 提交任务代码；独立规格审查后做质量审查，修复重要问题。
+- [ ] Criar primeiro uma regressão que falhe: o mesmo PCM fixo, fornecido uniformemente a cada 20 ms ou em blocos de 125 ms, deve produzir BPM semelhantes e um last_beat válido, que não esteja no futuro; as fronteiras dos blocos não podem alterar a linha temporal da energia.
+- [ ] Adicionar uma regressão com o envelope numérico da música real (um trecho de período curto de capture-ab); o BPM deve vir de evidências repetidas, não de um valor fixo como 100/120. Preservar os casos existentes de batidas fortes repetidas a 75/125 BPM, balanço, volume constante, silêncio/dados expirados e mudança de velocidade.
+- [ ] Solicitar captação com período de 20 ms e buffer de 80 ms; validar que separação de frases, avisos sonoros e cancelamento de voz não regridem. A estimativa periódica em janela finita deve permanecer unknown sem ritmo confiável e liberar a batida antiga quando o som parar.
+- [ ] Comandos de teste de referência: `python -X utf8 -m unittest test_music_feel test_music_timing test_continuous_audio`; suíte completa: `python -X utf8 -m unittest discover -p 'test_*.py'`. Executar todos os testes no Linux do dispositivo antes da implantação.
+- [ ] Fazer commit do código da tarefa; realizar uma revisão independente da especificação e, depois, uma revisão de qualidade. Corrigir problemas importantes.
 
-## 任务2：动作链路 e 可见状态
+## Tarefa 2: cadeia de movimento e estados visíveis
 
-Files: `software/studio/studio/audio_interaction.py`, `motion_studio.py`, `pad.py`, `pad_drive.py`（仅有必要时）、`web/motion-studio.js`, `web/audio-interaction.js`, 匹配测试。
+Arquivos: `software/duck-echo/continuous_audio.py`, `music_feel.py`, `test_music_feel.py`, `test_alsa_linux.py`; se forem necessários testes adicionais, criar `test_music_timing.py` no mesmo diretório.
 
-- [ ] 追踪真实Controle权 e 发送Caminho；确认姿态、BPM、动作会话 e robot.pose回读，先定位再改。
-- [ ] 将等待稳定节拍显示为明确状态，避免只显示“随乐律动 em ”却没有任何动作。对状态失效、静音 e 停止开关Validação头回正/pose inactive。
-- [ ] 手柄仅Conexão e 主动输入分开；先Verificação原生padd空闲模式是否持续写head/pose。仅当可确认不争写且旁路新鲜时允许音乐Execução，实际操作取消Atual音乐；保持急停 e 录放原有规则。若缺少模式证据，明确其Protocolo缺口，不凭Conexão状态一刀切删除保护。
-- [ ] Execução受影响Studio后端 e NodeTeste。只AtualizaçãoStudio需先Verificação设备停好条件，保存Usuário状态 e 进程身份。
-- [ ] 提交并作规格、质量审查。
+- [ ] Rastrear a autoridade de controle real e o caminho de envio; conferir postura, BPM, sessão de movimento e leitura de retorno de robot.pose. Localizar a causa antes de alterar o código.
+- [ ] Exibir claramente o estado “aguardando ritmo estável”, evitando mostrar apenas “movendo-se com a música” sem haver movimento. Validar o retorno da cabeça/pose inactive quando o estado expirar, o som silenciar ou a reprodução parar.
+- [ ] Distinguir conexão do controle de entrada ativa; primeiro verificar se o modo ocioso do padd nativo continua escrevendo head/pose. Só permitir execução musical se for possível confirmar que não há disputa de escrita e que o fluxo paralelo está atualizado; qualquer operação real cancela a música atual. Preservar a parada de emergência e as regras atuais de gravação/reprodução. Se não houver evidência do modo, documentar a lacuna do protocolo; não remover a proteção indiscriminadamente só por causa do estado da conexão.
+- [ ] Executar os testes Node e do backend do Studio afetado. Se somente o Studio for atualizado, primeiro confirmar que o dispositivo está parado; salvar o estado do usuário e a identidade dos processos.
+- [ ] Fazer commit e executar revisões da especificação e da qualidade.
 
-## 任务3：Superior机、复核 e 记录
+## Tarefa 3: implantação no dispositivo, nova verificação e registro
 
-- [ ] 使用固定提交 e 哈希部署语音组件，Execução设备LinuxTeste、保存回退备份，只重启必要Serviço。
-- [ ] 回读实际ALSA period、节拍新鲜度/BPM/置信度；必要时用Usuário正在播放 de 音乐复测，避免把假麦克风Resultado当实际por meio de。
-- [ ] ValidaçãoWeb等待/运动/停止状态 e 真实头/身体输出；物理动作由Usuário确认，不用Arquivo存在替代验收。
-- [ ] AtualizaçãoSoftware功能总账F24/F25 e Registro de validação，分别记录已修代码、已部署、真机por meio dee尚缺Conteúdo。
+- [ ] Implantar o componente de voz usando commit e hash fixos; executar os testes Linux no dispositivo, salvar backup para reversão e reiniciar somente o serviço necessário.
+- [ ] Ler novamente o período ALSA real, a atualidade do ritmo, BPM e confiança; se necessário, repetir a medição enquanto o usuário estiver tocando música, sem tratar um resultado de microfone simulado como captação real.
+- [ ] Validar na Web os estados de espera/movimento/parada e a saída real da cabeça e do corpo. O usuário confirma o movimento físico; a existência de arquivos não substitui a aceitação.
+- [ ] Atualizar os itens F24/F25 do inventário de funcionalidades do software e o registro de validação, distinguindo código corrigido, implantação concluída, validação física e itens ainda pendentes.
