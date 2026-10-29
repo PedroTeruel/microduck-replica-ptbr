@@ -1,47 +1,45 @@
-> **这个 Release 已于 2026-10-21 撤下**（太旧了）。现成的卡请用[复刻镜像](https://github.com/fanhao375/microduck-replica/releases/latest)。下面是当时的发布说明，留作记录。
+> **Esta versão foi removida em 21/10/2026** por estar desatualizada. Para cartões disponíveis, use a [imagem de réplica](https://github.com/fanhao375/microduck-replica/releases/latest). As informações abaixo ficam registradas como nota histórica.
 
-> **候选Imagem（Pre-release）：已Concluído离线核验，尚未对这份新产物烧卡、Inicializaçãoe联网实测。** 本版从 20260920 原公开Imagem制作，只补无线 DHCP、修正卡内登录/联网Instruções、移除预生成 SSH 主机密钥。旧版Arquivo仍Preservado在原 Release。已有旧卡可按指南修复，不必只为这次Atualização重刷。
+> **Imagem candidata (pré-lançamento): a verificação offline foi concluída, mas esta nova imagem ainda não foi gravada em cartão, inicializada nem testada na rede.** Foi criada a partir da imagem pública 20260920, acrescentando apenas a correção do DHCP sem fio, a revisão das instruções de login/rede do cartão e a remoção das chaves de host SSH pré-geradas. Os arquivos da versão antiga continuam na publicação original. Cartões antigos podem ser corrigidos seguindo o guia; não é necessário regravá-los apenas por causa desta atualização.
 
-适用基线：Radxa Zero 3W V1.12 / AIC8800，Armbian 26.2.1 Trixie vendor 6.1.115 minimal + 瑞莎 `u-boot-rk2410`。其他板卡批次、摄像头和路由器需要分别验证。
+Base compatível: Radxa Zero 3W V1.12/AIC8800, Armbian 26.2.1 Trixie vendor 6.1.115 minimal + u-boot-rk2410 da Radxa. Outros lotes de placa, câmeras e roteadores precisam de validação própria.
 
-**这是基础系统，不包含机器人Execução时、WebDepuração台、Servo设置、IMU Configuração或步态策略。没有Gravação个人 WiFi、代理或登录密钥。** 本机 09-28 已Validação联网 de 是另一份个人Imagem，不能把该Resultado当作本候选产物已Concluído烧卡Teste。
+**Este é um sistema-base; não inclui o runtime do robô, painel web de depuração, configuração dos servos, configuração da IMU nem política de caminhada. Não contém Wi-Fi pessoal, proxy nem chaves de login.** Uma imagem pessoal diferente foi testada na rede em 28/09; esse resultado não prova que esta imagem candidata tenha sido gravada ou testada em cartão.
 
-### 附件
+### Arquivos anexos
 
-| Arquivo | 用途 |
+| Arquivo | Finalidade |
 |---|---|
-| `armbian-26.2.1-zero3w-v1.12-dhcpfix-20260929.img.xz` | 新候选镜像，用 Rufus / balenaEtcher / Armbian Imager 写入至少 8 GB 的卡 |
-| `sha256.txt` | 校验本版压缩镜像；不要混用旧版的校验值 |
-| `radxa-zero3w-image-guide-zh.md` | 首次登录、联网、换 WiFi、旧卡修复、供电与板卡批次说明 |
-| `image-verification-20260929.json` | 离线检查、来源、裸镜像/压缩文件 SHA256、逐文件差异及未实机测试标记 |
+| armbian-26.2.1-zero3w-v1.12-dhcpfix-20260929.img.xz | Imagem candidata para gravação com Rufus, balenaEtcher ou Armbian Imager em cartão de pelo menos 8 GB |
+| sha256.txt | Hash de verificação da imagem compactada desta versão; não use o hash da versão anterior |
+| radxa-zero3w-image-guide-zh.md | Guia de primeiro login, rede, troca de Wi-Fi, reparo de cartões antigos, alimentação e lotes da placa |
+| image-verification-20260929.json | Verificação offline, origem, SHA256 da imagem bruta e compactada, diferenças arquivo a arquivo e indicação de que não houve teste físico |
 
-压缩Imagem大小：419,157,756 字节；SHA256：
+Tamanho da imagem compactada: 419.157.756 bytes. SHA256:
 
-```text
-d7a4dc60a0c622786ae3eb03ebea2d5316d4cff44373945f4a61f44ac7019f63
-```
+    d7a4dc60a0c622786ae3eb03ebea2d5316d4cff44373945f4a61f44ac7019f63
 
-### 第一次登录 e 联网
+### Primeiro login e conexão de rede
 
-1. 校验下载文件后烧卡。USB 串口使用主板 **`5V IN / USB_OTG`（USB 2.0）口**，数据线连接电脑，由 USB 单独供电；不要与 HAT 输入叠加供电。USB 3.0 Host 是外设接口。
-2. 等启动后出现 COM 口，以 **115200 8N1** 打开。**首次账户是 `root / 1234`**，不是 duck。
-3. 完成 Armbian 首次登录向导（shell 可选 `bash`），向导才创建 `duck / duck1234` 并把 root 密码设为 `duck1234`。仍在 root 终端时立即执行 `passwd`、`passwd duck` 改掉两个默认密码。向导中断时可能处于中间状态，继续用已设置的 root 密码完成初始化。
-4. 按随附指南第 4 节配置自己的 WiFi。`wpa_supplicant` 负责认证，本版预置的 `/etc/systemd/network/25-wlan0.network` 由 `systemd-networkd` 申请 IPv4 地址。基础镜像没有 NetworkManager / `nmtui`。
-5. 检查 `wpa_state=COMPLETED`、IPv4 地址和默认路由后，再从同一可互通局域网使用 `ssh duck@主板IP`。首次 SSH 请核对主板本地显示的主机指纹。
+1. Depois de verificar o arquivo baixado, grave o cartão. Para a serial USB, use a porta da placa marcada **5V IN / USB_OTG** (USB 2.0), conecte o cabo de dados ao computador e alimente somente por USB. Não combine essa alimentação com a entrada da HAT. A porta USB 3.0 Host é para periféricos.
+2. Aguarde o boot e a aparição da porta COM; abra-a a **115200 8N1**. **A conta inicial é root / 1234**, não duck.
+3. Conclua o assistente de primeiro login do Armbian (shell bash pode ser escolhido). Só então o assistente cria duck / duck1234 e define duck1234 como senha de root. Ainda no terminal root, troque imediatamente as duas senhas padrão com passwd e passwd duck. Se o assistente for interrompido, o sistema pode ficar em um estado intermediário; continue a inicialização com a senha de root já definida.
+4. Configure seu Wi-Fi conforme a seção 4 do guia anexo. wpa_supplicant faz a autenticação; o arquivo /etc/systemd/network/25-wlan0.network incluído nesta versão solicita um endereço IPv4 ao systemd-networkd. A imagem-base não tem NetworkManager nem nmtui.
+5. Depois de conferir wpa_state=COMPLETED, o endereço IPv4 e a rota padrão, conecte-se por ssh duck@IP-da-placa a partir de um dispositivo da mesma rede local. Na primeira conexão SSH, confira a impressão digital do host mostrada localmente pela placa.
 
-### 本次核验
+### Verificações desta versão
 
-- 来源只使用原公开 `.img.xz`，SHA256 为 `4de8a355d3d9180e465af486c409e9b3e4ac82c0e241dc73d4fc0f0db7a67579`，没有使用带个人 WiFi 的镜像。
-- GPT 根分区从 32768 扇区开始。前 16 MiB 引导区域逐字节未变，内核、DTB、overlay e账户库均未改。
-- 根分区只读 `e2fsck -f -n` 通过；挂载使用 `ro,noload` 做最终检查。文件内容、权限、属主和符号链接与原版比对，只涉及上面列出的三类变化。
-- root 初始密码匹配 `1234`，不匹配 `duck1234`；初始无 duck，保留原 Armbian 首次登录预设和流程。
-- 候选镜像不含 SSH 主机密钥；空 `machine-id` 与已启用的 `sshd-keygen.service` 使原系统在首次启动执行 `ssh-keygen -A`。已核实静态服务机制，实际首次启动仍待验证。
-- 没有 WiFi 认证Arquivo、个人代理、authorized_keys、UsuárioDiretórioConteúdo或 shell Histórico。旧Imagem主机私钥 de CompletoConteúdo也未残留在新裸Imagem em 。卡内联网Comandopor meio de Bash 语法Verificação。
+- A origem foi somente a imagem pública .img.xz, SHA256 4de8a355d3d9180e465af486c409e9b3e4ac82c0e241dc73d4fc0f0db7a67579; não foi usada uma imagem com Wi-Fi pessoal.
+- A partição raiz GPT começa no setor 32768. Os primeiros 16 MiB da área de boot são idênticos byte a byte; kernel, DTB, overlays e bibliotecas de usuários não foram alterados.
+- A verificação somente leitura e2fsck -f -n da partição raiz passou; a inspeção final foi feita com ro,noload. Conteúdo, permissões, proprietário e links simbólicos foram comparados com a versão original; as mudanças se limitam às três categorias listadas acima.
+- A senha inicial de root corresponde a 1234, não a duck1234. A conta duck não existe inicialmente; permanecem o assistente e o fluxo originais de primeiro login do Armbian.
+- A imagem candidata não contém chaves de host SSH. Um machine-id vazio e o serviço sshd-keygen.service habilitado fazem o sistema original executar ssh-keygen -A no primeiro boot. O mecanismo estático do serviço foi conferido; a primeira inicialização real ainda precisa ser testada.
+- Não há arquivo de autenticação Wi-Fi, proxy pessoal, authorized_keys, conteúdo de diretórios de usuários nem histórico de shell. As chaves privadas SSH da imagem-base antiga também não foram encontradas na nova imagem bruta. A sintaxe Bash do comando de conexão à rede no cartão foi verificada.
 
-CompletoDados以附件核验报告为准。离线校验不替代烧卡Inicialização、SSH 密钥生成、实际无线Conexão或Hardware验收。
+Consulte o relatório de verificação anexo para todos os dados. Verificação offline não substitui gravar o cartão, inicializar, gerar chaves SSH, conectar-se à rede sem fio nem validar o hardware.
 
-### 项目进度 e Fonte
+### Andamento do projeto e origem
 
-主板上另行部署的调试台 0.15.4，曾在保持既有姿势的约 64 秒窗口中读到 14 颗各 3000/3000 有效状态，目标 50 Hz、实际约 46.87 Hz，窗口内无 timeout/checksum/ID 错误。其他时段仍有偶发缺应答；这不代表完整控制循环、IMU、带载动作或步态验收。摄像头目前仅官方 B1 确认出图。见[测试摘要](https://github.com/fanhao375/microduck-replica/blob/master/tools/radxa/50Hz%E4%BF%9D%E6%8C%81%E5%A7%BF%E5%8A%BF%E8%AF%BB%E7%8A%B6%E6%80%81-20260928.md)。
+O painel de depuração 0.15.4 foi instalado separadamente na placa principal. Em uma janela de aproximadamente 64 segundos, mantendo a pose, leu 3.000/3.000 estados válidos de cada um dos 14 servos; a meta era 50 Hz, a frequência real foi cerca de 46,87 Hz e não houve erros de timeout, checksum ou ID nessa janela. Em outros períodos ainda houve falhas ocasionais de resposta. Isso não valida o ciclo completo de controle, a IMU, movimentos com carga nem a marcha. A câmera só foi confirmada no sistema oficial B1. Consulte o [resumo do teste](https://github.com/fanhao375/microduck-replica/blob/master/tools/radxa/50Hz%E4%BF%9D%E6%8C%81%E5%A7%BF%E5%8A%BF%E8%AF%BB%E7%8A%B6%E6%80%81-20260928.md).
 
-底包来自 [Armbian](https://www.armbian.com/radxa-zero-3/)，引导来自瑞莎 [`u-boot-rk2410`](https://radxa-repo.github.io/bookworm/pool/main/u/u-boot-rk2410/)，遵循 GPL 及各软件自身许可。这是社区修改版，并非 Armbian 或瑞莎官方发布。[制卡脚本与指南](https://github.com/fanhao375/microduck-replica/tree/master/tools/radxa)。
+A imagem-base vem do [Armbian](https://www.armbian.com/radxa-zero-3/); o bootloader vem do [u-boot-rk2410 da Radxa](https://radxa-repo.github.io/bookworm/pool/main/u/u-boot-rk2410/). Aplicam-se a GPL e as licenças de cada software. Esta é uma versão modificada pela comunidade, não uma publicação oficial do Armbian nem da Radxa. [Scripts de gravação e guias](https://github.com/fanhao375/microduck-replica/tree/master/tools/radxa).
