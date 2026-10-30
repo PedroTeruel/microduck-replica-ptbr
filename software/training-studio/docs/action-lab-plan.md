@@ -1,52 +1,52 @@
-# 动作实验室 Implementation Plan
+# Plano de implementação do Laboratório de Ações
 
-> **For agentic workers:** Use subagent-driven-development to implement this plan task by task, with independent specification and quality reviews.
+> **Para agentes de implementação:** execute as tarefas deste plano e faça revisões independentes da especificação e da qualidade.
 
-**Goal:** Usuário能在现有训练Página设置单脚平衡目标，并使用真实引擎训练、评估、保存e导出。
+**Objetivo:** permitir que o usuário configure uma meta de equilíbrio em uma perna na interface de treinamento existente, usando o mecanismo real para treinar, avaliar, salvar e exportar.
 
-**Architecture:** 专属 HD1910 任务承担物理动作；Serviço将有限 de  skill Parâmetros传入训练、评估e导出并归档；现有 Preact 抽屉增加可视化Configuração。配方白名单统一决定实验Caminho，所有进程所有权规则沿用现有Serviço。
+**Arquitetura:** uma tarefa HD1910 dedicada controla a ação física. O serviço envia um conjunto limitado de parâmetros de habilidade ao treinamento, à avaliação e à exportação e os registra. A interface Preact ganha um painel com configuração visual. Uma lista de permissões de receitas define os caminhos dos experimentos, e as regras existentes de propriedade dos processos continuam valendo.
 
-**Tech Stack:** Python 3.12 stdlib service、mjlab 1.3.0 / rsl-rl 5.0.1、WSL2 CUDA、Preact/Three.js、unittest/pytest/Node/Playwright。
+**Tecnologias:** serviço na biblioteca padrão do Python 3.12, mjlab 1.3.0 / rsl-rl 5.0.1, CUDA no WSL2, Preact/Three.js, unittest/pytest/Node/Playwright.
 
-## 1. 环境e基线
+## 1. Ambiente e linha de base
 
-- [x] 从 `9d0fe05` 建立独立工作区，保留稳定服务 8094。
-- [x] Windows 后端 56 项（53 por meio de、3 跳过），Node 11 项por meio de。
-- [x] 离线锁定虚拟环境 `/root/.cache/microduck-action-lab-20261023`，editable 指向新工作区；不改稳定环境。
+- [x] Criar um espaço de trabalho separado a partir de `9d0fe05`, mantendo o serviço estável na porta 8094.
+- [x] No backend Windows, 56 testes (53 aprovados, 3 ignorados); no Node, 11 testes aprovados.
+- [x] Criar o ambiente virtual offline em `/root/.cache/microduck-action-lab-20261023`, apontando o modo editável para o novo espaço de trabalho, sem alterar o ambiente estável.
 
-## 2. 新增平衡引擎
+## 2. Novo mecanismo de equilíbrio
 
-Files: `software/training/src/mjlab_microduck/tasks/microduck_balance_env_cfg.py`、`tasks/mdp.py`、`tasks/__init__.py`、`scripts/export.py`；新增 `tests/test_balance_cfg.py`、`tests/test_balance_mdp.py`。
+Arquivos: `software/training/src/mjlab_microduck/tasks/microduck_balance_env_cfg.py`, `tasks/mdp.py`, `tasks/__init__.py`, `scripts/export.py`; novos testes em `tests/test_balance_cfg.py` e `tests/test_balance_mdp.py`.
 
-- [x] 先写Configuração、阶段、EsquerdoDireito脚、错误Parâmetros e Sucesso判定Falha用例，Execução确认新增任务缺失导致Falha。
-- [x] 实现专用命令、参数应用函数、奖励与成功计数、正确 HD1910 物理配置与注册。字段固定为 `support_side`、`lift_height_m`、`hold_seconds`。
-- [x] ValidaçãoParâmetrospor meio de真实 CLI 解析改变环境Configuração，评估/导出使用同一Parâmetros应用函数。
-- [x] Execução CPU Teste e 几何/姿态测量，记录目标 de 可行性边界。新Teste应Validação倒地抬脚不能Sucesso、EsquerdoDireito切换正确、Concluído保持后仍需落脚。
+- [x] Escrever primeiro testes para configuração, fases, perna esquerda/direita, parâmetros inválidos e critérios de sucesso; confirmar que a nova tarefa falha por ainda não existir.
+- [x] Implementar comandos dedicados, aplicação de parâmetros, recompensa, contagem de sucessos e configuração física HD1910 correta. Os campos são `support_side`, `lift_height_m` e `hold_seconds`.
+- [x] Validar pela CLI real que os parâmetros alteram a configuração do ambiente e que avaliação e exportação usam a mesma função de aplicação.
+- [x] Executar testes em CPU e medir geometria e postura para registrar os limites de viabilidade da meta. Os testes devem verificar que levantar o pé depois de cair não conta como sucesso, que a troca entre esquerda e direita funciona e que é preciso apoiar o pé novamente após completar o tempo de sustentação.
 
-## 3. Serviço端配方 e Parâmetros贯通
+## 3. Integração de receitas e parâmetros no serviço
 
-Files: `training_studio/config.py`、`commands.py`、`service.py`、`environment.py`、`evaluate.py`；新增 `tests/test_skills.py`。
+Arquivos: `training_studio/config.py`, `commands.py`, `service.py`, `environment.py`, `evaluate.py`; novo teste em `tests/test_skills.py`.
 
-- [x] 用真实 CPU 演示子进程Teste skill Parâmetros改变后失去正式训练资格；旧Caminhada记录仍匹配；Parâmetros无效时不创建进程。
-- [x] `validate_skill(recipe_id, value)` 返回规范化参数或 None；`experiment_for(run)` 只查服务端白名单并验证 task id；所有日志/检查点路径改用它。
-- [x] 新记录、恢复、Fonte ZIP e评估Parâmetros均保存一致 skill；真实Comando仅使用固定旗标 e 经校验数值。
-- [x] 评估覆盖Completo周期e多次尝试，保存每次Resultado e 分项统计；Leitura摘要显示在所选Verificação点Inferior，FalhaResultado也必须可见。
-- [x] Execução全量 Windows/WSL 后端Testee引擎Parâmetros传递集成Teste。
+- [x] Com um subprocesso de demonstração real em CPU, confirmar que alterar os parâmetros da habilidade impede a qualificação para treinamento real; registros antigos de caminhada continuam válidos e parâmetros inválidos não iniciam processos.
+- [x] Fazer `validate_skill(recipe_id, value)` retornar parâmetros normalizados ou None. `experiment_for(run)` consulta apenas a lista de permissões do servidor e valida o ID da tarefa. Todos os caminhos de logs e checkpoints passam por essa validação.
+- [x] Manter os mesmos parâmetros de habilidade ao criar e retomar registros, gerar ZIPs de origem e avaliar. O comando real usa somente opções fixas e valores validados.
+- [x] Avaliar ciclos completos com várias tentativas, salvar cada resultado e suas estatísticas por item; mostrar o resumo abaixo do checkpoint selecionado. Resultados de falha também devem aparecer.
+- [x] Executar todos os testes de backend no Windows e WSL e os testes de integração da transmissão de parâmetros ao mecanismo.
 
-## 4. 同Página零代码操作
+## 4. Operação sem código na mesma interface
 
-Files: `web/skillform.js`、`state.js`、`newrun.js`、`views.js`、`ui.js`、`styles.css`、`tests/state.test.mjs`。
+Arquivos: `web/skillform.js`, `state.js`, `newrun.js`, `views.js`, `ui.js`, `styles.css`, `tests/state.test.mjs`.
 
-- [x] 先写Parâmetros规范化/短试跑匹配/单位换算/摘要 Node Teste。
-- [x] 首页动作实验室入口、新配方e基础 skill 控件，范围来自后端；Preservado每配方草稿。
-- [x] 复用 Duck3D 制作带明确标注 de 目标示意；运动学厘米值不从绘图虚构。展示Completo阶段Instruções e EsquerdoDireito脚文字。
-- [x] 修正非 rough 一律显示平地 de 旧硬编码；实验详情、复制、比较eVerificação点评估都显示相应动作目标 e Resultado。
-- [x] 1440/390 宽度浏览器Teste：动作设置、旧配方切换、草稿、变参门禁、Parâmetros提交、详情 e 真/演示Resultado区分，无溢出/Página异常。
+- [x] Escrever primeiro testes Node para normalização de parâmetros, correspondência do teste curto, conversão de unidades e resumo.
+- [x] Adicionar à página inicial a entrada para o Laboratório de Ações, novas receitas e controles básicos de habilidade com limites fornecidos pelo backend; preservar rascunhos por receita.
+- [x] Reutilizar o Duck3D para exibir um diagrama dos objetivos com rótulos claros. Não inventar valores cinemáticos em centímetros a partir do desenho. Mostrar instruções para todas as fases e identificar a perna esquerda ou direita em texto.
+- [x] Remover a exibição fixa incorreta que tratava toda receita que não fosse rough como terreno plano. Detalhes do experimento, cópia, comparação e avaliação de checkpoints mostram a meta de ação e o resultado correspondentes.
+- [x] Testar no navegador em larguras de 1440 e 390 px: configuração da ação, troca de receita, rascunhos, bloqueio ao mudar parâmetros, envio de parâmetros, detalhes e distinção entre resultados reais e de demonstração, sem transbordamento nem erros de página.
 
-## 5. 真实Validaçãoe交付
+## 5. Validação real e entrega
 
-- [x] 独立规格审查，再独立代码质量审查；修复具体问题。
-- [x] 新Serviço隔离状态，浏览器Inicialização真实平衡短试跑 64×5，Verificação日志、PT、动作Configuração YAML。
-- [x] 按Completo动作周期评估多次，实际播放视频；导出 ONNX，Verificação输入输出、有限值e PT/ONNX 一致性。
-- [x] 如短试跑只证明链路，明确报告Sucesso率并Preservado实验模板，不宣称动作已学会；若é necessárioDepuração奖励，先查看实测Falha再修改。
-- [x] Atualização使用指南 e 验收记录，提交后合入稳定工作区；PreservadoUsuário其他改动，确认无活动任务后切换Serviço。
+- [x] Fazer revisão independente da especificação e depois da qualidade do código; corrigir os problemas encontrados.
+- [x] Isolar o estado do novo serviço e iniciar pelo navegador um teste curto real de equilíbrio com 64 ambientes e 5 iterações; verificar logs, PT e YAML da configuração da ação.
+- [x] Avaliar várias execuções do ciclo completo da ação, reproduzir o vídeo e exportar ONNX; verificar entradas, saídas, valores finitos e consistência entre PT e ONNX.
+- [x] Se o teste curto comprovar apenas o fluxo, informar claramente a taxa de sucesso e preservar o modelo do experimento, sem afirmar que a ação foi aprendida. Se for necessário ajustar a recompensa, consultar primeiro as falhas medidas.
+- [x] Atualizar o guia de uso e o registro de validação, integrar ao espaço de trabalho estável após o commit, preservar alterações do usuário e trocar o serviço somente depois de confirmar que não há tarefas ativas.
