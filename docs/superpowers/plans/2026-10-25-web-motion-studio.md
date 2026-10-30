@@ -1,6 +1,6 @@
 # Web motion recording, playback and lively head motions
 
-> **For agentic workers:** Use subagent-driven-development for bounded backend implementation, then independent spec and code review. Work in this isolated worktree. The human authorized implementation (“开始吧…灵动…先做在Web版里头”). Do not repeat an execution or approval question.
+> **For agentic workers:** Use subagent-driven-development for bounded backend implementation, then independent spec and code review. Work in this isolated worktree. The human authorized implementation (“Pode começar… movimentos expressivos… faça primeiro na versão Web”). Do not repeat an execution or approval question.
 
 **Goal:** Add a complete recording/library/playback flow and a lively head/mouth mode to Studio's existing web remote controls.
 
@@ -26,10 +26,10 @@ Use existing `link.cmd('pad.op', args)` with `args.op='motion'`, `args.action` i
 ```javascript
 {op:'motion', action:'record_start'}
 {op:'motion', action:'record_pause'|'record_resume'|'record_finish'|'discard'}
-{op:'motion', action:'save', name:'展示一号'}
+{op:'motion', action:'save', name:'Demonstração 1'}
 {op:'motion', action:'play', id:'recording-id', loops:1}
 {op:'motion', action:'pause'|'resume'|'stop'}
-{op:'motion', action:'rename', id:'recording-id', name:'新的名字'}
+{op:'motion', action:'rename', id:'recording-id', name:'Novo nome'}
 {op:'motion', action:'delete', id:'recording-id'}
 {op:'motion', action:'idle_start'|'idle_stop'}
 {op:'motion', action:'heartbeat', session_id:'returned-session-token'}
@@ -44,8 +44,8 @@ Return `session_id` for session starts and keep it in `pad.motion_studio`. Snaps
   elapsed_s:0, duration_s:0, loop:0, loops:1,
   recordings:[{id:'id',name:'name',duration_s:1.2,events:30}],
   draft:null, // {duration_s,events,reason}
-  record_available:{ok:false,why:'先站起来并准备好走'},
-  idle_available:{ok:false,why:'先站起来并准备好走'},
+  record_available:{ok:false,why:'Primeiro, coloque o robô em pé e deixe-o pronto para caminhar'},
+  idle_available:{ok:false,why:'Primeiro, coloque o robô em pé e deixe-o pronto para caminhar'},
   last_result:null, error:null,
   idle_running:false
 }
@@ -73,7 +73,7 @@ py -3.13 -X utf8 -I -c "import sys;sys.path[:0]=['deps','.'];import unittest;uni
 Files: new `web/motion-studio.js`, new `web/motion-studio.css`, small integration in `web/pad.js`, corresponding Node/browser tests.
 
 - [x] Add a failing browser scenario exercising complete record → manual action → finish → name/save → select/play → pause/resume/stop → rename/delete. Assert fake robotd actually received accepted events in order. Add lifecycle and 320/390px layout checks.
-- [x] Add an inline “动作录制 e 回放” section within Remote. Show clear running/draft/error/owner state, duration, progress, loop counts and an adjacent “灵动” switch. Keep physical-pad/robot-readiness explanations visible.
+- [x] Add an inline “Gravação e reprodução de movimentos” section within Remote. Show clear running/draft/error/owner state, duration, progress, loop counts and an adjacent “Movimentos expressivos” switch. Keep physical-pad/robot-readiness explanations visible.
 - [x] Heartbeat the owning session only while the existing remote is active and link connected. Stop heartbeat and send termination when hidden/inactive/unmounted. Use session_id so delayed callbacks do not control another session.
 - [x] Keep save/rename forms inline and explicit, no fake success, no arbitrary paths or programming controls. Disable conflicting session mutations while pending and retain unsaved drafts honestly.
 - [x] Run browser flow on desktop/390/320px; inspect screenshots for overlap/overflow and existing controls regression.

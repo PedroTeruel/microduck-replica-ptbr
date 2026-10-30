@@ -6,7 +6,7 @@ The user authorizes publishing the completed IMU work to GitHub and asks how exi
 
 Keep the existing 20261027 signed software envelope, signing key, controller and Rust engine compatible. Do not silently broaden its robotd/padd restart whitelist or install arbitrary files outside its managed release tree. The new signed package adds a fixed native payload under `studio/deploy/native/`, which the old package path rules already accept. Existing engine apply still updates Studio/helper/voice only. The new helper performs a separate, explicitly confirmed native transaction after that software update has completed.
 
-The default IMU selection remains `自动识别（现有板卡）`; Qinmo remains an optional persistent selection. Users need not update the main program simply to retain existing behavior. The UI must distinguish webpage/voice version, main-program availability/currentness, and actual running main-program identity. It must never announce the complete Qinmo chain ready after only the webpage changed.
+The default IMU selection remains “Detectar automaticamente (placa existente)”; Qinmo remains an optional persistent selection. Users need not update the main program simply to retain existing behavior. The UI must distinguish webpage/voice version, main-program availability/currentness, and actual running main-program identity. It must never announce the complete Qinmo chain ready after only the webpage changed.
 
 ## Fixed signed native payload
 

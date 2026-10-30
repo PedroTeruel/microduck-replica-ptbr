@@ -2,11 +2,11 @@
 
 > **For agentic workers:** Use superpowers:subagent-driven-development. Each task receives specification and code quality review.
 
-**Goal:** R3 单击开关持续语音，停顿后自动处理口令或复读。
+**Goal:** R3 de voz contínua com ativação e desativação por clique; após uma pausa, processar automaticamente um comando ou repetir a fala.
 
-**Architecture:** 新增有界分句器e持续 ALSA 输入Controle器，复用 VoiceControl  e 现有播放模块；Preservado hold Caminhousado para回退。单一流接口为后续音乐分析提供入口。
+**Architecture:** Adicionar um segmentador de frases com limites e um controlador contínuo de entrada ALSA, reutilizando `VoiceControl` e o módulo de reprodução existente; manter o modo pressionar para falar como alternativa. A interface de fluxo único servirá de base para a análise musical futura.
 
-**Tech Stack:** Python 标准库、ALSA arecord/aplay、现有 Vosk、evdev、unittest。
+**Tech Stack:** biblioteca padrão do Python, ALSA `arecord`/`aplay`, Vosk existente, `evdev` e `unittest`.
 
 ### Task 1: Continuous input and toggle
 

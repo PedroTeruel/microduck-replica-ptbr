@@ -1,22 +1,22 @@
-# Web录制回放 e 灵动：实现 e 单机部署验收
+# Gravação, reprodução e movimentos expressivos na Web: implementação e validação da implantação em um dispositivo
 
-日期：2026-10-25（东京时间；设备日志为 +08:00）。Usuário授权“开始吧……灵动……先做在Web版里头”，随后明确选择鸭子现有Controle网址。
+Data: 25/10/2026 (horário de Tóquio; logs do dispositivo em UTC+8). O usuário autorizou: “Pode começar… movimentos expressivos… faça primeiro na versão Web” e depois escolheu explicitamente o endereço de controle existente do pato.
 
-## 本轮Resultado e 范围
+## Resultado e escopo desta rodada
 
-运行代码提交：`c18783c9a2b2e2635124c6c4d53007e3fefb3ba6`，已快进合入 `studio-dev`。原有未提交的路线/语音记录保留，没有重置工作区或改动语音源码。
+Commit do código de execução: `c18783c9a2b2e2635124c6c4d53007e3fefb3ba6`, integrado por avanço rápido em `studio-dev`. As anotações existentes, ainda não commitadas, sobre o roteiro e a voz foram preservadas; o workspace não foi redefinido e o código de voz não foi alterado.
 
-现有遥控区新增录制、暂停/继续、结束/命名保存、草稿丢弃、选择回放 1/3/5 次、暂停/继续/停止、改名/删除。旧舵机页灵动风格改为通过正常 `robot.head`/`robot.mouth` 意图输出，可单独开启或在录制中开启；生成后的目标被记录，回放不再随机生成。
+Na área de controle remoto existente, foram adicionados gravação, pausa/retomada, encerramento e salvamento com nome, descarte de rascunho, reprodução 1/3/5 vezes, pausa/retomada/parada, renomeação e exclusão. O estilo expressivo antigo da página de servos agora envia intenções por `robot.head`/`robot.mouth`; pode ser ativado separadamente ou durante uma gravação. Os alvos gerados são registrados, então a reprodução não os sorteia novamente.
 
-首版每段 60 秒/6,000 事件/1 MiB，最多 20 段。内容保存在 Studio state 的 `motion-recordings/`，刷新与重启后保留。录制只包含被接受的网页移动、头/身体/嘴和已知声音，不含麦克风音频、摄像头视频、站坐/上力、设置或模型技能。缺少可靠技能完成回读，因此录制时在发送前拒绝踢腿、翻滚、捡取等技能；不把“停止发指令”当作物理技能已停止。
+A primeira versão limita cada gravação a 60 segundos, 6.000 eventos e 1 MiB, com até 20 gravações. Os dados ficam em `motion-recordings/` no estado do Studio e sobrevivem à atualização da página e à reinicialização. A gravação contém somente movimentos Web aceitos, intenções de cabeça/corpo/boca e sons conhecidos; não inclui áudio do microfone, vídeo da câmera, sentar/levantar, habilitação de torque, configurações ou habilidades do modelo. Como não há confirmação confiável de conclusão das habilidades, chutes, cambalhotas, coleta de objetos e outras habilidades são recusados antes do envio. Parar de enviar comandos não é tratado como prova de que uma habilidade física parou.
 
-录制/灵动/回放要求现有策略就绪、状态新鲜、无实体手柄冲突，且不自动站起或使能。每会话独立令牌，100ms 心跳、500ms 失效；退出Controle区、后台/失焦、断网、接管、手柄Conexão、卸力e状态变化会停止，重连不续播。暂停清除连续目标；继续恢复头/身体/嘴姿态，速度等待后续有效帧。迟到目标合并，不集 em 补发过时运动。ModeloArquivoConteúdo/Configuração指纹不匹配拒绝旧记录。
+A gravação, os movimentos expressivos e a reprodução exigem que a política existente esteja pronta, que o estado seja recente e que não haja conflito com um controle físico; não levantam o robô nem habilitam torque automaticamente. Cada sessão tem um token próprio, heartbeat a cada 100 ms e expiração após 500 ms. Sair da área de controle, ir para segundo plano ou perder foco, desconectar, assumir o controle, conectar um controle físico, aliviar torque ou mudar o estado interrompe a sessão; reconectar não retoma a reprodução. Pausar limpa os alvos contínuos; retomar recupera as intenções de cabeça/corpo/boca, enquanto a velocidade aguarda o próximo quadro válido. Alvos atrasados são agrupados, sem rajadas para tentar recuperar movimentos vencidos. Uma gravação é recusada quando a impressão digital do conteúdo/configuração do modelo não corresponde.
 
-## SoftwareValidação
+## Validação do software
 
-最终por meio de **351 项SoftwareVerificação**：203 项动作/原手柄后端（44 + 159）、140 项 HTTP/原虚拟手柄/总览/传感器回归、7 项 Node 心跳Teste、1 项新动作浏览器端到端Teste。独立需求 e 代码审查 de 问题均有复现Teste并修复，最终审查无待处理发现。
+Foram aprovadas **351 verificações de software**: 203 verificações de backend de movimento/controle original (44 + 159), 140 regressões de HTTP/controle virtual original/visão geral/sensores, 7 testes Node do heartbeat e 1 teste de ponta a ponta do novo fluxo no navegador. Os problemas encontrados nas revisões independentes de requisitos e de código foram reproduzidos com testes e corrigidos; a revisão final não encontrou pendências.
 
-在 `software/studio` 运行（Windows Python 3.13，运行时依赖使用现有 `deps/`）：
+Execute em `software/studio` (Windows, Python 3.13, dependências de execução existentes em `deps/`):
 
 ```powershell
 py -3.13 -X utf8 -I -c "import sys;sys.path[:0]=['deps','.'];import unittest;unittest.main(module=None,argv=['x','tests.test_motion_studio','tests.test_pad'])"
@@ -25,15 +25,15 @@ py -3.13 -X utf8 -I -c "import sys;sys.path[:0]=['deps','.'];import unittest;uni
 py -3.13 -X utf8 -I -c "import sys;sys.path[:0]=['deps','.'];import unittest;unittest.main(module=None,argv=['x','tests.test_motion_studio_e2e'])"
 ```
 
-浏览器测试使用真实 Studio、fake robotd 和 Edge，走通灵动录制、暂停/继续、命名保存、回放暂停/继续/停止、3 次有限循环、改名、刷新保留、切页停止和删除。实际发出的有效动作帧：录制 30、普通回放 18、三轮回放 82，见到轮次 `[1,2,3]`，控制台错误 `[]`。回放会合并迟到连续帧，所以不要求每个过时样本都补发。桌面 1440px、手机 390/320px 截图已人工检查；最终集成到 `studio-dev` 后又通过 44 项动作测试。
+O teste de navegador usou o Studio real, um `robotd` falso e o Edge. O fluxo completo de gravação expressiva, pausa/retomada, salvamento com nome, pausa/retomada/parada da reprodução, três ciclos limitados, renomeação, persistência após atualizar, parada ao trocar de página e exclusão foi concluído. Quadros de movimento válidos enviados: 30 na gravação, 18 em uma reprodução comum e 82 em três ciclos; os ciclos observados foram `[1,2,3]`, sem erros no console (`[]`). A reprodução agrupa quadros contínuos atrasados, portanto não tenta reenviar cada amostra vencida. As capturas de tela em desktop de 1440 px e celular de 390/320 px foram conferidas manualmente. Após a integração em `studio-dev`, outras 44 verificações de movimento passaram.
 
-证据在工作区 `artifacts/web-motion-20261025/`：`backend-final.log`、`regression.log`、`browser-final2/browser.json` 和 `browser-final2/shots/`。最终 203 与 140 项均为 OK。更早一轮原配对测试在 Windows 删除临时日志时遇到文件占用；其断言完成，单项连续 5 次及最终整套均通过。保留说明，不把既有 teardown 资源竞争报成新的配对修复。
+As evidências estão em `artifacts/web-motion-20261025/`: `backend-final.log`, `regression.log`, `browser-final2/browser.json` e `browser-final2/shots/`. As 203 e as 140 verificações finais foram aprovadas. Em uma rodada anterior, um teste existente de pareamento encontrou um arquivo de log temporário ainda em uso ao removê-lo no Windows. As asserções foram concluídas; o teste isolado passou cinco vezes seguidas e a suíte completa também passou. Esse problema preexistente de concorrência no encerramento não é apresentado como uma correção nova de pareamento.
 
-## duck-0de6 部署回读
+## Conferência da implantação em duck-0de6
 
-部署目标为用户选择的 `http://duck-0de6:8000/#/pad`。先用冻结 Git 字节比较设备文件，确认依赖版本一致、安装路径无越界或符号链接、Python 能编译；即时回读 `motion/control`、`policy_enabled=false`，没有舵机会话标记，才切换程序。
+O destino foi `http://duck-0de6:8000/#/pad`, escolhido pelo usuário. Antes da troca, os arquivos do dispositivo foram comparados com os bytes do Git congelado; as versões das dependências foram conferidas, os caminhos de instalação não ultrapassavam os limites nem usavam links simbólicos e o Python compilava. A troca só ocorreu após a leitura imediata de `motion/control`, `policy_enabled=false` e a confirmação de que não havia sessão de servo.
 
-Atualização 12 个Arquivo：
+Foram atualizados 12 arquivos:
 
 ```text
 studio/motion_store.py       studio/motion_studio.py
@@ -44,36 +44,36 @@ web/sensors.css              web/motion-heartbeat.js
 web/motion-studio.js         web/motion-studio.css
 ```
 
-其 em  app/sensors/pad  de 匹配资源包含此前本地内联摄像头 e 配对恢复Versão，避免仅替换入口Arquivo导致依赖不Completo。未启用真实摄像头，未改Rede、Modelo、主程序、padd、蓝牙或语音Serviço。
+Os recursos correspondentes de `app`, `sensors` e `pad` incluem versões locais anteriores com a integração da câmera e a recuperação do pareamento; isso evitou substituir apenas o arquivo de entrada e deixar dependências incompletas. A câmera real não foi ativada. Rede, modelo, programa principal, `padd`, Bluetooth e serviço de voz não foram alterados.
 
-仅停止并重新启动 `microduck-studio`，PID 从 980 变为 15333，当前 active。部署前后 `robotd=1105`、`padd=1138`、`duck-echo=1110` 及各自单调启动时间相同，三个服务均 active，语音 enabled。安装的 12 个文件均与清单 SHA-256 一致。
+Somente `microduck-studio` foi parado e iniciado novamente; o PID mudou de 980 para 15333, e o serviço está ativo. Antes e depois da implantação, `robotd=1105`, `padd=1138` e `duck-echo=1110` mantiveram os mesmos horários monotônicos de início. Os três serviços continuaram ativos e a voz permaneceu habilitada. Os hashes SHA-256 dos 12 arquivos instalados coincidiram com o manifesto.
 
-`/`、`/healthz`、`/pad.js` 及三个新静态文件均返回 HTTP 200；服务的 JS/CSS 字节哈希与安装文件一致，静态资源 `Cache-Control: no-cache`。日志显示 Studio 正常连上接口 v40 主程序，无本次启动异常。原有 11 个用户数据文件与停止服务时备份逐字节一致。
+`/`, `/healthz`, `/pad.js` e os três novos arquivos estáticos retornaram HTTP 200; os hashes dos bytes JS/CSS servidos coincidiram com os arquivos instalados, e os recursos estáticos tinham `Cache-Control: no-cache`. Os logs mostraram que o Studio se conectou normalmente ao programa principal pela interface v40, sem erros nesta inicialização. Os 11 arquivos de dados do usuário existentes permaneceram byte a byte iguais aos do backup feito ao parar o serviço.
 
-该设备现有网页登录保护，未经登录 `/api/session` 为 401；没有修改或绕过认证来取动作快照。应用打开控制页的请求为 queued，现有 Edge 最小化，因而不声称已经在真实登录页面看见入口或完成动作试验。已向用户发出刷新/登录及灵动试用问题；**真机动作效果仍待用户确认**。本轮未主动发送站起、行走、灵动或回放指令给真实鸭子。
+O dispositivo mantém a proteção de login Web existente; sem autenticação, `/api/session` retorna 401. A autenticação não foi alterada nem contornada para obter snapshots de movimento. O pedido para abrir a página de controle ficou na fila (`queued`) e a janela Edge estava minimizada; portanto, não se afirma que a entrada tenha sido vista na página autenticada real nem que o movimento tenha sido testado. O usuário foi informado para atualizar a página, entrar e experimentar os movimentos expressivos. **O efeito dos movimentos no robô real ainda aguarda confirmação do usuário.** Nesta rodada, nenhum comando de levantar, caminhar, executar movimentos expressivos ou reproduzir foi enviado ao pato real.
 
-私有备份：`/home/radxa/.microduck-backups/web-motion-20261025-e6610b5e21`，目录权限 0700，含更新前运行文件、用户 state、清单及成功回执。本地 `artifacts/web-motion-20261025/device-before/full-runtime/` 保存更新前相关程序，`deployment-manifest.json`、`deployment-result.json`、`device-verification.json` 保存完整核对结果；不纳入公开包。
+Backup privado: `/home/radxa/.microduck-backups/web-motion-20261025-e6610b5e21`, com permissões 0700, contendo os arquivos de execução anteriores à atualização, o estado do usuário, o manifesto e o recibo de sucesso. Os programas anteriores estão em `artifacts/web-motion-20261025/device-before/full-runtime/`; `deployment-manifest.json`, `deployment-result.json` e `device-verification.json` registram as conferências completas. Esses arquivos não fazem parte do pacote público.
 
-单机切换脚本在Instalação/Serviço健康VerificaçãoFalha时会恢复旧Arquivo并重启 Studio。本次未触发Falha回退；自动回退分支未做真机故障注入，不能称为已Validação de 通用 OTA 回退。人工恢复时先确保鸭子停止、没有Servo会话，再停止 Studio；按备份清单恢复原Arquivo，删除清单 em 此前不存在 de 新Arquivo，仅重新Inicialização Studio 并Validação HTTP。原 state Preservado；备份内Usuário state 仅作损坏恢复，不覆盖后来新保存 de 录制。
+Se a instalação ou a verificação de saúde do serviço falhar, o script de troca do dispositivo restaura os arquivos antigos e reinicia o Studio. Não houve falha que acionasse a reversão nesta rodada; o caminho automático não foi exercitado injetando uma falha real no dispositivo, portanto não se afirma que a reversão genérica de OTA tenha sido validada. Para restaurar manualmente, primeiro confirme que o pato está parado e sem sessão de servo; pare o Studio, restaure os arquivos conforme o manifesto de backup, remova somente arquivos novos que o manifesto indique como inexistentes antes da atualização, reinicie o Studio e valide o HTTP. O estado original foi preservado. O estado de usuário no backup serve apenas para recuperação em caso de corrupção e não deve substituir gravações salvas posteriormente.
 
-## 冻结交付 e 后续
+## Entrega congelada e próximos passos
 
-本地交付目录：工作区 `artifacts/web-motion-20261025/release/`，包含按 Git 提交生成的 Studio 源码归档、版本/哈希清单和本验收副本。包不含设备 state、个人密码、SSH 钥匙、家庭 Wi-Fi、配对或录制数据；它是维护与后续组件发布的可追溯输入，尚不是网页一键升级器。
+Diretório de entrega local: `artifacts/web-motion-20261025/release/`, com um arquivo-fonte do Studio gerado a partir do commit Git, manifesto de versões e hashes e uma cópia deste relatório. O pacote não contém o estado do dispositivo, senhas pessoais, chaves SSH, Wi-Fi doméstico, dados de pareamento ou gravações; é uma origem rastreável para manutenção e uma futura publicação de componentes, ainda não um atualizador Web de um clique.
 
-没有新建Imagem、启用 updaterd 或发布到远端。现有Imagem仍保持原Versão。Inferior一步先ConcluídoUsuário动作试用，再把语音e Studio 整理成统一Versão组件，设计通用Instalação/迁移/回退 e 新卡/旧系统两条验收；手柄/语音绑定保存回放仍是后续需求。
+Não foi criada uma nova imagem, ativado o `updaterd` nem publicado conteúdo remoto. A imagem existente continua na mesma versão. O próximo passo é concluir o teste de movimentos do usuário e, depois, organizar voz e Studio em um componente de versão unificada, definir instalação/migração/reversão genéricas e validar tanto cartões novos quanto sistemas existentes. Vincular controle e voz às reproduções salvas continua sendo um requisito futuro.
 
-## Usuário截图后 de 状态判断修正
+## Correção da avaliação de estado após a captura de tela do usuário
 
-Usuário随后提供了真实Web截图，确认已出现“动作录制 e 回放” e “灵动”入口；按钮灰色，站姿是“站着（保持）”，却仍提示“Superior个Modelo技能没有可Validação de Concluído状态，先手动停Inferior策略”。日志显示Usuário已经执行过坐/站 e “停Inferior（站好）”。
+Em seguida, o usuário enviou uma captura da Web real, confirmando que as entradas “Gravação e reprodução de movimentos” e “Movimentos expressivos” já apareciam. Os botões estavam desabilitados e a postura mostrava “em pé (mantendo a posição)”, mas a página ainda dizia: “Uma habilidade do modelo ainda não tem estado de conclusão validável; pare a política manualmente primeiro”. Os logs mostraram que o usuário já havia executado sentar/levantar e “parar a política (permanecer em pé)”.
 
-只读回读发现：`robot.policies.enabled=true`、`homed=true`、`sitting=false`，而 `robot.busStatus.policy_enabled=false`、`mode=motion`、`phase=control`、`homed=true`。主程序源码明确前者来自启动配置 `[policy] enabled`，不是运行开关。首版 `policy_feed` 错误地要求配置开关与运行开关同时为 false，导致真实机器停止策略后仍无法记录停止边界。原测试人为把两个开关同时置 false，未覆盖真机的配置保持 true 情况。
+Uma leitura somente de consulta encontrou `robot.policies.enabled=true`, `homed=true`, `sitting=false`, enquanto `robot.busStatus.policy_enabled=false`, `mode=motion`, `phase=control` e `homed=true`. O código do programa principal confirma que o primeiro campo vem da configuração de inicialização `[policy] enabled`; não é o interruptor de execução. A primeira versão de `policy_feed` exigia incorretamente que tanto a configuração quanto o interruptor de execução fossem falsos. Assim, mesmo depois de a máquina real parar a política, não era possível registrar essa transição. O teste original colocava os dois interruptores em `false` e não cobria a configuração real que permanece `true`.
 
-修正提交：`db970dd470f7cc1586b1ce3a4ed6a2792b1f71ce`。改用新鲜 `bus.policy_enabled=false` 确认实际停下；此后仍须观察运行开关 true、配置允许、双方 homed 及既有就绪条件，成功的 RPC 回执不单独解除阻塞。确认停下后的提示改成“点击上方「开始走」，等新鲜回读确认「准备好走」”。没有删除技能屏障或放宽普通开始动作的状态要求。
+Correção no commit `db970dd470f7cc1586b1ce3a4ed6a2792b1f71ce`. Agora, uma leitura recente `bus.policy_enabled=false` confirma que a política realmente parou. Depois disso, o sistema ainda observa o interruptor de execução ativo, a permissão de configuração, `homed` nos dois lados e as condições de prontidão existentes; um recibo RPC de sucesso, por si só, não libera o bloqueio. Após confirmar a parada, a instrução passou a ser “Clique em ‘Começar a caminhar’ acima e aguarde a leitura recente confirmar ‘Pronto para caminhar’”. A barreira de habilidades não foi removida e os requisitos de estado para o comando normal de início não foram relaxados.
 
-新增两项后端回归：配置持续启用时，停止→重新启用→新鲜就绪可恢复录制/灵动；只有配置禁用、运行开关仍开不能代替停止证据。测试先重现失败，再通过修改；最终 **205 项动作/原手柄后端通过**，独立审查也重跑 205 项通过且无待处理发现。浏览器额外走通“模型技能→停止站好→灰色且提示开始走→开始走→按钮恢复”，再执行完整录制回放/保存/切页流程；1 项浏览器测试通过，`skill_gate_recovered=true`、控制台错误 `[]`、1440/390/320px 均通过。首轮的 140 项其他回归和 7 项 Node 测试没有在本次窄修正后重跑，不将它们宣称为新版本全量重测。
+Foram adicionadas duas regressões de backend: com a configuração habilitada continuamente, parar → reativar → obter uma leitura recente de prontidão recupera a gravação e os movimentos expressivos; deixar a configuração desabilitada enquanto o interruptor de execução continua ligado não substitui a evidência de parada. O teste primeiro reproduziu a falha e passou após a correção. Ao final, **205 verificações de movimento/backend do controle original passaram**; a revisão independente repetiu as mesmas 205, sem pendências. O navegador também percorreu “habilidade do modelo → parar e permanecer em pé → botão desabilitado com instrução para começar a caminhar → começar a caminhar → botão habilitado” e, em seguida, o fluxo completo de gravação, reprodução, salvamento e troca de página. O teste de navegador passou: `skill_gate_recovered=true`, erros no console `[]` e layouts de 1440/390/320 px aprovados. As 140 regressões restantes e os 7 testes Node da primeira rodada não foram repetidos após esta correção específica; não são apresentados como uma nova validação completa da versão.
 
-已通过 SSH 部署 db970dd，仅更新 `studio/motion_studio.py`，仅重启 Studio（15333→21540）。原机器人、手柄和语音进程仍为 1105/1138/1110，启动时间保持一致；四个服务 active，语音 enabled。安装文件 SHA-256 为 `966c16c1f833baef6d314af899a0ad166a9c0ef8bda0ea2f60b9a015dd4f676b`，HTTP 与静态资源检查通过，原有 12 个用户数据文件逐字节保持。
+O commit db970dd foi implantado por SSH, atualizando somente `studio/motion_studio.py` e reiniciando somente o Studio (15333→21540). Os processos originais do robô, controle e voz continuaram com PIDs 1105/1138/1110 e os mesmos horários de início. Os quatro serviços estavam ativos e a voz habilitada. O SHA-256 do arquivo instalado foi `966c16c1f833baef6d314af899a0ad166a9c0ef8bda0ea2f60b9a015dd4f676b`; as verificações HTTP e de recursos estáticos passaram, e os 12 arquivos de dados do usuário permaneceram byte a byte iguais.
 
-本次私有备份为 `/home/radxa/.microduck-backups/web-motion-20261025-8ac5417e9b`（0700）。设备读取证据在工作区 `artifacts/web-motion-20261025/live-skill-gate-readback.json`，浏览器证据在同目录 `skill-gate-browser/`；单机更新清单、成功回执、服务/文件回读及新的冻结源码交付在 `artifacts/web-motion-20261025-skill-gate/`，原首轮记录保留。
+O backup privado desta troca está em `/home/radxa/.microduck-backups/web-motion-20261025-8ac5417e9b` (0700). A evidência lida do dispositivo está em `artifacts/web-motion-20261025/live-skill-gate-readback.json`; a evidência do navegador, em `skill-gate-browser/`. O manifesto de atualização do dispositivo, o recibo de sucesso, as leituras dos serviços/arquivos e o novo pacote de código-fonte congelado estão em `artifacts/web-motion-20261025-skill-gate/`; o registro da primeira rodada foi mantido.
 
-已告知Usuário刷新、点“开始走”、等待“准备好走”再开启“灵动”。Web入口已由Usuário截图确认，修正后 de 真实头嘴动作效果仍待Usuário回复；没有由本轮脚本主动发出运动指令，没有AtualizaçãoImagem或启用通用在线升级。
+O usuário foi orientado a atualizar a página, clicar em “Começar a caminhar”, esperar “Pronto para caminhar” e então ativar “Movimentos expressivos”. A captura do usuário confirmou que a entrada Web está visível. Ainda falta a resposta do usuário sobre os efeitos reais de cabeça e boca após a correção. Nenhum comando de movimento foi enviado pelo script desta rodada; a imagem não foi atualizada e o atualizador online genérico não foi ativado.

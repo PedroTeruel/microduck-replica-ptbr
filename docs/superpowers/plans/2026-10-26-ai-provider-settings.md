@@ -22,7 +22,7 @@ Files:
 
 ```python
 {
-  "profiles": [{"id": "generated-id", "name": "豆包", "provider": "doubao_ark",
+  "profiles": [{"id": "generated-id", "name": "Doubao", "provider": "doubao_ark",
     "base_url": "https://ark.cn-beijing.volces.com/api/v3", "model": "",
     "key_configured": False, "ready": False, "missing": ["model", "api_key"]}],
   "active_id": None,

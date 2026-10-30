@@ -1,394 +1,370 @@
-# imu_to_dxl Fiação表
+# Tabela de fiação da imu_to_dxl
 
-> 手工连线用。器件位号与 `microduck-replica/BOM.md` 一致。
-> 状态：方案稿，未经实物Validação。
+> Para conferir a montagem manual. As referências dos componentes coincidem com as de `microduck-replica/BOM.md`.
+> Estado: proposta de projeto, ainda sem validação física.
 
-## 器件清单（含立创编号）
+## Lista de componentes (inclui códigos da JLC)
 
-| 位号 | 器件 | 封装 | 立创编号 |
+| Ref. | Componente | Encapsulamento | Código JLC |
 |---|---|---|---|
 | U1 | STM32G031F8P6 | TSSOP-20 | C529334 |
 | U2 | LSM6DSV16XTR | LGA-14 | C5267406 |
 | U3 | SN74LVC2G241DCUR | VSSOP-8 | C10430 |
-| U4 | HT7533-1（30V 输入，100mA） | SOT-89 | C14289 |
-| F1 | PPTC MF-NSMF020X-2（24V / 200mA 保持） | 1206 | C210358 |
+| U4 | HT7533-1 (entrada de 30 V, 100 mA) | SOT-89 | C14289 |
+| F1 | PPTC MF-NSMF020X-2 (24 V / corrente de manutenção de 200 mA) | 1206 | C210358 |
 | D1 | TVS SMF12A | SOD-123FL | C2943870 |
-| R1, R2, R4, R5 | 10kΩ | **0603** | C25804 |
-| R6 | 150Ω | **0603** | C22808 |
-| D2 | BZT52C5V1 5.1V 稳压管 | **SOD-123** | C151588 |
-| C1–C4, C8 | 100nF 50V | **0603** | C14663 |
-| C5 | 4.7µF / 16V X5R | 0603 | C19666 |
-| C6 | 10µF / 25V X5R | 0805 | C15850 |
-| C7 | 10µF / 10V | 0603 | C19702 |
-| J1, J2 | B3B-EH-A（3P **2.5mm**，Dynamixel / Oficial HAT 线） | 直插 | C160259 |
-| **J4, J5** | **B3B-PH-K-S（3P 2.0mm 立式，对口飞特 `AMP2.0-3P`）** | 直插 | 待定 |
-| J3 | SWD+串口 6P 排针 PZ254V-11-06P | 直插 | C492405 |
+| R1, R2, R4, R5 | 10 kΩ | **0603** | C25804 |
+| R6 | 150 Ω | **0603** | C22808 |
+| D2 | Diodo Zener BZT52C5V1, 5,1 V | **SOD-123** | C151588 |
+| C1–C4, C8 | 100 nF, 50 V | **0603** | C14663 |
+| C5 | 4,7 µF / 16 V X5R | 0603 | C19666 |
+| C6 | 10 µF / 25 V X5R | 0805 | C15850 |
+| C7 | 10 µF / 10 V | 0603 | C19702 |
+| J1, J2 | B3B-EH-A (3 pinos, **2,5 mm**, cabo Dynamixel / HAT oficial) | Vertical | C160259 |
+| **J4, J5** | **B3B-PH-K-S (3 pinos, 2,0 mm, compatível com `AMP2.0-3P` Feetech)** | Vertical | A confirmar |
+| J3 | Barra de pinos de 6 vias para SWD + serial, PZ254V-11-06P | Vertical | C492405 |
 
-## Rede表（23 个Rede）
+## Tabela de redes (23 redes)
 
-### VDD_BUS —— Servo总线原压（2S 锂电 6.0–8.4V）
+### VDD_BUS — tensão original do barramento dos servos (bateria 2S, 6,0–8,4 V)
+
 J1.2 · J2.2 · **J4.2** · **J5.2** · F1.1
 
-> 四个座子的 `VDD_BUS` 走**直通铜皮**：`J1.2 → J2.2 → J5.2 → J4.2` 全程 0.76 mm。
+> `VDD_BUS` passa diretamente por trilhas largas nos quatro conectores: `J1.2 → J2.2 → J5.2 → J4.2`, com 0,76 mm em todo o trecho.
 
-### VDD_F —— 保险丝之后
-F1.2 · D1 阴极 · C6.1 · C8.1 · U4.2 (Vin)
+### VDD_F — depois do fusível
+
+F1.2 · cátodo D1 · C6.1 · C8.1 · U4.2 (Vin)
 
 ### +3V3
+
 U4.3 (Vout) · C7.1 · U1.4 (VDD/VDDA) · C4.1 · C5.1 · R2.2 ·
 U2.5 (Vdd_IO) · U2.8 (Vdd) · C1.1 · C2.1 · R1.2 ·
 U3.8 (VCC) · C3.1 · J3.6 · **R7.2**
 
 ### GND
-D1 阳极 · C6.2 · C8.2 · U4.1 (GND) · C7.2 ·
+
+Ânodo D1 · C6.2 · C8.2 · U4.1 (GND) · C7.2 ·
 U1.5 (VSS/VSSA) · C4.2 · C5.2 ·
 U2.2 (SDx) · U2.3 (SCx) · U2.6 (GND) · U2.7 (GND) · C1.2 · C2.2 ·
 U3.4 (GND) · C3.2 · J1.1 · J2.1 · J3.1 · **J4.3** · **J5.3** · C9.2 · X1.2
 
-### 复位
-| Rede | Conexão点 |
+### Reset
+
+| Rede | Pontos de conexão |
 |---|---|
 | NRST | U1.6 (PF2-NRST) · R2.1 |
 
-R2 另一端 (R2.2) 接 +3V3，构成 10k Superior拉。
+A outra extremidade de R2 (R2.2) liga-se a +3V3 e forma um pull-up de 10 kΩ.
 
-### 四个Superior拉电阻（R1/R2/R4/R5，另一端全部接 +3V3）
+### Quatro resistores pull-up (R1/R2/R4/R5, cada outro terminal ligado a +3V3)
 
-| 位号 | 拉住谁 | 为什么 |
+| Ref. | O que mantém em nível definido | Motivo |
 |---|---|---|
-| **R1** | `SPI_CS` | 上电与复位期间 PA4 高阻，CS 浮着可能被 IMU 误判成 I²C 模式，或把总线噪声当命令。**必须** |
-| **R2** | `NRST` | 芯片内部已有 ~40 kΩ 弱上拉，外加 10 kΩ 提高抗干扰。加强项 |
-| **R4** | `DE` | `1OE#` **低电平使能发送**。复位期间 PA1 高阻，此脚若浮成低电平，发送缓冲打开，本板会往总线上灌数据、与 15 个舵机撞车。**必须** |
-| **R5** | `DXL_DATA` | 总线空闲无人驱动时，`2A` 这个 CMOS 输入浮空会有穿透电流，UART 也可能把噪声当起始位。本板自己定义空闲电平，不依赖主机 |
+| **R1** | `SPI_CS` | Durante a energização e o reset, PA4 fica em alta impedância; se CS flutuar, a IMU pode ser identificada incorretamente como modo I²C ou interpretar ruído como comando. **Necessário** |
+| **R2** | `NRST` | O chip já tem pull-up interno fraco de ~40 kΩ; acrescentar 10 kΩ aumenta a imunidade a ruído. Reforço |
+| **R4** | `DE` | `1OE#` **habilita transmissão em nível baixo**. Durante o reset, PA1 fica em alta impedância; se esse pino flutuar baixo, o buffer transmite e pode conflitar com os 15 servos. **Necessário** |
+| **R5** | `DXL_DATA` | Quando ninguém aciona o barramento, a entrada CMOS `2A` pode flutuar, consumir corrente de passagem e fazer a UART interpretar ruído como bit de início. A placa define o nível de repouso sem depender do controlador |
 
-> R4  e  R5 是 2026-09-06 按Comunidade评审意见补 de 。此前只在 CS Superior做了Superior拉，
-> **同样 de 道理没有推广到 DE，这是漏项**。
+> R4 e R5 foram adicionados em 2026-09-06, seguindo a revisão da comunidade. Antes, havia pull-up somente em CS; **foi uma omissão não aplicar o mesmo princípio ao DE**.
 
-### IMU（SPI 四线 + 两路 em 断）
-| Rede | U1 (STM32) | U2 (LSM6DSV16X) | 其他 |
+### IMU (SPI de quatro fios + duas interrupções)
+
+| Rede | U1 (STM32) | U2 (LSM6DSV16X) | Outros |
 |---|---|---|---|
-| SPI_CS   | 11 · PA4 | 12 · CS       | R1.1（R1.2 接 +3V3 Superior拉） |
-| SPI_SCK  | 12 · PA5 | 13 · SCL      | |
-| SPI_MISO | 13 · PA6 | 1 · SDO/SA0   | |
-| SPI_MOSI | 14 · PA7 | 14 · SDA      | |
-| IMU_INT1 | 7 · PA0  | 4 · INT1      | |
-| IMU_INT2 | 15 · PB0/PA8 | 9 · INT2  | |
+| SPI_CS | 11 · PA4 | 12 · CS | R1.1 (R1.2 ligado a +3V3 como pull-up) |
+| SPI_SCK | 12 · PA5 | 13 · SCL | |
+| SPI_MISO | 13 · PA6 | 1 · SDO/SA0 | |
+| SPI_MOSI | 14 · PA7 | 14 · SDA | |
+| IMU_INT1 | 7 · PA0 | 4 · INT1 | |
+| IMU_INT2 | 15 · PB0/PA8 | 9 · INT2 | |
 
-### 半双工总线（U3 = SN74LVC2G241 双缓冲）
-| Rede | Conexão点 |
+### Barramento half-duplex (U3 = buffer duplo SN74LVC2G241)
+
+| Rede | Pontos de conexão |
 |---|---|
-| MCU_TX   | U1.9 (PA2 · USART2_TX) · U3.2 (1A) |
-| MCU_RX   | U1.10 (PA3 · USART2_RX) · U3.3 (2Y) |
-| DE       | U1.8 (PA1 · USART2_DE) · U3.1 (1OE#) · **R4.1** |
-| DXL_DATA | U3.6 (1Y) · U3.5 (2A) · **R5.1** · **R6.1** —— 缓冲侧 |
-| **DXL_BUS** | **R6.2** · **D2 阴极** · J1.3 · J2.3 · **J4.1** · **J5.1** —— Conexão器侧 |
-| **RX_EN** | **U1.1 (PB7/PB8)** · **U3.7 (2OE)** · **R7.1** —— 接收缓冲使能，2026-09-07 补 |
+| MCU_TX | U1.9 (PA2 · USART2_TX) · U3.2 (1A) |
+| MCU_RX | U1.10 (PA3 · USART2_RX) · U3.3 (2Y) |
+| DE | U1.8 (PA1 · USART2_DE) · U3.1 (1OE#) · **R4.1** |
+| DXL_DATA | U3.6 (1Y) · U3.5 (2A) · **R5.1** · **R6.1** — lado do buffer |
+| **DXL_BUS** | **R6.2** · **cátodo D2** · J1.3 · J2.3 · **J4.1** · **J5.1** — lado dos conectores |
+| **RX_EN** | **U1.1 (PB7/PB8)** · **U3.7 (2OE)** · **R7.1** — habilitação do buffer de recepção, adicionado em 2026-09-07 |
 
-`U3.7 (2OE)` 原为直接接 +3V3，2026-09-07 改成 **`RX_EN` 网络**：经 **R7 10 kΩ 上拉到
-+3V3**，同时引一根线到 **U1.1 (PB7/PB8)**。
+`U3.7 (2OE)` antes estava ligado diretamente a +3V3. Em 2026-09-07, foi movido para a rede `RX_EN`: há um pull-up R7 de 10 kΩ a +3V3 e uma ligação ao pino **U1.1 (PB7/PB8)**.
 
-**默认行为不变** —— MCU 复位期间 PB7 是高阻，R7 把 `2OE` 拉高，接收缓冲照常开着，
-Firmware一行不写也跟改动前完全一样。这是**预留**：想关掉发送期间 de 回显时，把 PB7 配成
-推挽输出拉低即可，同时打开 `MCU_RX` 脚的内部上拉，避免 `2Y` 高阻时 RX 浮空。
+**O comportamento padrão não muda** — durante o reset do MCU, PB7 fica em alta impedância; R7 mantém `2OE` alto e o buffer de recepção permanece habilitado. Sem alterações no firmware, o funcionamento continua igual. É uma opção reservada: para desabilitar a recepção durante a transmissão, colocar PB7 em nível baixo como saída push-pull e também habilitar o pull-up interno do pino `MCU_RX` para evitar que RX flutue quando `2Y` estiver em alta impedância.
 
-### 调试口 J3（6P，`PZ254V-11-06P` / `C492405`）
+### Porta de depuração J3 (6 pinos, `PZ254V-11-06P` / `C492405`)
 
-| 脚 | Rede | Fonte |
+| Pino | Rede | Origem |
 |---|---|---|
 | 1 | GND | |
 | 2 | SWDCLK | U1.19 (PA14) |
 | 3 | SWDIO | U1.18 (PA13) |
-| 4 | **UART_RX** | **U1.17** `PA12[PA10]` → 重映射为 **PA10** = `USART1_RX`；接 USB-TTL TX（3.3V电平） |
-| 5 | **UART_TX** | **U1.16** `PA11[PA9]` → 重映射为 **PA9** = `USART1_TX`；接 USB-TTL RX（3.3V电平） |
-| 6 | +3V3 | Depuração器 VTref 电压参考；不要接5V |
+| 4 | **UART_RX** | **U1.17** `PA12[PA10]` → remapeado para **PA10** = `USART1_RX`; ligar ao TX do USB-TTL (nível de 3,3 V) |
+| 5 | **UART_TX** | **U1.16** `PA11[PA9]` → remapeado para **PA9** = `USART1_TX`; ligar ao RX do USB-TTL (nível de 3,3 V) |
+| 6 | +3V3 | Referência de tensão VTref do depurador; não ligar a 5 V |
 
-**2026-09-21 勘误：** 按本Diretório2026-09-08[Princípio图 PDF](imu_to_dxl-Princípio图.pdf)复核，
-SWD接 **1、2、3、6** 脚；第4/5脚是串口。旧四针排线不能整排插到1–4脚，
-不能把第4脚当作3.3V或VTref。Conexão前核对实板一脚标记eDepuração器接口定义。
+**Correção de 2026-09-21:** conferimos o [PDF do esquemático de 2026-09-08](imu_to_dxl-Princípio图.pdf). SWD usa os pinos **1, 2, 3 e 6**; os pinos 4/5 são seriais. Não conecte em bloco um cabo antigo de quatro pinos nos pinos 1–4 nem use o pino 4 como 3,3 V ou VTref. Antes de conectar, confira a marcação do pino 1 na placa e a pinagem do depurador.
 
-脚 16/17 的重映射靠 `SYSCFG_CFGR1`（DS12992 Rev 3, Table 12 脚注 4）。
+O remapeamento dos pinos 16/17 é configurado por `SYSCFG_CFGR1` (DS12992 Rev 3, nota 4 da Tabela 12).
 
-**为什么不Superior USB**：STM32G031 **没有 USB 外设**（手册全文搜 USB 零命 em ，Development support
-只写 "serial wire debug (SWD)"）。加 USB 要额外一颗 CH340/CP2102，45×22 mm 板Superior不划算。
-Depuração用 SWD 就够：
+**Sem USB direto:** o STM32G031 **não tem periférico USB** (a busca no manual não encontrou USB; “Development support” menciona somente “serial wire debug (SWD)”). Adicionar USB exigiria um CH340/CP2102 e não compensa numa placa de 45×22 mm. SWD basta para depurar:
 
-| 方式 | é necessário什么 | Instruções |
+| Método | Necessário | Descrição |
 |---|---|---|
-| **RTT**（推荐） | J3 的 1、2、3、6 脚 | `probe-rs` 支持 CMSIS-DAP 跑 RTT，直接读目标 RAM，**不停 CPU**，对 50 Hz 控制环无影响 |
-| 串口 printf | J3  de  4/5 脚 + 任意 USB-TTL | 走 USART1 |
-| 半主机 semihosting | 只用 J3 | 每次 printf 停 CPU，Controle环会崩，**别用** |
-| ~~SWO / ITM~~ | — | **Cortex-M0+ 没有**，M3 以Superior才有 |
+| **RTT** (recomendado) | Pinos 1, 2, 3 e 6 de J3 | `probe-rs` oferece RTT via CMSIS-DAP, lê diretamente a RAM do alvo e **não interrompe a CPU**, sem afetar o ciclo de controle de 50 Hz |
+| printf serial | Pinos 4/5 de J3 + qualquer USB-TTL | Usa USART1 |
+| Semihosting | Somente J3 | Cada printf interrompe a CPU e prejudica o ciclo de controle; **não use** |
+| ~~SWO / ITM~~ | — | **Não existem no Cortex-M0+**; só em M3 ou superior |
 
-### Servo接口 —— 两套并存，⚠️ **脚序是相反 de **
+### Conectores de servo — duas séries; ⚠️ **as pinagens são opostas**
 
-板Superior有四个Servo总线座子，两两一组，三根线一一并联（同一个Eletrônica节点），
-**但两组 de 引脚顺序完全相反** —— 因为两家 de 线序本来就不同。
+A placa tem quatro conectores de barramento dos servos em dois pares; os três fios de cada par estão ligados em paralelo (mesmo nó elétrico), **mas a ordem dos pinos entre os pares é oposta**, pois os cabos dos dois fabricantes têm pinagens diferentes.
 
-**`J1` / `J2` —— `B3B-EH-A`，2.5 mm，配 Dynamixel / 官方 HAT 线束**
+**`J1` / `J2` — `B3B-EH-A`, 2,5 mm, para cabos Dynamixel / HAT oficial**
 
-| 脚 | Rede |
+| Pino | Rede |
 |---|---|
 | 1 | GND |
 | 2 | VDD_BUS |
 | 3 | **DXL_BUS** |
 
-**`J4` / `J5` —— `B3B-PH-K-S`，2.0 mm，配飞特 HD-1910 线束**
+**`J4` / `J5` — `B3B-PH-K-S`, 2,0 mm, para cabos Feetech HD-1910**
 
-| 脚 | Rede |
+| Pino | Rede |
 |---|---|
 | 1 | **DXL_BUS** |
 | 2 | VDD_BUS |
 | 3 | **GND** |
 
-> ⚠️ **千万别照着 `J1` 复制网络给 `J4`。** 飞特《HD-1910-C001 串型规格书》A/0
-> 第 3/7 页 6-7 项写明线端是 `1=Signal / 2=Vcc / 3=GND`，与 Dynamixel 侧头尾颠倒。
-> 好在 **2.0 mm  e  2.5 mm 插不进对方**，物理Superior杜绝了插错，只剩「画错」这一种可能。
-> 四个座子 de 脚序已于 2026-09-08 从 PCB 网表反读复核，全部落对。
+> ⚠️ **Não copie a pinagem de `J1` para `J4`.** A especificação Feetech “HD-1910-C001 串型规格书”, A/0, p. 3/7, itens 6–7, informa que o cabo tem `1=Signal / 2=Vcc / 3=GND`, em ordem inversa à ligação Dynamixel. Felizmente, os passos de **2,0 mm e 2,5 mm não se encaixam**; isso impede fisicamente a troca e deixa apenas o risco de erro no desenho. A pinagem dos quatro conectores foi conferida novamente na netlist da PCB em 2026-09-08 e está correta.
 >
-> 另注意 **`AMP2.0` 是 2.0 mm、`JST EH` 是 2.5 mm**，飞特线插不进 `J1`/`J2`，
-> ⚠️ 首板实测（2026-09-17）：`B3B-PH-K-S` 的**外壳**跟飞特插头不配，插不进去；削掉外壳只留针能用。v2 换成跟飞特线实配的座子。
-> 反之亦然 —— 用哪套Servo就插哪一组。
+> Note também que `AMP2.0` tem 2,0 mm e `JST EH`, 2,5 mm: o cabo Feetech não entra em `J1`/`J2`.
+> ⚠️ Teste físico da primeira placa (2026-09-17): a carcaça do `B3B-PH-K-S` não encaixa no plugue Feetech; funcionou somente após remover a carcaça e manter os pinos. Na v2, usar um conector testado com o cabo real.
+> O inverso também vale: conecte cada tipo de servo somente ao par correto.
 
-> 📌 **脚 3 此前本表误记为 `DXL_DATA`**。2026-09-06 补入 `R6` 150 Ω 串阻后，
-> 缓冲侧（`DXL_DATA`）与连接器侧（`DXL_BUS`）已是两个网络，连接器上是 `DXL_BUS`。
-> 2026-09-08 更正。
+> 📌 **O pino 3 estava identificado incorretamente como `DXL_DATA` nesta tabela.** Após a inclusão do resistor em série R6 de 150 Ω em 2026-09-06, o lado do buffer (`DXL_DATA`) e o lado dos conectores (`DXL_BUS`) são redes distintas. O conector usa `DXL_BUS`. Corrigido em 2026-09-08.
 
-## 悬空脚
+## Pinos sem conexão
 
-- U1：**3 (PC15-OSC32_OUT)、20 (PB3/PB4/PB5/PB6)**
-  - 3 脚已引到焊盘， e  2 脚一起构成有源晶振预留位（默认不贴），见Inferior方「时钟」
-  - 20 脚是唯一完全空闲 de  GPIO（并了 PB3/PB4/PB5/PB6 四个口，最灵活），留作后用
-  - 1 脚 (PB7/PB8) 原本空闲，2026-09-07 起用作 `RX_EN`
-  - 2 脚 (PC14-OSC32_IN) 接 `OSC_IN`、16/17 脚 (PA9/PA10) 接 `UART_TX`/`UART_RX`
-    —— 此前本表误列为悬空，2026-09-07 更正
-- U2：10 (OCS_Aux)、11 (SDO_Aux) —— 辅助 SPI 不用，ST DS13510 允许悬空；保守做法是 OCS_Aux 接 Vdd_IO
+- U1: **3 (PC15-OSC32_OUT) e 20 (PB3/PB4/PB5/PB6)**
+  - O pino 3 chega aos pads e, junto com o pino 2, forma a posição reservada para cristal ativo (não montado por padrão); consulte abaixo a seção “Clock”.
+  - O pino 20 é o único GPIO completamente livre (agrupa PB3/PB4/PB5/PB6 e oferece mais flexibilidade), reservado para uso futuro.
+  - O pino 1 (PB7/PB8) estava livre, mas desde 2026-09-07 é usado por `RX_EN`.
+  - O pino 2 (PC14-OSC32_IN) está ligado a `OSC_IN`; os pinos 16/17 (PA9/PA10) estão ligados a `UART_TX`/`UART_RX`. Antes estavam listados por engano como livres; corrigido em 2026-09-07.
+- U2: 10 (OCS_Aux) e 11 (SDO_Aux) — SPI auxiliar não utilizado; ST DS13510 permite deixá-los abertos. Como opção conservadora, ligar OCS_Aux a Vdd_IO.
 
-**U2.2 (SDx)  e  U2.3 (SCx) 必须接地**，不可悬空 —— ST DS13510 Rev 1, Table 1。
+**U2.2 (SDx) e U2.3 (SCx) devem ser ligados ao terra**; não os deixe em aberto — ST DS13510 Rev 1, Tabela 1.
 
-## 时钟：用内部 HSI16，晶振位预留不贴
+## Clock: usar o HSI16 interno e deixar a posição do cristal reservada, sem montá-lo
 
-**这个封装接不了无源晶振。** DS12992 Rev 3, Table 12 (p.36)：TSSOP20  de  2 脚
-(`PC14-OSC32_IN`) 附加功能含 `OSC_IN`，但 3 脚 (`PC15-OSC32_OUT`) 只有 `OSC32_OUT`、
-**没有 `OSC_OUT`**；`PF0`/`PF1` 在这个封装根本没引出来。无源晶振要两个脚才能起振。
+**Este encapsulamento não aceita cristal passivo.** DS12992 Rev 3, Tabela 12 (p. 36): o pino 2 do TSSOP20 (`PC14-OSC32_IN`) tem a função alternativa `OSC_IN`, mas o pino 3 (`PC15-OSC32_OUT`) oferece somente `OSC32_OUT`, **não `OSC_OUT`**. `PF0`/`PF1``§ também não são expostos neste encapsulamento. Um cristal passivo precisa dos dois pinos de oscilador.
 
-| 方案 | 可行性 |
+| Opção | Viabilidade |
 |---|---|
-| 无源高速晶振 | ❌ 缺 `OSC_OUT` |
-| 有源晶振走 HSE 旁路（灌进 2 脚，3 脚可作 `OSC_EN`） | ✅ |
-| 32.768 kHz LSE 无源晶振 | ✅ 但不能给 PLL 供时钟，只能校准 HSI16 |
+| Cristal passivo de alta frequência | ❌ Falta `OSC_OUT` |
+| Cristal ativo em HSE bypass (clock externo no pino 2; pino 3 pode ser `OSC_EN`) | ✅ |
+| Cristal LSE passivo de 32,768 kHz | ✅, mas não alimenta o PLL; serve apenas para calibrar o HSI16 |
 
-HSI16 精度（Table 41, p.64）：出厂 −0.75%/+0.5%，0–85 °C 温漂 ±1%，电压漂移 ±0.1%
-→ 最坏约 **−1.85% / +1.55%**。1 Mbps UART 典型容差 ±3%，够用但余量不多。
+Precisão do HSI16 (Tabela 41, p. 64): −0,75%/+0,5% de fábrica, desvio térmico de ±1% entre 0–85 °C e desvio com tensão de ±0,1%. Pior caso aproximado: **−1,85% / +1,55%**. A tolerância típica da UART a 1 Mbps é ±3%; funciona, mas sem muita margem.
 
-**做法**：2、3 脚引到焊盘，留一个 3225 有源晶振位 + 去耦位。最初默认不贴，2026-09-08 起 X1 / R3 / C9 改为默认贴片；
-Firmware先用 HSI16，实测 1 Mbps 有误码再启用 HSE 旁路。
-注意：图里 X1 的 `Tri-state` 使能脚是**固定接 3.3 V** 的，上面说的「3 脚（PC15）可作 `OSC_EN`」没有画进去，PC15 空着。首板要 MCU 控晶振就飞线 PC15 → X1.1；见 README「评审记录 · 2026-09-16」。
+**Implementação:** levar os pinos 2/3 aos pads e reservar a posição para cristal ativo 3225 e desacoplamento. Inicialmente não seria montado; desde 2026-09-08, X1/R3/C9 são montados por padrão.
+O firmware começa com HSI16 e muda para HSE bypass somente se testes a 1 Mbps apresentarem erros.
+A habilitação `Tri-state` de X1 no esquemático fica **ligada permanentemente a 3,3 V**. A opção de usar o pino 3 (PC15) como `OSC_EN` não foi desenhada, e PC15 permanece livre. Para controlar o cristal pelo MCU na primeira placa, instalar um fio PC15 → X1.1; consulte “Registro das revisões · 2026-09-16” no README.
 
-## 使能极性Instruções
+## Instruções sobre a polaridade de habilitação
 
-`1OE#` 低电平使能发送缓冲，`2OE` 接高电平使接收缓冲常开。
+`1OE#` habilita o buffer de transmissão em nível baixo; `2OE` em nível alto mantém aberto o buffer de recepção.
 
-- PA1 是 USART2 的硬件 DE 脚，配置 `CR3.DEP = 1`（DE 低有效），收发切换由硬件完成
-- 接收常开意味着发送时会在 RX Superior收到自己 de 回显，Firmware按发送长度丢弃即可
-- 备选方案是 `2OE` 也接 DE（发送时关掉接收缓冲），但那样发送期间 MCU 的 RX 脚悬空，重新使能时可能产生假起始位，不推荐
-- **2026-09-07 改进**：`2OE` 不再硬接 +3V3，而是经 R7 10 kΩ 上拉、同时引到 `U1.1 (PB7/PB8)`。
-  默认仍是常开（行为Inalterado），但Firmware多了一个选项 —— 想关接收时拉低 PB7，并打开 MCU RX 脚 de 
-  内部Superior拉解决浮空。比接 DE 更灵活：关不关、何时关，由Firmware自己定
+- PA1 é o pino de DE por hardware da USART2; configurar `CR3.DEP = 1` (DE ativo em nível baixo) deixa a troca entre transmissão e recepção a cargo do hardware.
+- Com a recepção sempre ativa, os bytes enviados retornam pelo RX como eco; o firmware só precisa descartá-los conforme o tamanho transmitido.
+- Uma alternativa é ligar `2OE` também ao DE, desligando o buffer de recepção durante a transmissão. Porém, o pino RX do MCU ficaria flutuando e poderia gerar um falso bit de início ao reativar. Não recomendado.
+- **Ajuste de 2026-09-07:** `2OE` deixou de ficar ligado diretamente a +3V3; agora tem pull-up R7 de 10 kΩ e uma ligação a `U1.1 (PB7/PB8)`. O padrão continua com o buffer sempre ativo (comportamento inalterado), mas o firmware pode desativar a recepção colocando PB7 em nível baixo e habilitando o pull-up interno do RX para evitar que flutue. Mais flexível que ligar ao DE: o firmware escolhe se e quando desativar.
 
-## HD-1910-C001 实参（飞特Oficial产品页，预售期）
+## Especificações reais do HD-1910-C001 (página oficial Feetech durante a pré-venda)
 
-飞特为小鸭子专门做 de 一颗，Página标题即「**Código aberto小鸭Servo** —— 串行总线Servo，专为小鸭子 AI 玩偶定制开发」。
-Servo本体标注：**「三针接口 · TTL串行总线」**。
+A Feetech fez um servo especificamente para o pato pequeno. O título da página era “**Servo de código aberto para o pato pequeno — servo serial de barramento, desenvolvido especialmente para o brinquedo de IA**”.
+O corpo do servo identifica a interface como **“conector de três pinos · barramento serial TTL”**.
 
-| 项 | 值 |
+| Item | Valor |
 |---|---|
-| 电压范围 | **5 V – 8.4 V** |
-| 堵转扭力 | **10 kg·cm = 0.98 N·m** |
-| 额定负载 | **3.0 kg·cm = 0.294 N·m** |
-| 空载速度 | 0.09 s/60°（110 RPM） |
-| **静态电流** | **21 mA** |
-| **空载电流** | **140 mA** |
-| **额定电流** | **500 mA** |
-| **堵转电流** | **1.8 A** |
-| 外观尺寸 | 34 × 20 × 23 mm |
-| 重量 | 22.5 ± 2 g |
-| 外壳 | PA + Fiber |
+| Faixa de tensão | **5 V – 8,4 V** |
+| Torque de travamento | **10 kg·cm = 0,98 N·m** |
+| Carga nominal | **3,0 kg·cm = 0,294 N·m** |
+| Velocidade sem carga | 0,09 s/60° (110 RPM) |
+| **Corrente em repouso** | **21 mA** |
+| **Corrente sem carga** | **140 mA** |
+| **Corrente nominal** | **500 mA** |
+| **Corrente de travamento** | **1,8 A** |
+| Dimensões externas | 34 × 20 × 23 mm |
+| Massa | 22,5 ± 2 g |
+| Carcaça | PA + fibra |
 
-尺寸 e  XL330（20×34×26 mm）同档，MecânicaSuperior近似可替换；扭矩比 XL330-M288（0.52 N·m）强近一倍。
+As dimensões são da mesma categoria do XL330 (20×34×26 mm), com mecânica quase intercambiável; o torque é quase duas vezes o do XL330-M288 (0,52 N·m).
 
-> ⚠️ 别把 `HL-2915-C002` 规格书里的电气参数套到这颗上 —— 那是 12 V（9–14 V）机型。
-> 可通用 de 只有Conexão器定义 e Protocolo部分。
+> ⚠️ Não aplique a este servo os parâmetros elétricos da especificação `HL-2915-C002` — é um modelo de 12 V (9–14 V).
+> Só podem ser compartilhados os dados gerais de conector e protocolo.
 
-### ⚠️ J1↔J2 直通Caminho de 过流
+### ⚠️ Risco de sobrecorrente no caminho direto J1↔J2
 
-J1 / J2 三根线一一并联，**本板若挂在链条 em 间，Inferior游全部Servo电流都流经本板 de Conexão器 e 铜箔**：
+Os três fios de J1/J2 estão ligados um a um. **Se a placa ficar no meio da cadeia, toda a corrente dos servos a jusante passa por seus conectores e trilhas de cobre:**
 
-| 工况 | 单个 | ×15 |
+| Condição | Por servo | ×15 |
+|---|---:|---:|
+| Repouso | 21 mA | 0,3 A |
+| Movimento sem carga | 140 mA | 2,1 A |
+| **Carga nominal** | **500 mA** | **7,5 A** |
+| Travamento | 1,8 A | 27 A |
+
+A corrente nominal do **JST EH é somente 3 A**.
+
+> O F1 (PPTC de 200 mA) **não é afetado**: está somente em série no ramal de alimentação desta placa (`VDD_BUS → F1 → VDD_F → U4`), não no caminho direto J1→J2.
+
+**Escolha entre duas opções:**
+
+1. **Colocar a placa na extremidade da cadeia** (nó folha), usar somente J1 e deixar J2 vazio ou conectar apenas um servo — passam cerca de 12 mA pela placa. **Recomendado**.
+2. Se for obrigatório colocá-la no meio da cadeia, usar **cobre largo** (≥ 2 mm ou plano de cobre) para `VDD_BUS` e `GND` entre J1 e J2 e confirmar que a corrente dos servos a jusante não passe de 3 A.
+
+## Pinagem Feetech (confirmada pela especificação oficial)
+
+**Fonte:** especificação Feetech “HL-2915-C002 串型规格书”, A/0, 2026-02-27, p. 4, itens 6–7.
+
+`
+6-7  Conectores e cabos
+     Tipo             AMP-3
+     Material         PP
+     Comprimento      15 cm / 25 cm
+     Definição dos pinos: 1 GND
+                          2 Vcc
+                          3 Signal/TTL
+`
+
+**`1=GND / 2=Vcc / 3=Signal`, exatamente igual ao Dynamixel → a ligação atual de J1/J2 está correta.**
+
+Evidência relacionada: o componente do conector no conjunto `HD-1910-C001.stp` chama-se **`AMP-3P`**, e o conjunto contém `HL-2915-C002-20260409_ASM` — os dois modelos compartilham a plataforma, portanto a definição da interface é comum.
+
+### Outros dados úteis da mesma especificação
+
+| Item | Valor | Significado |
 |---|---|---|
-| 静态 | 21 mA | 0.3 A |
-| 空载转动 | 140 mA | 2.1 A |
-| **额定负载** | **500 mA** | **7.5 A** |
-| 堵转 | 1.8 A | 27 A |
+| 7-2 Tipo de protocolo | Half Duplex Asynchronous, **8 bits / 1 stop / sem paridade** | Igual ao projeto desta placa |
+| 7-4 Baud rate | 38.400 a 1 Mbps; **padrão de fábrica: 1 Mbps** | Mesma velocidade Dynamixel |
+| 7-3 Faixa de IDs | 0–253; **ID padrão de fábrica: 1** | Reprogramar individualmente os 15 servos; ID 200 da placa não conflita |
+| 12 **Nível lógico alto** | **2–5 V** | Consulte abaixo |
+| 12 Nível lógico baixo | 0–0,45 V | |
+| 6-6 Sensor angular | Encoder magnético de 12 bits | Encoder magnético ⇒ **ordem little-endian** |
 
-而 **JST EH 额定电流仅 3 A**。
+**Confira os níveis de sinal nos dois sentidos:**
 
-> F1（200 mA PPTC）**不受影响** —— 它只串在本板自取电那一路
-> （`VDD_BUS → F1 → VDD_F → U4`），不在 J1→J2 直通路径上。
+1. Esta placa aciona o barramento — o `SN74LVC2G241` alimentado a 3,3 V fornece ~3,3 V, dentro da faixa de nível alto de 2–5 V exigida pelo servo ✅
+2. Os servos acionam o barramento — podem fornecer **5 V**; alimentado a 3,3 V, o 74LVC **tolera 5,5 V na entrada** ✅ (essa é a razão de escolher LVC em vez de LV/HC).
 
-**二选一：**
+> ⚠️ A especificação usada aqui é do **HL-2915-C002 (12 V, 9–14 V)**, não do HD-1910 (5–8,4 V).
+> **Não misture parâmetros elétricos** — faixas de alimentação, corrente de travamento e limites de proteção contra sobretensão são diferentes.
+> Só são comuns os dados de **conector e protocolo**.
 
-1. **把本板挂在链条末端**（叶子节点），只用 J1，J2 空置或只接 1 个Servo —— 流经本板 de 仅约 12 mA。**推荐**
-2. 若必须置于链中，PCB 上 `VDD_BUS` 与 `GND` 从 J1 到 J2 走**大铜皮**（≥ 2 mm 或直接铺铜），
-   并核算Inferior游ServoQuantidade不超过 3 A
+### Contexto: as camadas físicas das séries Feetech são diferentes
 
-## 飞特接口定义（Oficial规格书确认）
+O texto dos manuais oficiais de tabelas de memória das séries (em <http://doc.feetech.cn>, interface `getQr/{q}`):
 
-**Fonte**：飞特《HL-2915-C002 串型规格书》A/0，2026-02-27，第 4 页 6-7 项。
-
-```
-6-7  连接器和电缆 Connector and Cable
-     类型 Type        AMP-3
-     材质 Material    PP
-     线长 Length      15CM / 25CM
-     引脚定义         1  GND
-     Pin Definition   2  Vcc
-                      3  Signal/TTL
-```
-
-**`1=GND / 2=Vcc / 3=Signal`，与 Dynamixel 完全一致 → J1/J2 现有接法正确。**
-
-关联证据：`HD-1910-C001.stp` 装配体里连接器零件名是 **`AMP-3P`**，且该装配体包含
-`HL-2915-C002-20260409_ASM` —— 两款共用平台，接口定义通用。
-
-### 同一份规格书里其它可用条目
-
-| 项 | 值 | 意义 |
+| Série | Nível físico | Baud rate padrão |
 |---|---|---|
-| 7-2 Protocolo类型 | Half Duplex Asynchronous，**8bit / 1stop / No Parity** |  e 本板一致 |
-| 7-4 波特率 | 38400 ~ 1 Mbps，**出厂默认 1 Mbps** |  e  Dynamixel 同速 |
-| 7-3 ID 范围 | 0–253，**出厂默认 ID 1** | 15 个Servo需逐个改 ID；本板用 200 不冲突 |
-| 12 **信号高电平** | **2 V ~ 5 V** | 见Inferior |
-| 12 信号低电平 | 0.0 V ~ 0.45 V | |
-| 6-6 角度传感器 | 12 Bits 磁编码 | 磁编码 ⇒ **小端字节序** |
-
-**信号电平两个方向都要看**：
-
-1. 本板驱动总线 —— `SN74LVC2G241` 在 3.3 V 供电下输出约 3.3 V，落在舵机要求的 2–5 V 高电平窗口内 ✅
-2. Servo驱动总线 —— 它可能输出到 **5 V**；74LVC 在 3.3 V 供电时**输入耐 5.5 V** ✅
-   （选 LVC 而非 LV/HC 正好卡住这条）
-
-> ⚠️ 该规格书是 **HL-2915-C002（12 V，9–14 V）**，不是 HD-1910（5–8.4 V）。
-> **EletrônicaParâmetros不可混用** —— 供电范围、堵转电流、过压保护阈值都不同。
-> 通用 de 只是**Conexão器定义 e Protocolo**部分。
-
-### 背景：飞特不同系列 de 物理层不一样
-
-官方各系列内存表手册（<http://doc.feetech.cn>，接口 `getQr/{q}`）原文：
-
-| 系列 | 电平 | 默认波特率 |
-|---|---|---|
-| **STS**（磁编码） | **TTL 单总线** | **1M** |
-| SCS（电位器） | TTL 单总线 | 1M / 500k |
-| SMS（磁编码） | **RS485** | 115200 |
-| HLS（磁编码） | 未注明 | 1M |
+| **STS** (encoder magnético) | **TTL, barramento único** | **1M** |
+| SCS (potenciômetro) | TTL, barramento único | 1M / 500k |
+| SMS (encoder magnético) | **RS485** | 115200 |
+| HLS (encoder magnético) | Não indicado | 1M |
 | SHC | CANopen | 125k |
 
-「飞特 = TTL 单线」**只对 STS/SCS/HL 这一支成立**，SMS 是 RS485。换系列前先查它 de 手册。
+A afirmação “Feetech = TTL de fio único” **vale somente para STS/SCS/HL**; SMS usa RS485. Consulte o manual antes de trocar de série.
 
-## Protocolo自动识别（不用跳线、不用拨码）
+## Detecção automática de protocolo (sem jumper ou chave DIP)
 
-两家包头天然可分，判别点是**第 3、4 字节**：
+Os cabeçalhos dos pacotes das duas famílias são naturalmente distinguíveis; o critério são os **bytes 3 e 4**:
 
-| | 包头 | 后续 | 校验 |
+| | Cabeçalho | Campos seguintes | Checksum |
 |---|---|---|---|
-| Dynamixel V2 | `FF FF` | **`FD 00`** | CRC-16（poly 0x8005） |
-| 飞特 STS/SCS | `FF FF` | `ID` + `LENGTH` | `~(ID+LENGTH+INST+参数)` |
+| Dynamixel V2 | `FF FF` | **`FD 00`** | CRC-16 (poly 0x8005) |
+| Feetech STS/SCS | `FF FF` | `ID` + `LENGTH` | `~(ID+LENGTH+INST+parâmetros)` |
 
-无歧义：飞特包第 3 字节是 ID（pode是 0xFD），但**第 4 字节 LENGTH 永远不会是 0**
-（最小为 2 = 指令 + 校验和）。所以 `FF FF FD 00` 只可能是 V2。
+A distinção é inequívoca: o byte 3 Feetech é o ID (que pode ser `0xFD`), mas o **byte 4, LENGTH, nunca é 0** (mínimo de 2: instrução + checksum). Portanto `FF FF FD 00` só pode ser V2.
 
-```
-状态：未知 / 已锁 V1 / 已锁 V2
+`
+Estado: desconhecido / V1 bloqueado / V2 bloqueado
 
-未知时，收到 FF FF 开头的包：
-    if 字节[2]==0xFD && 字节[3]==0x00:
-        按 V2 拆，算 CRC-16 → 过了记一票 V2
-    else:
-        按 V1 拆，算 ~sum   → 过了记一票 V1
-    连续 3 票一致 → 锁定
+Quando desconhecido e chega um pacote iniciado por FF FF:
+    se byte[2]==0xFD e byte[3]==0x00:
+        decodificar como V2 e calcular CRC-16 → se válido, contar uma confirmação V2
+    caso contrário:
+        decodificar como V1 e calcular ~sum → se válido, contar uma confirmação V1
+    após 3 confirmações consecutivas iguais → bloquear o protocolo
 
-锁定后：只按锁定协议解析，回复也用同一种
-兜底：连续 100 包全解析失败 → 解锁重新识别
-```
+Depois de bloqueado: analisar e responder somente usando o protocolo selecionado
+Fallback: 100 pacotes consecutivos sem conseguir analisar → desbloquear e detectar novamente
+`
 
-以Inferior均以**飞特Oficial《ServoSCS通信Protocolo》原文**为准：
+As definições seguintes são baseadas no texto oficial Feetech **“Servo SCS Communication Protocol”**:
 
-- 帧格式：**1 起始位 + 8 Dados位 + 无校验 + 1 停止位**，共 10 位
-- 字头：连续两个 `0xFF`
-- ID 范围 **0～253**（`0x00`～`0xFD`），**广播 ID = 254（`0xFE`）**
-- Dados长度 **Length = Parâmetros个数 N + 2**，所以**最小为 2，永远不会是 0** ← 判别无歧义 de 依据
-- 校验和 = `~(ID + Length + Instruction + Param1 + … + ParamN)`，超 255 取低字节
-- 同步读 `0x82`、同步写 `0x83`、PING `0x01`、读 `0x02`、写 `0x03`
-- ⚠️ **多字节Parâmetros de 字节序按Servo类型分**：「电位器类型Servo为**大端**（高字节在前），磁编码类型Servo为**小端**（低字节在前）」
+- Quadro: **1 bit de início + 8 bits de dados + sem paridade + 1 bit de parada**, total de 10 bits.
+- Cabeçalho: dois bytes `0xFF` consecutivos.
+- Faixa de ID: **0–253** (`0x00`–`0xFD`); **ID de broadcast = 254 (`0xFE`)**.
+- Tamanho dos dados: **`Length = N` parâmetros + 2**; mínimo 2, nunca 0 — base da distinção inequívoca de protocolo.
+- Checksum = `~(ID + Length + Instruction + Param1 + … + ParamN)`, usando somente o byte menos significativo quando a soma excede 255.
+- Leitura sincronizada `0x82`, escrita sincronizada `0x83`, PING `0x01`, leitura `0x02`, escrita `0x03`.
+- ⚠️ A ordem dos bytes de parâmetros com mais de um byte depende do tipo de servo: **servos com potenciômetro usam big-endian** (byte alto primeiro); **servos com encoder magnético usam little-endian** (byte baixo primeiro).
 
-三个要点：
+Três pontos importantes:
 
-1. **必须锁定，不能逐包判** —— 总线有噪声，某包被干扰成 `FD 00` 的样子会导致来回横跳
-2. **回复用同一Protocolo** —— 不只解析要分支，组包也要
-3. **兜底解锁** —— 换Servo品牌时不必重烧Firmware
+1. **É necessário bloquear a escolha; não decida pacote a pacote** — ruído pode fazer um pacote parecer `FD 00` e causar alternância indevida.
+2. **Responder usando o mesmo protocolo** — o ramo de seleção precisa se aplicar tanto à análise quanto à montagem de pacotes.
+3. **Permitir desbloqueio de segurança** — trocar a marca do servo não exige regravar o firmware.
 
-从机 ID 两边都用 **200**， e  15 个Servo（通常编 1–15）不冲突。
+Ambos os lados usam ID de escravo **200**, que não conflita com os 15 servos (normalmente IDs 1–15).
 
-> 飞特 STS 的 `Return Delay Time` 默认 0，且手册标注 "Not functional on STS" ——
-> 寄存器不生效，回复延迟完全由Firmware决定。
+> O `Return Delay Time` dos STS Feetech tem padrão 0 e o manual indica “Not functional on STS”; esse registrador não tem efeito e o atraso das respostas é determinado integralmente pelo firmware.
 
-## 封装口径：阻容一律 0603
+## Encapsulamentos: todos os passivos em 0603
 
-所有阻容用 **0603**，D2 用 **SOD-123**，不用 0402/SOD-323。
+Usar **0603** para todos os resistores/capacitores e **SOD-123** para D2, sem 0402/SOD-323.
 
-理由不是手焊 —— 板Superior有 LGA-14  de  LSM6DSV16X，本来就得Superior热风。
-**真正 de 理由是Depuração期返修**：串阻从 150 Ω 试到 33 Ω、摘掉某个Superior拉、补一颗去耦，
-0603 拿烙铁几秒就能改。第一版没Validação过 de 板子必然要改几次。
+A razão não é soldagem manual — a LSM6DSV16X LGA-14 já exige ar quente. **A razão real é facilitar retrabalho durante a depuração**: mudar o resistor em série de 150 Ω para 33 Ω, remover um pull-up ou acrescentar um capacitor de desacoplamento. Em 0603, cada alteração leva segundos com um ferro. Uma placa de primeira versão ainda sem validação física certamente precisará de modificações.
 
-代价：11 个器件多占约 16 mm²，不到板面积 2%。而且 0603 这几个值全在立创**基础库**
-（10 kΩ `C25804` · 150 Ω `C22808` · 33 Ω `C23140` · 100 nF `C14663`），比 0402 的扩展库还省上料费。
+Custo: 11 componentes ocupam cerca de 16 mm² a mais, menos de 2% da área da placa. Os valores 0603 usados estão todos no catálogo **básico** da JLC (10 kΩ `C25804` · 150 Ω `C22808` · 33 Ω `C23140` · 100 nF `C14663`), com menor custo de montagem que a biblioteca estendida 0402.
 
-> C6（10 µF/25 V）保持 0805；C5（4.7 µF）、C7（10 µF）本来就是 0603。
+> C6 (10 µF/25 V) permanece 0805; C5 (4,7 µF) e C7 (10 µF) já eram 0603.
 
-## Dados线保护（照 HAT  de 做法）
+## Proteção da linha de dados (seguindo a HAT)
 
-```
-U3.6 (1Y) ──┬─ DXL_DATA ─┬── R5 10k → 3.3V
+`
+U3.6 (1Y) ──┬─ DXL_DATA ─┬── R5 10k → 3,3 V
 U3.5 (2A) ──┘            │
                          └── R6 150Ω ──┬── DXL_BUS ── J1.3 / J2.3
                                        │
                                     D2 5V1
                                        ⏚
-```
+`
 
-| 器件 | 作用 |
+| Componente | Função |
 |---|---|
-| **R6 150 Ω** | 源端串阻。限制短路电流、软化边沿降 EMI。1 Mbps Inferior延迟约占比特时间 3% |
-| **D2 5V1** | 钳位。阴极接 `DXL_BUS`、阳极接地 |
+| **R6 150 Ω** | Resistor em série na origem: limita a corrente de curto e suaviza as bordas para reduzir EMI. A 1 Mbps, o atraso representa cerca de 3% do tempo de bit |
+| **D2 5V1** | Limitador de tensão; cátodo em `DXL_BUS`, ânodo no terra |
 
-**上拉留在缓冲侧**（R5 在 R6 之前）：这样即使不插总线，`U3.5 (2A)` 这个 CMOS 输入
-也有确定电平，不会浮空。与 HAT 的 `R32` 位置一致。
+**O pull-up fica no lado do buffer** (R5 antes de R6): mesmo sem barramento conectado, a entrada CMOS `U3.5 (2A)` mantém um nível definido e não flutua. Mesma posição de R32 na HAT.
 
-> 官方 HAT 用的是 `R33 150R + TH1 100R` 串联共 250 Ω，外加 `D4 5V1` 钳位
-> （`dynamixel.kicad_sch`）。**D2 与 HAT 的 D4 同型号、不同封装** —— HAT 是 SOD-323（`C151348`），本板用 SOD-123（`C151588`）便于返修。
-> 本板只用 150 Ω，因为 HAT 侧已有 250 Ω，总线Superior串太多会拖慢边沿。
+> A HAT oficial usa `R33 150R + TH1 100R` em série (250 Ω no total), além do limitador `D4 5V1` (`dynamixel.kicad_sch`). **D2 e D4 da HAT são o mesmo componente em encapsulamentos diferentes** — a HAT usa SOD-323 (`C151348`) e esta placa, SOD-123 (`C151588`), mais fácil de retrabalhar.
+> Esta placa usa somente 150 Ω, pois a HAT já tem 250 Ω; resistência demais em série no barramento deixa as bordas lentas.
 
-## 三道过压防线
+## Três proteções contra sobretensão
 
-1. **F1** PPTC 200mA 保持 / 24V —— 限流，防短路
-2. **D1** TVS SMF12A —— 钳位，防Servo反电动势尖峰
-3. **U4** HT7533-1 耐压 30V —— 即使前两道失效，LDO 本身扛得住
+1. **F1** PPTC: corrente de manutenção de 200 mA / 24 V — limita corrente e protege contra curtos.
+2. **D1** TVS SMF12A — limita picos de força contraeletromotriz dos servos.
+3. **U4** HT7533-1, tensão máxima de 30 V — o próprio LDO suporta a condição caso as duas proteções anteriores falhem.
 
-## 布局要点
+## Pontos importantes do layout
 
-- 2 层板，45 × 22mm，贴片件全在正面
-- 3 个Conexão器（J1/J2/J3）排在同一条边，插件
-- 两个 M2 安装孔，间距 34mm（与原版 `banana_pcb_locker` 兼容）
-- C1/C2 紧贴 U2  de  Vdd / Vdd_IO 脚，走线尽量短
-- C4（100nF） e  C5（4.7µF）紧贴 U1  de  4 脚 —— ST DS12992 Fig.13 要求"尽可能贴近引脚，或放在 PCB 背面正对该脚"
-- DXL_DATA 走线加粗，远离 SPI
+- Placa de duas camadas, 45 × 22 mm; componentes de montagem superficial na face superior.
+- Três conectores de furo (J1/J2/J3) alinhados na mesma borda.
+- Dois furos de montagem M2, espaçados 34 mm (compatíveis com o `banana_pcb_locker` original).
+- C1/C2 próximos aos pinos Vdd / Vdd_IO de U2, com trilhas curtas.
+- C4 (100 nF) e C5 (4,7 µF) próximos ao pino 4 de U1 — a Fig. 13 de ST DS12992 recomenda colocá-los o mais perto possível do pino ou no verso, diretamente opostos.
+- Trilhas `DXL_DATA` largas e afastadas do SPI.

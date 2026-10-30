@@ -1,48 +1,48 @@
-# 飞特ServoDepuraçãoSoftware
+# Software de depuração de servos Feetech
 
-配 ID、改Parâmetros、拉滑杆看Servo转。aquiPreservado Windows DepuraçãoSoftwaree旧驱动副本，另提供Oficial驱动、串口助手 e 最新资料入口。
+Configure IDs, altere parâmetros e use o controle deslizante para testar o movimento dos servos. Este diretório contém o software de depuração para Windows e uma cópia de um driver antigo; também oferece links para drivers oficiais, um assistente serial e os documentos mais recentes.
 
-| Arquivo | 干什么 | Versão | 大小 |
+| Arquivo | Função | Versão | Tamanho |
 |---|---|---|---|
-| [FD1.9.8.5(250729).7z](FD1.9.8.5%28250729%29.7z) | **FD DepuraçãoSoftware**。配 ID、开过流过压保护、拉滑杆测Servo | 1.9.8.5（2025-07-29）， em 英文可切换 | 167 KB |
-| [CH340_URT.rar](CH340_URT.rar) | **旧版 CH340 驱动副本**。适usado para对应转接芯片；URT-2  de  CH343 驱动见Inferior方Oficial入口 | — | 224 KB |
+| [FD1.9.8.5(250729).7z](FD1.9.8.5%28250729%29.7z) | **Software de depuração FD**: configurar IDs, habilitar proteção contra sobrecorrente/sobretensão e testar o servo com o controle deslizante | 1.9.8.5 (2025-07-29), com opção de interface em inglês | 167 KB |
+| [CH340_URT.rar](CH340_URT.rar) | **Cópia de driver antigo CH340**, para o conversor correspondente; para o CH343 do URT-2, consulte o link oficial abaixo | — | 224 KB |
 
-## 装法
+## Instalação e uso
 
+```text
+1  Conecte o URT-2 → no Gerenciador de Dispositivos, abra “Portas” e anote USB-Enhanced-SERIAL CH343 (COMx).
+   Se não aparecer, confira o modelo do chip conversor e selecione o driver correspondente nos links oficiais abaixo.
+2  Extraia FD1.9.8.5(250729).7z e execute o programa diretamente; não é necessário instalar.
+3  No FD, selecione a porta COM → baud rate 1000000 → clique em “Open” → clique em “Search”.
 ```
-1  插 URT-2 → 设备管理器「端口」里出现 USB-Enhanced-SERIAL CH343 (COMx)，记下号
-   没出现先核对转接芯片型号，再从下面的官方入口选对应驱动
-2  解压 FD1.9.8.5(250729).7z → 直接运行，不用安装
-3  FD 里选那个 COM 口 → 波特率 1000000 → 点「打开」→ 点「搜索」
-```
 
-搜到Servo就通了。**怎么飞线、怎么供电、配 ID、改哪些Parâmetros、ID 对照表** —— 全在 [Registro de depuração · ServoConfiguração](../../Registro de depuração.md#ServoConfiguração--拿到货一步一步做)，一步一步。
+Se o servo for encontrado, a comunicação está funcionando. **Como fazer a fiação, alimentar o servo, configurar IDs, alterar parâmetros e consultar a tabela de IDs** está explicado passo a passo em [Registro de depuração · configuração dos servos](../../调试记录.md#ServoConfiguração--拿到货一步一步做).
 
-## 驱动 e 串口助手
+## Drivers e assistente serial
 
-| Oficial入口 | 用途 |
+| Link oficial | Uso |
 |---|---|
-| [CH343SER.ZIP](https://gitee.com/ftservo/fddebug/blob/master/CH343SER.ZIP) | URT-2 等 CH343 转接板；系统已自动识别时无需另装 |
-| [CH341SER.ZIP](https://gitee.com/ftservo/fddebug/blob/master/CH341SER.ZIP) | 对应 CH340 / CH341 芯片的转接板 |
-| [UartAssist.zip](https://gitee.com/ftservo/fddebug/blob/master/UartAssist.zip) | 通用串口收发助手，按设备协议收发文本或十六进制数据 |
+| [CH343SER.ZIP](https://gitee.com/ftservo/fddebug/blob/master/CH343SER.ZIP) | Conversores CH343 como o URT-2; não é preciso instalar separadamente se o sistema já tiver reconhecido o dispositivo |
+| [CH341SER.ZIP](https://gitee.com/ftservo/fddebug/blob/master/CH341SER.ZIP) | Conversores com chip CH340 / CH341 |
+| [UartAssist.zip](https://gitee.com/ftservo/fddebug/blob/master/UartAssist.zip) | Assistente serial genérico; envia e recebe texto ou dados hexadecimais conforme o protocolo do dispositivo |
 
-2026-10-25 核对官方仓库，FD 1.9.8.5 仍列为稳定版本。后续版本以[飞特官方仓库](https://gitee.com/ftservo/fddebug)为准；协议、内存表和 SDK 见[飞特资料索引](../../docs/飞特资料/README.md)。
+Em 2026-10-25, conferimos o repositório oficial: FD 1.9.8.5 ainda aparece como versão estável. Consulte o [repositório oficial Feetech](https://gitee.com/ftservo/fddebug) para versões futuras; protocolo, tabelas de memória e SDK estão no [índice de documentos Feetech](../../docs/飞特资料/README.md).
 
-## Fonte e 校验
+## Fonte e verificação
 
-从飞特官方 Gitee 仓库 [gitee.com/ftservo/fddebug](https://gitee.com/ftservo/fddebug) master 分支原样复制（2026-09-11），**MIT 许可**（`LICENSE` 同目录）。
+Os arquivos foram copiados sem alterações da branch master do repositório oficial Feetech no Gitee, [gitee.com/ftservo/fddebug](https://gitee.com/ftservo/fddebug), em 2026-09-11. **Licença MIT** (o arquivo LICENSE está no mesmo diretório).
 
-```
+```text
 sha256
 FD1.9.8.5(250729).7z   33b92ac03ff048238bb6455a96aec98e97f6c87a97903ac197406f6d937c7734
 CH340_URT.rar          546aaf96a54647f7a3ddd7e21389d64be2d198926c6058d8b19ee90e9eea4e17
 ```
 
-怀疑文件坏了就 `sha256sum` 一下对这两行。
+Se suspeitar que um arquivo está corrompido, compare o resultado de sha256sum com esses valores.
 
-**为什么放进仓库**：Gitee 有时要登录才能Inferior、有时改Diretório结构，clone Inferior来 de 人不该再去找。MIT 允许原样分发。
-**要Atualização**：去Superior面那个仓库拿新版，换Arquivo、改aqui de Versão号e哈希、改 [NOTICE](../../NOTICE.md) 里 de Versão。
+**Por que os arquivos estão no repositório:** o Gitee às vezes exige login para baixar e pode alterar a estrutura dos diretórios. Quem clona o projeto não deveria precisar procurar os arquivos em outro lugar.
+**Para atualizar:** obtenha a nova versão no repositório acima, substitua o arquivo, atualize aqui a versão e o hash e atualize a versão em [NOTICE](../../NOTICE.md).
 
-## WebDepuração台
+## Bancada web de depuração
 
-FD 只能在 Windows 上跑。装到板子上或者想看 3D 模型跟着动，用 [`../servo-web/`](../servo-web/)：`python server.py --port COM5`，浏览器打开就能拖，还能一键导出 0–90 全部寄存器。
+O FD só funciona no Windows. Para executar na placa ou visualizar um modelo 3D acompanhando o movimento, use [`../servo-web/`](../servo-web/): execute `python server.py --port COM5`, abra a página no navegador e arraste os controles. A ferramenta também pode exportar todos os registradores de 0 a 90 com um clique.

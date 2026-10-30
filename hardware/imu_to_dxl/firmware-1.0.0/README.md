@@ -1,80 +1,72 @@
-# imu_to_dxl Firmware 1.0.0（FT-SCS）
+# Firmware 1.0.0 da imu_to_dxl (FT-SCS)
 
-> 这一版是从 0.1.0（Dynamixel 2.0）另起改成飞特协议的，跟旁边 [`../firmware/`](../firmware/) 的 0.2.0 是两套独立实现：15 字节块、型号 0x4D44 一样，诊断区不一样（这一版在 90..185，0.2.0 在 124..247）。在 Microduck 上用，主程序要是 fork 4734cbb 起（复刻镜像 20261021b 起），它会把这块板排在舵机后面。两版怎么选见 [`../README.md`](../README.md)。
+> Esta versão foi derivada da 0.1.0 (Dynamixel 2.0) e adaptada ao protocolo Feetech. É uma implementação independente da 0.2.0 em [../firmware/](../firmware/): ambas usam bloco de 15 bytes e modelo 0x4D44, mas as regiões de diagnóstico diferem (esta versão: 90..185; versão 0.2.0: 124..247). Para uso no Microduck, o programa principal deve ser do fork a partir do commit 4734cbb (ou da imagem de réplica a partir de 20261021b), que coloca esta placa depois dos servos na leitura. Consulte [../README.md](../README.md) para escolher a versão.
 
-Microduck 用 **STM32G031F8P6 + LSM6DSV16X** IMU 板 de Firmware。Hardware基线
-`fanhao375/microduck-replica` @ `a1f4979c`（含 J4/J5、RX_EN）。
+Firmware da placa IMU **STM32G031F8P6 + LSM6DSV16X** para o Microduck. Base de hardware: `fanhao375/microduck-replica` @ `a1f4979c` (inclui J4/J5 e RX_EN).
 
-Firmware说 **飞特 FT-SCS Protocolo**（已从 Dynamixel 2.0 迁移）：IMU 板固定 **ID=200、1Mbps、8N1**，
- e 飞特 SCS/STS Servo共用同一根单线半双工总线，一条 SYNC READ 同时Leitura IMU  e 全部Servo。
-数据内容对齐 GitHub `pollen-robotics/microduck` 的 duck-control 契约
-（陀螺仪 i16×3 + SFLP fp16 四元数 x/y/z，w 主机恢复，50Hz）。
+O firmware usa o **protocolo Feetech FT-SCS**, migrado do Dynamixel 2.0. A placa IMU tem **ID=200, 1 Mbps, 8N1** e compartilha o mesmo barramento half-duplex de fio único com os servos Feetech SCS/STS. Uma única SYNC READ lê a IMU e todos os servos.
+O conteúdo segue o contrato `duck-control` do GitHub `pollen-robotics/microduck` (giroscópio i16×3 + quaternion SFLP fp16 x/y/z; o controlador reconstrói w; 50 Hz).
 
-Dados流：LSM6DSV16X → SPI1 → STM32 → USART2 + 外部缓冲 → 单线半双工总线 → 主控。
-裸机、无 RTOS、无动态内存、无 HAL；ID/波特率固定，不写 Option Bytes / Flash Configuração。
+Fluxo de dados: LSM6DSV16X → SPI1 → STM32 → USART2 + buffer externo → barramento half-duplex de fio único → controlador principal.
+Execução bare-metal, sem RTOS, memória dinâmica ou HAL; ID e baud rate fixos; não grava Option Bytes nem configuração Flash.
 
-## 快速开始
+## Início rápido
 
 ```powershell
-# 1) 构建固件（Ctrl+Shift+B 等效）
+# 1) Compilar o firmware (equivalente a Ctrl+Shift+B)
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\build.ps1 `
   -ToolchainRoot 'C:\Keil_v5\ARM\ARMCLANG'
 
-# 2) 烧录（务必用 OpenOCD；UV4 命令行会假成功）
-& 'openocd.exe' -f interface/cmsis-dap.cfg `   # 换成你电脑上 OpenOCD 的路径
+# 2) Gravar (use obrigatoriamente OpenOCD; a linha de comando UV4 pode indicar sucesso falso)
+& 'openocd.exe' -f interface/cmsis-dap.cfg `   # substitua pelo caminho do OpenOCD no seu computador
   -f target/stm32g0x.cfg -c 'adapter speed 4000' `
   -c 'program Build/imu_to_dxl.hex verify reset exit'
 
-# 3) 安装上位机依赖并使用（COM6 = 半双工总线适配器）
+# 3) Instalar as dependências do computador e usar (COM6 = adaptador do barramento half-duplex)
 python -m pip install -r Tools\requirements.txt
-python Tools\servo_tool.py scan --port COM6       # 扫描 IMU(200)+舵机
-python Tools\bus_monitor.py --port COM6 --no-demo # IMU+舵机联合监控（不转动）
-python Tools\imu_monitor.py --port COM6 --plot    # IMU 50Hz 曲线
-python Tools\imu_probe.py --port COM6 --seconds 30 # 只读验收（退出码 0 = 通过）
+python Tools\servo_tool.py scan --port COM6        # varrer IMU (200) + servos
+python Tools\bus_monitor.py --port COM6 --no-demo  # monitorar IMU e servos sem movimento
+python Tools\imu_monitor.py --port COM6 --plot     # gráfico da IMU a 50 Hz
+python Tools\imu_probe.py --port COM6 --seconds 30 # aceitação somente leitura (código de saída 0 = aprovado)
 ```
 
-**唯一硬性总线规则**：主机 SYNC READ  de  ID 列表 em ，200 必须排在Servo之后（末位/ em 位），
-禁止首位，也可单独成组。详见 [Instruções de uso](docs/Instruções de uso.md) 第 6 节。
+**Regra obrigatória do barramento:** na lista de IDs da SYNC READ do controlador, o ID 200 deve vir depois dos servos (último ou penúltimo), nunca deve ser o primeiro. Também pode ser lido em um grupo separado. Consulte a seção 6 de [Instruções de uso](docs/Instruções de uso.md).
 
-## 文档索引
+## Índice da documentação
 
-| 文档 | Conteúdo |
+| Documento | Conteúdo |
 |---|---|
-| [docs/Instruções de uso.md](docs/Instruções de uso.md) | Fiação（J1/J2/J4/J5/J3）、环境、构建Gravação、四个 Python FerramentasCompleto用法、首次Superior板流程、排障表、无HardwareTeste |
-| [docs/实现Princípio.md](docs/实现Princípio.md) | FT-SCS 帧机 e 校验、寄存器/诊断映射、SYNC READ 排位防撞状态机、半双工 DE 时序、50Hz 时间预算、IMU 采样链 e 主机契约 |
-| [VALIDATION.md](VALIDATION.md) | 主机Teste e 实机验收记录 |
-| [DEPENDENCIES.md](DEPENDENCIES.md) | Terceiro源码/Ferramentas链Versão e Licença |
+| [docs/Instruções de uso.md](docs/Instruções de uso.md) | Fiação (J1/J2/J4/J5/J3), ambiente, compilação e gravação, uso completo das quatro ferramentas Python, configuração inicial na placa, solução de problemas e testes sem hardware |
+| [docs/实现Princípio.md](docs/实现Princípio.md) | Máquina de estados dos quadros FT-SCS e checksum, mapa de registradores/diagnóstico, prevenção de colisões pela posição na SYNC READ, temporização DE half-duplex, orçamento de tempo a 50 Hz, cadeia de amostragem da IMU e contrato do controlador |
+| [VALIDATION.md](VALIDATION.md) | Testes no computador e registro de aceitação em hardware real |
+| [DEPENDENCIES.md](DEPENDENCIES.md) | Versões e licenças do código de terceiros e da cadeia de ferramentas |
 
-## Diretório结构
+## Estrutura de diretórios
 
-```
-Core/Inc, Core/Src   固件源码（board / imu / protocol / control_table / main）
-Drivers/             固定版本 CMSIS 与 ST LSM6DSV16X 驱动（含许可证）
-MDK-ARM/             Keil 工程（仅 DAP 一套：imu_to_dxl_dap.uvprojx + 链接脚本）
-Tools/               build.ps1、test.ps1 与 4 个 Python 工具
-Tests/               无硬件 C/Python 测试（protocol 93 项、control_table 18 项、imu 16 场景、probe 9 项）
-Build/               构建产物（git 忽略；hex/bin/axf/map）
-.vscode/             VS Code 构建任务
-```
+`
+Core/Inc, Core/Src   Código-fonte do firmware (board / imu / protocol / control_table / main)
+Drivers/             CMSIS em versão fixa e driver ST LSM6DSV16X (inclui licença)
+MDK-ARM/             Projeto Keil (somente DAP: imu_to_dxl_dap.uvprojx + script de linkedição)
+Tools/               build.ps1, test.ps1 e quatro ferramentas Python
+Tests/               Testes C/Python sem hardware (93 de protocol, 18 de control_table, 16 cenários de IMU e 9 de probe)
+Build/               Artefatos de compilação (ignorados pelo Git: hex/bin/axf/map)
+.vscode/             Tarefas de compilação do VS Code
+`
 
-## 关键事实速查
+## Resumo dos fatos importantes
 
-- 帧：`FF FF ID LEN INST P... CK`；`LEN=参数数+2`，总长 `4+LEN`；校验 `~(ID+LEN+INST+ΣP)&0xFF`。
-- 指令：PING(0x01) / READ(0x02) / WRITE(0x03) / SYNC READ(0x82) / SYNC WRITE(0x83)；
-  广播 PING 静默；无返回延迟。
-- 快速块地址 56（ e Servo状态块同址）：56..61 gyro i16×3（±500dps，17.5mdps/LSB）、
-  62..67 qx/qy/qz fp16；68..73 加速度；75 flags；76 WHO_AM_I=0x70；
-  84 user_marker 可读写；90..185 诊断块 24×u32；写 240=0xA5 重初始化 IMU。
-- 采样：IMU 120Hz（FIFO+SFLP），主机 50Hz；未就绪时 gyro/quat 返回全零，
-  主机必须结合 ready/采样计数/年龄做失效处理。
-- 本机端口：COM6 半双工总线 1Mbps；COM5 DAP-Link 日志 115200（需 DTR/RTS 拉高）。
+- Quadro: `FF FF ID LEN INST P... CK`; `LEN` = número de parâmetros + 2, comprimento total `4+LEN`; checksum `~(ID+LEN+INST+ΣP)&0xFF`.
+- Instruções: PING (0x01) / READ (0x02) / WRITE (0x03) / SYNC READ (0x82) / SYNC WRITE (0x83); PING de broadcast é silencioso e não há atraso de resposta.
+- Bloco rápido no endereço 56 (igual ao bloco de estado do servo): 56..61 gyro i16×3 (±500 dps, 17,5 mdps/LSB); 62..67 qx/qy/qz fp16; 68..73 aceleração; 75 flags; 76 WHO_AM_I=0x70; 84 `user_marker` legível e gravável; 90..185 bloco de diagnóstico 24×u32; gravar 0xA5 em 240 reinicializa a IMU.
+- Amostragem: IMU a 120 Hz (FIFO+SFLP), controlador a 50 Hz. Antes de ficar pronta, gyro/quaternion retornam zero; o controlador deve detectar dados inválidos usando `ready`, contador de amostras e idade da amostra.
+- Portas locais: COM6 para o barramento half-duplex a 1 Mbps; COM5 para logs DAP-Link a 115200 (DTR/RTS precisam estar em nível alto).
 
-## 资料
+## Referências
 
-- [本板硬件](https://github.com/fanhao375/microduck-replica/tree/a1f4979c425bd9228622be89f2bfa4d1de7fbde3/hardware/imu_to_dxl)
-- [STM32G031 数据手册](https://www.st.com/resource/en/datasheet/stm32g031f8.pdf)
-- [LSM6DSV16X 数据手册](https://www.st.com/resource/en/datasheet/lsm6dsv16x.pdf)
-- [上游主控接口 duck-control](https://github.com/pollen-robotics/microduck/blob/5984efb770855432b03dafd3d879e9929981e45b/duck-control/src/bus.rs)
-- [飞特 FT-SCS 协议](https://www.feetechrc.com/)
+- [Hardware desta placa](https://github.com/fanhao375/microduck-replica/tree/a1f4979c425bd9228622be89f2bfa4d1de7fbde3/hardware/imu_to_dxl)
+- [Manual de dados STM32G031](https://www.st.com/resource/en/datasheet/stm32g031f8.pdf)
+- [Manual de dados LSM6DSV16X](https://www.st.com/resource/en/datasheet/lsm6dsv16x.pdf)
+- [Interface duck-control do controlador upstream](https://github.com/pollen-robotics/microduck/blob/5984efb770855432b03dafd3d879e9929981e45b/duck-control/src/bus.rs)
+- [Protocolo Feetech FT-SCS](https://www.feetechrc.com/)
 
-新写代码按 MIT Licença提供；TerceiroArquivoPreservado各自版权 e Licença（见 Drivers Diretório）。
+O código novo é fornecido sob a licença MIT; arquivos de terceiros mantêm seus respectivos direitos autorais e licenças (consulte o diretório Drivers).

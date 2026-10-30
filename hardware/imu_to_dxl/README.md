@@ -1,600 +1,496 @@
-# imu_to_dxl Princípio图 + PCB · 求评审
+# Esquemático e PCB da `imu_to_dxl` · revisão solicitada
 
-> ⚠️ **这是Terceiro复刻件，不是Oficial设计。**
-> Oficial从未公开这块板 de Princípio图、Gerber 或外形（全网零命 em ，见
-> [Hardware方案逆向](../../docs/Hardware方案逆向.md)）。本Diretório是conforme MJCF Modelo、OficialExecução时源码
-> e已Código aberto de  HAT 工程反推 + 自行选型 de Resultado，**未经打样、未经实物Validação**。
-> 发现问题请开 [issue](https://github.com/fanhao375/microduck-replica/issues)。
+> ⚠️ **Esta é uma réplica feita por terceiros, não um projeto oficial.**
+> A Pollen nunca publicou o esquemático, os Gerbers nem o contorno desta placa (não há registros públicos; consulte a [análise reversa de hardware](../../docs/硬件方案逆向.md)). Este diretório contém resultados de inferência a partir do modelo MJCF, do código-fonte oficial em tempo de execução e do projeto aberto da HAT, além da seleção de componentes feita por nós. **A placa ainda não foi fabricada nem validada fisicamente.**
+> Se encontrar problemas, abra uma [issue](https://github.com/fanhao375/microduck-replica/issues).
 
-![imu_to_dxl Princípio图](../../assets/hw/imu_to_dxl-Princípio图.png)
+![Esquemático da imu_to_dxl](../../assets/hw/imu_to_dxl-原理图.png)
 
-| Arquivo | Instruções |
+| Arquivo | Descrição |
 |---|---|
-| [`imu_to_dxl-原理图.pdf`](imu_to_dxl-原理图.pdf) | 矢量 PDF，放大看细节 |
-| [**`imu_to_dxl-交互式BOM.html`**](imu_to_dxl-交互式BOM.html) | **焊接用**：嘉立创 EDA 导出的交互式 BOM，下载后浏览器直接打开（离线可用）。点料号，板图上高亮对应位号，焊一种勾一种。GitHub 页面上直接点只显示源码 |
-| [**`firmware/`**](firmware/) | STM32G031 + LSM6DSV16X 固件、Keil 工程、主机测试及一个预编译 HEX；0.2.0 起是飞特 SCS/STS 协议（ID 200），真总线尚未实测 |
-| [**`firmware-1.0.0/`**](firmware-1.0.0/) | 另一版飞特协议固件 1.0.0：从 0.1.0（Dynamixel 版）另起改的，**接真飞特舵机做过共线实测**（排位、读写），带扫描 / 总线监视 / IMU 曲线等上位机工具和中文使用说明。跟 0.2.0 的 15 字节块、型号（0x4D44）一样，复刻镜像 20261021b 起的主程序两版都认 |
-| [**`总线协议.md`**](总线协议.md) | **给写固件的人**：15 字节块逐字节定义、时序要求、排队规则、主控的判据、测试向量、验收方法 |
-| [`imu_to_dxl-接线表.md`](imu_to_dxl-接线表.md) | 逐网络列出每个引脚，可以直接对着核 |
-| [`imu_to_dxl.eprj2`](imu_to_dxl.eprj2) | 嘉立创 EDA 专业版工程，可直接打开改 |
-| [`../../BOM.md`](../../BOM.md) | 完整 BOM，含立创编号与每颗器件的选型理由 |
+| [`imu_to_dxl-原理图.pdf`](imu_to_dxl-原理图.pdf) | PDF vetorial; amplie para ver os detalhes |
+| [**`imu_to_dxl-交互式BOM.html`**](imu_to_dxl-交互式BOM.html) | **Para soldagem**: BOM interativa exportada pelo JLC EDA. Baixe e abra diretamente no navegador (funciona offline). Clique no código do componente para destacar a posição correspondente na placa e marque cada tipo após soldar. Ao clicar diretamente na página do GitHub, será exibido o código-fonte |
+| [**`firmware/`**](firmware/) | Firmware STM32G031 + LSM6DSV16X, projeto Keil, testes no computador e arquivo HEX pré-compilado; desde a versão 0.2.0 usa o protocolo Feetech SCS/STS (ID 200), ainda sem teste no barramento real |
+| [**`firmware-1.0.0/`**](firmware-1.0.0/) | Outra versão do firmware Feetech, 1.0.0, criada a partir da versão 0.1.0 (Dynamixel). **Testada em barramento compartilhado com servos Feetech reais** (endereçamento e leitura/gravação); inclui ferramentas de computador para varredura, monitoramento do barramento, gráficos da IMU e um guia em chinês. Assim como a versão 0.2.0, usa blocos de 15 bytes e o modelo 0x4D44; desde a imagem de réplica 20261021b, ambas são reconhecidas pelo programa principal |
+| [**`总线协议.md`**](总线协议.md) | **Para quem desenvolve o firmware**: definição byte a byte do bloco de 15 bytes, requisitos de temporização, regras de ordenação, critérios do controlador principal, vetores de teste e método de aceitação |
+| [`imu_to_dxl-接线表.md`](imu_to_dxl-接线表.md) | Lista cada pino por rede para facilitar a conferência |
+| [`imu_to_dxl.eprj2`](imu_to_dxl.eprj2) | Projeto JLC EDA Professional, pronto para abrir e editar |
+| [`../../BOM.md`](../../BOM.md) | BOM completa, com códigos JLC e justificativa da seleção de cada componente |
 
-**固件与姿态查看入口：** [`firmware/README.md`](firmware/README.md) 记录单板启动、IMU采样和验证范围。
+**Acesso ao firmware e à visualização da orientação:** [`firmware/README.md`](firmware/README.md) registra a inicialização da placa, a amostragem da IMU e o escopo da validação.
 
-**两版固件怎么选**：接到鸭子上跟 fork 主程序一起用，两版都行。主程序（复刻镜像 20261021b 起）认出是这块板，一次读全身时把它排在**舵机后面**：1.0.0 实测排第一时 30 次只答上 3 次（后面的舵机按定时抢着开口，压住它的校验字节），排中间或最后 30/30。要用 servo-web 经 SWD / J-Link 看姿态，只能用 `firmware/` 里那个 0.2.0 的 HEX：观察器按它的哈希和内存地址核对，换成 1.0.0 会拒绝读。两版都还没在整机上长时间跑过。
-通过 [`tools/servo-web`](../../tools/servo-web) 可将小板姿态叠加到舵机调试台的 3D 鸭子：关节角来自舵机，躯干四元数来自 IMU。
-三种读法：`--imu-bus`（舵机总线，跟主控同一条 sync_read，读 ID 200 地址 56 的 15 字节块）、`--imu-swd`（ST-Link / DAPLink）、`--imu-jlink`（J-Link）。
-真总线的 `imu200.py check` 验收还没做。
+**Como escolher entre as duas versões do firmware:** para conectar ao pato e usar junto com o programa principal do fork, ambas servem. A partir da imagem de réplica 20261021b, o programa principal reconhece esta placa e, durante a leitura de todo o corpo, precisa colocá-la **depois dos servos**: na versão 1.0.0, quando foi colocada em primeiro lugar, respondeu somente 3 de 30 tentativas; os servos seguintes falavam imediatamente por causa dos temporizadores e corrompiam os bytes de checksum dela. No meio ou no fim, respondeu 30/30 vezes. Para usar o `servo-web` com SWD / J-Link e visualizar a orientação, só serve o HEX 0.2.0 em `firmware/`: o visualizador valida o hash e os endereços de memória; com a versão 1.0.0, recusa-se a ler. Nenhuma das versões foi testada por longos períodos no robô completo.
+
+O [`tools/servo-web`](../../tools/servo-web) pode sobrepor a orientação da placa à visão 3D do pato na bancada de servos: os ângulos das articulações vêm dos servos e o quaternion do tronco vem da IMU.
+Há três modos de leitura: `--imu-bus` (barramento dos servos, no mesmo `sync_read` do controlador; lê os 15 bytes do ID 200 no endereço 56), `--imu-swd` (ST-Link / DAPLink) e `--imu-jlink` (J-Link).
+A verificação `imu200.py check` no barramento real ainda não foi feita.
 
 ---
 
-## 这块板干什么
+## Função da placa
 
-Oficial Microduck  de  15 个Servo挂在一条 Dynamixel 半双工总线Superior。这块小板
-**作为第 16 个设备挂在同一条总线Superior**，对外表现成一个 Dynamixel 从机（ID 200），
-主控用读寄存器 de 方式向它要姿态Dados。
+Os 15 servos do Microduck oficial ficam em um barramento Dynamixel half-duplex. Esta placa é **o 16.º dispositivo do mesmo barramento**, apresentando-se como um servo Dynamixel escravo (ID 200). O controlador principal solicita os dados de orientação lendo seus registradores.
 
-板Superior de  IMU 用 de 是 **LSM6DSV16X**，它片内有 **SFLP Hardware融合块**，
-直接输出游戏旋转四元数 —— 姿态解算不占主控算力，也不占总线带宽。
+A IMU da placa é a **LSM6DSV16X**, que contém um bloco de fusão de sensores **SFLP por hardware** e fornece diretamente um quaternion de orientação. Assim, o cálculo da orientação não consome processamento do controlador nem largura de banda adicional do barramento.
 
-```
-主控（树莓派/泰山派）
-      │  1 Mbps 半双工单线
-      ├── 舵机 ×15
-      └── imu_to_dxl（本板，ID 200）
-             ├── LSM6DSV16X   SPI 四线 + 两路中断
-             ├── STM32G031F8P6 收包 / 组包 / 读 IMU
-             └── SN74LVC2G241 半双工收发缓冲
-```
+`
+Controlador principal (Raspberry Pi / Taisenpai)
+      │ barramento half-duplex de fio único, 1 Mbps
+      ├── 15 servos
+      └── imu_to_dxl (esta placa, ID 200)
+             ├── LSM6DSV16X   SPI de quatro fios + duas interrupções
+             ├── STM32G031F8P6 recebe/monta pacotes e lê a IMU
+             └── SN74LVC2G241 buffer half-duplex do transceptor
+`
 
-## 核心选型 e 理由
+## Componentes escolhidos e justificativas
 
-| 位号 | 器件 | 为什么选它 |
+| Ref. | Componente | Motivo da escolha |
 |---|---|---|
-| **U1** | STM32G031F8P6 | ① USART 有**硬件 DE**（RS485 Driver Enable）—— 1 Mbps 下一个比特只有 1 µs，软件翻方向脚的抖动就在这个量级。对照：**STM32F401 手册全文没有 "Driver Enable"**，只能软件切<br>② 与 IMU 同厂，ST 的 `lsm6dsv16x-pid` 驱动和 SFLP 例程现成 |
-| **U2** | LSM6DSV16XTR | 片内 SFLP 融合，直接出四元数 |
-| **U3** | SN74LVC2G241DCUR | 双缓冲做单线半双工。通道 1 Esquerdo进Direito出、通道 2 Direito进Esquerdo出，正好对着走线。3.3 V 供电时**输入耐 5.5 V**，扛得住Servo 5 V  de 信号 |
-| **U4** | HT7533-1 | **耐压 30 V** —— 前两道保护都失效时它自己还活着 |
-| **F1** | PPTC MF-NSMF020X-2 | **24 V / 200 mA 保持**。本板故障时先断自己，不拖垮整条Servo总线 |
-| **D1** | TVS SMF12A | 截止 12 V > 满电 8.4 V，钳位 19.9 V < C6  de  25 V 耐压 |
-| **C6** | 10 µF / **25 V** | 挂在 8.4 V 母线Superior。MLCC 有直流偏压衰减，6.3 V/10 V  de 余量不够 |
-| **C5** | 4.7 µF | 与 C4 的 100 nF 组成 ST 要求的组合 —— **DS12992 Rev 3, Figure 13** 对 `VDD/VDDA` 明确标注 `1 × 100 nF + 1 × 4.7 μF` |
+| **U1** | STM32G031F8P6 | ① A USART tem **DE por hardware** (Driver Enable para RS485). A 1 Mbps, cada bit dura apenas 1 µs; a oscilação de um pino de direção controlado por software tem essa mesma ordem de grandeza. Em comparação, o manual do **STM32F401 não contém “Driver Enable”**; seria necessário alternar por software.<br>② É do mesmo fabricante da IMU, e já existem o driver ST `lsm6dsv16x-pid` e exemplos de SFLP |
+| **U2** | LSM6DSV16XTR | Fusão SFLP interna, fornece o quaternion diretamente |
+| **U3** | SN74LVC2G241DCUR | Dois buffers para half-duplex de fio único. Canal 1 recebe pela esquerda e transmite pela direita; canal 2 recebe pela direita e transmite pela esquerda, correspondendo ao traçado. Com alimentação de 3,3 V, **as entradas toleram 5,5 V**, suportando o sinal de 5 V dos servos |
+| **U4** | HT7533-1 | **Suporta 30 V** — permanece operacional se as duas proteções anteriores falharem |
+| **F1** | PPTC MF-NSMF020X-2 | **24 V / 200 mA de corrente de manutenção**. Em caso de falha da placa, interrompe primeiro a própria alimentação sem derrubar todo o barramento dos servos |
+| **D1** | TVS SMF12A | Tensão de corte de 12 V, acima dos 8,4 V de bateria carregada; limita a 19,9 V, abaixo dos 25 V suportados por C6 |
+| **C6** | 10 µF / **25 V** | Ligado ao barramento de 8,4 V. Capacitores MLCC perdem capacitância com polarização CC; não há margem suficiente usando componentes de 6,3 V / 10 V |
+| **C5** | 4,7 µF | Em conjunto com C4 de 100 nF, cumpre a combinação exigida pela ST — **DS12992 Rev 3, Figura 13** indica explicitamente `1 × 100 nF + 1 × 4,7 μF` em `VDD/VDDA` |
 
-## 几个可能有争议 de 决定
+## Decisões que podem ser discutidas
 
-### 1. `2OE` 接常高，发送时会听到自己的回显
+### 1. `2OE` fica em nível alto fixo; durante a transmissão haverá eco
 
-`U3.1 (1OE#)` 接 DE 控制发送缓冲，`U3.7 (2OE)` **直接接 3.3 V，接收缓冲常开**。
+`U3.1 (1OE#)` controla o buffer de transmissão por DE; `U3.7 (2OE)` fica **ligado diretamente a 3,3 V, mantendo o buffer de recepção sempre ativo**.
 
-- 代价：发送时 MCU 会在 RX Superior收到自己发 de 字节，Firmware按发送长度丢弃
-- 好处：PA3 永远有人驱动，**不会悬空**
+- Custo: durante a transmissão, o MCU recebe de volta no RX os próprios bytes e o firmware os descarta conforme o tamanho enviado.
+- Benefício: PA3 fica sempre sendo acionado e **não flutua**.
 
-备选是 `2OE` 也接 DE（发送时关掉接收），但那样发送期间 RX 浮空，
-重新使能时可能产生假起始位。我选了前者，**欢迎反驳**。
+A alternativa seria ligar `2OE` também ao DE, desativando a recepção enquanto transmite. Nesse caso, o RX flutuaria durante a transmissão e poderia gerar um falso bit de início quando fosse reativado. Escolhi a primeira opção; **comentários e objeções são bem-vindos**.
 
-### 2. 没有晶振，只留了焊盘
+### 2. Sem cristal; apenas os pads foram reservados
 
-TSSOP-20 封装**没有引出 `OSC_OUT`**（DS12992 Rev 3, Table 12：2 脚 `PC14` 的附加功能有
-`OSC_IN`，3 脚 `PC15` 只有 `OSC32_OUT`），所以**无源晶振根本接不了**。
+O encapsulamento TSSOP-20 **não expõe `OSC_OUT`** (DS12992 Rev 3, Tabela 12: o pino 2 `PC14` tem a função alternativa `OSC_IN`; o pino 3 `PC15` oferece apenas `OSC32_OUT`). Portanto, **não é possível conectar um cristal passivo**.
 
-HSI16 精度（Table 41）：出厂 −0.75%/+0.5%，0–85 °C 温漂 ±1% → 最坏约 **−1.85%/+1.55%**。
-1 Mbps 异步 UART 典型容差 ±3%，够用但余量不多。
+Precisão do HSI16 (Tabela 41): de fábrica −0,75%/+0,5%, variação térmica de ±1% entre 0–85 °C; pior caso aproximado de **−1,85%/+1,55%**. A tolerância típica para UART assíncrona a 1 Mbps é ±3%, suficiente, mas sem muita margem.
 
-板Superior有 **X1（16 MHz 有源晶振，HSE 旁路）+ C9 + R3**，最初默认不贴，2026-09-08 起改为**默认贴片**（Firmware仍以 HSI16 起步，实测 1 Mbps 有误码再切 HSE 旁路）。X1  de 使能脚固定接 3.3 V，PC15 没接到它，MCU 关不掉晶振，见「评审记录 · 2026-09-16」。
-另外固件可以用定时器输入捕获测主机来的比特周期，反调 `HSITRIM`（步进 0.2–0.4%/档），
-误差能压到 0.3% 以内，不花钱。
+A placa tem **X1 (cristal ativo de 16 MHz em bypass HSE) + C9 + R3**; inicialmente, X1 não seria montado, mas desde 2026-09-08 passou a ser **montado por padrão** (o firmware ainda inicia com HSI16; só mudará para HSE bypass se testes a 1 Mbps apresentarem erros). O pino de habilitação do X1 fica ligado permanentemente a 3,3 V; PC15 não está conectado a ele, então o MCU não pode desligar o cristal. Consulte “Registro da revisão · 2026-09-16”.
+Além disso, o firmware pode medir com captura de entrada do timer o período dos bits recebidos do controlador e ajustar o `HSITRIM`; cada passo representa 0,2–0,4%, e o erro pode cair para menos de 0,3%, sem custo.
 
-### 3. J1 / J2 Preservado两个，靠铜皮解决过流
+### 3. Dois conectores J1/J2 foram mantidos; a largura de cobre resolve a corrente
 
-J1 e J2 三根线一一并联。**本板若在链条 em 间，Inferior游全部Servo电流都流过本板 de Conexão器e铜箔。**
+As três linhas de J1 e J2 são conectadas em paralelo. **Se a placa ficar no meio da cadeia, toda a corrente dos servos a jusante passa por seus conectores e trilhas de cobre.**
 
-飞特 HD-1910-C001 OficialParâmetros：额定 **500 mA** / 堵转 **1.8 A**。
+Especificação oficial do Feetech HD-1910-C001: corrente nominal **500 mA** / corrente de travamento **1,8 A**.
 
-但这个约束**不是本板独有 de ** —— Servo之间本来就是菊花链，它们自己 de Conexão器承受同样 de 电流。
-HAT 有 **4 个Servo接口**，15 个Servo分在 4 条支路Superior，每条最多 4 个，一条支路额定约 **2 A**，
-在 3 A 以内。Oficial设计能接受，本板用同样 de 座子不会更差。
+Essa restrição **não é exclusiva desta placa**: os servos já são ligados em cadeia, e os conectores entre eles transportam a mesma corrente.
+A HAT tem **quatro portas de servo**; os 15 servos são distribuídos em quatro ramais, no máximo quatro por ramal, ou cerca de **2 A por ramal**, dentro do limite de 3 A. O projeto oficial aceita essa condição; usar conectores equivalentes nesta placa não é pior.
 
-**所以Preservado两个座子**：想挂末端就不装 J2，想串 em 间就装Superior，灵活性几乎零成本。
-PCB 上把 `VDD_BUS` 与 `GND` 从 J1 到 J2 走**大铜皮**（≥ 2 mm 或直接铺铜）即可。
+**Por isso, os dois conectores foram mantidos**: para instalar a placa na extremidade, omite-se J2; para colocá-la em série, J2 é instalado. A flexibilidade custa praticamente nada.
+Na PCB, as redes `VDD_BUS` e `GND` devem usar **trilhas largas** entre J1 e J2 (≥ 2 mm ou plano de cobre).
 
-> 曾有评审意见建议「只留一个 3P 座子」。那在本板确定是叶子节点时成立，
-> 但**Se它是链条第一个节点**（HAT 出来先进本板、再出去给Servo），就必须两个。
-> Oficial拓扑无从确认，Preservado两个更稳。
+> Uma revisão recomendou manter apenas um conector 3P. Isso funciona quando a placa é definitivamente o nó final. Porém, **se ela for o primeiro nó da cadeia** (a saída da HAT entra primeiro na placa e depois segue para os servos), são necessários dois conectores.
+> A topologia oficial não pode ser confirmada; manter ambos é mais seguro.
 
-### 4. Protocolo靠Software自动识别，没做跳线/拨码
+### 4. O firmware detecta o protocolo automaticamente; não há jumper nem chave DIP
 
-飞特 e  Dynamixel  de 物理层完全相同（半双工单线 / 1 Mbps / 3 线 / GND-VCC-DATA），
-差别只在包格式：
+As camadas físicas Feetech e Dynamixel são idênticas (half-duplex de fio único / 1 Mbps / três fios / GND-VCC-DATA); o que muda é o formato do pacote:
 
-| | 包头 | 后续 | 校验 |
+| | Cabeçalho | Campos seguintes | Checksum |
 |---|---|---|---|
 | Dynamixel V2 | `FF FF` | **`FD 00`** | CRC-16 |
-| 飞特 SCS | `FF FF` | `ID` + `LENGTH` | `~(ID+LEN+INST+参数)` |
+| Feetech SCS | `FF FF` | `ID` + `LENGTH` | `~(ID+LEN+INST+parâmetros)` |
 
-飞特OficialProtocolo文档写明 **Length = Parâmetros个数 N + 2**，所以最小为 2、**永远不会是 0**；
-ID 范围 0–253。→ `FF FF FD 00` 只可能是 V2，**判别无歧义**。
+A documentação oficial Feetech especifica `Length = N de parâmetros + 2`, portanto o mínimo é 2 e **nunca é 0**; IDs válidos vão de 0 a 253. Logo, `FF FF FD 00` só pode ser Dynamixel V2 e **a distinção é inequívoca**.
 
-固件收到第一包校验通过就锁定协议，之后按锁定的收发，**运行中不自动解锁**（原想"连续 100 包失败重判"，2026-09-17 评审指出总线噪声会让小板哑 2 s、主控 3 tick 没读数就 hold，改掉；见 [`software/飞特适配架构.md` §3.5](../../software/飞特适配架构.md)）。
-比拨码开关可靠（会走路 de 机器人里，拨码触点是振动失效点）。
+Ao receber o primeiro pacote com checksum válido, o firmware fixa o protocolo e continua a comunicação usando esse formato; **não o desbloqueia automaticamente durante a execução**. Uma proposta inicial de reavaliar após 100 pacotes consecutivos com erro foi descartada em uma revisão de 2026-09-17: o ruído no barramento poderia deixar a placa sem resposta por 2 s e fazer o controlador manter a pose após três ciclos sem dados. Consulte §3.5 de [`software/飞特适配架构.md`](../../software/飞特适配架构.md).
+Isso é mais confiável do que uma chave DIP, cujos contatos podem falhar com a vibração de um robô em movimento.
 
-### 5. J3 用 6P，把串口 printf 也引出来
+### 5. J3 tem seis pinos para expor também o printf serial
 
-按2026-09-08Princípio图 PDF，脚序为
-`1=GND 2=SWDCLK 3=SWDIO 4=UART_RX 5=UART_TX 6=+3V3`。
-SWD用 **1、2、3、6** 脚；第6脚供Depuração器电压参考。**旧四针排线不能整排插到1–4脚**，
-第4脚是串口输入，不能当作3.3V。Fiação前核对实板 de 一脚标记 e Depuração器引脚定义。
+Segundo o PDF do esquemático de 2026-09-08, a ordem é:
+`1=GND 2=SWDCLK 3=SWDIO 4=UART_RX 5=UART_TX 6=+3V3`.
+SWD usa os pinos **1, 2, 3 e 6**; o pino 6 fornece a referência de tensão do depurador. **Não conecte um cabo antigo de quatro pinos nos pinos 1–4**: o pino 4 é a entrada serial, não 3,3 V. Antes de ligar, confira a marcação do pino 1 na placa e a definição dos pinos do depurador.
 
-UART 来自 U1 脚 16/17（`PA11[PA9]` / `PA12[PA10]`），经 `SYSCFG_CFGR1` 重映射成
-`USART1_TX/RX`。
+A UART sai dos pinos 16/17 de U1 (`PA11[PA9]` / `PA12[PA10]`) e é remapeada para `USART1_TX/RX` por `SYSCFG_CFGR1`.
 
-**不Superior USB**：G031 没有 USB 外设（手册 Development support 只写 "serial wire debug (SWD)"），
-加 USB 要多一颗 CH340/CP2102，45 × 22 mm 板Superior不划算。
-调试走 SWD + RTT（`probe-rs` 支持在 CMSIS-DAP 上跑 RTT，不停 CPU）。
+**Sem USB direto**: o G031 não tem periférico USB (a seção “Development support” do manual cita somente “serial wire debug (SWD)”). Adicionar USB exigiria mais um CH340/CP2102, sem valer a pena numa placa de 45 × 22 mm.
+A depuração é feita por SWD + RTT (`probe-rs` oferece RTT com CMSIS-DAP sem parar a CPU).
 
-> Cortex-M0+ **没有 SWO/ITM**，别指望 SWO printf。
+> Cortex-M0+ **não tem SWO/ITM**; não conte com printf por SWO.
 
 ---
 
-## 板框 e Instalação孔
+## Contorno da placa e furos de montagem
 
-| 项 | 值 |
+| Item | Valor |
 |---|---|
-| 板框 | **45 × 22 mm**，2 层板 |
-| 四角 | **R2 圆角** |
-| Instalação孔 | **2 × M2 非金属化孔 φ2.2 mm**，走对角 |
-| 孔位（板EsquerdoInferior角为原点） | MH1 (2.667, 2.413)、MH2 (42.672, 19.685) mm |
-| 孔距 | X 向 40.00 mm ／ Y 向 17.27 mm ／ 对角 43.57 mm |
-| 孔到板边 | MH1 **1.31 mm** ／ MH2 **1.22 mm**（嘉立创要求 ≥0.4 mm） |
+| Contorno | **45 × 22 mm**, PCB de duas camadas |
+| Cantos | Arredondamento **R2** |
+| Furos | **2 furos não metalizados M2, Ø2,2 mm**, em diagonal |
+| Posições (origem no canto inferior esquerdo da placa) | MH1 (2,667; 2,413), MH2 (42,672; 19,685) mm |
+| Distância entre centros | X: 40,00 mm / Y: 17,27 mm / diagonal: 43,57 mm |
+| Distância dos furos à borda | MH1: **1,31 mm** / MH2: **1,22 mm** (mínimo exigido pela JLC: 0,4 mm) |
 
-两孔 em 点 (22.67, 11.05)  e 板心 (22.50, 11.00) 相差 0.17 mm，**转 180° 装基本还能对Superior**（偏差 0.34 mm）。
+O ponto médio entre os furos é (22,67; 11,05), enquanto o centro da placa é (22,50; 11,00); a diferença é 0,17 mm. **Invertida em 180°, a montagem ainda deve alinhar quase perfeitamente** (desvio de 0,34 mm).
 
-> ⚠️ **孔位在 2026-09-08 改过。** 原设计是 MH1 (5.5, 3.5) / MH2 (39.5, 18.5)、X 向 34 mm，
-> 刻意对齐原版 `banana_pcb_locker` 打印件的两个定位耳间距。
-> **加 `J4`/`J5` 时 MH2 的让位圈正好卡住右边那条唯一能放插件的空白带**，
-> 于是把两个孔都往角Superior挪，X 向变成 40 mm。
-> **代价是不再 e 原锁扣通用 —— Mecânica侧同步改压条。**
-> 反正逆向文档里「锁扣压的就是 `imu_to_dxl`」本来也只是推断
-> （见 [硬件方案逆向](../../docs/硬件方案逆向.md)），硬约束只有「IMU 刚性固连在 `trunk_base` 上」这一条。
+> ⚠️ **As posições dos furos foram alteradas em 2026-09-08.** O projeto original usava MH1 (5,5; 3,5) / MH2 (39,5; 18,5), distância de 34 mm no eixo X, para alinhar intencionalmente com a distância entre as duas abas da peça impressa `banana_pcb_locker`.
+> Ao adicionar J4/J5, o anel de folga de MH2 ocupava a única faixa livre para componentes montados por furo no lado direito. Por isso, os dois furos foram deslocados para perto dos cantos, aumentando a distância X para 40 mm.
+> **A contrapartida é que a placa deixa de ser compatível com o fecho original; a mecânica também deve receber uma barra de pressão modificada.**
+> De qualquer modo, a afirmação no documento de análise reversa de que “o fecho pressiona a `imu_to_dxl`” era somente uma inferência (consulte a [análise reversa de hardware](../../docs/硬件方案逆向.md)); a única restrição confirmada é que a IMU fique rigidamente fixada ao `trunk_base`.
 
-板框文件：`imu_to_dxl-板框-45x22-R2.dxf`（单位 mm，8 段闭合：4 直边 + 4 段 90° 圆弧）。
+Arquivo do contorno: `imu_to_dxl-板框-45x22-R2.dxf` (unidade em mm, oito segmentos fechados: quatro retas e quatro arcos de 90°).
 
-> **为什么单独给 DXF**：这版立创EDA专业版 de 图元接口只接受铜层，
-> 往板框层（layer 11）建线/弧一律报「Parâmetros不正确」，改层、改文档源都被挡，
-> 所以板框走 DXF 导入（`文件 → 导入 → DXF`，目标层选**板框层**，单位 mm，原点对齐 0,0）。
-> 两个 M2 孔不在 DXF 里 —— 它们已经作为真实 de  NPTH 焊盘建在 PCB Superior了。
+> **Por que o DXF é fornecido separadamente:** nesta versão, a interface de criação de primitivas do JLC EDA Professional só aceita camadas de cobre. Criar linhas/arcos na camada de contorno (layer 11) retorna “parâmetro incorreto”; alterar a camada e a origem do documento também não resolveu. Por isso, o contorno deve ser importado por DXF (`Arquivo → Importar → DXF`, camada de destino **contorno da placa**, unidade mm, origem alinhada a 0,0).
+> Os dois furos M2 não estão no DXF: já foram criados na PCB como pads NPTH reais.
 
-## PCB：布局 e 布线
+## PCB: layout e roteamento
 
-![imu_to_dxl PCB 顶层装配图](../../assets/hw/imu_to_dxl-PCB.png)
+![Montagem da camada superior da PCB imu_to_dxl](../../assets/hw/imu_to_dxl-PCB.png)
 
-*布线图，由工程实测数据渲染（顶层红 / 底层蓝 / 焊盘黄 / GND 过孔绿 / 信号过孔紫，蓝底为底层 GND 铺铜，紫框为 `J4`/`J5`）。*
-*状态 2026-09-08：29 器件 · 227 段走线 · 31 过孔 · 172 泪滴，含 `R7`、`J4`、`J5`，`X1`/`R3`/`C9` 已改为实贴。*
-*本目录的 `.eprj2` / PCB PDF / 原理图 PDF / STEP 与 `assets/` 下两张图，**全部已更新到 2026-09-08 的最终版**。*
+*Roteamento renderizado a partir das medições do projeto (camada superior vermelha / inferior azul / pads amarelos / vias GND verdes / vias de sinal roxas; o fundo azul representa o plano GND inferior e os contornos roxos indicam `J4`/`J5`).*
+*Estado em 2026-09-08: 29 componentes, 227 segmentos de trilha, 31 vias e 172 alívios em lágrima; inclui `R7`, `J4` e `J5`; `X1`/`R3`/`C9` passaram a ser montados.*
+*Os arquivos `.eprj2`, PDF da PCB, PDF do esquemático, STEP e as duas imagens em `assets/` estão todos atualizados para a versão final de 2026-09-08.*
 
-**45 × 22 mm，2 层板，1 oz 铜**，四角 R2 圆角，两个对角 M2 非金属化孔。
-贴片件全在正面；3 个插件连接器分两条边：`J1` `J2`（舵机总线）在下边，
-`J3`（SWD + 串口）在上边。
+PCB de **45 × 22 mm, duas camadas e cobre de 1 oz**, cantos R2 arredondados e dois furos M2 não metalizados em diagonal.
+Todos os componentes de montagem superficial ficam na frente; os três conectores de furo estão em duas bordas: `J1`/`J2` (barramento dos servos) embaixo e `J3` (SWD + serial) em cima.
 
-### 分区
+### Zonas
 
-| 区 | Conteúdo | 为什么 |
+| Zona | Conteúdo | Motivo |
 |---|---|---|
-| 下边 | `J1` `J2` 总线连接器（JST EH 2.5 mm） | 线束从躯干走线，就近出线 |
-| 右下 | **`J5` 飞特总线出**（2.0 mm） | 与 `J1`/`J2` 同侧，四个座子的 `VDD_BUS` 直通铜皮连成一条 |
-| 右边缘 | **`J4` 飞特总线进**（2.0 mm） | 全板唯一放得下插件的空白带；为它让路才把 MH2 挪走的 |
-| 右侧 | `F1` → `D1` → `C6`/`C8` → `U4` → `C7` | 电源链一条路走到底，跟数字区隔开 |
-| 中部 | `U3` 缓冲 + `D2` 钳位 + `R6` 串阻 | 夹在 MCU 和总线连接器之间，收发路径最短 |
-| 中上 | `U1` 主控、`U2` IMU 及各自去耦 | |
-| 左侧 | `X1` / `R3` / `C9` 时钟位 | 已改为实贴，放在边角不占好位置 |
-| 上边 | `J3` 调试排针 | 插拔方向朝外 |
+| Borda inferior | Conectores do barramento `J1`/`J2` (JST EH 2,5 mm) | O chicote vem pelo tronco e sai pela borda mais próxima |
+| Inferior direita | **Saída do barramento Feetech `J5`** (2,0 mm) | No mesmo lado de `J1`/`J2`; o cobre conecta diretamente `VDD_BUS` aos quatro conectores |
+| Borda direita | **Entrada do barramento Feetech `J4`** (2,0 mm) | Única faixa livre para um conector de furo; o furo MH2 foi deslocado para abrir espaço |
+| Lado direito | `F1` → `D1` → `C6`/`C8` → `U4` → `C7` | A alimentação segue um caminho contínuo, separada da região digital |
+| Centro | Buffer `U3` + limitador `D2` + resistor em série `R6` | Entre MCU e conectores do barramento, reduz o caminho de transmissão e recepção |
+| Centro superior | MCU `U1`, IMU `U2` e respectivos capacitores de desacoplamento | |
+| Lado esquerdo | Posição do clock `X1`/`R3`/`C9` | Agora montados por padrão, no canto para não ocupar áreas mais úteis |
+| Borda superior | Pinos de depuração `J3` | Orientados para fora para facilitar a conexão |
 
-### 布线
+### Roteamento
 
-| 项 | 值 |
+| Item | Valor |
 |---|---|
-| 元件 | **29 个**（含 09-07 新增的 `R7`、09-08 新增的 `J4`/`J5`） |
-| 走线 | **227 段**（顶层 197 / 底层 30） |
-| 线宽 | 信号 0.25 mm 为主；**总线直通 0.76 mm** |
-| 过孔 | **31 个，φ0.6 / 孔 0.3 mm** |
-| 泪滴 | 172 个 |
-| 铺铜 | **底层整片 GND**，顶层不铺 |
+| Componentes | **29** (inclui `R7` adicionado em 09-07 e `J4`/`J5` adicionados em 09-08) |
+| Trilhas | **227 segmentos** (197 na camada superior / 30 na inferior) |
+| Largura | Sinais principalmente 0,25 mm; **passagem direta do barramento 0,76 mm** |
+| Vias | **31, Ø0,6 mm / furo de 0,3 mm** |
+| Alívios em lágrima | 172 |
+| Plano de cobre | **GND contínuo em toda a camada inferior**; sem plano na superior |
 
-底层 30 段走线，**地平面基本Completo**——这是给 SPI e 1 Mbps 半双工总线留 de 回流Caminho。
-顶层 de  GND 焊盘各自就近打过孔Inferior到地平面。
+Há 30 segmentos de trilha na camada inferior; o **plano de terra permanece quase contínuo**, servindo como caminho de retorno para SPI e para o barramento half-duplex de 1 Mbps.
+Os pads GND da camada superior têm vias de terra próximas.
 
-### 复查Resultado · 2026-09-08
+### Resultados da revisão · 2026-09-08
 
-除立创自带 DRC 外，另用脚本按**真实焊盘形状**（圆形 / 跑道形 / 矩形）重新栅格化，
-独立复核了一遍：
+Além do DRC integrado do JLC, um script rasterizou novamente a placa usando o **formato real dos pads** (circular, oblongo ou retangular) e fez uma verificação independente:
 
-| Verificação项 | Resultado |
+| Verificação | Resultado |
 |---|---|
-| 立创 DRC | **0 违规** |
-| **连接器脚序** | **四个全对**：`J1`/`J2` = `GND`/`VDD_BUS`/`DXL_BUS`；`J4`/`J5` = `DXL_BUS`/`VDD_BUS`/`GND`（**反序**，见下方脚序一节） |
-| Rede连通性 | **23 个Rede全部连通**（栅格连通域 + 过孔/插件孔跨层，含底层铺铜） |
-| 异网最小间距 | **0.152 mm ＝ 5.98 mil**（精确几何，非栅格）。嘉立创双面板Inferior限 0.127 mm，余量 20% |
-| 铜到板边 | 最小 **0.37 mm** |
-| 孔到孔（孔壁间） | 最小 **0.751 mm**，要求 ≥0.4 mm |
-| 孔到板边 | MH1 **1.31 mm** / MH2 **1.22 mm** |
-| M2 让位 | MH1 让位圈 2.5 mm 内只有一个 **GND** 过孔（1.81 mm）—— 螺钉压到地还是地，无害；MH2 最近 4.59 mm |
-| 过孔规格 | φ0.6 / 孔 0.3 mm，符合嘉立创双面板Inferior限 |
-| 去耦距离 | `U1.4`→`C4` 2.27、`U2.8`→`C1` 2.00、`U2.5`→`C2` 2.01、`U3.8`→`C3` 1.96、`X1.1`→`C9` 2.39 mm，均 <2.4 mm；`U4.3`→`C7` 2.94 mm。⚠️ `U4.2` LDO 输入侧的 100nF `C8` 为 **6.64 mm**（偏松，但管瞬态的 10µF `C6` 在 4.29 mm，且 LDO 是线性的无开关） |
+| DRC do JLC | **0 violações** |
+| **Pinagem dos conectores** | **Todos os quatro corretos**: `J1`/`J2` = `GND`/`VDD_BUS`/`DXL_BUS`; `J4`/`J5` = `DXL_BUS`/`VDD_BUS`/`GND` (ordem inversa; ver a seção de pinagem abaixo) |
+| Conectividade das redes | **As 23 redes conectadas** (componentes rasterizados e pads/vias que atravessam camadas, incluindo o plano inferior) |
+| Menor distância entre redes diferentes | **0,152 mm = 5,98 mil** (geometria exata, não rasterizada). O mínimo da JLC para placa dupla face é 0,127 mm; margem de 20% |
+| Cobre até a borda | Mínimo **0,37 mm** |
+| Distância entre furos (entre as paredes) | Mínimo **0,751 mm**, requisito ≥ 0,4 mm |
+| Furo até a borda | MH1 **1,31 mm** / MH2 **1,22 mm** |
+| Folga M2 | Na região de 2,5 mm de MH1 há apenas uma via **GND** (a 1,81 mm): mesmo que o parafuso encoste, será em GND, sem risco; MH2 fica a 4,59 mm da via mais próxima |
+| Especificação das vias | Ø0,6 mm / furo 0,3 mm; atende ao mínimo da JLC para placa dupla face |
+| Distância do desacoplamento | `U1.4`→`C4`: 2,27; `U2.8`→`C1`: 2,00; `U2.5`→`C2`: 2,01; `U3.8`→`C3`: 1,96; `X1.1`→`C9`: 2,39 mm (todos <2,4 mm); `U4.3`→`C7`: 2,94 mm. ⚠️ O capacitor de 100 nF `C8` na entrada do LDO `U4.2` fica a **6,64 mm** (um pouco distante); o capacitor de 10 µF `C6`, que atende transitórios, fica a 4,29 mm, e o LDO é linear, sem chaveamento |
 
-**载流核算**：四个座子之间的 `VDD_BUS` 直通链
-`J1.2 → J2.2 → J5.2 → J4.2` **全程 0.76 mm**，1 oz 铜下 ΔT=10K 约 2.0 A、ΔT=30K 约 3.2 A。
-JST EH 单触点额定 3 A，**走线 e Conexão器基本同一量级**，加宽并不能抬高整条链路 de Superior限。
-另有 4.7 mm 的 0.51 mm 段在 `J1.2 → F1.1` 这条**只喂本板自己**的支路上，
-前面是 200 mA 保持 de  PPTC，够用。
+**Verificação de corrente:** a conexão direta `VDD_BUS` entre os quatro conectores (`J1.2 → J2.2 → J5.2 → J4.2`) tem **0,76 mm de largura em todo o percurso**. Com cobre de 1 oz, a elevação de temperatura de 10 K corresponde a cerca de 2,0 A; com 30 K, a 3,2 A.
+Um contato JST EH suporta 3 A, portanto **a trilha e o conector têm capacidade da mesma ordem**; alargar a trilha não aumenta o limite do conjunto.
+Também existe um segmento de 4,7 mm e 0,51 mm de largura em `J1.2 → F1.1`, no ramal que alimenta **apenas esta placa**; o PPTC de 200 mA que vem antes é suficiente.
 
-> **2026-09-08 抓到并修掉一处**：布 `DXL_BUS` 去 `J4`/`J5` 时，有一个 φ0.3 过孔
-> 落在了 `J2.3` 的 φ1.0 插件孔正上方（孔心距 0.001 mm）。立创 DRC 报
-> `Hole to Hole (DXL_BUS): J2_3 ↔ e75` —— 钻孔是机械工序，同网络也不允许重叠。
-> `J2.3` 本身是贯穿孔、顶底早已连通，该过孔纯属冗余，删除后连通性不变、DRC 归零。
+> **Problema encontrado e corrigido em 2026-09-08:** ao rotear `DXL_BUS` para `J4`/`J5`, uma via de Ø0,3 mm caiu exatamente sobre o furo de Ø1,0 mm de `J2.3` (distância entre centros de 0,001 mm). O DRC do JLC acusou `Hole to Hole (DXL_BUS): J2_3 ↔ e75` — furos feitos na usinagem não podem se sobrepor, nem mesmo na mesma rede.
+> `J2.3` já é um furo metalizado e as camadas superior e inferior estavam conectadas; a via era redundante. Depois de removê-la, a conectividade permaneceu intacta e o DRC ficou sem violações.
 
-**仍未Validação**：**没有打样，没有实物**。以Superior全部是几何 e 规则层面 de 核对，
-不能替代实测。
+**Ainda não validado:** a placa **não foi fabricada e não há unidade física**. As verificações acima abrangem apenas geometria e regras de projeto, não substituem testes no hardware.
 
-### 待办
+### Pendências
 
-- Inferior单前跑一次**器件标准化**（Princípio图 DRC 报过「元件属性 e 供应商编号不匹配」）
-- 丝印复核：位号是否压焊盘、`U1` 一脚 / `D1` `D2` 阴极 / `J1` 一脚标记是否齐全
-- **连接器高度**：`J1`/`J2`/`J3` 是 JST EH / 2.54 排针直插，本体约 **8 mm**。若躯干内腔
-  确实只有 6.65 mm，需换卧式 `S3B-EH-A`，封装与 BOM 都要跟着改 —— 用导出的 STEP 在
-  装配体里比一Inferior即可定论。
-  **`J4`/`J5` 反而不用担心**：`B3B-PH-K-S` 本体约 **6.0 mm**，塞得进 6.65 mm 的内腔
-- **板端座子型号待确认**：飞特规格书只写了线端是 `AMP2.0-3P`，**板端型号没给**。
-  本板暂用 `B3B-PH-K-S`（JST PH，2.0 mm 立式）。焊盘阵是三孔 2.0 mm 间距，
-   e 其它 2.0 mm 系列通用，**将来换系列只改封装、不动焊盘、不重布线**
-- **Inferior单前重导生产Arquivo** —— 器件从 27 变 29，立创那边 de  Gerber / BOM / 贴片坐标都要重传
+- Antes do pedido, executar a **normalização dos componentes** (o DRC do esquemático acusou “propriedades do componente incompatíveis com o código do fornecedor”).
+- Conferir a serigrafia: referências sobre os pads; marcação do pino 1 de `U1`; marcas de cátodo de `D1`/`D2`; marcações dos pinos 1 de `J1`.
+- **Altura dos conectores:** `J1`/`J2`/`J3` usam JST EH / pinos verticais de 2,54 mm, com cerca de **8 mm** de altura. Se a cavidade do tronco tiver mesmo 6,65 mm, será necessário usar `S3B-EH-A` horizontal e atualizar footprint e BOM. Comparar o STEP exportado com o conjunto mecânico resolve a questão.
+  **`J4`/`J5` não devem ter esse problema**: o corpo do `B3B-PH-K-S` tem cerca de **6,0 mm** e cabe na cavidade de 6,65 mm.
+- **Confirmar o modelo do conector do lado da placa:** a especificação Feetech informa apenas que o cabo termina em `AMP2.0-3P`, sem identificar o modelo na placa. Este projeto usa provisoriamente `B3B-PH-K-S` (JST PH, 2,0 mm, vertical). O padrão de três furos com espaçamento de 2,0 mm é compartilhado por outras séries; **uma troca futura exige somente alterar o footprint, sem modificar pads nem refazer o roteamento**.
+- **Reexportar os arquivos de produção antes de encomendar** — os componentes passaram de 27 para 29; é necessário enviar novamente os Gerbers, a BOM e as coordenadas de montagem ao JLC.
 
-## 想Por favor你重点看这几处
+## Pontos em que gostaria de receber comentários específicos
 
-1. **`2OE` 常开这个取舍**（上面第 1 条）—— 回显 vs RX 悬空，哪个更糟
-2. **J1/J2 过流 e 铜皮宽度**（第 3 条）—— 2 mm 够不够
-3. **HSI16 跑 1 Mbps  de 余量**（第 2 条）—— 有实测经验 de 说一声
-4. **三道过压防线够不够** —— 8.4 V 母线 + Servo反电动势
-5. **连接器**：见下方「⚠️ 飞特脚序按型号不同，而且是反的」。`J4`/`J5` 两个 2.0 mm 座子
-   已在Princípio图 e  PCB Superior落位（2026-09-08），但**板端座子 de 确切系列还没拿实物比过**
-   —— 飞特规格书只写了线端 `AMP2.0-3P`，板端型号待厂家确认
+1. **Manter `2OE` sempre habilitado** (decisão 1 acima) — o que é pior: eco durante a transmissão ou RX flutuando?
+2. **Corrente de passagem por J1/J2 e largura do cobre** (decisão 3) — 2 mm são suficientes?
+3. **Margem para usar HSI16 a 1 Mbps** (decisão 2) — compartilhe experiências de medições reais.
+4. **As três proteções contra sobretensão são suficientes?** Barramento de 8,4 V + força contraeletromotriz dos servos.
+5. **Conectores:** consulte abaixo “⚠️ A pinagem Feetech varia conforme o modelo e é invertida”. Os conectores de 2,0 mm `J4`/`J5` já estão no esquemático e na PCB (2026-09-08), mas **o modelo exato da série do conector da placa ainda não foi testado com uma peça física** — a especificação Feetech só informa `AMP2.0-3P` no cabo; falta confirmar o modelo da placa com o fabricante.
 
-## ⚠️ 飞特脚序按型号不同，而且是反 de 
+## ⚠️ A pinagem Feetech muda conforme o modelo e pode ser invertida
 
-**这是本板最容易致命 de 一处，两份厂家规格书各自都没错 —— 是两个型号真 de 相反。**
+**Este é o ponto com maior risco de dano na placa. As especificações dos dois fabricantes estão corretas: os dois modelos realmente têm pinagens opostas.**
 
-| | Conexão器 | 脚 1 | 脚 2 | 脚 3 |
+| | Conector | Pino 1 | Pino 2 | Pino 3 |
 |---|---|---|---|---|
-| **`HD-1910-C001`**（本仓库选用） | **`AMP2.0-3P`**（2.0 mm） | **Signal/TTL** | Vcc | **GND** |
-| `HL-2915-C002`（另一型号，勿照抄） | `AMP-3` | **GND** | Vcc | **Signal/TTL** |
-| 本板 `J1`/`J2`（JST EH 2.5 mm，同官方 HAT） | `B3B-EH-A` | GND | VDD_BUS | DXL_BUS |
-| 本板 `J4`/`J5`（2.0 mm，对口飞特） | `B3B-PH-K-S` | **DXL_BUS** | VDD_BUS | **GND** |
+| **`HD-1910-C001`** (modelo usado neste repositório) | **`AMP2.0-3P`** (2,0 mm) | **Signal/TTL** | Vcc | **GND** |
+| `HL-2915-C002` (outro modelo; não copie esta ligação) | `AMP-3` | **GND** | Vcc | **Signal/TTL** |
+| `J1`/`J2` desta placa (JST EH 2,5 mm, igual à HAT oficial) | `B3B-EH-A` | GND | VDD_BUS | DXL_BUS |
+| `J4`/`J5` desta placa (2,0 mm, para o cabo Feetech) | `B3B-PH-K-S` | **DXL_BUS** | VDD_BUS | **GND** |
 
-四个座子 de 脚序已从 PCB 网表反读复核过，全部落对（2026-09-08）。
-**两种间距插不进对方（2.0 vs 2.5 mm），物理Superior杜绝了插错，只剩「画错」这一种可能。**
+A pinagem dos quatro conectores foi conferida novamente pela netlist da PCB; todas estão corretas (2026-09-08).
+**Os espaçamentos são diferentes e os conectores não encaixam um no outro (2,0 contra 2,5 mm); isso impede fisicamente a ligação errada e deixa somente a possibilidade de erro no desenho da placa.**
 
-出处：飞特《HD-1910-C001 串型规格书》**A/0，2026-09-07** 第 3/7 页 6-7 项；
-飞特《HL-2915-C002 串型规格书》A/0，2026-02-27 第 4/8 页 6-7 项。
-两份都是厂家发给客户确认 de 规格书，**este repositório按惯例不转载 PDF**，é necessárioPor favor向飞特索取。
+Fonte: especificação Feetech “HD-1910-C001 串型规格书”, A/0, 2026-09-07, páginas 3/7, itens 6–7; especificação “HL-2915-C002 串型规格书”, A/0, 2026-02-27, páginas 4/8, itens 6–7. Ambas foram enviadas pelo fabricante para confirmação do cliente; **por convenção, este repositório não redistribui os PDFs**. Solicite-os à Feetech.
 
-> 本仓库此前只记了 `HL-2915` 那一行、却推荐 `HD-1910` 作为替代型号，**是个坑**，
-> 2026-09-08 按 A/0 新规格书更正。
+> Antes, o repositório registrava apenas a linha do `HL-2915`, mas recomendava o `HD-1910` como substituto — **uma armadilha**, corrigida em 2026-09-08 com a nova especificação A/0.
 >
-> ⚠️ **`HL-2915-C002` 是 9–14 V（典型 12 V）舵机，挂不上本方案的 2S 母线（6.6–8.2 V）**
-> —— 它 9 V 才开始工作。当初拿它当「飞特接口惯例」 de 样本是权宜之计，别照着选型。
+> ⚠️ **O `HL-2915-C002` é um servo de 9–14 V (nominal 12 V) e não pode ser ligado ao barramento 2S desta solução (6,6–8,2 V)** — só começa a operar a 9 V. Ele foi usado inicialmente como referência provisória para a pinagem Feetech; não o escolha para este projeto.
 >
-> ⚠️ **间距也对不上**：`AMP2.0` 是 2.0 mm，`JST EH` 是 2.5 mm，**插不进对方**。
-> 好在这一点反而是保险 —— 物理Superior杜绝了插错，只剩「画错」这一种可能。
+> ⚠️ **O espaçamento também é incompatível**: `AMP2.0` tem 2,0 mm e `JST EH`, 2,5 mm; **um não encaixa no outro**. Neste caso, isso serve como proteção contra ligações incorretas.
 
-## 已确认 / 未Validação
+## Confirmado / ainda não validado
 
-**已确认（一手资料）**
+**Confirmado por fontes primárias**
 
-- **HD-1910-C001** 接口 `1=Signal/TTL · 2=Vcc · 3=GND`，连接器 `AMP2.0-3P`，线长 15±0.5 cm
-  —— 飞特《HD-1910-C001 串型规格书》A/0 (2026-09-07) 第 3/7 页 6-7 项
-- HD-1910-C001 走 **TTL 三针总线**，**4–8.4 V**，堵转 9/12/15 kg·cm @4.8/6/7.4 V，
-  额定电流 **500/690/900 mA**，堵转电流 **1.2/1.6/2.0 A**，静态 20 mA，12 bit 磁编码，
-  减速比 1/320 —— 同Superior规格书第 2/7、3/7 页
-- **电机自带三道电子保护**（同Superior第 4/7 页 7-11）：
-  **过流**（>0.5 A 持续 2 s 关输出，阈值 e 时长可自定义，**出厂默认关闭**）·
-  **过压**（>10 V 或 <4 V 保护，范围可自定义，**出厂默认关闭**）·
-  **过热**（>80 ℃ 关扭矩输出，**出厂默认开启**）。
-  **装机前应把前两条打开** —— 异常检测在电机里做，主机不必轮询
-- 反馈六项齐全：输入电压 / 负载 / 工作电流 / 工作速度 / 工作温度 / 位置（同Superior 7-10）。
-  官方运行时确实在用：`present_current` 每 tick 随位置一起读，电压+温度约每秒一次，
-  且**电压是整机唯一的电池计量手段**（`duck-control/src/{bus,model}.rs`）
-- 出厂默认Execução模式是**模式 4「纯位置 PD（Sim2Real）」**，正对强化学习落地（同Superior 7-12）
-- 包格式、`Length = N+2`、校验算法、同步读 `0x82` —— 飞特官方《舵机SCS通信协议》
-- 包格式、`Length = N+2`、校验算法、同步读 `0x82` —— 飞特官方《舵机SCS通信协议》
-- STM32G031 无 HSE 引脚、HSI16 精度、`100 nF + 4.7 µF` 去耦要求 —— ST DS12992 Rev 3
-- Princípio图连通性 —— 已用脚本逐Rede核对，无悬空脚、无短路、无重名Rede
+- **`HD-1910-C001`**: pinos `1=Signal/TTL · 2=Vcc · 3=GND`, conector `AMP2.0-3P`, comprimento do cabo de 15±0,5 cm — especificação Feetech “HD-1910-C001 串型规格书”, A/0 (2026-09-07), página 3/7, itens 6–7.
+- O HD-1910-C001 usa **barramento TTL de três pinos**, opera a **4–8,4 V**, torque de travamento de 9/12/15 kg·cm a 4,8/6/7,4 V, corrente nominal de **500/690/900 mA**, corrente de travamento de **1,2/1,6/2,0 A**, consumo em repouso de 20 mA, encoder magnético de 12 bits e redução 1/320 — mesma especificação, páginas 2/7 e 3/7.
+- **O motor tem três proteções eletrônicas integradas** (mesma especificação, página 4/7, itens 7–11):
+  **sobrecorrente** (desliga a saída após >0,5 A durante 2 s; limite e duração configuráveis; **desativada de fábrica**);
+  **sobretensão/subtensão** (proteção acima de 10 V ou abaixo de 4 V; faixa configurável; **desativada de fábrica**);
+  **sobretemperatura** (desliga o torque acima de 80 °C; **ativada de fábrica**).
+  **Habilite as duas primeiras antes de instalar** — a detecção da falha ocorre no motor, sem necessidade de consulta contínua pelo controlador.
+- Estão disponíveis seis itens de telemetria: tensão de entrada, carga, corrente de operação, velocidade, temperatura de operação e posição (mesma especificação, item 7-10). O runtime oficial realmente os utiliza: lê `present_current` junto com a posição a cada ciclo e a tensão/temperatura aproximadamente uma vez por segundo. Além disso, **a tensão é a única forma de monitorar a bateria no robô completo** (`duck-control/src/{bus,model}.rs`).
+- O modo de operação padrão de fábrica é o **modo 4 “posição PD pura (Sim2Real)”**, apropriado para executar aprendizado por reforço (mesma especificação, item 7-12).
+- Formato dos pacotes, `Length = N+2`, algoritmo de checksum e leitura sincronizada `0x82` — protocolo oficial Feetech “舵机SCS通信协议”.
+- A ausência de pinos HSE no STM32G031, a precisão do HSI16 e os requisitos de desacoplamento `100 nF + 4,7 µF` — ST DS12992 Rev 3.
+- Conectividade do esquemático — verificada rede a rede com um script; sem pinos desconectados indevidamente, curtos ou redes com nomes duplicados.
 
-**未Validação**
+**Ainda não validado**
 
-- **整块板没打样过**，没有实物
-- 板框 45 × 22 mm 与 M2 孔 X 向 34 mm 间距是从打印件 `banana_pcb_locker` 反推的，非官方尺寸
-- MCU 型号是este repositório de 选型建议，**不是逆向所得** —— Oficial那块板用什么 MCU 无从还原
+- **A placa completa ainda não foi fabricada**, portanto não existe uma unidade física.
+- O contorno de 45 × 22 mm e o espaçamento X de 34 mm entre furos M2 foram inferidos da peça impressa `banana_pcb_locker`; não são dimensões oficiais.
+- A escolha do MCU é uma recomendação de projeto deste repositório, **não um resultado de análise reversa** — não há como determinar qual MCU a placa oficial usa.
 
 ---
 
-## 评审记录
+## Registro das revisões
 
-### 2026-09-16 · 外部评审八条 + 自查发现 X1 使能脚没接Superior
+### 2026-09-16 · Oito observações externas; revisão própria encontrou o pino de habilitação de X1 desconectado
 
-板子已在立创生产，这些都算「首板回来验什么」。
+A placa já estava em produção na JLC; estes itens passaram a compor a lista de inspeção da primeira placa recebida.
 
-| 评审意见 | 结论 | 依据 |
+| Observação da revisão | Decisão | Fundamentação |
 |---|---|---|
-| ① X1 接 PC14/OSC32_IN 是错的，PC14 只是 LSE 脚 | **不采纳，评审错了** | DS12992 Rev 3 Table 12（p.36）：TSSOP20 第 2 脚附加功能为 `OSC32_IN, OSC_IN`，两个都有；p.60：HSE 旁路模式下振荡器关闭、输入脚按普通 GPIO 电平收外部时钟。小封装不引 PF0/PF1，HSE 外部时钟输入就是安排在 2 脚。无源晶振接不了（缺 OSC_OUT）这点本目录一直写着 |
-| ② U2  de  OCS_Aux / SDO_Aux 悬空是漏接 | **不采纳**，文档措辞统一 | DS13510 p.10 / p.48：两脚均「接 Vdd_IO 或悬空」，默认内部Superior拉（PIN_CTRL.OIS_PU_DIS = 0）。悬空是手册标准做法。v2 可留 0 Ω 位 |
-| ③ 2OE 常开有回显，建议默认发送时关接收 | 硬件已支持两种，固件决定 | 9 月 7 日已把 `2OE` 改成 `RX_EN` 网络接 PB7，见下方记录 |
-| ④ 逻辑支路保护不等于整机过压保护 | 同意，本就这么写 de  | TVS 管尖峰、PPTC 慢、LDO 只护逻辑支路，见「对照Oficial HAT 复审」 |
-| ⑤ J1/J2 直通电流是系统级限制 | 同意，已写明 | 本板做链尾，EH 座 3 A |
-| ⑥ J4/J5 板端座子未经实物验证 | **同意，首板前就该做** | 飞特只确认线端 AMP2.0-3P，`B3B-PH-K-S` 能不能插、锁扣方向、脚序，买几个座子拿舵机线试 |
-| ⑦ 布局建议（IMU 居 em 、LDO 远离、Teste点、J3 加 NRST） | v2 采纳 | — |
-| ⑧ 首板Validação清单 8 条 | 采纳，作验收 | 复位期间总线高阻、1 Mbps 收发 00/FF/55/AA、30 000 次通信统计 CRC/超时/overrun、IMU 零偏随温度、逐针测极性、X1 未装时 PC14 不被驱动 |
+| ① X1 ligado a PC14/OSC32_IN está errado; PC14 seria apenas um pino LSE | **Não adotada; a revisão estava errada** | DS12992 Rev 3, Tabela 12 (p. 36): a função alternativa do pino 2 do TSSOP20 inclui tanto `OSC32_IN` quanto `OSC_IN`. Na p. 60, o modo HSE bypass desliga o oscilador e o pino de entrada recebe o clock externo como sinal GPIO normal. Os encapsulamentos pequenos não expõem PF0/PF1; a entrada do clock externo HSE foi atribuída ao pino 2. O cristal passivo não pode ser usado (falta `OSC_OUT`), como este diretório já registrava |
+| ② Deixar `OCS_Aux` / `SDO_Aux` de U2 sem conexão é uma falha | **Não adotada**; texto da documentação uniformizado | DS13510, pp. 10/48: ambos os pinos podem ser ligados a `Vdd_IO` ou deixados em aberto; há pull interno ativo por padrão (`PIN_CTRL.OIS_PU_DIS = 0`). Deixá-los sem conexão é a configuração padrão do manual. A v2 pode reservar footprints de 0 Ω |
+| ③ `2OE` sempre ativo gera eco; recomenda-se desativar a recepção durante o envio | O hardware passou a permitir ambas as opções; a escolha fica no firmware | Em 7 de setembro, `2OE` foi ligado à rede `RX_EN`, conectada a PB7; veja o registro abaixo |
+| ④ Proteção do ramal lógico não equivale à proteção contra sobretensão de todo o robô | Concordamos; essa distinção já estava documentada | A TVS limita picos, o PPTC atua lentamente e o LDO protege apenas o ramal lógico; consulte a revisão comparativa com a HAT oficial |
+| ⑤ A corrente que passa por J1/J2 é uma limitação do sistema | Concordamos; já foi documentado | Esta placa fica no fim da cadeia; conector EH de 3 A |
+| ⑥ O conector do lado da placa em J4/J5 não foi testado fisicamente | **Concordamos; deveria ser verificado antes da primeira placa** | A Feetech só confirmou `AMP2.0-3P` no cabo. Comprar alguns conectores e testar com o cabo do servo o encaixe do `B3B-PH-K-S`, o lado da trava e a pinagem |
+| ⑦ Sugestões de layout (IMU no centro, LDO afastado, pontos de teste e NRST em J3) | Adotadas na v2 | — |
+| ⑧ Oito itens para validar na primeira placa | Adotados como critérios de aceitação | Barramento em alta impedância durante reset; transmissão e recepção a 1 Mbps com 00/FF/55/AA; registrar CRC/timeouts/overrun em 30.000 comunicações; desvio do zero da IMU conforme a temperatura; medir a polaridade de cada pino; conferir que PC14 não seja acionado sem X1 instalado |
 
-**自查（2026-09-16）**：按原理图 PDF 的矢量线段逐脚核对，没有接线的只有本来就该空的四个脚：U1.3（PC15）、U1.20（PB3–PB6）、U2.10（OCS_Aux）、U2.11（SDO_Aux）。X1 第 1 脚 `Tri-state` 接的是 3.3 V 常使能（符号上的小红圈是 EasyEDA 的 1 脚标记，不是未连接）。接线表里写的「3 脚（PC15）可作 `OSC_EN`」**没有画进图**：PC15 空着，X1 关不掉。首板要 MCU 能控晶振的话，飞一根线 PC15 → X1.1 并去掉 3.3 V 那根，或者不贴 X1 用 HSI16。
+**Verificação própria (2026-09-16):** conferimos cada pino pelas linhas vetoriais do PDF do esquemático. Os únicos pinos sem conexão são os quatro que realmente deveriam ficar abertos: U1.3 (PC15), U1.20 (PB3–PB6), U2.10 (OCS_Aux) e U2.11 (SDO_Aux). O pino 1 de X1, `Tri-state`, está ligado a 3,3 V para habilitação permanente (o pequeno círculo vermelho no símbolo marca o pino 1 no EasyEDA; não indica ausência de conexão). A tabela de cabos dizia que o pino 3 (PC15) poderia funcionar como `OSC_EN`, mas essa conexão **não está desenhada**: PC15 está aberto e não pode desligar X1. Para permitir controle de clock pelo MCU na primeira placa, instalar um fio PC15 → X1.1 e remover a ligação correspondente a 3,3 V, ou não instalar X1 e usar HSI16.
 
-### 2026-09-17 · 首板到货实测
+### 2026-09-17 · Testes da primeira placa recebida
 
-- 5 块板到货，Superior电 **3.3 V 输出正常**（F1 → D1 → U4 这条链没问题）。
-- **J4/J5（`B3B-PH-K-S`）外壳跟飞特线插头不配**：间距 2.0 mm 是对的，插头外形进不了 PH 座的外壳。评审第 ⑥ 条说中了。首板把座子外壳削掉、只留针，能插能用。**v2 换座**：拿飞特线实物配（问飞特板端座子型号，或买几种 2.0 mm 3P 卧式座子试插）。
-- X1 时钟、NRST、IMU 供电、SWD 通断还没量；固件要做什么、主控对它的全部要求在 [`software/飞特适配架构.md` §4](../../software/飞特适配架构.md#4-小板固件方案-a--imu_to_dxl)。
+- Chegaram cinco placas; a saída de **3,3 V está normal** (a cadeia F1 → D1 → U4 funciona).
+- **O corpo de J4/J5 (`B3B-PH-K-S`) não encaixa no plugue do cabo Feetech**: o passo de 2,0 mm está correto, mas o formato do plugue não entra na carcaça PH. A observação ⑥ da revisão estava certa. Na primeira placa, lixamos a carcaça e deixamos somente os pinos; assim foi possível conectar e usar. **Na v2, trocar o conector**: testar com um cabo Feetech real — consultar o fabricante sobre o modelo do conector na placa ou experimentar alguns conectores horizontais de 3 pinos e 2,0 mm.
+- Ainda não medimos o clock X1, NRST, alimentação da IMU e continuidade SWD. Os requisitos do firmware e do controlador principal estão em [§4 da adaptação Feetech](../../software/飞特适配架构.md#4-小板固件方案-a--imu_to_dxl).
 
-### 2026-09-22 · Firmware跑起来了（ST-LINK/V2）
+### 2026-09-22 · Firmware em execução (ST-LINK/V2)
 
-- 固件在 [`firmware/`](firmware/)（同学写的底子，PR #32；0.2.0 起是飞特协议）。ST-LINK/V2 经 J3 的 1/2/3/6 脚烧录、读回校验通过，IMU 实测：WHO_AM_I=0x70、约 121 Hz、静止时加速度合成 1.007 g、错误计数 0。
-- **G0 空片的坑**：第一次烧完软件复位，程序不跑，停在 ST 自带 Bootloader（PC=0x1FFF…）—— `FLASH_ACR.EMPTY` 只在上电时更新。**断电重启一次**就好。按复位键（NRST）不重新检查，解决不了这个。
-- **v2 要加**（首板Depuração时缺 de ）：
-  - **复位按钮 + NRST 引到 J3**：跟评审第 ⑦ 条一起做。程序跑飞、SWD 连不Superior时pode按住复位再连（under-reset）救砖，也方便让Firmware重新跑一遍。
-  - **Execução指示灯**：接 **U1.20**（PB3–PB6，现在唯一完全空闲 de  GPIO）+ 限流电阻。Firmware加心跳：正常慢闪、IMU 出错快闪，不接Depuração器也能一眼看出板子在不在跑。
+- O firmware está em [`firmware/`](firmware/) (base escrita por um colega, PR #32; desde a versão 0.2.0 usa o protocolo Feetech). A gravação e a verificação de leitura passaram pelo ST-LINK/V2 nos pinos 1/2/3/6 de J3. Medições da IMU: WHO_AM_I=0x70, aproximadamente 121 Hz, aceleração resultante de 1,007 g em repouso e contador de erros em 0.
+- **Problema da memória G0 em branco:** após a primeira gravação, um reset por software não iniciava o programa e o MCU permanecia no bootloader da ST (PC=0x1FFF…). `FLASH_ACR.EMPTY` só é atualizado ao ligar. **Desligar e ligar uma vez** resolve. O botão de reset (NRST) não repete a verificação e não resolve.
+- **Itens para a v2** (faltaram na depuração da primeira placa):
+  - **Botão de reset + NRST em J3**: combinar com a sugestão ⑦ da revisão. Se o programa travar e não for possível conectar por SWD, manter o reset pressionado e conectar em modo under-reset para recuperar a placa; também facilita reiniciar o firmware.
+  - **LED de execução**: ligar a **U1.20** (PB3–PB6, único GPIO completamente livre no momento) por um resistor limitador. Adicionar um sinal de vida ao firmware: piscar devagar em operação normal e rapidamente quando houver falha da IMU, para mostrar que a placa está funcionando sem conectar o depurador.
 
-### 2026-09-07 · 三条布局/选型建议（都不采纳，理由记Inferior来）
+### 2026-09-07 · Três sugestões de layout e seleção (nenhuma adotada; justificativas registradas)
 
-评审人看了图纸提了三条：阻容换 0402、IMU 放板心、LDO 远离 IMU。逐条量了Dados，
-**结论是维持现状**，但每条 de 理由值得记Inferior来 —— 尤其第二、三条其实指向同一件事。
+Um revisor sugeriu trocar resistores/capacitores por 0402, colocar a IMU no centro da placa e afastar o LDO da IMU. Medimos cada item; **decidimos manter o layout**, mas vale registrar os motivos — em especial porque as sugestões ② e ③ tratam do mesmo ponto.
 
-**① 阻容换 0402 —— 不换，理由不在「能不能手焊」**
+**① Trocar passivos por 0402 — não trocar; a questão não é se podem ser soldados à mão**
 
-对方补充说「别折腾自己焊接，团一InferiorSuperior立创贴片省心」。这个建议本身对，但换不换 0402
- de 判据不在这儿：本Diretório 2026-09-06 那条记录第一句就写了「**理由不是 0402 手焊不了**」
-—— 板Superior有 LGA-14  de  LSM6DSV16X（底部焊盘 3×2.5 mm），本来就必须Superior热风。
+O revisor acrescentou que seria melhor não soldar manualmente e pedir a montagem da JLC. A sugestão é válida, mas a escolha de 0402 não depende disso: o registro de 2026-09-06 neste diretório já começava dizendo que **a razão não era a impossibilidade de soldar 0402 à mão**. A placa já tem a LSM6DSV16X em encapsulamento LGA-14 (pads inferiores de 3×2,5 mm), então de qualquer modo será necessário usar ar quente.
 
-真正的理由是**调试期返修**：`R6` 串阻要从 150 Ω 试到 33 Ω、上拉可能要摘、去耦可能要补。
-**第一版没Validação过 de 板子必然要改几次**，这一点不因为找立创贴片而改变 —— 贴片厂只负责
-第一次，改还是得自己动烙铁。
+A razão real é a **facilidade de retrabalho durante a depuração**: testar o resistor em série R6 de 150 Ω até 33 Ω, talvez remover o pull-up ou acrescentar capacitores de desacoplamento.
+Uma placa de primeira versão sem validação certamente precisará de algumas mudanças. A montagem da JLC cobre somente a primeira montagem; qualquer retrabalho posterior ainda exigirá soldagem manual.
 
-代价那边：16 个阻容换 0402 省 **12.5 mm²，占板面积 de  1.3%**，而这块板**只用了 36%
- de 面积**，根本不缺地方。0402  de  10k/100nF 在立创同样是基础库，省料费这条对两边都成立、
-不构成理由。
+Quanto ao benefício, trocar 16 passivos por 0402 economizaria **12,5 mm², apenas 1,3% da área da placa**, que atualmente usa somente **36%** da área disponível. Não há falta de espaço. Resistores de 10 kΩ e capacitores de 100 nF em 0402 também fazem parte do catálogo básico da JLC; a redução de custo existe para ambos os tamanhos e não é um argumento para a troca.
 
-**② IMU 放板心 · ③ LDO 远离 IMU —— 方向都对，但量级不同**
+**② Colocar a IMU no centro · ③ Afastar o LDO da IMU — ambas são boas ideias, mas os efeitos têm magnitudes diferentes**
 
-先量数：
+Medições:
 
-```
-板心 (22.5, 11.0) = 两个 M2 孔的中点（当初就是这么设计的）
-U2 (IMU)  离板心 7.47 mm，离两螺钉连线 3.00 mm
-U3 (缓冲) 离板心 0.41 mm      ← 最刚的位置被逻辑芯片占了
-U2 ↔ U4 (LDO) 中心距 6.37 mm
-```
+`
+Centro da placa (22,5; 11,0) = ponto médio dos dois furos M2 (intencional no projeto original)
+U2 (IMU): 7,47 mm do centro da placa e 3,00 mm da linha entre os parafusos
+U3 (buffer): 0,41 mm do centro da placa  ← o componente lógico ocupa o ponto mais rígido
+Distância entre U2 e U4 (LDO): 6,37 mm
+`
 
-**热 de 量级**：板Superior总电流约 5–10 mA（G031 约 3 mA + LSM6DSV16X 约 0.65 mA + 缓冲约 1 mA
-+ Superior拉），LDO 压降 8.4 − 3.3 = 5.1 V → **耗散约 51 mW**（满电最坏）。SOT-89 在小铜箔Superior
-θJA 约 100–160 °C/W → 结温升 **5–7 °C**；隔 6.4 mm、 em 间一整片底层地铜散热，传到 IMU
-处**温差约 1–3 °C**。LSM6DSV16X 陀螺零偏温漂约 0.05 °/s/°C → **约 0.1 °/s 偏置**。
-走路时陀螺是几十 °/s 量级，且躯干里 15 个Servo吃安培级电流，热源比 51 mW 大两三个Quantidade级。
-**方向对，但不是主导项。**
+**Ordem de grandeza do aquecimento:** a corrente total da placa é de aproximadamente 5–10 mA (G031 ~3 mA + LSM6DSV16X ~0,65 mA + buffer ~1 mA + pull-ups). A queda no LDO é 8,4 − 3,3 = 5,1 V, resultando em **cerca de 51 mW dissipados** no pior caso, com a bateria carregada. Para um SOT-89 sobre uma área pequena de cobre, θJA é ~100–160 °C/W, elevando a temperatura da junção em **5–7 °C**. A 6,4 mm, com o plano GND inferior entre eles, a diferença de temperatura na IMU seria de **aproximadamente 1–3 °C**. O desvio térmico do zero do giroscópio LSM6DSV16X é ~0,05°/s/°C, o que representa **um viés de ~0,1°/s**.
+Durante a marcha, o giroscópio mede dezenas de graus por segundo, e os 15 servos no tronco consomem correntes da ordem de amperes — fontes de calor dezenas ou centenas de vezes maiores que 51 mW.
+**A preocupação é legítima, mas não é o efeito dominante.**
 
-**真正值得动 de 是第②条 de 另一面**：板心正好是两螺钉 em 点，是全板最不易形变 de 位置，
-而现在坐在那儿的是不在乎位置的 `U3`。把 `U2`/`U3` 对调可一箭三雕 ——
-IMU 离板心 7.47 → 0.4 mm，同时离 LDO 6.37 → **11.3 mm**（翻倍）。
+**O aspecto mais útil da sugestão ②** é que o centro da placa coincide com o ponto médio dos parafusos e, portanto, com a região menos sujeita à deformação. Hoje, quem está nesse lugar é o U3, componente que não depende da posição. Trocar U2 e U3 traria três benefícios: a IMU passaria de 7,47 mm a 0,4 mm do centro e de 6,37 mm a **11,3 mm** do LDO (quase o dobro).
 
-**为什么这次仍不动**：板子已 DRC 0 违规、全部布通；对调意味着 em 间区域重排 + 重布
-SPI×4、2 个 em 断、缓冲 de  DE/TX/RX/DXL_DATA。按Superior面 de 量级估算，收益是"更稳妥"而非
-"解决已知问题"。**留到打样后拿实测Dados再决定** —— 若实测陀螺零偏随 LDO 负载明显漂移，
-或振动噪声偏大，v2 一并改。
+**Por que não mudar agora:** a PCB já passa no DRC sem violações e todas as trilhas estão conectadas. Trocar os componentes exigiria reorganizar a área central e refazer o roteamento das quatro linhas SPI, duas interrupções e sinais DE/TX/RX/DXL_DATA do buffer. Pela escala física da placa, o ganho seria “mais cautela”, não “resolver um problema conhecido”. **Decidir depois da fabricação e das medições reais** — se o viés do giroscópio variar claramente com a carga do LDO ou houver muito ruído de vibração, incluir a mudança na v2.
 
-**一个更重要 de 提醒**：IMU 在**机器人里** de 位置 e 朝向是训练Modelo定死 de ，比它在板Superior偏
-7 mm 重要得多。那个由板子怎么装进躯干决定，已查证并记在
-[`docs/硬件方案逆向.md`](../../docs/硬件方案逆向.md)：`trunk = [+raw_z, +raw_y, −raw_x]`，
-绕 Y 轴 +90°。板Superior挪位置不影响这条。
+**Um ponto mais importante:** a posição e a orientação da IMU **dentro do robô** são fixadas pelo modelo de treinamento e são muito mais importantes que um deslocamento de 7 mm dentro da placa. A montagem no tronco determina essa orientação, já confirmada e registrada na [análise reversa de hardware](../../docs/硬件方案逆向.md): `trunk = [+raw_z, +raw_y, −raw_x]`, rotação de +90° no eixo Y. Mover a IMU na placa não altera essa transformação.
 
-### 2026-09-07 · 给 `2OE` 留一根控制线（R7 + RX_EN）
+### 2026-09-07 · Reservar uma linha de controle para `2OE` (R7 + RX_EN)
 
-有人建议把「那个 EN 脚」预留一根线到 MCU。指的是 `U3.7 (2OE)` —— 接收缓冲的输出使能，
-此前硬接 +3V3、接收常开。**已采纳。**
+Foi sugerido reservar uma ligação entre o pino EN do buffer e o MCU. Trata-se de `U3.7 (2OE)`, habilitação da saída do buffer de recepção, que antes estava ligada diretamente a +3V3 e mantinha a recepção sempre ativa. **Sugestão adotada.**
 
-**改动**
+**Alterações**
 
 | | |
 |---|---|
-| 断开 | `U3.7 (2OE)` 与 `+3V3` 的直连 |
-| 新增 | **R7 = 10 kΩ 0603**（`C25804`，与 R1/R2/R4/R5 同一颗料，不新增料号） |
-| 新网络 | **`RX_EN` = `U1.1 (PB7/PB8)` · `U3.7 (2OE)` · `R7.1`** |
-| 保留 | `R7.2 → +3V3`（上拉） |
+| Desconectado | Ligação direta entre `U3.7 (2OE)` e `+3V3` |
+| Adicionado | **R7 = 10 kΩ 0603** (`C25804`), mesmo componente de R1/R2/R4/R5, sem novo código de peça |
+| Nova rede | **`RX_EN` = `U1.1 (PB7/PB8)` · `U3.7 (2OE)` · `R7.1`** |
+| Mantido | `R7.2 → +3V3` (pull-up) |
 
-**为什么选 U1.1**：U1 空闲 de 是 1 脚 (PB7/PB8)、3 脚 (PC15)、20 脚 (PB3/PB4/PB5/PB6)。
-3 脚是 PC15，在 G0 Superior e  LSE 共用、驱动能力受限；20 脚并了四个口最灵活，留着。
-1 脚是普通 GPIO，且与 `DE`/`MCU_TX`/`MCU_RX` 同在下排，走同一条通道。
+**Por que U1.1:** os pinos livres de U1 eram 1 (PB7/PB8), 3 (PC15) e 20 (PB3/PB4/PB5/PB6). O pino 3 é PC15, compartilhado com LSE no G0 e com capacidade de acionamento limitada; o pino 20 reúne quatro GPIOs e foi reservado para maior flexibilidade. O pino 1 é GPIO comum e fica na mesma fileira inferior que `DE`/`MCU_TX`/`MCU_RX`, facilitando o roteamento.
 
-**默认行为完全不变** —— MCU 复位期间 PB7 高阻，R7 把 `2OE` 拉高，接收缓冲照常开着。
-Firmware一行不写，跟改动前一模一样。这是**预留**：想消掉发送期间 de 回显时，把 PB7 配成推挽
-输出拉低即可，同时打开 `MCU_RX` 脚的内部上拉，避免 `2Y` 高阻时 RX 浮空 ——
-这正是此前否掉「`2OE` 接 DE」方案的那个顾虑，用独立 GPIO + 内部上拉就解决了。
+**O comportamento padrão não muda:** durante o reset do MCU, PB7 fica em alta impedância e R7 mantém `2OE` em nível alto, deixando o buffer de recepção habilitado. O firmware não precisa mudar nada. É apenas uma **opção reservada**: para eliminar o eco durante a transmissão, configurar PB7 como saída push-pull e levá-lo a nível baixo; ao mesmo tempo, habilitar o pull-up interno do pino `MCU_RX` para que RX não flutue quando `2Y` ficar em alta impedância. Isso resolve justamente a preocupação que antes nos fez rejeitar ligar `2OE` ao DE.
 
-**改后复查**：元件 26→27、网络 23→24，`RX_EN` = 3 个脚，`+3V3` 里 `U3.7` 已移出、
-`R7.2` 顶上。立创 DRC **0 违规**，异网最小间距 **0.160 mm**（改前 0.153），
-其余各项 e  2026-09-07 首次复查一致。
+**Conferência após a alteração:** componentes 26→27, redes 23→24, `RX_EN` com três pinos; `U3.7` saiu da rede `+3V3` e `R7.2` permaneceu nela. O DRC da JLC indicou **zero violações**; a distância mínima entre redes distintas aumentou de 0,153 para **0,160 mm**. Os demais itens continuaram iguais à primeira revisão de 2026-09-07.
 
-**顺带更正**：本目录 `imu_to_dxl-接线表.md` 的「悬空脚」清单此前误列了 2、16、17 脚
-（它们分别接 `OSC_IN`、`UART_TX`、`UART_RX`），已改。现在真正空闲的只有 3 脚与 20 脚。
+**Correção relacionada:** a lista de “pinos sem conexão” em `imu_to_dxl-接线表.md` incluía incorretamente os pinos 2, 16 e 17 (ligados, respectivamente, a `OSC_IN`, `UART_TX` e `UART_RX`). A lista foi corrigida. Os únicos pinos realmente livres são agora 3 e 20.
 
-### 2026-09-07 · 关于 U3 缓冲器 de 三个疑问（两条不采纳，一条改画法）
+### 2026-09-07 · Três dúvidas sobre o buffer U3 (duas sugestões rejeitadas; desenho ajustado em um ponto)
 
-评审人查了 SN74LVC2G241 手册，对 U3  de 接法提了三点。逐条核过 —— 网表是从
-PCB 里现读 de （PCB Rede由Princípio图导出，等价于Princípio图Conexão）：
+Um revisor consultou o manual do SN74LVC2G241 e levantou três questões sobre a ligação de U3. Conferimos uma a uma. A netlist foi lida diretamente da PCB (as redes da PCB vêm do esquemático e são equivalentes às conexões nele):
 
-```
-U3 脚1  1OE#  → DE          脚5  2A   → DXL_DATA
-U3 脚2  1A    → MCU_TX      脚6  1Y   → DXL_DATA
-U3 脚3  2Y    → MCU_RX      脚7  2OE  → 3.3V
-U3 脚4  GND   → GND         脚8  VCC  → 3.3V
+`
+Pino 1 de U3  1OE# → DE          pino 5  2A  → DXL_DATA
+Pino 2 de U3  1A   → MCU_TX      pino 6  1Y  → DXL_DATA
+Pino 3 de U3  2Y   → MCU_RX      pino 7  2OE → 3,3 V
+Pino 4 de U3  GND  → GND         pino 8  VCC → 3,3 V
 
-DXL_DATA  4 脚：R5.2 R6.1 U3.5 U3.6     ← 不含 U3.7
-DE        3 脚：R4.2 U1.8 U3.1
-MCU_TX    2 脚：U1.9 U3.2
-MCU_RX    2 脚：U1.10 U3.3
-```
+DXL_DATA: 4 pinos: R5.2, R6.1, U3.5, U3.6 — não inclui U3.7
+DE:       3 pinos: R4.2, U1.8, U3.1
+MCU_TX:   2 pinos: U1.9, U3.2
+MCU_RX:   2 pinos: U1.10, U3.3
+`
 
-**① 「A 是输入、Y 是输出，所以脚3 该接 DXL_DATA、脚5 该接 MCU_RX」—— 前提对，结论反了**
+**① “A é entrada e Y é saída; portanto o pino 3 deve ir a DXL_DATA e o pino 5 a MCU_RX” — a premissa está certa, mas a conclusão está invertida**
 
-手册原文没错：器件是两路独立使能 de  1 位线路驱动器，Dados方向恒为 **A → Y**。
-但据此换线就错了：
+O manual está correto: o componente contém dois drivers de linha de 1 bit com habilitação independente e a direção dos dados é sempre **A → Y**.
+Mas trocar os fios com base nisso seria um erro:
 
-- `MCU_RX` 是**要被缓冲器驱动的**网络（送进 MCU 的接收脚），必须落在**输出脚 Y**
-  → 现在在脚3（2Y）✅
-- `DXL_DATA` 是**要被读进来的**网络（总线上舵机发的），必须落在**输入脚 A**
-  → 现在在脚5（2A）✅
+- `MCU_RX` é a rede que o buffer precisa acionar (vai para a entrada de recepção do MCU); deve estar na **saída Y** — agora está corretamente no pino 3 (2Y) ✅
+- `DXL_DATA` é a rede que recebe os dados enviados pelos servos no barramento; deve estar na **entrada A** — agora está corretamente no pino 5 (2A) ✅
 
-按建议对调后，通道2 变成 `MCU_RX(2A) → DXL_DATA(2Y)`，等于从 MCU 的接收脚
-往总线上发数据 —— RX 是输入脚不输出电平；而且 `1Y` 与 `2Y` 会同时驱动
-`DXL_DATA`，两个驱动器直接对打。
+Com a troca sugerida, o canal 2 ficaria `MCU_RX (2A) → DXL_DATA (2Y)`, ou seja, enviaria para o barramento o sinal que sai da entrada RX do MCU, que não gera níveis. Além disso, `1Y` e `2Y` acionariam `DXL_DATA` ao mesmo tempo e entrariam em conflito elétrico.
 
-现在的分工是标准半双工接法：**通道1 = 发**（`MCU_TX → 总线`，受 DE 控制），
-**通道2 = 收**（`总线 → MCU_RX`，常开）。**不采纳。**
+A separação atual é a configuração half-duplex padrão: **canal 1 transmite** (`MCU_TX → barramento`, controlado por DE) e **canal 2 recebe** (`barramento → MCU_RX`, sempre ativo). **Sugestão rejeitada.**
 
-**② 「2OE 该串个Superior拉电阻，否则Superior拉太强」—— EletrônicaSuperior不成立，但画法要改**
+**② “2OE precisa de um resistor pull-up em série, senão o pull-up é forte demais” — a preocupação elétrica não se aplica, mas o desenho será ajustado**
 
-`2OE` 是 CMOS 逻辑输入，输入电流量级 ±1 µA，直接接 VCC 是手册的标准用法。
-串电阻没有任何收益，反而给高阻输入引入干扰耦合。
+`2OE` é uma entrada lógica CMOS, com corrente de entrada da ordem de ±1 µA; ligá-la diretamente a VCC é a prática padrão do manual.
+O resistor em série não traz benefício e pode aumentar a captação de ruído na entrada de alta impedância.
 
-「Superior拉太强」这个担心，只有当该节点是**Dados线**时才成立 —— 它不是：
-`DXL_DATA` 网络只有 4 个脚（`R5.2` `R6.1` `U3.5` `U3.6`），**不含 `U3.7`**。
-总线上拉是 `R5 = 10 kΩ`，值也合适。
+A preocupação com o pull-up só seria aplicável se esse nó fosse uma **linha de dados**, mas não é: `DXL_DATA` contém apenas R5.2, R6.1, U3.5 e U3.6, **não U3.7**. O pull-up do barramento é `R5 = 10 kΩ`, valor adequado.
 
-**但这条提醒有价值**：会产生这个误解，是因为图Superior「2OE  de  3.3V 符号」正好压在
-`DXL_DATA` 节点正上方，视觉上像连成一片。**已列为待改项：把该 3.3V 符号移开、
-走线绕行**，消除歧义。属画法问题，不改EletrônicaConexão。
+**Ainda assim, a observação foi útil:** a confusão surgiu porque o símbolo de 3,3 V ligado a `2OE` aparece exatamente sobre o nó `DXL_DATA` no desenho e parece conectado a ele. A pendência é deslocar esse símbolo e contornar a trilha para eliminar a ambiguidade. É um problema de apresentação, não de conexão elétrica.
 
-**③ 「要默认导通 de 话，1OE# 应该接低电平」—— 默认不导通是有意 de ，不采纳**
+**③ “Para ficar normalmente habilitado, 1OE# deve ser ligado ao nível baixo” — a desativação padrão é intencional; sugestão rejeitada**
 
-`1OE#` 低有效，`R4` 把它**上拉到高**，意味着通道1（`MCU_TX → 总线`）
-**默认关闭**。这是刻意 de ：
+`1OE#` é ativo em nível baixo. `R4` o mantém em nível alto, deixando **o canal 1 (`MCU_TX → barramento`) desativado por padrão**. Isso é intencional:
 
-- Superior电到Firmware跑起来之前，e MCU 死机 / 复位期间，本板**绝不能驱动总线**。
-  总线是 15 个Servo共用 de ，一旦被钉住，整条链路通信全废。
-- 若把 `1OE#` 常接低，`MCU_TX` 会一直往总线上灌，空闲高电平把总线拉死，
-  Servo永远回不了包 —— 半双工不成立。
+- Antes de o firmware iniciar, e durante falha ou reset do MCU, esta placa **não pode acionar o barramento**. Os 15 servos compartilham a linha; se ela ficar presa, toda a comunicação é perdida.
+- Se `1OE#` fosse conectado permanentemente ao nível baixo, `MCU_TX` acionaria o barramento continuamente. O nível alto em repouso manteria a linha presa e os servos nunca conseguiriam responder, inviabilizando half-duplex.
 
-发送时由 MCU 把 `DE` 拉**低**。STM32 的 USART 硬件 Driver Enable 支持该极性，
-`CR3.DEP = 1` 一个位搞定，外面不用加反相器。
+Para transmitir, o MCU leva `DE` ao nível **baixo**. O Driver Enable por hardware da USART STM32 aceita essa polaridade; basta configurar o bit `CR3.DEP = 1`, sem inversor externo.
 
-> 这条 e  2026-09-06 第 ① 条（Comunidade反馈要求 DE Superior拉）方向一致 ——
-> 那次加 R4 正是为了保证「默认不驱动总线」，此处不能反过来。
+> A conclusão concorda com o item ① do comentário da comunidade de 2026-09-06, que recomendava manter DE em nível alto por padrão: o resistor R4 foi adicionado exatamente para garantir que o barramento não seja acionado por padrão. Não se deve inverter isso aqui.
 
-**待办**：原理图上把 `U3.7` 的 3.3V 符号挪开，避免与 `DXL_DATA` 节点视觉相连。
+**Pendência:** deslocar no esquemático o símbolo de 3,3 V de `U3.7`, evitando que pareça conectado ao nó `DXL_DATA`.
 
-### 2026-09-06 · Comunidade反馈（三条，两条已改）
+### 2026-09-06 · Comentários da comunidade (três itens; dois corrigidos)
 
-**① DE 脚要Superior拉 —— 已改，这是漏项**
+**① O pino DE precisa de pull-up — corrigido; estava faltando**
 
-`U3.1 (1OE#)` 是低电平使能发送。上电与复位期间 MCU 的 **PA1 是高阻**，此脚浮空；
-**若浮成低电平，发送缓冲就打开，本板会往总线Superior灌Dados、 e  15 个Servo全部撞车。**
+`U3.1 (1OE#)` habilita a transmissão em nível baixo. Durante a energização e o reset, `PA1` do MCU fica em alta impedância. Sem pull-up, o pino flutuaria; se assumisse nível baixo, o buffer de transmissão seria habilitado e a placa acionaria o barramento, provocando conflito com os 15 servos.
 
-已加 **R4 10 kΩ，DE → 3.3 V**。
+Foi adicionado **R4 de 10 kΩ entre DE e 3,3 V**.
 
-此前在 `SPI_CS` 上加 R1 上拉正是同一个道理，**但没有推广到 DE**，属实是疏漏。
+O pull-up R1 em `SPI_CS` já tinha sido adicionado pelo mesmo motivo, mas não aplicamos o mesmo princípio ao DE — foi uma omissão.
 
-**② 两个 `DXL_DATA` 要连一起并上拉 —— 已改**
+**② Os dois pontos de `DXL_DATA` devem ser unidos e receber pull-up — corrigido**
 
-电气上原本就是同一个网络（`U3.5 2A` / `U3.6 1Y` / `J1.3` / `J2.3`），
-但图Superior画成了两根各自带标签 de 短线，**看起来像没连**，是画法不够直观。已改为显式Conexão节点。
+Eletricamente já eram a mesma rede (`U3.5 2A` / `U3.6 1Y` / `J1.3` / `J2.3`), mas o desenho mostrava dois segmentos curtos com etiquetas distintas, dando a impressão de que não estavam ligados. O nó agora aparece explicitamente conectado.
 
-上拉这条也对：总线空闲无人驱动时，`2A` 这个 CMOS 输入浮空会有穿透电流，
-UART 也可能把噪声当起始位 —— 本板应当自己定义空闲电平，不该依赖主机。
-已加 **R5 10 kΩ，DXL_DATA → 3.3 V**。
+O pull-up também era necessário: quando ninguém aciona o barramento, a entrada CMOS `2A` poderia flutuar e consumir corrente de passagem; a UART também poderia interpretar ruído como bit de início. A placa deve definir o nível de repouso sem depender do controlador principal. Foi adicionado **R5 de 10 kΩ entre DXL_DATA e 3,3 V**.
 
-**③ 只留一个 3P Conexão器 —— 未采纳，理由见Superior面第 3 条**
+**③ Manter apenas um conector 3P — sugestão rejeitada; veja a justificativa do item 3 acima**
 
-该建议在本板确定为叶子节点时成立；但若本板是链条第一个节点则必须两个座子，
-而Oficial拓扑无从确认。Preservado两个，靠铜皮宽度解决过流。
+A sugestão funcionaria se a placa fosse certamente o nó final. Como ela pode ser o primeiro nó da cadeia, são necessários dois conectores; a topologia oficial não está disponível. Ambos foram mantidos, e a corrente é tratada com trilhas largas.
 
-改完复核：`DE` 由 2 脚变 3 脚，`DXL_DATA` 由 4 脚变 5 脚，
-全图无悬空脚、无短路、无重名Rede。
+Após as alterações, DE passou de 2 para 3 pinos e `DXL_DATA`, de 4 para 5. O desenho não tem pinos flutuantes indevidos, curtos nem redes duplicadas.
 
-### 2026-09-06 · 对照Oficial HAT 复审（补两处保护）
+### 2026-09-06 · Revisão comparativa com a HAT oficial (duas proteções acrescentadas)
 
-把 [`pollen-robotics/elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT)
-的 `dynamixel.kicad_sch` 逐器件读了一遍，和本板对比。
+Comparamos os componentes do esquemático `dynamixel.kicad_sch` do repositório [`pollen-robotics/elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT).
 
-**HAT  de  TTL 半双工电路**
+**Circuito TTL half-duplex da HAT**
 
-```
+`
                         ┌── R31 10k ── +3V3
    IO_15 (RX) ◄── U6 ───┘                    ┌── R32 10k ── +3V3
-              (1G125, OE# 低有效)             │
+              (1G125, OE# ativo baixo)        │
                         ▲                     ▼
    IO_14 (TX) ──┬── U7 ──────────────────────► ● ── R33 150R ──┬── TH1 100R ── J13.3 / J14.3
-                │  (1G126, OE 高有效)                       D4 5V1
+                │ (1G126, OE ativo alto)                      D4 5V1
                 └── R27 10k ── Q1 (PNP) ── Dynamixel_dir        ⏚
-```
+`
 
-**逐项对比**
+**Comparação item a item**
 
-| | Oficial HAT | 本板 | |
-|---|---|---|---|
-| 收发缓冲 | 1G125 + 1G126 两颗 | SN74LVC2G241 一颗 | 同逻辑 |
-| 方向Controle | 从 TX 自动派生（Q1 + RC） | **USART2 Hardware DE** | 本板更好，见Inferior |
-| 总线Superior拉 | R32 10 kΩ | R5 10 kΩ | 一致 |
-| **Dados线串阻** | R33 150 Ω + TH1 100 Ω | ❌ 无 → **已补 R6 150 Ω** | |
-| **数据线钳位** | D4 5V1 | ❌ 无 → **已补 D2 5V1（同料号 `C151348`）** | |
-| 电源保护 | 无（`+BATT` 直通连接器） | F1 PPTC + D1 TVS | 本板更好 |
+| | HAT oficial | Esta placa |
+|---|---|---|
+| Buffers de transmissão/recepção | Dois componentes, 1G125 + 1G126 | Um SN74LVC2G241 | Mesma lógica |
+| Controle de direção | Derivado automaticamente do TX (Q1 + RC) | **DE por hardware da USART2** | Melhor nesta placa, conforme explicado abaixo |
+| Pull-up do barramento | R32 10 kΩ | R5 10 kΩ | Igual |
+| **Resistor em série na linha de dados** | R33 150 Ω + TH1 100 Ω | ❌ Ausente → **R6 de 150 Ω acrescentado** | |
+| **Limitador de tensão na linha de dados** | D4 5V1 | ❌ Ausente → **D2 5V1 acrescentado** (mesmo código de peça `C151348`) | |
+| Proteção da alimentação | Nenhuma (`+BATT` vai diretamente ao conector) | PPTC F1 + TVS D1 | Melhor nesta placa |
 
-**方向Controle为什么本板更好**：HAT 从 TX 派生方向，靠 RC 时序回到接收态，
-**释放早了会截断最后一个停止位**——这是 TX 派生方案 de 通病。
-本板用 `USART2` 的硬件 DE，`DEAT`/`DEDT` 可按 1/16 比特精调，不存在这个问题。
+**Por que o controle de direção desta placa é melhor:** na HAT, a direção é derivada do TX e volta ao estado de recepção após um atraso RC. **Se for liberada cedo demais, o último bit de parada é truncado**, problema comum nessa abordagem. Aqui, o DE por hardware da `USART2` pode ser ajustado com precisão de 1/16 de bit por `DEAT`/`DEDT`, evitando esse problema.
 
-**补完之后 de Dados线拓扑**（ e  HAT 同构）：
+**Topologia final da linha de dados**, agora semelhante à da HAT:
 
-```
-U3.6 (1Y) ──┬─ DXL_DATA ─┬── R5 10k → 3.3V
+`
+U3.6 (1Y) ──┬─ DXL_DATA ─┬── R5 10k → 3,3 V
 U3.5 (2A) ──┘            │
-                         └── R6 150Ω ──┬── DXL_BUS ── J1.3 / J2.3
+                         └── R6 150 Ω ──┬── DXL_BUS ── J1.3 / J2.3
                                        │
                                     D2 5V1
                                        ⏚
-```
+`
 
-Superior拉留在**缓冲侧**（R5 在 R6 之前）， e  HAT  de  R32 位置一致 ——
-这样即使不插总线，`2A` 这个 CMOS 输入也有确定电平。
+O pull-up fica **no lado do buffer** (R5 antes de R6), na mesma posição relativa de R32 da HAT. Assim, mesmo sem o barramento conectado, a entrada CMOS `2A` tem nível definido.
 
-本板只串 150 Ω（HAT 是 250 Ω），因为 HAT 侧已经有 250 Ω，
-总线Superior串太多会拖慢边沿。
+Esta placa usa somente o resistor em série de 150 Ω (a HAT soma 250 Ω), pois já há 250 Ω no lado da HAT; resistência em excesso no barramento reduziria a velocidade das bordas.
 
-复核：`DXL_DATA`（缓冲侧）4 脚、`DXL_BUS`（连接器侧）4 脚，
-全图无悬空脚、无短路、无重名Rede。
+Verificação: `DXL_DATA` (lado do buffer) tem 4 pinos; `DXL_BUS` (lado do conector), também 4. O esquemático não tem pinos indevidamente abertos, curtos nem redes com nomes duplicados.
 
-**顺带纠正本文档此前一处错误**：HAT 的 `TH1 100R 热敏`串在**数据线**上，
-不是电源线上。`+BATT` 到 J13/J14 的第 2 脚是**粗线直通、无限流**。
+**Correção de um erro anterior neste documento:** o componente `TH1 100R` da HAT é um termistor em série com a **linha de dados**, não com a alimentação. A linha de `+BATT` até o pino 2 de J13/J14 é uma trilha direta e larga, sem limitação de corrente.
 
-### 2026-09-06 · 阻容封装统一改 0603
+### 2026-09-06 · Passivos padronizados em 0603
 
-所有 0402 阻容改为 **0603**，D2 从 SOD-323 改为 **SOD-123**。
+Todos os passivos 0402 foram trocados por **0603**; D2 passou de SOD-323 para **SOD-123**.
 
-理由不是「0402 手焊不了」—— 板Superior有 **LGA-14  de  LSM6DSV16X**（底部焊盘 3 × 2.5 mm），
-本来就必须Superior热风或回流，有那套Ferramentas 0402 也不难。
+A razão não é que “0402 seja impossível de soldar à mão” — a placa tem uma LSM6DSV16X em **LGA-14**, com pads inferiores de 3 × 2,5 mm, que já exige estação de ar quente ou refluxo. Com as mesmas ferramentas, 0402 também pode ser soldado.
 
-**真正 de 理由是Depuração期返修**：串阻要从 150 Ω 试到 33 Ω、某个Superior拉要摘掉、
-去耦要补一颗 —— 这些在 0603 Superior拿烙铁几秒就能做，0402 得重新架热风。
-一块没打样Validação过 de 板子，第一版必然要改几次。
+**O motivo real é facilitar o retrabalho durante a depuração:** testar o resistor em série entre 150 Ω e 33 Ω, remover um pull-up ou acrescentar um capacitor de desacoplamento. Essas tarefas levam segundos com um ferro em 0603; em 0402 exigem novamente a estação de ar quente. Uma placa de primeira versão que nunca foi fabricada nem validada certamente precisará de alterações.
 
-代价很小：11 个器件多占约 16 mm²，不到 45 × 22 mm 板面积 de  2%。
-而且 0603 这几个值**全在立创基础库**（10 kΩ `C25804` · 150 Ω `C22808` ·
-33 Ω `C23140` · 100 nF `C14663`），比原来 0402 的扩展库还省上料费。
+O custo de área é pequeno: 11 componentes ocupam cerca de 16 mm² a mais, menos de 2% dos 45 × 22 mm da placa. Além disso, todos os valores 0603 usados estão no catálogo básico da JLC (10 kΩ `C25804` · 150 Ω `C22808` · 33 Ω `C23140` · 100 nF `C14663`), mais baratos que os componentes 0402 do catálogo estendido.
 
-> C6（10 µF/25 V）保持 0805；C5（4.7 µF）、C7（10 µF）本来就是 0603。
+> C6 (10 µF/25 V) permanece 0805; C5 (4,7 µF) e C7 (10 µF) já eram 0603.
 
-换封装时同坐标同角度重放，实测**引脚坐标Inalterado、连线一根没断**。
-一个坑：`SOD-123` 的符号引脚顺序与 `SOD-323` 相反，换完 **D2 极性翻了**
-（阴极跑到接地侧，正常工作会把总线钳到 0.7 V），已按引脚名核对并改正。
-`create()` 的 `rotation` 参数在这个 API 里符号相反 —— 传 90 存进去是 270。
+As peças foram reposicionadas nas mesmas coordenadas e com a mesma orientação. A medição confirmou que **as coordenadas dos pinos não mudaram e nenhuma trilha se rompeu**.
+Uma armadilha: a ordem dos pinos do símbolo SOD-123 é oposta à do SOD-323; ao trocar, **a polaridade de D2 foi invertida** (o cátodo foi para o lado do terra e, em operação, prenderia o barramento em 0,7 V). Isso foi detectado comparando os nomes dos pinos e corrigido.
+O parâmetro `rotation` de `create()` tem sinal invertido nesta API: passar 90 grava 270.

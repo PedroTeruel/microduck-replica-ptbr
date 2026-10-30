@@ -1,86 +1,86 @@
-# Web动作录制 e 回放：第一版设计
+# Gravação e reprodução de movimentos na Web: projeto da primeira versão
 
-日期：2026-10-24。最新状态（2026-10-25）：已按Usuário授权实现并部署到Atual鸭子原Controle网址；SoftwareVerificação e 部署回读por meio de，真机动作效果待Usuário试用。
+Data: 24/10/2026. Estado atualizado em 25/10/2026: a implementação foi autorizada pelo usuário e implantada no endereço de controle existente do pato. As verificações de software e a conferência após a implantação passaram; o efeito dos movimentos no equipamento real ainda aguarda o teste do usuário.
 
-2026-10-25 复核：Web录制回放仍未实现。Inferior文声音路线描述 de 是写稿时状态；后续独立 de  R3 复读 e 坐立语音Serviço已在Atual鸭子Validação，见[语音Serviço](../../../software/duck-echo/README.md)。Usuário本次又提出将新功能、Modelo动作e已保存回放绑定到手柄，属于在原首版之外 de 扩展方向，已汇入[Software功能 e 升级总账](../../Software功能 e 升级总账.md)，未在此暗 em 扩大首版实现范围。
+Revisão de 25/10/2026: naquele momento, a gravação e a reprodução Web ainda não estavam implementadas. A descrição da rota de voz mais adiante refletia o estado quando este texto foi redigido; o serviço R3 independente de fala contínua e voz para sentar/levantar foi validado depois no pato atual. Consulte o [serviço de voz](../../../software/duck-echo/README.md). O usuário também propôs vincular novas funções, movimentos de modelo e reproduções salvas ao controle. Isso foi incorporado ao [inventário de funções e atualizações](../../软件功能与升级总账.md) como uma extensão além da primeira versão original; o escopo inicial não foi ampliado silenciosamente aqui.
 
-2026-10-25 后续实现：Superior述“仍未实现”为当天较早盘点 de Histórico状态，现已由 c18783c 实现并部署。Completo范围、Testee备份见[本轮验收](../verification/2026-10-25-web-motion-studio.md)。首版接受摇杆、头/身体/嘴e已知叫声，并可记录灵动生成 de 目标；Modelo技能无法可靠确认结束，因此在录制时明确拒绝，不声称已经实现Inferior文设想 de 技能等待/取消。已保存回放 de 手柄或语音绑定尚未实现；仍不录音视频、不保证精确空间路线。
+Implementação posterior em 25/10/2026: a frase acima, “ainda não implementadas”, descrevia uma verificação anterior daquele dia. A função foi implementada e implantada no commit c18783c. O escopo completo, os testes e os backups estão no [relatório de validação desta rodada](../verification/2026-10-25-web-motion-studio.md). A primeira versão aceita o joystick, a cabeça/corpo/boca e sons conhecidos, e pode gravar os alvos gerados pelos movimentos expressivos. Habilidades de modelo são recusadas durante a gravação porque não há confirmação confiável de que terminaram; não se afirma que a espera ou o cancelamento imaginados mais adiante tenham sido implementados. Ainda não há vínculo das reproduções salvas ao controle ou à voz. Não se grava áudio nem vídeo e não se promete uma trajetória espacial exata.
 
-## Usuário已经确定 de 范围
+## Escopo definido pelo usuário
 
-- 从Web点击开始录制，使用现有Web遥控 e 虚拟摇杆操作，不依赖实体手柄按键映射。
-- 包括前进、后退、转弯，记录Web操作对应 de 速度、方向e持续时间，再按时间回放。
-- pode停止录制、命名保存，随后选择记录重复播放。
-- 声音录制、声音触发动作、模仿声音是后续独立阶段，本次不一起实现。
+- Iniciar a gravação clicando na página Web e operar pelos controles remotos Web existentes e pelo joystick virtual, sem depender do mapeamento de botões do controle físico.
+- Incluir avanço, ré e curvas, registrando velocidade, direção e duração correspondentes às operações Web para reproduzi-las depois no tempo.
+- Permitir interromper a gravação, nomear e salvar o trecho e, depois, selecioná-lo para reprodução repetida.
+- Gravação de sons, movimentos acionados por sons e imitação de voz são etapas independentes futuras; não fazem parte desta implementação.
 
-## 方案选择
+## Escolha da solução
 
-推荐录制经过现有权限 e 状态Verificação、实际获准发送 de WebControle指令，加Superior相对时间。回放也经过同样 de Verificação，并Preservado主程序负责平衡e关节Controle de 方式。
+Recomenda-se gravar as instruções de controle Web que realmente forem autorizadas após as verificações existentes de permissões e estado, junto com o tempo relativo. A reprodução também deve passar pelas mesmas verificações e preservar o controle de equilíbrio e articulações do programa principal.
 
-另一种方案是采集全部关节角度，再直接复现关节轨迹。它适合以后单独研究手扶示教，但é necessário处理Ficar em pé平衡、接触地面e关节Superior力，不能当成本次Web指令录制 de 替代实现。
+Outra opção seria coletar os ângulos de todas as articulações e reproduzir diretamente a trajetória articular. Isso pode ser pesquisado mais tarde como uma função independente de demonstração guiada manualmente, mas exige tratar equilíbrio em pé, contato com o chão e torque nas articulações. Não é uma substituição adequada para gravar os comandos Web desta versão.
 
-本功能重复 de 是Controle指令 e 节奏，不保证相同脚步、落脚位置或空间路线。起始姿态、地面e打滑都会改变实际运动；不使用“原路返回”或“精确轨迹回放”字样。
+Esta função repete comandos e ritmo de controle; não garante os mesmos passos, pontos de apoio ou trajetória espacial. A postura inicial, o chão e o deslizamento mudam o movimento real. A interface não deve dizer “retornar pelo mesmo caminho” nem “reproduzir trajetória exata”.
 
-## Web使用流程
+## Fluxo de uso na Web
 
-在现有遥控卡内增加“动作录制”区域，靠近站、走、坐按钮，不新增实体手柄绑定。
+Adicionar uma área de “Gravação de movimentos” no cartão de controle remoto existente, perto dos botões de ficar em pé, caminhar e sentar; não criar vínculo com os botões do controle físico.
 
-1. Usuário按原流程让鸭子站稳。录制按钮本身不触发Ficar em pé、Superior力或开始走。
-2. 点击“开始录制”，显示红色录制状态、已录时长e“暂停录制／结束录制”。
-3. 操作现有Web摇杆、Cabeça／身体模式、张嘴、叫声 e 已suporta de 动作。界面 em  de 校准、设置修改、Modelo更换不属于动作记录。
-4. 点击“暂停录制”时停止连续运动并回 em ，暂停 de 等待时间不进入成片；继续后从新操作开始，不延续暂停前按住 de 摇杆。
-5. 点击“结束录制”，停止连续运动，输入名字，保存。没有有效动作时Instruções原因，不生成空记录。
-6. 从记录列表选择一条，查看名称、时长 e 所需Modelo／功能，选择播放 1、3 或 5 次，默认 1 次。
-7. 明确点击“开始回放”。显示进度、Atual步骤、剩余次数e“暂停回放／停止回放”，顶部急停仍可用。
+1. O usuário prepara o pato para ficar estável em pé seguindo o fluxo existente. O botão de gravação, por si só, não aciona a ação de ficar em pé, habilitar torque nem começar a caminhar.
+2. Ao clicar em “Iniciar gravação”, mostrar o estado vermelho de gravação, o tempo registrado e as opções “Pausar gravação” e “Encerrar gravação”.
+3. O usuário opera o joystick Web existente, os modos de cabeça/corpo, abre a boca, emite sons e executa movimentos conhecidos já compatíveis. Calibração, alteração de configurações e troca de modelo na interface não fazem parte do registro de movimentos.
+4. Ao pausar, interromper o movimento contínuo e retornar à condição neutra. O tempo de espera pausado não entra no trecho final. Ao retomar, a gravação começa com uma nova operação; o joystick não continua pressionado a partir do estado anterior à pausa.
+5. Ao encerrar, interromper o movimento contínuo, pedir um nome e salvar. Se não houver movimento válido, explicar o motivo e não criar uma gravação vazia.
+6. Na lista, permitir selecionar um trecho e consultar nome, duração e modelo/funções necessários. Oferecer reprodução 1, 3 ou 5 vezes, uma vez por padrão.
+7. Exigir um clique explícito em “Iniciar reprodução”. Mostrar progresso, etapa atual, repetições restantes e “Pausar reprodução”/“Parar reprodução”; a parada de emergência continua visível no topo.
 
-记录可重命名、删除。第一版不做剪辑、拼接、倍速、导入Arquivo或无限循环。
+É possível renomear e excluir gravações. A primeira versão não inclui edição, combinação, mudança de velocidade, importação de arquivos nem repetição infinita.
 
-## 录制Conteúdo e 起始条件
+## Conteúdo gravado e condições iniciais
 
-- 记录Serviço端接受 de WebControle事件 e 单调时钟时间，不抓浏览器键盘original事件，也不把全部 JSON-RPC 当成可回放Conteúdo。
-- 连续通道记录经过限制后 de 速度／角速度、Cabeça、身体、嘴部意图e停止边界。将模式变化显式保存，不依赖回放前Página de 摇杆模式。
-- 动作e技能记录已知动作标识 e 生命周期；叫声记录已知声音标识。不得把任意方法名、ArquivoCaminho或程序写进记录。
-- Levantar、开始走、Sentar是Usuário在录制前手动Concluído de 状态准备，第一版不将这些切换作为回放步骤。操作 em 改变这些准备状态、卸力、进入校准或更换Modelo时，结束Atual录制／回放并显示原因。
-- 若Conteúdoé necessárioCaminhada策略，录制e回放前均要求鸭子已经具备“准备好走” de 状态。Verificação实时状态、AtualModeloe速度限制，不用录制Arquivo里 de 旧状态代替Verificação。
-- 实体手柄Conexão时沿用现有Web遥控互斥规则；Web摇杆不可用就不能开始本次Web录制，并解释原因。
-- 保存必要 de Modelo／Configuração指纹。相关Modelo或ControleConfiguração不匹配时拒绝回放，提示重新录制，避免同一标识变成另一动作。
+- Registrar eventos de controle Web aceitos pelo serviço e seus tempos em relógio monotônico. Não capturar eventos originais do teclado no navegador nem tratar todo o JSON-RPC como conteúdo reproduzível.
+- Registrar, depois de aplicar os limites, velocidade/velocidade angular, intenções de cabeça, corpo e boca dos canais contínuos e os limites de parada. Salvar explicitamente as mudanças de modo, sem depender do modo de joystick que estiver selecionado na página antes da reprodução.
+- Movimentos e habilidades devem usar identificadores e ciclos de vida conhecidos; sons devem usar identificadores conhecidos. Nunca gravar nomes de métodos arbitrários, caminhos de arquivo ou programas.
+- Levantar, começar a caminhar e sentar são preparações de estado feitas manualmente pelo usuário antes da gravação; a primeira versão não as reproduz como etapas. Se uma operação alterar essas condições, aliviar torque, entrar em calibração ou trocar de modelo, encerrar a gravação/reprodução atual e explicar o motivo.
+- Se o conteúdo exigir a política de caminhada, o pato já precisa estar no estado “pronto para caminhar” antes da gravação e da reprodução. Validar em tempo real o estado, o modelo atual e os limites de velocidade; não usar o estado antigo salvo no arquivo como substituto.
+- Quando houver um controle físico conectado, aplicar a exclusão mútua do controle Web existente. Se o joystick Web não estiver disponível, não permitir iniciar a gravação Web e explicar por quê.
+- Salvar as impressões digitais necessárias do modelo/configuração. Se o modelo relacionado ou a configuração de controle não corresponderem, recusar a reprodução e pedir uma nova gravação, evitando que o mesmo identificador passe a representar outro movimento.
 
-## 暂停、停止e执行边界
+## Limites de pausa, parada e execução
 
-- 回放暂停时停止Caminhada、清除持续 de 头／身体／嘴部Controle，不再发出后续步骤；时间轴停在Atual位置。继续由Usuário明确点击，并重新Verificação状态。
-- 已触发 de 踢腿、翻滚等技能不能靠停止发送指令假定已经物理停止。é necessárioVerificaçãoExecução端是否suporta取消；não suporta时，普通暂停在Atual技能结束处生效，界面显示“等待Atual技能结束”。急停始终走原有卸力通道。
-- “停止回放”取消余Inferior步骤e后续循环，并停止连续Controle。不能将急停或普通停止包装成后台继续执行。
-- 同一时刻只有一个录制或回放会话。回放期间禁用相冲突 de 普通Controle；手动接管先终止回放再接受新Controle。
-- 切页、滚出Controle区、标签页隐藏、窗口失焦、Conexão丢失、Controle权变化、异常状态或急停，均终止录制／回放。恢复Conexão不会自动续播。
-- Serviço端执行时间轴，并要求AtualWeb每 100 毫秒发送有效存活信号。超过 500 毫秒没有信号必须停止，不能由Serviço端无限续发速度而绕开现有 deadman。
-- 不为了回放绕过现有低电压、Servo故障、IMU 状态或Modelo就绪Verificação。
-- 每轮结尾停止连续运动、退出身体锁存并合嘴；Inferior一轮重新核对状态后才开始。不会自动重新Superior力。
+- Ao pausar a reprodução, parar a caminhada, limpar os controles contínuos mantidos de cabeça/corpo/boca e interromper as próximas etapas. A linha do tempo fica na posição atual. Para continuar, o usuário precisa clicar explicitamente e o estado é validado novamente.
+- Não presumir que uma habilidade já iniciada, como chute ou cambalhota, foi fisicamente cancelada só porque os comandos pararam. É necessário verificar se o serviço de execução oferece cancelamento. Se não oferecer, uma pausa normal só terá efeito quando a habilidade atual terminar e a interface mostrará “Aguardando o término da habilidade atual”. A parada de emergência sempre usará o caminho de alívio existente.
+- “Parar reprodução” cancela as etapas restantes e os ciclos seguintes e interrompe o controle contínuo. Uma parada normal ou de emergência não pode ser apresentada como execução em segundo plano.
+- Só pode haver uma sessão de gravação ou reprodução por vez. Durante a reprodução, desabilitar controles normais conflitantes; se houver intervenção manual, encerrar primeiro a reprodução e só então aceitar os novos comandos.
+- Trocar de página, sair da área de controle, ocultar a aba, perder foco da janela, desconectar, mudar a posse do controle, entrar em estado anormal ou acionar a parada de emergência encerra a gravação/reprodução. Reconectar não retoma a execução automaticamente.
+- O serviço executa a linha do tempo e exige que a Web atual envie um sinal de atividade válido a cada 100 ms. Mais de 500 ms sem sinal deve parar a saída automática. O serviço não pode continuar enviando velocidades indefinidamente para contornar o mecanismo `deadman` existente.
+- A reprodução não pode contornar verificações existentes de bateria baixa, falha de servo, estado da IMU ou prontidão do modelo.
+- Ao fim de cada ciclo, parar o movimento contínuo, liberar o estado mantido do corpo e fechar a boca. Antes do ciclo seguinte, validar novamente o estado. Não reabilitar o torque automaticamente.
 
-## Dadose模块边界
+## Limites entre dados e módulos
 
-- 录制、Arquivo校验e时间轴执行使用独立模块；por meio de PadOps  de 已授权Controle入口交互，不向已经很大 de Web或 pad_drive.py  em 堆Completo实现。
-- 保存Arquivo采用Versão化Dados结构：标识、名称、创建时间、有效时长、起始要求、Configuração指纹e白名单事件列表。
-- 存入 Studio  de  state Diretório，不修改Imagem默认动作。Arquivo使用原子替换，并限制Quantidade、时长、名称、Arquivo大小、事件Quantidade e Parâmetros范围。
-- 第一版Superior限：单条 60 秒，最多 20 条，重复最多 5 次。名称不超过 32 个字符，单个Arquivo不超过 1 MiB、6,000 个事件；拒绝非有限数字、逆序时间e未知事件。达到时长或事件Superior限时自动结束为待保存草稿；保存Falha不显示Sucesso。
-- 不记录摄像头视频或麦克风音频。功能e摄像头预览可同时使用，但各自管理资源。
-- Dados保存在板端；Web不是后台独立Execução de 机器人任务调度器。未保存草稿在Serviço重启后不保证Preservado，界面明确显示“尚未保存”。
+- Implementar gravação, validação dos arquivos e execução da linha do tempo em módulos independentes. Interagir pela entrada de controle autorizada já existente em `PadOps`; não concentrar uma implementação completa no código Web já extenso nem em `pad_drive.py`.
+- Armazenar arquivos em formato de dados versionado: identificador, nome, data de criação, duração válida, requisitos iniciais, impressão digital da configuração e lista de eventos permitidos.
+- Salvar no diretório de estado do Studio, sem modificar os movimentos padrão da imagem. Fazer a substituição dos arquivos atomicamente e limitar quantidade, duração, nome, tamanho, número de eventos e faixas de parâmetros.
+- Limites da primeira versão: até 60 segundos por trecho, 20 gravações e 5 repetições. Nome de até 32 caracteres; arquivo de até 1 MiB e 6.000 eventos. Rejeitar números não finitos, tempos fora de ordem e eventos desconhecidos. Ao atingir o limite de duração ou eventos, encerrar automaticamente como rascunho pendente de salvamento; se o salvamento falhar, não mostrar sucesso.
+- Não gravar vídeo da câmera nem áudio do microfone. O recurso pode ser usado junto com a prévia da câmera, mas cada um gerencia seus próprios recursos.
+- Os dados ficam no dispositivo. A Web não é um agendador independente de tarefas robóticas em segundo plano. Um rascunho não salvo não tem garantia de persistência após reiniciar o serviço; a interface deve mostrar claramente “Ainda não salvo”.
 
-## Validação e 交付
+## Validação e entrega
 
-纯逻辑Teste覆盖时间顺序、暂停去除等待、连续通道重建、循环结束回 em 、Arquivo损坏／越界Parâmetros拒绝、Configuração不匹配 e 并发会话互斥。
+Os testes de lógica pura devem cobrir ordem temporal, remoção do tempo pausado, reconstrução dos canais contínuos, retorno ao início ao encerrar ciclos, rejeição de arquivo corrompido/parâmetros fora dos limites, incompatibilidade de configuração e exclusão mútua entre sessões.
 
-使用假 robotd Verificação实际发出 de 意图e顺序，并Validação断线、迟到事件、接管、急停、后台e刷新不会续播。不能仅conforme按钮变色判定回放Sucesso。
+Usar um `robotd` falso para verificar as intenções e a ordem realmente enviadas; validar que desconexão, eventos atrasados, intervenção manual, parada de emergência, segundo plano e atualização da página não retomam a execução. Não concluir que a reprodução funcionou apenas porque os botões mudaram de cor.
 
-浏览器Verificação桌面e 320／390px 窄屏 de 录制、保存、命名、回放、暂停、停止、有限循环e删除流程，e录制栏不影响原有遥控 e 摄像头布局。
+No navegador, verificar em desktop e em telas estreitas de 320/390 px os fluxos de gravação, salvamento, nomeação, reprodução, pausa, parada, ciclos limitados e exclusão. Confirmar que a área de gravação não prejudica o layout original do controle remoto nem da câmera.
 
-首先Concluído本地模拟e回归。真实鸭子验收单独进行，从短时间、低速片段开始，记录运动偏差 e 取消技能 de 真实行为；本地por meio de不等于板端ValidaçãoConcluído。不自动重刷Imagem或部署。
+Primeiro, concluir a simulação local e os testes de regressão. A validação do pato real é separada e deve começar com um trecho curto e lento, registrando diferenças de movimento e o comportamento real do cancelamento de habilidades. Testes locais aprovados não equivalem à validação no dispositivo. Não regravar automaticamente a imagem nem implantar a função.
 
-## 后续声音互动路线
+## Próxima etapa: interação por voz
 
-现有工程有声卡初始化、板载麦克风输入路由e叫声播放基础；Studio 尚没有Usuário录音、声音学习或声音触发动作功能，真实麦克风采集也尚未在本任务 em Validação。
+O projeto existente tem inicialização da placa de som, rota de entrada do microfone integrado e reprodução básica dos sons do pato. O Studio ainda não tem gravação do usuário, aprendizado de voz ou ações acionadas por fala, e a captura de áudio do microfone real ainda não foi validada nesta tarefa.
 
-先做手动录音 e 试听，确认板载麦克风e喇叭链路；再做“鹦鹉学舌”：录一句、播放原声或变声，并配合嘴部动作。随后研究指定口令或声音 e 已保存动作绑定，加入未知声音拒绝、触发间隔e扬声器回声抑制，并在Servo噪声 em 实测误触发。
+Primeiro, implementar gravação manual e audição para confirmar o caminho do microfone integrado ao alto-falante. Depois, fazer uma experiência de “imitação de papagaio”: gravar uma frase, reproduzi-la com a voz original ou modificada e sincronizar o movimento da boca. Em seguida, pesquisar a associação de palavras ou sons específicos a movimentos salvos, com rejeição de sons desconhecidos, intervalo mínimo entre acionamentos e supressão do eco do alto-falante; testar falsos acionamentos com o ruído dos servos.
 
-“重复播放刚听见 de 话”e“克隆音色生成新 de 话”是不同功能，不能把前者演示宣称为后者。声音识别只产生动作Por favor求，必须继续经过同一套就绪 e 停止Verificação；听见声音不直接绕过Controle权InicializaçãoCaminhada。
+“Reproduzir a fala que acabou de ser ouvida” e “clonar uma voz para gerar uma nova fala” são funções diferentes; uma demonstração da primeira não deve ser apresentada como a segunda. O reconhecimento de voz só cria uma solicitação de movimento, que ainda precisa passar pelas mesmas verificações de prontidão e parada. Ouvir uma fala não deve iniciar a caminhada nem contornar a posse do controle.
 
-声音阶段技术参考：[ALSA 官方录音与播放测试](https://wiki.alsa-project.org/wiki/SoundcardTesting)、[TensorFlow 官方关键词识别示例](https://www.tensorflow.org/tutorials/audio/simple_audio)。这些只支持可行性研究，不证明当前鸭子已完成采集或识别。
+Referências técnicas para a etapa de voz: [testes oficiais de gravação e reprodução do ALSA](https://wiki.alsa-project.org/wiki/SoundcardTesting) e [exemplo oficial de reconhecimento de palavras-chave do TensorFlow](https://www.tensorflow.org/tutorials/audio/simple_audio). Elas servem apenas para estudar a viabilidade; não comprovam que o pato atual já concluiu captura ou reconhecimento.

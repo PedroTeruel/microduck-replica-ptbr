@@ -1,289 +1,243 @@
-# 项目进度
+# Andamento do projeto
 
-**项目**：Microduck 复刻
-**开始**：2026-08-28
-**Histórico进度基准**：2026-09-03（HardwareCódigo aberto状态勘误：HAT 板Oficial已Código aberto）
-**仓库**：https://github.com/fanhao375/microduck-replica （公开）
+**Projeto**: réplica do Microduck
+**Início**: 2026-08-28
+**Data de referência do histórico**: 2026-09-03 (correção sobre o estado de código aberto do hardware: a placa HAT oficial está aberta)
+**Repositório**: https://github.com/fanhao375/microduck-replica (público)
 
-> **模型入口更新（2026-09-28）**：结构件、CAD 与打印工程统一到 [microduck-replica-cad](https://github.com/fanhao375/microduck-replica-cad) 下载。主仓旧 `print/`、`cad/` STL 已移除，目录只保留入口说明。下文分析批次与数量是历史记录；最新实物进度见 [构建日志](构建日志.md)，版本核对见 [CAD 记录](docs/CAD结构件版本核对-20260928.md)。
-
----
-
-## 目标
-
-复刻 Pollen Robotics  de  **Microduck**（25cm 双足机器鸭，$399，2026 圣诞开卖）。
-OficialSoftwareCódigo aberto；Hardware**部分Código aberto** —— **HAT 板有Completo KiCad 工程 e 生产Arquivo**
-（[`elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT)，Apache-2.0），
-但 `imu_to_dxl` 板、可编辑机械 CAD、整机 BOM 与装配文档均未公开。
-
-> **勘误 2026-09-03**：此前记录为「Hardware不Código aberto、无 PCB Princípio图」，**判断错误**。
-> 原因是只检索了 `microduck` 主仓，漏掉了同组织下 `elec_` 前缀的硬件仓库。
-
-este projeto从Oficial公开 de  **MJCF 仿真Modelo + 47 个 STL** 反推出Mecânica复刻所需 de 全部信息。
+> **Atualização dos arquivos de modelo (2026-09-28)**: peças estruturais, CAD e arquivos de impressão foram reunidos no repositório [microduck-replica-cad](https://github.com/fanhao375/microduck-replica-cad). Os antigos STL de `print/` e `cad/` foram removidos do repositório principal; esses diretórios agora contêm apenas instruções de acesso. As análises por lote e quantidades abaixo são registros históricos. O andamento físico atual está no [diário de construção](构建日志.md), e a conferência de versões está no [registro do CAD](docs/CAD结构件版本核对-20260928.md).
 
 ---
 
-## Atual状态（2026-09-29）
+## Objetivo
 
-| 环节 | 已确认 | 还缺什么 |
+Reproduzir o **Microduck** da Pollen Robotics (pato bípede de 25 cm, US$ 399, previsto para venda no Natal de 2026).
+O software é de código aberto; o hardware é **parcialmente aberto**: a placa HAT tem o projeto KiCad completo e os arquivos de produção ([`elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT), Apache-2.0), mas a placa `imu_to_dxl`, o CAD mecânico editável, a BOM completa e as instruções de montagem não foram publicados.
+
+> **Correção de 2026-09-03**: a conclusão anterior de que “o hardware não é aberto e não há esquemas de PCB” estava **errada**. A busca ficou restrita ao repositório principal `microduck` e não encontrou o repositório de hardware da mesma organização, cujo nome começa com `elec_`.
+
+Este projeto usa o **modelo de simulação MJCF e os 47 arquivos STL** publicados oficialmente para reconstruir as informações necessárias à réplica mecânica.
+
+---
+
+## Estado atual (2026-09-29)
+
+| Área | Confirmado | O que falta |
 |---|---|---|
-| 飞特Mecânica | 整机已装，09-18 Concluído站起/Sentar演示；Modelo统一在 CAD 仓库 | 本轮Teste 14 颗关节；嘴部 ID 29 按Usuário要求排除、未验收；装配零位 e 范围仍需逐关节核对 |
-| Armbian 与 HAT | DHCP 修复后的个人镜像已联网；HAT 经 `/dev/ttyS2` 读通关节；调试台 0.15.4 已部署 | 长时、带运动通信及保护配置验收 |
-| 50 Hz 回读目标 | 3000 轮、14 颗共 42000 状态，此窗口零错误，实际 46.8664 Hz；保持原姿势 e 设置 | 不含 IMU、推理或动作Gravação；不能等同整机 50 Hz Controle循环，其他窗口仍有偶发缺应答 |
-| 摄像头 | 正确排线InferiorOficial B1 采集 40 帧、1920×1080 | este projeto Armbian Configuração复测 e 持续帧率 |
-| IMU 与 Rust | 0.2.0 固件的飞特接口有软件/模拟测试记录；Rust `feetech` fork 已有适配实现 | 真实混合总线、响应时序和整机上板验收未完成 |
-| 训练 | HD1910 工程、M6 参数及短训练检查已整合到 `software/training` | 本机标定、模型核对及实机步态 |
-| 公开镜像 | 旧版首登说明改为 `root / 1234`，向导后才创建 duck；新增 DHCP 修复候选版 | 候选镜像仅离线校验，尚未对新产物烧卡实测；基础镜像未装机器人运行时 |
+| Mecânica Feetech | Robô montado; demonstração de levantar/sentar concluída em 18/09; modelos reunidos no repositório CAD | Testar as 14 articulações nesta rodada; o ID 29 do bico foi excluído a pedido do usuário e não foi aceito; conferir individualmente os zeros de montagem e os limites de curso |
+| Armbian e HAT | Imagem própria conectada após corrigir o DHCP; articulações acessíveis pela HAT em `/dev/ttyS2`; bancada de depuração 0.15.4 instalada | Aceitação de comunicação prolongada durante movimento e configuração das proteções |
+| Leitura de estados mantendo pose a 50 Hz | Em 3.000 ciclos, 14 servos (42.000 estados), nenhum erro nessa janela; frequência real de 46,8664 Hz; manteve a pose e as configurações | Não inclui IMU, inferência nem gravação de movimento; não equivale ao ciclo completo de controle a 50 Hz; ainda há respostas ocasionalmente ausentes em outras janelas |
+| Câmera | O cabo flat oficial B1, orientado corretamente, capturou 40 quadros a 1920×1080 | Repetir o teste de configuração Armbian neste projeto e verificar a taxa contínua de quadros |
+| IMU e Rust | Há registros de testes de software/simulação da interface Feetech no firmware 0.2.0; o fork Rust `feetech` já tem uma implementação de adaptação | Ainda faltam testes do barramento misto real, temporização das respostas e aceitação com tudo instalado no robô |
+| Treinamento | Projeto HD1910, parâmetros M6 e verificações de treinamento curto integrados em `software/training` | Calibração local, conferência do modelo e marcha no robô físico |
+| Imagem pública | As instruções antigas de primeiro acesso foram atualizadas para `root / 1234`; o pato só é criado depois do assistente; foi adicionada uma imagem candidata com correção de DHCP | A candidata só passou por verificações offline e ainda não foi gravada e testada; a imagem-base não inclui o runtime do robô |
 
-依据：[3000 轮Teste摘要](tools/radxa/50Hz保持姿势读状态-20260928.md)、[ImagemInstruções de uso](tools/radxa/ImagemInstruções de uso.md)、[摄像头记录](tools/radxa/摄像头Registro de depuração-20260928.md)。Inferior一步是有实物支撑条件Inferior逐关节小范围Validação，再Concluído保护、IMU eExecução时接入。以InferiorPreservado早期分析过程，其 em  de Concluído项e待办不能代替Atual实机验收状态。
+Fontes: [resumo dos 3.000 ciclos](tools/radxa/50Hz保持姿势读状态-20260928.md), [instruções da imagem](tools/radxa/ImagemInstruções de uso.md) e [registro da câmera](tools/radxa/摄像头记录-20260928.md). A próxima etapa é fazer validações de pequena amplitude, articulação por articulação, com o robô apoiado; depois, validar as proteções e integrar IMU e execução do modelo. As análises antigas são preservadas como histórico e suas tarefas pendentes não substituem a aceitação física atual.
 
-## Histórico分析基准（2026-09-03）
+## Referência da análise histórica (2026-09-03)
 
-| 环节 | 状态 | Instruções |
+| Área | Estado | Observações |
 |---|---|---|
-| 零件几何 | ✅ Concluído | 47 个 STL |
-| 装配关系 | ✅ Concluído | 精确到 0.1mm，已出爆炸图 |
-| CAD 装配体 | ✅ Concluído | 已应用世界变换，可直接导入 |
-| 关节Parâmetros | ✅ Concluído | 14 个受控关节 de 轴线 e 行程 |
-| 质量惯量 | ✅ Concluído | 15 个刚体 |
-| 紧Firmware清单 | ✅ Concluído | 孔特征反推，M2 系统 |
-| 执行器选型 | ✅ Concluído | XL330 ×15，BAM M6 Parâmetros |
-| 轴承规格 | ✅ Concluído | Ø22×16×4、Ø15×10×3 |
-| **电控方案** | ✅ Concluído | 从 Rust 源码Completo还原，见「第 6 批」 |
-| 主控选型 | ✅ Concluído | **Radxa Zero 3W 市售模块**，非定制载板 |
-| **HAT 板** | ✅ Oficial已Código aberto | KiCad + Gerber + BOM + 贴片坐标，直接打样（4 层板） |
-| **`imu_to_dxl` 板** | ✅ 已自绘（未打样） | 全网无公开工程；芯片/地址/协议已完整还原，本仓库提供原理图 + PCB |
-| **走线方案** | ❌ 缺失 | Oficial无任何资料 |
-| **ControleSoftware** | ✅ 可用 | 主控同款则Oficial Rust Execução时直接跑；换主控才需移植 |
-| **策略重训** | ✅ 非必需 | Hardware同款则Oficial 9 个 ONNX 直接可用；改本体/电控才需重训 |
+| Geometria das peças | ✅ Concluído | 47 STL |
+| Relações de montagem | ✅ Concluído | Precisão de 0,1 mm; vista explodida pronta |
+| Conjunto CAD | ✅ Concluído | Transformações globais aplicadas; pode ser importado diretamente |
+| Parâmetros das articulações | ✅ Concluído | Eixos e cursos das 14 articulações controladas |
+| Massa e inércia | ✅ Concluído | 15 corpos rígidos |
+| Lista de fixadores | ✅ Concluído | Reconstruída a partir das características dos furos; sistema M2 |
+| Seleção dos atuadores | ✅ Concluído | 15 XL330, parâmetros BAM M6 |
+| Especificação dos rolamentos | ✅ Concluído | Ø22×16×4 e Ø15×10×3 |
+| **Solução eletrônica** | ✅ Concluído | Reconstruída integralmente a partir do código Rust; consulte o “Lote 6” |
+| Seleção do controlador | ✅ Concluído | **Módulo comercial Radxa Zero 3W**, não uma placa-base personalizada |
+| **Placa HAT** | ✅ Código oficial aberto | KiCad + Gerber + BOM + coordenadas de montagem; pronta para fabricação (4 camadas) |
+| **Placa `imu_to_dxl`** | ✅ Projeto próprio concluído (ainda não fabricada) | Não há projeto público; chip, endereços e protocolo foram reconstruídos; este repositório contém esquemático e PCB |
+| **Plano de cabeamento** | ❌ Em falta | O projeto oficial não publicou informações |
+| **Software de controle** | ✅ Disponível | Com o mesmo controlador, executar diretamente o Rust oficial; só é necessário portar ao trocar o controlador |
+| **Retreinamento da política** | ✅ Não necessário | Com hardware igual, as 9 ONNX oficiais podem ser usadas; alterações no robô ou controle exigem retreino |
 
 ---
 
-## 已Concluído
+## Trabalho concluído
 
-### 第 1 批 · 资料摸底
+### Lote 1 · Levantamento de materiais
 
-- ~~确认 **Microduck 硬件不开源**~~：`microduck` 仓库全是 Rust 软件，
-  `docs/` 下 5 个子目录全是软件文档，全库搜不到任何 `.stl/.step/.f3d/bom` 文件
-  —— **这条结论下错了**（2026-09-03 更正）。只查了主仓，没查同组织下 `elec_` 前缀的
-  硬件仓库；**HAT 板在 [`elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT)
-  里是CompletoCódigo aberto de **（Apache-2.0，含 KiCad + Gerber + BOM + 贴片坐标）。
-  教训：判断「某项目有没有Código aberto某部分」时，必须检索**整个组织**，不能只看主仓。
-- 确认 **`microduck_rl` 里有 47 个 STL + 完整 MJCF**，这是唯一的几何来源
-- 确认 **3D ModeloLicença是 CC BY-NC-SA**（非商用），代码是 Apache-2.0
-- 排除了 Open Duck Mini v2 路线（见「决策记录」）
+- ~~Confirmar que **o hardware do Microduck não é aberto**~~: o repositório `microduck` continha apenas software Rust; os cinco subdiretórios de `docs/` tinham documentação de software e não havia arquivos `.stl/.step/.f3d/bom`. **Essa conclusão estava errada** (corrigida em 2026-09-03). A busca cobriu apenas o repositório principal, sem consultar o repositório de hardware da mesma organização, com prefixo `elec_`. A placa HAT tem projeto **totalmente aberto** em [`elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT) (Apache-2.0; inclui KiCad, Gerber, BOM e coordenadas de montagem). Lição: para saber se uma parte de um projeto é aberta, pesquisar a organização inteira, não apenas o repositório principal.
+- Confirmar que `microduck_rl` contém 47 STL e o MJCF completo, única fonte da geometria.
+- Confirmar que a licença do modelo 3D é CC BY-NC-SA (não comercial) e a do código é Apache-2.0.
+- Descartar o caminho do Open Duck Mini v2 (consulte “Registro de decisões”).
 
-### 第 2 批 · 装配图
+### Lote 2 · Desenhos de montagem
 
-- 用 MuJoCo 离屏渲染，白色天空盒，1600×2100
-- 4 张常规视图 + 2 张爆炸图 + 1 张分色对照图
-- 爆炸图沿运动学链逐级偏移（每级 48mm），越靠链末端炸得越远
-- 自己实现了世界坐标→像素 de 投影，usado para画标注引线 e 避让排版
-- 产出：`assembly-drawings/`（7 张），脚本 `scripts/render_assembly.py`
+- Renderização offline com MuJoCo, fundo branco, resolução 1600×2100.
+- Quatro vistas comuns, duas vistas explodidas e uma comparação com cores.
+- Deslocamento progressivo das peças ao longo da cadeia cinemática (48 mm por nível), aumentando em direção à extremidade.
+- Implementação própria da projeção de coordenadas globais para pixels, usada para desenhar linhas de chamada e evitar sobreposição na composição.
+- Resultado: sete desenhos em `assembly-drawings/`; script `scripts/render_assembly.py`.
 
-### 第 3 批 · CAD 装配体
+### Lote 3 · Conjunto CAD
 
-- upstream 47 个 STL 都是**零件自身坐标系**，直接导入 CAD 会全部堆在原点
-- 从 MJCF 取每个 geom  de 世界变换，应用后按刚体分组导出
-- 产出：`cad/` —— 整机单文件（796792 三角面）+ 15 个部件，单位 mm
-- 整机实测外形 **144 × 141 × 264 mm**（ e Oficial标称 25cm 吻合）
-- 脚本 `scripts/export_assembly_stl.py`
+- Os 47 STL do upstream usam o **sistema de coordenadas de cada peça**; importá-los diretamente no CAD empilharia tudo na origem.
+- Obter do MJCF a transformação global de cada geom, aplicá-la e exportar as peças agrupadas por corpo rígido.
+- Resultado em `cad/`: um arquivo do robô completo (796.792 faces triangulares) e 15 componentes, em milímetros.
+- Dimensões externas medidas do robô: **144 × 141 × 264 mm**, compatíveis com os 25 cm nominais da documentação oficial.
+- Script: `scripts/export_assembly_stl.py`.
 
-### 第 4 批 · 紧Firmware反推
+### Lote 4 · Reconstrução dos fixadores
 
-- 写了孔特征识别：焊接顶点 → 建面片邻接图 → 按二面角 35° 切割光滑曲面片
-  → 每片拟合圆柱（轴 = 法向协方差最小特征向量）→ 投影拟合圆求直径
-  → 按法向朝向判别孔/凸台
-- 47 个零件扫完耗时 2.5 秒
-- 产出：`docs/紧固件反推.md`、`docs/hole_analysis.json`、`scripts/analyze_holes.py`
+- Implementado o reconhecimento de características de furos: soldar os vértices → criar o grafo de adjacência das faces → separar superfícies suaves pelo ângulo diedro de 35° → ajustar um cilindro a cada superfície (eixo = vetor próprio de menor covariância das normais) → projetar e ajustar um círculo para obter o diâmetro → distinguir furos e saliências pela direção das normais.
+- A varredura das 47 peças levou 2,5 s.
+- Resultados: `docs/紧固件反推.md`, `docs/hole_analysis.json` e `scripts/analyze_holes.py`.
 
-### 第 10 批 · 英文文档
+### Lote 10 · Documentação em inglês
 
-- 背景：awesome 列表收录时特意标注 "In Chinese"；流量Dados显示 Google 仅 5 次
-  而 Bing 132 次，英文圈基本没进来
-- 按访问量定优先级，先翻 `硬件方案逆向.md`（站内访问第 2，84 次），
-  因为它是**全网独有Conteúdo** —— HF 员工 @mishig25 做 de  3D 解剖页（3.6 万浏览）
-  已覆盖「整机长什么样」那一层，规格类文档 e 其重合，而芯片地址、总线Protocolo、
-  12 字节Dados块布局这些只有este repositório有
-- 产出：`docs/hardware-teardown.en.md`（426 行）+ `docs/actuator-selection.en.md`（459 行），
-  均 e  em 文版互相链接
-- 英文 README  de 文档索引改为用 🇬🇧 标记哪些有英文版
+- Contexto: a lista awesome indicava explicitamente “In Chinese”; os dados de tráfego mostravam somente 5 visitas pelo Google contra 132 pelo Bing, com pouca entrada de leitores anglófonos.
+- Priorizamos por visitas e começamos por `硬件方案逆向.md` (segundo documento mais acessado no site, 84 visitas), porque traz conteúdo difícil de encontrar em outro lugar. A página de anatomia 3D de @mishig25, funcionário do Hugging Face (36 mil visualizações), já cobria a aparência geral do robô; documentos de especificações se sobrepunham a ela, mas os endereços dos chips, o protocolo do barramento e o layout do bloco de dados de 12 bytes só estavam neste repositório.
+- Resultados: `docs/hardware-teardown.en.md` (426 linhas) e `docs/actuator-selection.en.md` (459 linhas), ambos com links para as versões em chinês.
+- O índice de documentos no README em inglês passou a usar 🇬🇧 para indicar quais documentos têm versão em inglês.
 
-### 第 9 批 · 执行器选型分析
+### Lote 9 · Análise e seleção dos atuadores
 
-- 回答两个高频问题：为什么用Servo不用闭环步进；能不能不改Mecânica件换成便宜 de  STS3215
-- **硬Dados对照**：同为 15 刚体双足鸭，XL330 版 **737.2 g** vs STS3215 版 **2107.1 g**，
-  差 2.86 倍 —— Open Duck Mini v2 就是「STS3215 版 de 答案」（42cm / 2.1kg）
-- **执行器Parâmetros对照**：kp 差 32×、forcerange 差 3.5×、damping  e  frictionloss 各差 11×、
-  armature 差 15.5× —— 每一项都差一个Quantidade级
-- 反直觉发现：XL330 建模 de 回差反而更大（±1.0° vs ±0.5°）
-- 结论：**没有 em 间路线** —— 保 XL330（Servo ¥4500）或换 STS3215
-  （等于去做 Open Duck Mini v2）
-- **补充同级别Servo横向对比**：飞特 STS3032（20 g / 23.2×12.1×28.5 mm / 0.44 N·m /
-  4.8–6 V）尺寸比 XL330 还小、重量相当，但力矩约 85%（同电压口径）且电压Superior限 6 V；
-  SCS0009 仅 11 g 但只有 0.23 N·m（Pollen 自己用在 Amazing Hand Superior）
-- 结论：空档明确为「18–20 g / ≥0.9 N·m / 7.4 V / 总线」，atualmente只有 Robotis 一家满足
-- **深度评估宇树 S288**（通读Oficial 11 页手册）：19.5 g / 34×20×23 mm /
-  **减速比 288.35:1  e  XL330 完全相同** / M2 固定 / 单线半双工 —— MecânicaSuperior几乎是平替
-- S288  de 两个实质升级：**阻抗Controle**（τ = τ_ff + k_p·Δp + k_d·Δω）e
-  **输出端编码器**（OutPos 13 位）—— 后者可直接消灭回差建模 de 整套复杂度
-- S288  de 三个硬约束：电压 12.6 V (3S) vs Microduck  de  7.4 V (2S)；
-  总线地址空间仅 0~14 装不Inferior第 16 个设备（IMU 须另走 SPI）；
-  **力矩标注存疑**（转子端/输出端两种解读都说不通），已列出向厂商求证 de 四个问题
-- 产出：重写 `docs/执行器选型.md`（106 → 424 行）
+- Responde a duas perguntas frequentes: por que usar servos em vez de motores de passo de malha fechada e se seria possível trocar por STS3215 mais baratos sem alterar a mecânica.
+- **Comparação de dados físicos**: ambos os patos bípedes têm 15 corpos rígidos; o modelo XL330 pesa **737,2 g** e o STS3215, **2.107,1 g**, diferença de 2,86 vezes. O Open Duck Mini v2 é a resposta “versão STS3215” (42 cm / 2,1 kg).
+- **Comparação dos parâmetros dos atuadores**: diferença de 32× em kp, 3,5× em forcerange, 11× em damping e frictionloss e 15,5× em armature — cada parâmetro difere por uma ordem de grandeza.
+- Resultado contraintuitivo: o modelo do XL330 tem mais folga (±1,0° contra ±0,5°).
+- Conclusão: **não há uma opção intermediária** — manter XL330 (servo a ¥ 4.500) ou mudar para STS3215, o que equivale a construir o Open Duck Mini v2.
+- **Comparação complementar entre servos da mesma categoria**: Feetech STS3032 (20 g / 23,2×12,1×28,5 mm / 0,44 N·m / 4,8–6 V) é menor que o XL330 e tem peso semelhante, mas torque de cerca de 85% (na mesma tensão) e limite superior de tensão de 6 V. O SCS0009 pesa apenas 11 g, mas oferece somente 0,23 N·m; a própria Pollen o usa na parte superior do Amazing Hand.
+- A lacuna de mercado está clara: “18–20 g / ≥0,9 N·m / 7,4 V / barramento”; atualmente, apenas a Robotis atende a todos os critérios.
+- **Avaliação detalhada do Unitree S288** (manual oficial de 11 páginas): 19,5 g / 34×20×23 mm / **redução de 288,35:1, exatamente igual à do XL330** / fixação M2 / half-duplex de fio único. A mecânica é quase intercambiável.
+- Duas melhorias relevantes do S288: **controle de impedância** (τ = τ_ff + k_p·Δp + k_d·Δω) e **encoder no eixo de saída** (OutPos de 13 bits); este último eliminaria toda a complexidade de modelagem da folga.
+- Três restrições importantes do S288: alimentação de 12,6 V (3S) contra 7,4 V (2S) do Microduck; espaço de endereços do barramento limitado a 0–14, insuficiente para 16 dispositivos (a IMU teria de usar SPI); **especificação de torque duvidosa** (nenhuma das interpretações, no eixo do rotor ou na saída, parece consistente). Foram preparadas quatro perguntas para o fabricante.
+- Resultado: `docs/执行器选型.md` reescrito (de 106 para 424 linhas).
 
-### 第 8 批 · X Comunidade情报 e 外部Validação ⭐
+### Lote 8 · Informações da comunidade no X e validação externa ⭐
 
-- por meio de opencli  de  twitter read Comando（search / thread）Leitura X 公开帖
-- **核心收获：逆向结论获得外部独立Validação** —— @tspy  de Hardware拆解（169 赞）
-  独立列出 Radxa ZERO 3W / RK3566， e este repositório完全一致
-- 记录热度Dados：Oficial三条推合计约 860 万浏览；GitHub 三天涨 3.7 倍
-- 记录Comunidade已做出 de 二次开发（R2D2 语音合成、激光笔追踪、翻筋斗、霹雳舞）
-- **识别并标注噪音**：大量 meme 币蹭热度；「Microdino」经查回复区
-  充斥 scam 指控且 CAD 问题含糊其辞，**判定为不可信，不予引用**
-- 明确一个前提：**截至 8/31 市面无实物**，所有公开 teardown 都是推理而非物理拆解
-- 产出：`docs/社区动态.md`（150 行）
+- Leitura de publicações públicas do X por comandos de busca e leitura de tópicos do opencli para Twitter.
+- **Principal resultado: confirmação externa independente das conclusões da análise reversa** — a desmontagem de hardware de @tspy (169 curtidas) identificou Radxa ZERO 3W / RK3566, exatamente como este repositório.
+- Registro de popularidade: três publicações oficiais somaram aproximadamente 8,6 milhões de visualizações; o GitHub cresceu 3,7 vezes em três dias.
+- Registro de projetos comunitários: síntese de voz R2D2, rastreamento com ponteiro laser, mortal para trás e breakdance.
+- **Ruído identificado e marcado**: muitas moedas meme tentavam aproveitar a popularidade; a seção de respostas de “Microdino” tinha acusações de golpe e respostas vagas sobre CAD. **Foi considerado pouco confiável e não foi citado.**
+- Premissa explícita: **em 31/08 ainda não havia unidades disponíveis no mercado**; todas as desmontagens públicas eram inferências, não inspeções de hardware físico.
+- Resultado: `docs/社区动态.md` (150 linhas).
 
-### 第 7 批 · Oficial规格交叉Validação + Comunidade动态
+### Lote 7 · Conferência das especificações oficiais e atualizações da comunidade
 
-- Oficial 2026-08-27 发布，公布部分规格； e este repositório逆向Resultado**逐项对照**
-- 互相印证：RK3566 / NP-F550 / 8×8 ToF / 宽 140mm 全部对Superior
-- Oficial补足：RAM 1GB + 32GB eMMC（**正是 Radxa Zero 3W  de  SKU，反向佐证主控判断**；源码 em 无佐证，复刻建议 2G/16G）、
-  NPU 0.8 TOPS、NFC 双天线
-- 逆向独有：主控型号、主总线方案、全部芯片地址 e Protocolo
-- **发现一处矛盾**：Oficial标 2 个 IMU，源码里只有 1 个在用（BMI088 标注 dormant）
-- 记录OficialCódigo aberto立场：Pollen 明确要求媒体**不要**称其为"Código abertoHardware"（但加了 "for now"）
-- 记录Comunidade三个未获回复 de  issue（#175 STEP / #173 打印源Arquivo / #174 Alimentação板Princípio图）
+- A Pollen publicou especificações parciais em 2026-08-27; comparamos cada item com os resultados da análise reversa deste repositório.
+- Confirmações mútuas: RK3566, NP-F550, ToF 8×8 e largura de 140 mm.
+- Informações complementares oficiais: RAM de 1 GB + eMMC de 32 GB (**SKU exato do Radxa Zero 3W**, confirmação indireta da escolha do controlador; sem comprovação no código-fonte, recomendamos 2 GB/16 GB para a réplica), NPU de 0,8 TOPS e duas antenas NFC.
+- Resultados exclusivos da análise reversa: modelo do controlador, solução do barramento principal e endereços/protocolos de todos os chips.
+- **Contradição encontrada**: a Pollen informa duas IMUs, mas o código-fonte usa apenas uma (BMI088 marcado como inativo).
+- Registro da posição da Pollen sobre código aberto: ela pediu explicitamente à imprensa que **não** descreva o produto como “open-source hardware” (mas acrescentou “for now”).
+- Registro de três issues comunitárias sem resposta: #175 STEP / #173 arquivos-fonte de impressão / #174 esquema da placa de alimentação.
 
-### 第 6 批 · Hardware方案逆向 ⭐
+### Lote 6 · Análise reversa da solução de hardware ⭐
 
-- 思路：**Execução时要驱动真实Hardware，就必须写死设备Caminho、I2C 地址、寄存器偏移、
-  波特率eProtocolo —— 代码即规格书**
-- 从 `duck-control/src/{model,imu,bus}.rs`、`deploy/*.dts`、`deploy/robotd.toml`、
-  `tof/`、`mediad/` 里逐项挖出完整电控方案
-- 产出：`docs/硬件方案逆向.md`（394 行，完整推导）+ `docs/硬件规格速查.md`（270 行，一页纸速查）
+- Ideia central: **para controlar o hardware real durante a execução, o software precisa definir caminhos de dispositivos, endereços I²C, deslocamentos dos registradores, baud rate e protocolo — o código é a especificação.**
+- Reconstrução da solução eletrônica completa a partir de `duck-control/src/{model,imu,bus}.rs`, `deploy/*.dts`, `deploy/robotd.toml`, `tof/` e `mediad/`.
+- Resultados: `docs/硬件方案逆向.md` (394 linhas, análise completa) e `docs/硬件规格速查.md` (270 linhas, consulta rápida em uma página).
 
-### 第 5 批 · 执行器选型
+### Lote 5 · Seleção dos atuadores
 
-- 整理 BAM M6 Configuração、三项域随机化范围、回差编码器建模
-- 提取 `joints_properties.xml` 里 5 组 BAM 实测标定的原生 PD 参数
-- 产出：`docs/执行器选型.md`
+- Organização da configuração BAM M6, das faixas de três itens de randomização de domínio e da modelagem da folga do encoder.
+- Extração dos parâmetros PD nativos de cinco grupos de calibração BAM medidos, em `joints_properties.xml`.
+- Resultado: `docs/执行器选型.md`.
+
+---
+## Principais descobertas
+
+1. **O robô inteiro usa parafusos M2.**
+   Há 77 furos passantes Ø2,2, 28 escareados Ø4,4 e 20 furos-piloto Ø1,6 para rosca.
+   A combinação de furos Ø2,2 e Ø4,4 corresponde a parafusos M2 de cabeça cilíndrica Allen, passantes e escareados.
+   Conferência cruzada: o próprio `xl330.stl` tem furos Ø2,0×4 + Ø1,6×8, compatíveis com a montagem M2 do XL330.
+   As peças estruturais têm aproximadamente **146 furos passantes**.
+
+2. **São 15 servos, não 14.**
+   A malha `xl330` é referenciada **15 vezes** no MJCF do robô completo. Quatorze entram no espaço de ações da política (5 na perna esquerda + 4 no pescoço/cabeça + 5 na perna direita); o 15º aciona o bico/mandíbula por uma articulação `passive_*`.
+   Isso coincide com a menção a “15 servos” no README oficial; contar somente a lista de articulações deixa um de fora.
+
+3. **A cabeça representa um quarto da massa do robô.**
+   O tronco pesa 199 g, o conjunto da cabeça 189 g e o robô completo 737 g. O centro de gravidade é alto, o que ajuda a explicar a dificuldade de treinar a política de marcha.
+
+4. **A modelagem da folga é um detalhe importante de sim2real.**
+   O encoder magnético real do servo fica no lado **de saída** da folga das engrenagens; a malha de posição do firmware fecha o controle sobre `ângulo da articulação + ângulo da folga`. Enquanto o servo gira livremente na zona morta, a posição medida e o erro PD não mudam.
+
+5. **Construir pode custar mais do que comprar.**
+   Os 15 XL330 custam de US$ 359 (loja internacional ROBOTIS) a € 629 (MyBotShop), de um valor um pouco abaixo a bem acima do preço de US$ 399 do robô. Consulte a BOM para a conferência dos preços.
+
+6. **⭐ O controlador principal é um módulo comercial, não uma placa-base personalizada — a conclusão anterior estava errada.**
+   (Adendo de 2026-08-31: a conclusão também foi confirmada pela desmontagem independente de @tspy no X.)
+   A árvore de dispositivos fixa `compatible = "radxa,zero-3w", "rockchip,rk3566"`, identificando o **Radxa Zero 3W**, vendido no mercado (formato Pi Zero, 65×30 mm, compatível com o STL).
+   Isso derrubou diretamente a conclusão de que a eletrônica seria uma barreira intransponível.
+
+7. **A IMU está ligada ao barramento Dynamixel, não ao I²C.**
+   Placa `imu_to_dxl` v2 própria: LSM6DSV16X, ID 200 no barramento, registrador 124, bloco de 12 bytes (6 bytes de giroscópio + 6 bytes de quaternion SFLP fp16). A IMU e os 15 servos são lidos na **mesma operação `sync_read`**, sem custo adicional para o barramento nem necessidade de executar a fusão de orientação no controlador principal.
+
+8. **Não há medidor de carga nem ADC.**
+   A tensão da bateria é lida diretamente do valor de alimentação que o servo informa pelo protocolo Dynamixel.
+   Portanto, 6,6–8,2 V é a “faixa de uso sob carga”, não a faixa elétrica das células. Ao reproduzir, **não é necessário projetar um circuito de monitoramento da bateria**.
 
 ---
 
-## 关键发现
+## Registro de decisões
 
-1. **整机是 M2 螺丝系统。**
-   Ø2.2 过孔 ×77、Ø4.4 沉头孔 ×28、Ø1.6 攻丝底孔 ×20。
-   Ø2.2  e  Ø4.4 成对出现 = M2 内六角柱头 de 过孔+沉孔组合。
-   交叉验证：`xl330.stl` 自身是 Ø2.0×4 + Ø1.6×8，与 XL330 的 M2 安装孔一致。
-   结构件过孔约 **146 个**。
-
-2. **是 15 个Servo，不是 14 个。**
-   `xl330` 网格在整机 MJCF 中被引用 **15 次**。14 个进策略动作空间
-   （左腿 5 + 颈头 4 + 右腿 5），第 15 个驱动喙/下颚，走 `passive_*` 连杆。
-   这 e Oficial README  de  "15 servos" 一致 —— 只数关节列表会漏掉。
-
-3. **Cabeça占整机四分之一重量。**
-   躯干 199g，Cabeça总成 189g，整机 737g。重心很高，
-   这解释了为什么它 de Caminhada策略难训。
-
-4. **回差建模是 sim2real  de 关键细节。**
-   真实Servo磁编码器在齿轮间隙 de **输出侧**，Firmware位置环闭环在
-   `主关节角 + 回差角` 上；舵机在死区空转时测到的位置不变，PD 误差也不变。
-
-5. **自己造比买贵。**
-   15 个 XL330 按渠道从 $359（ROBOTIS 国际站）到 €629（MyBotShop）不等，
-   即从略低于到远超整机 $399 售价。核价见 BOM.md。
-
-6. **⭐ 主控是市售模块，不是定制载板 —— 此前判断有误。**
-   （2026-08-31 补充：此结论已获 X Superior @tspy  de 独立拆解Validação）
-   设备树里写死 `compatible = "radxa,zero-3w", "rockchip,rk3566"`，
-   就是市面Superior能买到 de  **Radxa Zero 3W**（Pi Zero 形态，65×30mm， e  STL 吻合）。
-   这直接推翻了「电控是硬墙」 de 结论。
-
-7. **IMU 挂在 Dynamixel 总线Superior，不走 I2C。**
-   自制 `imu_to_dxl` v2 板：LSM6DSV16X，总线 ID 200，寄存器 124，12 字节块
-   （陀螺 6 字节 + SFLP 四元数 fp16 6 字节）。e 15 个Servo在**同一次 sync_read**
-   里读回，零额外总线开销，主机不用跑姿态融合。
-
-8. **没有电量计，没有 ADC。**
-   Bateria电压直接读Servopor meio de Dynamixel 报告 de 自身供电电压。
-   所以 6.6–8.2V 是「带载可用区间」而非电芯量程。复刻时**不é necessário设计任何Bateria监测电路**。
-
----
-
-## 决策记录
-
-| 决策 | 结论 | 理由 |
+| Decisão | Conclusão | Motivo |
 |---|---|---|
-| 做 Microduck 还是 Open Duck Mini v2 | **做 Microduck** | Usuário明确要 Microduck 本身。Open Duck Mini v2 虽然全套Código aberto（BOM/CAD/STL/装配指南齐全），但那是另一台机器人 |
-| 仓库公开还是私有 | **公开** | Usuário选择。CC BY-NC-SA 允许转发，已配好Atribuição、同Protocolo、非商用声明 |
-| 是否把 6 个上游仓库一起打包 | **不打包** | 分析脚本使用 `scripts/fetch_upstream.sh` 获取上游。2026-09-04 曾提供 `print/` STL 副本；2026-09-28 为避免误打已移除，模型下载统一指向 CAD 仓库。训练工程的来源与许可证另见 `software/training/UPSTREAM.md`。 |
-| 许可证 | **双协议** | `scripts/` 原创 → Apache-2.0；`assembly-drawings/` `cad/` 是 CC BY-SA-NC 衍生作品 → 依 ShareAlike 沿用同协议 |
-| 遇到 PCB 这堵墙怎么办 | **Mecânica照抄 + 电控自建** | 100% 复刻不可能。Usuário表示能自己做 PCB，所以这条路可行 |
+| Fazer o Microduck ou o Open Duck Mini v2 | **Fazer o Microduck** | O usuário pediu explicitamente o próprio Microduck. Embora o Open Duck Mini v2 tenha BOM/CAD/STL e guia de montagem abertos, é outro robô |
+| Repositório público ou privado | **Público** | Escolha do usuário. CC BY-NC-SA permite redistribuição; atribuição, mesma licença e aviso de uso não comercial já estão configurados |
+| Agrupar os seis repositórios upstream | **Não agrupar** | Os scripts de análise obtêm as fontes com `scripts/fetch_upstream.sh`. Em 2026-09-04 foram disponibilizadas cópias STL em `print/`; foram removidas em 2026-09-28 para evitar confusões, e os downloads de modelos apontam para o repositório CAD. As fontes e licenças do projeto de treinamento estão em `software/training/UPSTREAM.md` |
+| Licença | **Duas licenças** | Código original em `scripts/` → Apache-2.0; `assembly-drawings/` e `cad/` são obras derivadas CC BY-SA-NC → mantêm a mesma licença pela cláusula ShareAlike |
+| Como lidar com a barreira de PCB | **Reproduzir a mecânica e construir a eletrônica** | Uma reprodução 100% fiel era impossível. O usuário informou que consegue fabricar PCBs, então este caminho é viável |
 
 ---
 
-## 早期待办存档（以Inferior为Histórico状态）
+## Arquivo de tarefas antigas (estado histórico)
 
-### 优先级 高
-- [x] **画 `imu_to_dxl` 板** —— **原理图与 PCB 都已完成**（2026-09-07）。
-      STM32G031F8P6 + LSM6DSV16X + SN74LVC2G241 半双工缓冲；
-      45 × 22 mm 双层板，底层整片 GND，22 个Rede全通、DRC 0 违规。
-      **未打样、无实物Validação** → [工程 e 复查Resultado](hardware/imu_to_dxl/)
-- [ ] **`imu_to_dxl` 打样验证** —— 下单前先跑器件标准化、复核丝印；
-      Conexão器高度（直插 8 mm vs 躯干内腔）需用 STEP 在装配体里确认
-- [x] ~~**PCB 板框反推**~~ —— **已作废**：Oficial KiCad 工程 e  Gerber 直接提供精确板框、
-      孔位 e Conexão器开口，无需从 STL 反推
-- [ ] **决定 HAT 板做不做** —— 不要录音/喇叭 de 话可完全省略，
-      ToF 直接挂 i2c3，Alimentação用现成 UBEC
+### Prioridade alta
 
-### 优先级  em 
-- [x] ~~英文化~~ **已Concluído**：Hardware方案逆向 / 执行器选型 / 紧Firmware反推 三份全部英文化，
-      加上 README 共 4 份双语。`社区动态.md` 与 `PROGRESS.md` 不翻 ——
-      前者时效性强会过期，后者是内部进度
-- [ ] `硬件规格速查.md` 暂不翻 —— 与 @mishig25 的 3D 解剖 Space 内容重合度高
-- [ ] **STL 可打印性Verificação** —— Validação 47 个网格是否水密、是否有非流形边，
-      判断能否直接切片
-- [ ] **打印工艺评估** —— 仿真网格无配合公差，需评估哪些孔位要放量、
-      哪些面é necessário支撑
-- [ ] **走线通道分析** —— 从装配体 de 内部空腔反推可Caminhada线Caminho
+- [x] **Projetar a placa `imu_to_dxl`** — **esquemático e PCB concluídos** (2026-09-07).
+      STM32G031F8P6 + LSM6DSV16X + buffer half-duplex SN74LVC2G241;
+      placa de duas camadas, 45 × 22 mm, plano GND contínuo na camada inferior, as 22 redes conectadas e DRC sem violações.
+      **Ainda não fabricada nem validada em hardware** → [projeto e resultados da revisão](hardware/imu_to_dxl/)
+- [ ] **Validar a fabricação da `imu_to_dxl`** — antes do pedido, normalizar os componentes e revisar a serigrafia; conferir com o STEP do conjunto se a altura do conector (8 mm vertical) cabe na cavidade do tronco.
+- [x] ~~**Reconstruir o contorno da PCB**~~ — **cancelado**: o projeto KiCad oficial e os Gerbers já fornecem o contorno exato, as posições dos furos e as aberturas dos conectores; não é preciso inferir isso dos STL.
+- [ ] **Decidir se fabricaremos a HAT** — pode ser omitida por completo se não forem necessários gravação de áudio ou alto-falante; ligar o ToF diretamente ao i2c3 e usar um UBEC comercial para alimentação.
 
-### 优先级 低
-- [ ] **ControleSoftware方案** —— Rust Execução时绑定 RK3566，评估移植成本
-      vs 用 Python 重写Controle循环
-- [ ] **策略重训** —— 换电控后官方 ONNX 失效，需用 `microduck_rl` 重训
-      （需 CUDA GPU，或用 `--hf-jobs` 跑在 HuggingFace 上）
+### Prioridade média
+
+- [x] ~~Traduzir para inglês~~ **Concluído**: os três documentos de análise reversa de hardware, seleção dos atuadores e reconstrução dos fixadores foram traduzidos integralmente, além do README — quatro documentos bilíngues. `社区动态.md` e `PROGRESS.md` não foram traduzidos naquela etapa: o primeiro envelhece rapidamente, e o segundo era um registro interno de progresso.
+- [ ] Ainda não traduzir `硬件规格速查.md` — há grande sobreposição com o conteúdo da página de anatomia 3D de @mishig25.
+- [ ] **Verificar se os STL podem ser impressos** — validar se as 47 malhas são estanques e se têm bordas não manifold; determinar se podem ser fatiadas diretamente.
+- [ ] **Avaliar o processo de impressão** — malhas de simulação não têm tolerâncias de encaixe; avaliar quais furos precisam ser ampliados e quais superfícies precisam de suporte.
+- [ ] **Analisar os canais de fiação** — inferir, a partir das cavidades internas do conjunto, os caminhos disponíveis para os fios.
+
+### Prioridade baixa
+
+- [ ] **Plano para o software de controle** — como o Rust de execução está ligado ao RK3566, avaliar o custo de portá-lo contra reescrever o ciclo de controle em Python.
+- [ ] **Retreinar a política** — a eletrônica diferente invalida as ONNX oficiais; retreinar com `microduck_rl` (requer GPU CUDA ou execução na Hugging Face com `--hf-jobs`).
 
 ---
 
-## 风险 e 已知局限
+## Riscos e limitações conhecidas
 
-1. **仿真 STL ≠ 可打印工程件。** 仿真只保证外形 e 惯量，不保证配合公差、
-   螺纹孔、热熔螺母座、走线空间。直接打印大概率装不起来。
-2. **紧Firmware是反推 de ，不是图纸。** 螺丝长度按孔深推算，是区间不是实测值。
-   打印收缩还会改变实际孔径（FDM Superior Ø2.2 通常偏小 0.1–0.3mm）。
-3. **`imu_to_dxl` 板需自绘。** 全网无公开工程，只能照还原出的协议自己设计。
-   （HAT 板Oficial已Código aberto，含 Gerber，**不构成阻塞**。）
-4. **Oficial策略不可迁移。** 换电控后 9 个 ONNX 全部失效，必须重训。
-5. **非商用限制。** 所有几何衍生Conteúdo受 CC BY-SA-NC 约束，不得usado para商业产品。
+1. **STL de simulação não são peças de engenharia prontas para impressão.** A simulação garante apenas a forma e a inércia, não tolerâncias de encaixe, furos roscados, suportes para porcas de inserção térmica nem espaço para os fios. Imprimir diretamente provavelmente impede a montagem.
+2. **A lista de fixadores é uma inferência, não um desenho técnico.** O comprimento dos parafusos foi estimado pela profundidade dos furos, portanto é uma faixa, não uma medição. A contração da impressão também altera o diâmetro real (em FDM, Ø2,2 costuma ficar 0,1–0,3 mm menor).
+3. **A placa `imu_to_dxl` precisa ser projetada do zero.** Não há projeto público; só é possível criar o projeto com base no protocolo reconstruído. (O projeto KiCad e os Gerbers da HAT oficial estão disponíveis; **isso não é um bloqueio**.)
+4. **A política oficial não é portável entre eletrônicas.** As nove ONNX ficam inválidas ao trocar o sistema eletrônico; é necessário retreinar.
+5. **Há restrição de uso não comercial.** Todo conteúdo geométrico derivado está sujeito à CC BY-SA-NC e não pode ser usado em produtos comerciais.
 
 ---
 
-## Arquivo索引
+## Índice de arquivos
 
 | Caminho | Conteúdo |
 |---|---|
-| `README.md` | 项目总览、装配结构、关节参数、可行性分析 |
-| `PROGRESS.md` | 本文档 |
-| `NOTICE.md` | 署名与来源 |
-| `assembly-drawings/` | 7 张装配图 |
-| `cad/`、`print/` | CAD 仓库下载入口；旧 STL 与对照表已移除，历史分析产出可从 Git 历史追溯 |
-| `docs/紧固件反推.md` | M2 螺丝系统、采购量、轴承规格 |
-| `docs/执行器选型.md` | XL330 参数、BAM M6、5 组标定 PD、回差建模 |
-| `docs/硬件规格速查.md` | 一页纸硬件规格表 |
-| `docs/硬件方案逆向.md` | 电控方案完整推导与证据 |
-| `docs/社区动态.md` | X / GitHub 情报、外部验证、噪音与风险 |
-| `docs/hole_analysis.json` | 孔扫描原始数据 |
-| `scripts/` | 拉上游 / 渲染 / 导出 CAD / 扫孔，4 个脚本 |
+| `README.md` | Visão geral do projeto, estrutura de montagem, parâmetros das articulações e análise de viabilidade |
+| `PROGRESS.md` | Este documento |
+| `NOTICE.md` | Atribuições e fontes |
+| `assembly-drawings/` | Sete desenhos de montagem |
+| `cad/`, `print/` | Acesso aos downloads no repositório CAD; os antigos STL e tabelas de comparação foram removidos, e os resultados de análises históricas podem ser consultados no histórico Git |
+| `docs/紧固件反推.md` | Sistema de parafusos M2, quantidades de compra e especificação dos rolamentos |
+| `docs/执行器选型.md` | Parâmetros do XL330, BAM M6, cinco grupos de PD calibrados e modelagem da folga |
+| `docs/硬件规格速查.md` | Folha de referência rápida das especificações de hardware |
+| `docs/硬件方案逆向.md` | Reconstrução completa da solução eletrônica e evidências |
+| `docs/社区动态.md` | Informações do X/GitHub, validações externas, ruídos e riscos |
+| `docs/hole_analysis.json` | Dados brutos da varredura dos furos |
+| `scripts/` | Quatro scripts para obter fontes upstream, renderizar desenhos, exportar CAD e analisar furos |

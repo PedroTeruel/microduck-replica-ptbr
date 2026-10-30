@@ -1,68 +1,73 @@
-# 鸭子本地语音 e 听音乐
+# Voz local e reprodução de música no pato
 
-新版默认单击手柄右摇杆按钮 **R3** 开启监听，短“嘎”一声；松手说话，再次单击关闭，低“咕”一声。网页开关采用同样提示，只在实际切换时叫一次；Select、断开和服务退出等自动取消保持安静。默认 `ECHO_REPLY_MODE=duck`：已启用声控时执行明确坐站口令，音乐模式回答明确音乐问题；普通或未识别的话语保持安静，不复读人的声音，也不提供自由聊天。关闭会取消待处理的识别并停止录音/复读，再播放关闭提示。
+Na versão atual, o padrão é clicar no botão R3 do controle para começar a escutar; o pato emite um grasnado curto. Fale depois de soltar o botão e clique novamente para parar, quando ele emite um som baixo. O controle web usa os mesmos avisos, somente quando o estado realmente muda. Select, desconexão e encerramento do serviço cancelam o modo silenciosamente.
 
-提示声使用Instalação音效库 de  WAV 时长，再加 100 毫秒Inicialização余量e 350 毫秒尾音，期间暂停收音；提示声结束后稍停再说话。每次ServiçoInicialização仍默认关闭监听e听音乐。
+O padrão de ECHO_REPLY_MODE é duck: com o controle por voz ativo, executa comandos explícitos para sentar ou levantar; no modo de música, responde a perguntas claras sobre a música. Falas comuns ou não reconhecidas não recebem resposta. O sistema não repete a voz do usuário nem oferece conversa livre. Ao desativar, cancela o reconhecimento pendente, para a gravação e a repetição e, em seguida, reproduz o aviso de desligamento.
 
-录音回放保留为单独的 `record` 命令，暂不绑定新按钮。明确需要旧复读行为时，可设置 `ECHO_REPLY_MODE=echo` 或传 `--reply-mode echo`；此时默认音调和语速提高到 1.25 倍，设为 1.0 可恢复原声。
+Os avisos sonoros usam a duração do arquivo WAV da biblioteca instalada, mais 100 ms de margem de inicialização e 350 ms de cauda; a captura fica pausada nesse intervalo. Depois do aviso, há uma breve pausa antes de falar. A cada inicialização do serviço, a escuta e o modo de música começam desligados.
 
-本轮语音eWeb音乐面板已por meio deSSHSuperior机，分句问题经真人复测恢复。外放音乐声学e身体动作效果仍待真人验收，SoftwareTeste不代替这两项。详见 [本轮Validação](../../docs/superpowers/verification/2026-10-25-audio-interaction.md)。Inferior文初版Histórico验收对应按住说话 de Versão。
+A reprodução da gravação continua disponível pelo comando separado record; ainda não está associada ao novo botão. Para solicitar explicitamente o comportamento antigo de repetição, defina ECHO_REPLY_MODE=echo ou passe --reply-mode echo. Nesse modo, o tom e a velocidade padrão aumentam para 1,25×; definir 1,0 restaura a voz original.
 
-这是独立Serviço，por meio de SSH Instalação，沿用主程序 de 坐立动作接口，不重新Gravação或重启 robotd/padd。只读旁听实体手柄，不独占输入设备。声音只放在内存，不保存对话录音Arquivo。
+O painel web de voz e música desta rodada foi instalado na placa por SSH e os problemas de reconhecimento de frases foram corrigidos após nova verificação por uma pessoa. O áudio de música no alto-falante e os efeitos dos movimentos ainda precisam de aceitação humana; testes de software não substituem essas duas verificações. Consulte [a validação desta rodada](../../docs/superpowers/verification/2026-10-25-audio-interaction.md). A aceitação histórica da primeira versão refere-se ao modo antigo, em que era necessário manter o botão pressionado para falar.
 
-**初版Histórico验收：2026-10-25 por meio de SSH 部署到 duck-0de6（192.168.0.102），设为开机自Inicialização。真实麦克风采集、变调回放、实体手柄 R3 按住/松开跑通。45项SoftwareTestepor meio de；Usuário随后明确确认真人语音“LevantareSentar都Sucesso”。**
+Este é um serviço independente, instalado por SSH. Usa a interface existente do programa principal para sentar e levantar; não reinstala nem reinicia robotd ou padd. Apenas acompanha o controle físico e não toma posse exclusiva do dispositivo de entrada. O áudio fica na memória; gravações de conversa não são armazenadas em arquivos.
 
-实际手柄为 Nintendo Switch Pro Controller，输入设备 /dev/input/event4。Instalação前后 robotd PID 1090、padd PID 1128  e Inicialização时间均未变化，Controle环保持 50 Hz。已设置Serviço enabled，未为此重启整机；已配对手柄开机回连后，复读Serviço会自动检测。
+**Aceitação histórica da primeira versão:** implantada por SSH em 2026-10-25 no duck-0de6 (192.168.0.102) e configurada para iniciar com o sistema. Captura pelo microfone real, reprodução com alteração de voz e acionamento de R3 no controle físico (pressionar e soltar) funcionaram. Os 45 testes de software passaram. Depois, o usuário confirmou que os comandos de voz reais “levantar” e “sentar” funcionaram.
 
-适用Hardware：64 位 Linux、TLV320AIC3104 HAT、已有正常 de 喇叭播放通路、suporta BTN_THUMBR  de 实体手柄。采集 de 是项目初始化脚本使用 de  Mic3R（Direito声道）。não suportaWeb模拟手柄 de  R3。
+O controle físico usado foi um Nintendo Switch Pro Controller; dispositivo de entrada /dev/input/event4. Antes e depois da instalação, os PIDs de robotd (1090) e padd (1128) e o horário de inicialização não mudaram; o ciclo de controle permaneceu em 50 Hz. O serviço foi habilitado sem reiniciar todo o sistema. Depois que o controle foi pareado e reconectado após a inicialização, o serviço detectou sua presença automaticamente.
 
-## 听音乐 e 明确提问（已Superior机，外放 e 动作效果待验收）
+Hardware compatível: Linux de 64 bits, HAT TLV320AIC3104, saída de alto-falante já funcional e controle físico compatível com BTN_THUMBR. A captura usa o canal direito Mic3R configurado pelo script de inicialização do projeto. O R3 de um controle web simulado não é compatível.
 
-Web可分别Controle监听e听音乐；打开听音乐会同时打开麦克风，关闭监听会一起关闭音乐模式。R3 eWebLeitura同一个实际监听状态。实体手柄关闭时仍可从Web开始收音；真正 de 手柄断开、Select、输入溢出eServiço退出会取消Atual输入。
+## Música e perguntas explícitas (instalado na placa; som e movimento ainda aguardam aceitação)
 
-音乐模式复用这一条麦克风流，按短时能量起音 e 包络重复证据估计节奏e粗略感觉。轻快、舒缓、摇摆只是节奏反馈，不代表准确曲风或情绪识别。音乐不会送去普通复读或坐站口令识别。说“感觉怎么样”“喜欢这种歌吗”等明确问题时，单独 de 本地流式识别器复用已有 Vosk Model，按近期可靠节奏调用原生 chirp、coo、greet 音效；没有可靠节奏用 inquire。Completo问题 de 逐词置信度至少 0.8；稳定Completo partial 保持 0.5 秒pode在音乐持续时回答，回应间隔至少 4 秒。提示声e尾音期间抑制自身收音。
+O painel web pode controlar separadamente a escuta e o modo de música. Ativar a música também ativa o microfone; desligar a escuta desativa ambos. R3 e a leitura do painel web refletem o mesmo estado real da escuta. Com o controle físico desligado, ainda é possível iniciar a captura pela web; desconexão real do controle, Select, estouro de entrada e saída do serviço cancelam a entrada atual.
 
-连续采集Por favor求 20 毫秒 period、80 毫秒 buffer；节拍时间按样本推进，避免驱动成批送达造成节奏失真。重复性估计只Preservado有限数值包络，每秒最多计算五次，状态Leitura复用缓存。平滑音乐通常é necessário数秒重复证据；没有清晰重复、声音停止或采集过期时不生成节拍。稳定读数只是音量包络 de 周期估计，强弱拍、倍速 e 混合节奏仍可能存在歧义；不同证据冲突时优先较强suporta，不能保证唯一 de 音乐拍点。
+O modo de música reutiliza o mesmo fluxo do microfone. Estima ritmo e sensação geral usando energia de curto prazo e evidências de repetição do envelope. “Animada”, “suave” e “balançada” são apenas respostas sobre o ritmo, não identificação precisa de gênero ou emoção. A música não é enviada ao reconhecedor de repetição comum nem ao reconhecedor de comandos para sentar/levantar.
 
-仅 toggle 模式提供私有 `/run/duck-echo/control.sock`（目录 0700、socket 0600）。每连接一条 UTF-8 JSON 行，最多 8192 字节，只支持 `{"method":"status"}` 或 `{"method":"set","listening":true,"music":true}`；布尔值必须是 JSON true/false。返回监听、音乐、节奏和短故障信息，不提供录音、转写或任意机器人命令。服务重启默认关闭。hold 保留旧的按住说话行为，没有网页音乐控制 socket。
+Quando a pessoa faz uma pergunta explícita, como “o que você acha?” ou “gosta dessa música?”, um reconhecedor local separado, em fluxo contínuo, reutiliza o modelo Vosk existente. Conforme o ritmo recente e confiável, seleciona os sons nativos chirp, coo ou greet; sem ritmo confiável, usa inquire. A confiança de cada palavra da pergunta completa precisa ser de pelo menos 0,8. Um trecho parcial estável, mantido por 0,5 s, pode receber resposta enquanto a música continua; o intervalo mínimo entre respostas é de 4 s. A captura da própria voz é suprimida durante o aviso e sua cauda.
 
-音乐问答é necessário已Instalação本地识别Modelo。Modelo未就绪会在状态里显示音乐识别故障；单独 de 录音回放 e 显式 echo 模式仍可使用。Software假 ALSA/UNIX socket Teste不等于真实外放音乐、混响e提问识别已por meio de验收。
+A captura contínua solicita períodos de 20 ms e buffer de 80 ms. O tempo do ritmo avança conforme as amostras, evitando distorções causadas por lotes de áudio entregues de uma só vez. A estimativa de repetição mantém apenas um envelope numérico limitado, calcula no máximo cinco vezes por segundo e reutiliza dados em cache na consulta de estado. Música suave pode exigir vários segundos de evidências repetidas; sem repetição clara, quando o som para ou a captura fica desatualizada, nenhum ritmo é informado. Uma leitura estável ainda representa somente uma estimativa do período do envelope de volume: acentos, andamento dobrado ou ritmos mistos podem ser ambíguos. Se as evidências forem conflitantes, prevalece a evidência mais forte; não há garantia de identificar um único ritmo.
 
-##  em 文口令模式
+Somente no modo toggle é criado o socket privado /run/duck-echo/control.sock (diretório com permissões 0700 e socket com 0600). Cada conexão aceita uma linha JSON UTF-8, com até 8192 bytes, e somente os métodos {"method":"status"} ou {"method":"set","listening":true,"music":true}; os campos booleanos devem ser true/false JSON. A resposta informa estado da escuta, música, ritmo e falhas breves; não fornece áudio gravado, transcrição ou comandos arbitrários para o robô. O serviço reinicia com tudo desligado. O modo hold mantém o comportamento antigo, de falar enquanto mantém o botão pressionado, e não oferece controle web de música pelo socket.
 
-本地声控模式：说“Sentar”“Sentar来”“Levantar”“起立”等明确短口令时执行对应动作；普通话语默认不回放。“不要Sentar”、多个动作混在一句里、低置信度识别不会触发动作。按 Select、手柄断线或输入溢出会取消未执行 de 旧口令并关闭持续监听。
+O reconhecimento local para perguntas sobre música precisa do modelo já instalado. Se o modelo não estiver pronto, o estado informa uma falha de reconhecimento musical; gravação/reprodução separada e modo echo explícito continuam disponíveis. Testes de software com ALSA falso e sockets UNIX não equivalem à validação de música no alto-falante real, reverberação ou reconhecimento de perguntas.
 
-已经在鸭子 CPU Superiorpor meio de 14 条合成Teste语音，覆盖正向口令、否定、引用、混合动作e普通话语，识别约 0.26–0.51 秒，峰值内存约 144 MB。使用含未知语音 e 否定形式 de 小词表，避免Completo听写 de  6–7 秒延迟。Usuário随后使用实际麦克风 e  R3 Teste，并确认站起eSentar均Sucesso。
+## Modo de comandos por voz
 
-验收后曾出现 SSH  e Web均不可达。后续经蓝牙配网恢复Conexão，将这台鸭子固定到 TP-LINK_5G_6494（5240 MHz），关闭其他已保存Rede de 自动Conexão e  Wi-Fi 省电。Web连续 20 次访问均Sucesso。语音关闭约 160 秒、开启约 180 秒 de 蓝牙记录均无断链，手柄Dados最大间隔均不足 49 毫秒；开启期间Concluído真人复读、Sentar e 站起，已取得两次动作 accepted=true  de 日志。Usuário确认复读e摇杆均正常；另一次看到灯闪时，动作也正常，记录 em 没有对应断链。此前日志确有真实掉线，尚未确定其原因，短时复测不能证明长期间歇问题彻底消失。详见 docs/network-20261025.md  e 本地 artifacts/duck-network-20261025/final-verification.json。
+No modo de voz local, comandos curtos e claros como “sentar”, “senta aí”, “levantar” e “fique em pé” acionam a ação correspondente. Falas comuns não são reproduzidas por padrão. Frases como “não sente”, várias ações misturadas na mesma frase e reconhecimentos de baixa confiança não acionam movimentos. Select, desconexão do controle ou estouro de entrada cancelam comandos antigos ainda não executados e desligam a escuta contínua.
 
-使用 Vosk small-cn-0.22，Modeloe依赖放在 /opt/duck-echo 内，不Enviar语音。Completo录音不GravaçãoArquivo，日志只记口令类别、置信度e动作回执，不记普通对话文本。每次会先读Atual坐立状态，重复“Sentar”不会反向站起；主程序拒绝姿态Por favor求时不绕过。坐着卸力后 de 恢复仍遵循现有Firmware要求。
+Na CPU do pato foram executados 14 testes com vozes sintéticas: comandos afirmativos, negações, citações, ações misturadas e fala comum. O reconhecimento levou aproximadamente 0,26–0,51 s e o pico de memória foi cerca de 144 MB. Foi usada uma lista pequena de palavras, incluindo fala desconhecida e negações, para evitar os 6–7 s de latência de uma transcrição completa. Em seguida, o usuário testou com microfone real e R3 e confirmou que levantar e sentar funcionaram.
 
-单击模式在说话停顿后处理一句，最长 10 秒；识别Resultado超过 6 秒不再执行。自己复读e动作提示声期间会抑制收音，尾音结束后继续监听。普通自动分句适合安静环境，持续外放音乐时应开启音乐模式。
+Após a aceitação, houve um período em que SSH e web ficaram inacessíveis. A conectividade foi recuperada por configuração via Bluetooth; o pato foi fixado à rede TP-LINK_5G_6494 (5240 MHz), a conexão automática às outras redes salvas foi desativada e a economia de energia Wi-Fi foi desligada. Vinte acessos web consecutivos funcionaram. Em testes Bluetooth de aproximadamente 160 s com voz desligada e 180 s com voz ligada, não houve desconexões; o intervalo máximo entre dados do controle ficou abaixo de 49 ms. Durante a sessão, foram concluídos repetição de voz real, sentar e levantar, com dois registros de ação accepted=true. O usuário confirmou que repetição e joystick funcionaram; em outra ocasião, a luz piscou, mas a ação também funcionou e o registro não mostrou desconexão correspondente. Já houve desconexões reais antes, cuja causa ainda não foi determinada. Um teste curto não comprova que o problema intermitente de longa duração foi eliminado. Consulte docs/network-20261025.md e os artefatos locais artifacts/duck-network-20261025/final-verification.json.
 
-需要恢复旧版按住说话时，在 `/etc/default/duck-echo` 中设置 `ECHO_TRIGGER_MODE=hold`，然后只重启 `duck-echo` 服务。hold 模式仍在松开 R3 后处理；声控录满 10 秒时取消这一句。
+Usa Vosk small-cn-0.22, com o modelo e as dependências locais em /opt/duck-echo; o áudio não é enviado para a internet. A gravação completa não é salva em arquivo. Os logs registram somente categoria do comando, confiança e resposta da ação; não registram o texto de conversa comum. Antes de cada movimento, o serviço consulta o estado atual de sentado/em pé. Repetir “sentar” não faz o pato levantar. Se o programa principal rejeitar uma solicitação de postura, o serviço não tenta contornar essa rejeição. Após sentar e liberar o torque, a recuperação continua sujeita aos requisitos existentes do firmware.
 
-```bash
-# 先更新运行文件，再准备本地识别依赖和模型。离线安装可提供 ARM64/cp313 wheels。
+O modo de clique único processa uma frase após uma pausa na fala, com duração máxima de 10 s; resultados de reconhecimento com mais de 6 s não são executados. A captura fica suprimida durante a repetição da própria voz e os avisos de ação, e retoma após a cauda do som. A segmentação automática comum funciona melhor em ambiente silencioso; com música tocando continuamente, ative o modo de música.
+
+Para restaurar o comportamento antigo de manter o botão pressionado, defina ECHO_TRIGGER_MODE=hold em /etc/default/duck-echo e reinicie somente o serviço duck-echo. No modo hold, a frase ainda é processada ao soltar o R3; se o modo de voz gravar por 10 s, essa frase é cancelada.
+
+§BT§§BT§§BT§bash
+# Atualize primeiro os arquivos de execução; depois instale as dependências e o modelo local de reconhecimento.
+# Para uma instalação offline, podem ser fornecidos wheels ARM64/cp313.
 sudo python3 /home/radxa/duck-echo/install.py
 sudo python3 /opt/duck-echo/install_speech.py --mode actions \
   --archive /home/radxa/duck-echo/vosk-model-small-cn-0.22.zip \
   --wheels /home/radxa/duck-echo/arm64-wheels
 
-# 观察识别，暂不执行动作：
+# Observar o reconhecimento sem executar ações:
 sudo python3 /opt/duck-echo/install_speech.py --mode shadow
 
-# 关闭口令识别（需要复读时另设 ECHO_REPLY_MODE=echo）：
+# Desativar o reconhecimento de comandos (configure ECHO_REPLY_MODE=echo separadamente para habilitar repetição):
 sudo python3 /opt/duck-echo/install_speech.py --mode off
-```
+§BT§§BT§§BT§
 
-来源：[Vosk 官方模型](https://alphacephei.com/vosk/models)、[ARM64 安装支持](https://alphacephei.com/vosk/install)。
+Fontes: [modelos oficiais do Vosk](https://alphacephei.com/vosk/models), [suporte de instalação ARM64](https://alphacephei.com/vosk/install).
 
-## SSH Superior机
+## Instalação por SSH na placa
 
-将本文件夹上传到鸭子的 `/home/radxa/duck-echo`。在鸭子上执行：
+Envie esta pasta para /home/radxa/duck-echo no pato. Na placa, execute:
 
-```bash
+§BT§§BT§§BT§bash
 cd /home/radxa/duck-echo
 arecord -l
 python3 duck_echo.py devices
@@ -71,42 +76,47 @@ python3 duck_echo.py probe --seconds 3
 python3 duck_echo.py record --seconds 4
 sudo python3 install.py
 journalctl -u duck-echo -n 30 --no-pager
-```
+§BT§§BT§§BT§
 
-`probe` 的 3 秒内在麦克风旁说话，输出包含 peak、rms、dbfs；静音/过短/采集失败时退出码为 2。`record` 命令在 4 秒内录音，然后播放；播放进程退出成功才会输出 `playback_ok: true`。进程成功仍需耳朵确认实际音质和喇叭响度。
+Durante os 3 s de probe, fale perto do microfone; a saída inclui peak, rms e dbfs. Silêncio, amostra curta ou falha de captura resultam no código de saída 2. O comando record grava por 4 s e depois reproduz. A saída playback_ok: true só aparece se o processo de reprodução terminar com sucesso. Mesmo assim, é necessário ouvir para confirmar a qualidade real e o volume do alto-falante.
 
-Instalaçãoé necessário sudo；Serviço以 radxa UsuárioExecução，并加入 audio/input 附加组。依赖系统 Python 3、alsa-utils e systemd，无需Baixar Python 包。
+A instalação requer sudo; o serviço roda como usuário radxa, incluído nos grupos suplementares audio/input. Dependências: Python 3 do sistema, alsa-utils e systemd; não é necessário baixar pacotes Python.
 
-## 原声 e 设备设置
+## Voz original e configurações do dispositivo
 
-```bash
+§BT§§BT§§BT§bash
 sudo nano /etc/default/duck-echo
-# ECHO_PITCH=1.0 为原声，1.25 为较高较快的声音。
-# ECHO_CHANNEL=1 为 Mic3R 右声道；仅硬件确实接左路时改成 0。
+# ECHO_PITCH=1.0 mantém a voz original; 1.25 deixa a voz mais aguda e rápida.
+# ECHO_CHANNEL=1 seleciona o canal direito Mic3R; use 0 somente se o hardware realmente estiver ligado à entrada esquerda.
 sudo systemctl restart duck-echo
-```
+§BT§§BT§§BT§
 
-仅重启复读Serviço。声卡名不同则修改 ECHO_CAPTURE/ECHO_PLAYBACK；本Instalação脚本 de 麦克风设置专usado para aic3104，其他声卡须另按其Hardware确认采集通路。
+Somente o serviço de repetição será reiniciado. Se o nome da placa de som for diferente, ajuste ECHO_CAPTURE/ECHO_PLAYBACK. A configuração do microfone deste instalador foi feita especificamente para aic3104; outras placas de som exigem confirmação do caminho de captura correspondente ao hardware.
 
-## 诊断 e 撤回
+## Diagnóstico e reversão
 
-- 没有手柄时Serviço等待，Conexão后自动找到suporta R3  de  evdev 设备；Inicialização时 R3 已按Inferior需先松开再试。多个手柄会监听第一个。日志写出实际设备名 e  event Caminho。
-- 录不到声音：查看 `arecord -l`、probe 电平和 Mic3R 焊接/线路；尚未验证本机硬件，不把静音归因为软件或焊接。
-- 播放提示 Device busy：松开原有发声扳机后再试。原生音效 e 复读可能竞争Hardware播放通路；本版会报错，不会停止 robotd 或篡改全局 ALSA 播放Configuração。
-- 变调同时改变语速；本版suporta按键后识别坐立短口令，不含连续唤醒、自由对话e保持语速 de 变声。
+- Sem controle, o serviço aguarda; após a conexão, encontra automaticamente um dispositivo evdev com suporte a R3. Se o R3 já estiver pressionado durante a inicialização, solte e tente novamente. Quando há vários controles, usa o primeiro. O log informa o nome do dispositivo e o caminho event reais.
+- Sem áudio gravado: confira arecord -l, nível de sinal em probe e soldagem/fiação do Mic3R. O hardware desta unidade ainda não foi validado; não atribua o silêncio ao software ou à soldagem sem testar.
+- Se a reprodução indicar Device busy, solte o gatilho de áudio existente e tente novamente. Os efeitos nativos e a repetição podem disputar a saída de áudio; esta versão informa o erro e não interrompe robotd nem altera globalmente a configuração ALSA.
+- A alteração de tom também muda a velocidade da fala. Esta versão reconhece comandos curtos para sentar e levantar após o acionamento; não tem palavra de ativação contínua, conversa livre nem alteração de voz com velocidade preservada.
 
-```bash
+§BT§§BT§§BT§bash
 sudo systemctl stop duck-echo
 sudo python3 /opt/duck-echo/install.py uninstall
-```
+§BT§§BT§§BT§
 
-卸载会关闭复读Serviço并恢复Instalação前 de 麦克风采集设置。程序e备份留在 /opt/duck-echo、/var/lib/duck-echo；喇叭音量不受该Instalação脚本修改。Instalação或升级Falha时会尝试恢复本次修改 de Arquivo、采集设置e此前 de 复读Serviço状态；恢复Falha会明确输出错误。
+A desinstalação para o serviço de repetição e restaura a configuração de captura do microfone anterior à instalação. O programa e os backups permanecem em /opt/duck-echo e /var/lib/duck-echo; o instalador não altera o volume do alto-falante. Se a instalação ou atualização falhar, o script tenta restaurar os arquivos, as configurações de captura e o estado anterior do serviço de repetição. Se a restauração também falhar, o erro é informado explicitamente.
 
-## 离线Validação
+## Validação offline
 
-```bash
+§BT§§BT§§BT§bash
 python3 -m unittest discover -v
 python3 duck_echo.py --help
-```
+§BT§§BT§§BT§
 
-Linux 集成Teste用临时假 arecord/aplay/amixer 程序Execução真实子进程，覆盖录放、限时、断线、声卡忙碌、麦克风设置恢复；不代表真机声音已经验收。
+Os testes de integração Linux usam programas falsos temporários de arecord/aplay/amixer e executam processos-filho reais. Cobrem gravação/reprodução, limite de duração, desconexão, dispositivo de áudio ocupado e restauração das configurações do microfone. Não representam aceitação de áudio em hardware real.
+'''
+p.write_text(s.replace('§BT§',chr(96)))
+PY
+git diff --check
+rg -n '[\p{Han}]' software/duck-echo/README.md | head -30
