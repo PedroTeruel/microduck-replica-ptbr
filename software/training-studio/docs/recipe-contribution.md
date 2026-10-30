@@ -1,45 +1,45 @@
-# 收录一个动作配方
+# Como adicionar uma receita de ação
 
-动作实验室是训练台内 de 配方库。Atual由仓库维护者por meio de代码 e  PR 收录任务，Usuário在Página选择配方、设置Parâmetros并训练。WebEnviar、远程Baixar、自动InstalaçãoeComunidade账号系统尚未实现。
+O Laboratório de Ações é a biblioteca de receitas da interface de treinamento. Atualmente, os mantenedores do repositório adicionam tarefas por meio do código e de pull requests. O usuário escolhe uma receita na página, configura os parâmetros e inicia o treinamento. Envio pela web, download remoto, instalação automática e sistema de contas da comunidade ainda não foram implementados.
 
-## Autor交付什么
+## O que o autor deve fornecer
 
-一份可收录 de 动作配方é necessário同时提供：
+Uma receita de ação precisa incluir:
 
-1. 动作目标、起始状态、结束状态 e Falha条件。
-2. 适配 de 机器人Modelo、Servoe引擎Versão。
-3. 真实注册 de 训练任务、奖励 e 终止规则、合理默认值e独立实验Diretório。
-4. 可修改Parâmetros de 类型、范围 e 单位；Parâmetros必须贯通训练、续训、评估、导出。
-5. Completo周期评估方法 e Sucesso判定；不可用累计奖励直接代替动作是否Concluído。
-6. Teste、短试跑记录、original视频 e 已知限制。没有实际回放时pode先提供文字Instruções。
-7. Autor、源码Fonte、LicençaeVersão信息。训练好 de 权重作为独立可选成果，注明对应配方 e 目标。
+1. Meta da ação, estado inicial e final e condições de falha.
+2. Modelo de robô, servos e versões do mecanismo compatíveis.
+3. Uma tarefa de treinamento registrada de verdade, regras de recompensa e término, valores padrão razoáveis e um diretório de experimento separado.
+4. Tipos, limites e unidades dos parâmetros editáveis. Os parâmetros devem ser usados no treinamento, na retomada, na avaliação e na exportação.
+5. Método para avaliar o ciclo completo e critérios de sucesso. A recompensa acumulada não substitui a confirmação de que a ação foi concluída.
+6. Testes, registro do teste curto, vídeo original e limitações conhecidas. Se ainda não houver uma reprodução real, podem ser fornecidas instruções em texto.
+7. Autor, origem do código, licença e versão. Pesos treinados são um artefato opcional separado e devem identificar a receita e a meta correspondentes.
 
-## Atual收录位置
+## Onde incluir a receita
 
-引擎任务位于 `software/training/src/mjlab_microduck/tasks/`，在任务注册表中登记。训练台使用 `software/training-studio/training_studio/config.py` 的服务端白名单，不接受页面直接执行任意任务名或脚本。
+As tarefas do mecanismo ficam em `software/training/src/mjlab_microduck/tasks/` e devem ser registradas no catálogo de tarefas. A interface usa a lista de permissões no servidor em `software/training-studio/training_studio/config.py`; ela não aceita nomes de tarefas ou scripts arbitrários enviados pela página.
 
-现有单脚平衡样例包括 `balance_parameters.py`、`microduck_balance_env_cfg.py`、相关 `mdp.py` 函数及测试。新增其他类型的动作，需要实现适合它的参数校验与 CLI 传递，不能直接套用单脚平衡的三个字段。
+O exemplo existente de equilíbrio em uma perna usa `balance_parameters.py`, `microduck_balance_env_cfg.py`, funções correspondentes em `mdp.py` e seus testes. Outros tipos de ação precisam implementar validação de parâmetros adequada e transmiti-los pela CLI; não devem reutilizar sem adaptação os três campos do equilíbrio em uma perna.
 
-每个配方的 `catalog` 元数据决定动作实验室的展示：
+Os metadados `catalog` de cada receita definem sua exibição no Laboratório de Ações:
 
-| 字段 | 用途 |
+| Campo | Uso |
 | --- | --- |
-| `category` | 页面分类，例如行走、平衡 |
-| `tags` | 搜索用标签 |
-| `preview_kind` | 当前支持 `robot_model`、`balance_target`、`text` |
-| `source_label` | 当前卡片来源说明，不代替源码署名与许可证 |
-| `verification_state` / `verification_label` | 验证状态及用户可读标签 |
-| `instructions` | 这个动作的简要步骤或目标说明 |
+| `category` | Categoria da página, como caminhada ou equilíbrio |
+| `tags` | Termos usados na busca |
+| `preview_kind` | Tipos aceitos atualmente: `robot_model`, `balance_target`, `text` |
+| `source_label` | Descrição da origem no cartão; não substitui autoria no código nem a licença |
+| `verification_state` / `verification_label` | Estado da validação e rótulo legível para o usuário |
+| `instructions` | Instruções breves ou descrição da meta da ação |
 
-三维Modelo或目标示意都必须注明非训练Resultado。未来增加视频/图片预览类型时，é necessário一起记录实际策略、目标、条件 e Fonte，不能把演示动画显示为训练Sucesso de 视频。
+Modelos 3D e diagramas de metas devem ser identificados como conteúdo que não representa resultados de treinamento. Para adicionar vídeos ou imagens de prévia no futuro, também será necessário registrar a política real, a meta, as condições e a origem. Uma animação demonstrativa não pode ser apresentada como vídeo de sucesso do treinamento.
 
-## 怎么审核 e 展示Validação状态
+## Revisão e exibição do estado de validação
 
-先审查Hardwaree任务接口，再Execução CPU Teste、64 环境 × 5 轮短试跑、Completo动作评估e导出核对。Página分别展示：
+Revise primeiro o hardware e a interface da tarefa. Depois execute os testes em CPU, um teste curto com 64 ambientes e 5 iterações, a avaliação do ciclo completo da ação e a verificação da exportação. A página deve distinguir:
 
-- **尚未Validação**：Instruções任务存在，尚未取得相应Validação证据。
-- **短试跑por meio de**：训练 e 产物链路跑通，不代表已经学会动作。
-- **动作ValidaçãoResultado**：给出固定目标 e 条件Inferior de Sucesso次数、尝试次数 e Falha情况。
-- **真机ValidaçãoResultado**：单独记录Hardware、部署接口 e 实测证据。
+- **Ainda não validado:** a tarefa e as instruções existem, mas ainda não há evidências de validação correspondentes.
+- **Teste curto aprovado:** o fluxo de treinamento e geração de artefatos foi executado; isso não significa que a ação foi aprendida.
+- **Resultado da validação da ação:** informa o número de sucessos e tentativas sob metas e condições fixas, além das falhas encontradas.
+- **Resultado da validação no robô real:** registra separadamente o hardware, a interface de implantação e as evidências medidas.
 
-AtualPágina只有项目内置 de 三个配方。单脚平衡已por meio de真实短试跑，5 轮策略 de 动作Sucesso率仍为 0/8；起伏地形尚未por meio deeste projeto de  GPU Validação。未来ComunidadeAutor de 配方也使用同样 de 证据标准。
+Atualmente, a página inclui três receitas internas do projeto. O equilíbrio em uma perna passou por um teste curto real, mas a taxa de sucesso da política em 5 iterações foi 0/8. O treinamento em terreno irregular ainda não foi validado com GPU neste projeto. Futuras receitas da comunidade devem seguir os mesmos critérios de evidência.
