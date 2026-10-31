@@ -1,10 +1,9 @@
-// 总览的「连 WiFi」卡片、设置里的 WiFi 一栏（任务 10b）。
-// 鸭子开着热点时，手机连热点、打开 Studio，选家里的 WiFi、填密码；Studio 先关热点，再让 configd net.connect。
-// 热点开关、net.* 都在后端（studio/net.py）；这里只管选网、确认、把「断开以后还能看」的话留在屏幕上。
-// 换网以后的地址按设备写（openLines），「更多」页还有一块能复制的「这只鸭子的地址」（DuckAddresses）。
-// 连接发出去、页面跟鸭子断了以后自己去找鸭子的新地址（任务 17，用户 10-21：「连 WiFi 弄了三下」）：每 2 秒用 new Image()
-// 加载 duck-xxxx / duck-xxxx.local 上的 probe.svg（跨域加载图片不要 CORS），哪个先加载成功就跳过去；最多找 3 分钟。
-// 探测逻辑（findUrls / probeImage / startFind）不碰页面，tests/wifi_find.mjs 在 Node 里用假时钟跑它。
+// Cartão Conectar ao Wi-Fi na visão geral e seção Wi-Fi das configurações.
+// Quando o ponto de acesso do Microduck está ativo, conecte o celular a ele, abra o Studio, selecione a rede doméstica e informe a senha. O Studio desativa o ponto de acesso antes de pedir a conexão a configd.
+// O backend (studio/net.py) controla o ponto de acesso e as operações net.*. Esta interface permite selecionar redes, confirmar a troca e acompanhar a reconexão.
+// openLines mostra como acessar o Studio após a troca de rede. DuckAddresses fornece endereços copiáveis na página Mais.
+// Após solicitar a conexão, se a página perder contato com o Microduck, procure o novo endereço a cada 2 s por até 3 min carregando probe.svg em duck-xxxx e duck-xxxx.local.
+// A lógica findUrls / probeImage / startFind é independente da interface e pode ser exercitada em Node por tests/wifi_find.mjs com um relógio simulado.
 import { html, useState, useEffect } from './vendor/preact-htm.module.js';
 import { ConfirmBox } from './confirm.js';
 
@@ -68,22 +67,22 @@ const CSS = `
   .wifi-psk, .wifi-manual-name, .wifi-manual-psk { height: 46px; }
 }
 `;
-if (typeof document !== 'undefined' && !document.getElementById('wifi-css')) {   // Node 里跑探测逻辑的测试时没有 document
+if (typeof document !== 'undefined' && !document.getElementById('wifi-css')) {   // Os testes de localização executados no Node não têm document.
   const s = document.createElement('style');
   s.id = 'wifi-css';
   s.textContent = CSS;
   document.head.appendChild(s);
 }
 
-const SEC = { open: '开放', wep: 'WEP', wpa_psk: 'WPA2', wpa3_sae: 'WPA3', enterprise: '企业认证' };
-const secLabel = (sec) => SEC[sec] || (sec ? '加密' : '');
+const SEC = { open: 'Aberta', wep: 'WEP', wpa_psk: 'WPA2', wpa3_sae: 'WPA3', enterprise: 'Autenticação empresarial' };
+const secLabel = (sec) => SEC[sec] || (sec ? 'Criptografada' : '');
 const pskFormatOk = (v) => v === '' || (v.length >= 8 && v.length <= 63) || /^[0-9a-fA-F]{64}$/.test(v);
 const pskOk = (v) => v !== '' && pskFormatOk(v);
 
 function Bars({ signal }) {
   const n = typeof signal === 'number' ? (signal >= 75 ? 4 : signal >= 50 ? 3 : signal >= 25 ? 2 : 1) : 0;
-  return html`<span class="wifi-bars" title=${typeof signal === 'number' ? '信号 ' + signal : '信号不知道'}
-    aria-label=${typeof signal === 'number' ? '信号 ' + signal : '信号不知道'}>
+  return html`<span class="wifi-bars" title=${typeof signal === 'number' ? 'Sinal ' + signal : 'Sinal desconhecido'}
+    aria-label=${typeof signal === 'number' ? 'Sinal ' + signal : 'Sinal desconhecido'}>
     ${[1, 2, 3, 4].map((i) => html`<i class=${i <= n ? 'on' : ''}></i>`)}</span>`;
 }
 
@@ -92,32 +91,32 @@ function minutesSince(at) {
   return Math.max(1, Math.round((Date.now() / 1000 - at) / 60));
 }
 
-// 换了网以后怎么打开 Studio，按设备写（10-20 真机：开着 Clash 系统代理的 Windows 打不开 duck-xxxx.local——走了代理、502；
-// 不带点的 duck-xxxx Windows 用 LLMNR 问得到，代理按 <local> 绕过；IP 哪儿都能开）
+// Instruções para abrir o Studio após trocar de rede, organizadas por dispositivo. Em alguns computadores Windows com o proxy Clash, duck-xxxx.local passa pelo proxy e retorna 502.
+// O nome duck-xxxx pode ser resolvido via LLMNR e ignorado pelo proxy; o endereço IP funciona em qualquer dispositivo.
 export function openLines(net) {
   const host = net.hostname || 'duck-xxxx';
   return [
-    `Windows 电脑：${net.url_host || `http://${host}:8000/`}（开着代理也能打开）`,
-    `苹果手机、Mac：${net.url_local || `http://${host}.local:8000/`}`,
-    `安卓手机，或者上面都打不开：去路由器的设备列表找 ${host}，用它的 IP 打开`,
-    '电脑开着 Clash 的 TUN 模式还打不开：在 Clash 里把局域网（192.168.0.0/16）设成直连',
+    `Computador Windows: ${net.url_host || `http://${host}:8000/`} (funciona mesmo com o proxy ativado)`,
+    `iPhone ou Mac: ${net.url_local || `http://${host}.local:8000/`}`,
+    `Android ou se os endereços acima não funcionarem: localize ${host} na lista de dispositivos do roteador e abra o endereço IP`,
+    'Se o computador estiver usando o modo TUN do Clash: configure a rede local (192.168.0.0/16) como conexão direta no Clash',
   ];
 }
 
-// ---------------- 连 WiFi 以后找鸭子的新地址（任务 17） ----------------
-export const FIND_EVERY_MS = 2000;           // 每 2 秒探一轮
-export const FIND_GIVEUP_MS = 3 * 60 * 1000; // 最多找 3 分钟
-export const FIND_PROBE_MS = 6000;           // 一次探测最多等这么久（连不上的地址可能挂几十秒才报错）
-export const FIND_SILENT_MS = 5000;          // 这么久没收到 Studio 的任何消息也算断了（WebSocket 有时不马上报断）
+// ---------------- Localização do novo endereço após conectar ao Wi-Fi ----------------
+export const FIND_EVERY_MS = 2000;           // Tenta novamente a cada 2 s.
+export const FIND_GIVEUP_MS = 3 * 60 * 1000; // Desiste após 3 min.
+export const FIND_PROBE_MS = 6000;           // Tempo máximo por tentativa; um endereço inacessível pode demorar a responder.
+export const FIND_SILENT_MS = 5000;          // Considera a conexão interrompida após 5 s sem mensagens do Studio; o WebSocket pode demorar para detectar a falha.
 
-/** 要找的地址：http://<hostname>:<端口>/ 和 http://<hostname>.local:<端口>/（net.json 的 hostname，端口跟 --listen 一致）。 */
+/** Endereços procurados: http://<hostname>:<porta>/ e http://<hostname>.local:<porta>/; hostname vem de net.json e a porta corresponde a --listen. */
 export function findUrls(net) {
   const host = (net && net.hostname) || 'duck-xxxx';
   const urls = [(net && net.url_host) || `http://${host}:8000/`, (net && net.url_local) || `http://${host}.local:8000/`];
   return urls.filter((u, i) => urls.indexOf(u) === i);
 }
 
-/** 用一张小图探一个地址：加载成功回 true，出错 / 超时回 false。跨域加载图片不要 CORS；?t= 防缓存。 */
+/** Testa um endereço carregando uma imagem pequena: retorna true ao carregar e false em caso de erro ou tempo esgotado. Imagens entre origens não exigem CORS; ?t= evita o cache. */
 export function probeImage(url, timeoutMs = FIND_PROBE_MS) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -136,8 +135,8 @@ export function probeImage(url, timeoutMs = FIND_PROBE_MS) {
   });
 }
 
-/** 每 every 毫秒把 urls 各探一次（上一次还没回话的那个先不探），哪个先成功就 onFound(那个地址)、停下；
- *  giveUp 毫秒还没找到就 onGiveUp()、停下。回 {stop}：页面重新连上原来的地址（热点回来了）时调它，停下以后什么都不再回调。 */
+/** A cada every milissegundos, testa cada URL sem repetir uma tentativa em andamento. Ao encontrar um endereço, chama onFound e para.
+ * Se não encontrar após giveUp milissegundos, chama onGiveUp e para. Retorna {stop}, usado quando a página reconecta ao endereço original. */
 export function startFind({ urls, onFound, onGiveUp, probe = probeImage, every = FIND_EVERY_MS, giveUp = FIND_GIVEUP_MS,
   now = () => Date.now(), timers = { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t) } }) {
   const t0 = now();
@@ -167,22 +166,22 @@ export function startFind({ urls, onFound, onGiveUp, probe = probeImage, every =
   return { stop, get stopped() { return stopped; } };
 }
 
-// 确认框里的几行：热点卡片和设置里的「换一个 WiFi」只在第一句不同
+// Texto de confirmação; a primeira frase muda entre o cartão do ponto de acesso e a opção para trocar de rede nas configurações.
 function confirmLines(net, ssid, variant) {
   const back = variant === 'switch'
-    ? '没连上：这个页面会断开；热点马上就回来，手机重新连鸭子热点就能看到原因。'
-    : `没连上：热点马上就回来，手机重新连 ${net.hotspot && net.hotspot.ssid ? net.hotspot.ssid : '鸭子自己的热点'} 就能看到原因。`;
+    ? 'Se a conexão falhar, esta página será desconectada. O ponto de acesso voltará em seguida; reconecte o celular ao Microduck para ver o motivo.'
+    : `Se a conexão falhar, o ponto de acesso voltará em seguida. Reconecte o celular a ${net.hotspot && net.hotspot.ssid ? net.hotspot.ssid : 'este ponto de acesso do Microduck'} para ver o motivo.`;
   const first = variant === 'switch'
-    ? `鸭子会断开现在的 WiFi 去连「${ssid}」，这个页面会断开。`
-    : `鸭子会关掉热点，去连「${ssid}」。你的手机会断开。`;
-  return [first, '连上以后，手机（或电脑）连回家里的 WiFi，按设备打开：', ...openLines(net).map((l) => `· ${l}`), back];
+    ? `O Microduck será desconectado do Wi-Fi atual para conectar a “${ssid}”; esta página perderá a conexão.`
+    : `O Microduck desativará o ponto de acesso e conectará a “${ssid}”. O celular será desconectado.`;
+  return [first, 'Após a conexão, conecte o celular (ou computador) novamente ao Wi-Fi doméstico e abra o endereço adequado ao dispositivo:', ...openLines(net).map((l) => `· ${l}`), back];
 }
 
-// 复制一个地址。鸭子的局域网地址是 http，不算安全上下文，navigator.clipboard 用不了：退回老办法（选中一个看不见的输入框再 copy）
+// Copia um endereço. Como o endereço local do Microduck usa HTTP, navigator.clipboard pode não estar disponível; nesse caso, seleciona um campo invisível e usa copy.
 async function copyText(text) {
   try {
     if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
-  } catch { /* 退回下面 */ }
+  } catch { /* Tenta o método alternativo abaixo. */ }
   try {
     const t = document.createElement('textarea');
     t.value = text;
@@ -200,36 +199,36 @@ async function copyText(text) {
 function LastTry({ net }) {
   const lt = net.last_try;
   if (!lt || lt.ok !== false) return null;
-  const why = lt.reason_text || '没连上';
-  const ssid = net.hotspot && net.hotspot.ssid ? net.hotspot.ssid : '鸭子热点';
-  return html`<div class="wifi-last-try" role="alert">上次连「${lt.ssid || '这个 WiFi'}」没成功：${why}
-    ${net.mode === 'hotspot' ? html`<div>热点马上就回来，手机重新连 ${ssid} 就能看到原因。</div>` : null}</div>`;
+  const why = lt.reason_text || 'Não foi possível conectar';
+  const ssid = net.hotspot && net.hotspot.ssid ? net.hotspot.ssid : 'ponto de acesso do Microduck';
+  return html`<div class="wifi-last-try" role="alert">Falha na última conexão com “${lt.ssid || 'esta rede Wi-Fi'}”: ${why}
+    ${net.mode === 'hotspot' ? html`<div>O ponto de acesso voltará em seguida. Reconecte o celular a ${ssid} para ver o motivo.</div>` : null}</div>`;
 }
 
 function Switching({ net, ssid, variant }) {
   return html`<div class="wifi-switching" role="status">
-    <b>正在切换……手机马上会断开</b>
-    ${confirmLines(net, ssid || '这个 WiFi', variant).map((line) => html`<p>${line}</p>`)}
+    <b>Trocando de rede… o celular será desconectado em instantes.</b>
+    ${confirmLines(net, ssid || 'esta rede Wi-Fi', variant).map((line) => html`<p>${line}</p>`)}
   </div>`;
 }
 
-// 「断了」= 跟 Studio 的连接不在，或者 5 秒没收到任何消息（Main 每 250 ms 重画一次，WifiFlow 跟着重算）
+// Considera desconectado quando a conexão com o Studio cai ou quando não há mensagens por 5 s.
 const linkGone = (link) => link.status !== 'open' || (link.lastAt > 0 && performance.now() - link.lastAt > FIND_SILENT_MS);
 
-// 页面跟鸭子断了以后：在找鸭子的新地址（每 2 秒探一次，找到就跳过去）；3 分钟没找到就换回原来那段说明
+// Depois que a página perde contato com o Microduck, procura o novo endereço a cada 2 s e navega até ele quando o encontra; após 3 min, mostra as instruções manuais.
 function Finding({ net, find, variant }) {
-  const ssid = find.ssid || '这个 WiFi';
+  const ssid = find.ssid || 'esta rede Wi-Fi';
   if (find.phase === 'timeout') {
     return html`<div class="wifi-switching wifi-finding" role="status" data-phase="timeout">
-      <b>找了 3 分钟还没找到鸭子：自己打开吧</b>
+      <b>Não foi possível encontrar o Microduck após 3 min. Abra o endereço manualmente.</b>
       ${confirmLines(net, ssid, variant).slice(1).map((line) => html`<p>${line}</p>`)}
     </div>`;
   }
   return html`<div class="wifi-switching wifi-finding" role="status" data-phase="finding">
-    <b>鸭子正在连「${ssid}」……</b>
-    <p>请把这台设备连回「${ssid}」（电脑插着网线的不用管），找到鸭子会自动打开。</p>
-    <ul class="wifi-open wifi-find-urls">${find.urls.map((u) => html`<li><a href=${u}>${u}</a>${/\.local[:/]/.test(u) ? '（苹果手机、Mac）' : '（Windows 电脑）'}</li>`)}</ul>
-    <p>找不到时：去路由器设备列表找 ${net.hostname || 'duck-xxxx'} 的 IP。</p>
+    <b>O Microduck está se conectando a “${ssid}”…</b>
+    <p>Conecte este dispositivo novamente a “${ssid}” (computadores conectados por cabo podem permanecer como estão). A página abrirá automaticamente quando encontrar o Microduck.</p>
+    <ul class="wifi-open wifi-find-urls">${find.urls.map((u) => html`<li><a href=${u}>${u}</a>${/\.local[:/]/.test(u) ? ' (iPhone ou Mac)' : ' (computador Windows)'}</li>`)}</ul>
+    <p>Se não encontrar, localize o IP de ${net.hostname || 'duck-xxxx'} na lista de dispositivos do roteador.</p>
   </div>`;
 }
 
@@ -247,7 +246,7 @@ export function WifiFlow({ net, link, variant = 'card' }) {
   const [switching, setSwitching] = useState(false);
   const [startedAt, setStartedAt] = useState(0);
   const [msg, setMsg] = useState(null);
-  // 连接发出去以后要找的鸭子新地址：{ssid, urls, phase}。phase：wait（还连着）→ finding（断了，在探）→ timeout（3 分钟没找到）
+  // Após solicitar a conexão, procura o novo endereço: {ssid, urls, phase}. Fases: wait (ainda conectado), finding (desconectado e procurando), timeout (não encontrado após 3 min).
   const [find, setFind] = useState(null);
   const [linkUp, setLinkUp] = useState(link.status === 'open');
   useEffect(() => link.on((m) => { if (m.t === '_status') setLinkUp(m.status === 'open'); }), []);
@@ -257,7 +256,7 @@ export function WifiFlow({ net, link, variant = 'card' }) {
     setScan((s) => ({ ...s, loading: true, error: null }));
     const r = await link.cmd('net.op', { op: 'scan' }, 25000);
     if (!r.ok) {
-      setScan({ networks: [], loading: false, error: r.reason || r.error || '读不到 WiFi 列表', cached: false, scan_at: null });
+      setScan({ networks: [], loading: false, error: r.reason || r.error || 'Não foi possível ler a lista de redes Wi-Fi.', cached: false, scan_at: null });
       return;
     }
     const d = r.data || {};
@@ -276,13 +275,13 @@ export function WifiFlow({ net, link, variant = 'card' }) {
   useEffect(() => {
     if (!switching && !find) return;
     const lt = net.last_try;
-    // 连着的时候这一次有了结果（或者早就不忙了）：不用再找
+    // A solicitação terminou enquanto a conexão estava ativa, ou o processo já não está ocupado; não é necessário procurar o novo endereço.
     if ((lt && typeof lt.at === 'number' && startedAt && lt.at * 1000 >= startedAt - 2000)
       || (!net.busy && startedAt && Date.now() - startedAt > 12000)) { setSwitching(false); setFind(null); }
   }, [net.busy, net.last_try ? net.last_try.at : null]);
 
-  // 断了：开始找鸭子。断过又连上了原来的地址（热点回来了，说明没连上）：停止探测、退回「等结果」，
-  // 上面那个 effect 一收到这一次的 last_try 就收起，失败原因照旧由 LastTry 显示（只是手机睡了几秒、其实没断，也不会把找鸭子弄丢）
+  // Se a conexão cair, procura o Microduck. Se voltar ao endereço original, o ponto de acesso provavelmente foi restaurado; pare a busca e aguarde o resultado.
+  // Quando chegar last_try, o efeito acima recolhe o aviso, e LastTry mostra o motivo da falha. Uma suspensão temporária do celular não perde a busca.
   useEffect(() => {
     if (!find) return;
     if (gone && find.phase === 'wait') setFind({ ...find, phase: 'finding' });
@@ -292,13 +291,13 @@ export function WifiFlow({ net, link, variant = 'card' }) {
     if (!find || find.phase !== 'finding') return undefined;
     const f = startFind({
       urls: find.urls,
-      onFound: (url) => { if (linkGone(link)) location.href = url; },     // 原来的地址刚好又连上了：不跳，交给上面停下
+      onFound: (url) => { if (linkGone(link)) location.href = url; },     // Se o endereço original voltou, não navegue; deixe o efeito acima encerrar a busca.
       onGiveUp: () => setFind((x) => (x ? { ...x, phase: 'timeout' } : x)),
     });
     return () => f.stop();
   }, [find ? find.phase : null]);
 
-  // 确认框在卡片最下面：手机上点了「连接」看不到它，弹出时滚过去
+  // A confirmação fica no fim do cartão; role até ela quando for exibida no celular.
   useEffect(() => {
     if (!confirm) return;
     const e = document.querySelector('.wifi-confirm-wrap');
@@ -310,9 +309,9 @@ export function WifiFlow({ net, link, variant = 'card' }) {
     setSel(n.ssid); setPsk(''); setShow(false); setMsg(null);
   };
   const ask = (ssid, pass, locked = false) => {
-    if (!ssid) { setMsg('先填 WiFi 名字'); return; }
-    if (locked && !pass) { setMsg('这个 WiFi 加密了，要填密码'); return; }
-    if (!pskFormatOk(pass)) { setMsg('WiFi 密码要 8–63 个字符，或者 64 位十六进制'); return; }
+    if (!ssid) { setMsg('Informe o nome da rede Wi-Fi.'); return; }
+    if (locked && !pass) { setMsg('Esta rede Wi-Fi é protegida por senha. Informe a senha.'); return; }
+    if (!pskFormatOk(pass)) { setMsg('A senha do Wi-Fi deve ter de 8 a 63 caracteres ou 64 dígitos hexadecimais.'); return; }
     setMsg(null);
     setConfirm({ ssid, psk: pass });
   };
@@ -323,9 +322,9 @@ export function WifiFlow({ net, link, variant = 'card' }) {
     const wasOpen = link.status === 'open';
     setFind({ ssid, urls: findUrls(net), phase: 'wait' });
     const r = await link.cmd('net.op', { op: 'connect', ssid, psk: pass }, 20000);
-    // Studio 明说不行、本来就没连着、或者连着却没回话：没发出去。回执路上连接断了：多半已经开始切换，接着找鸭子
+    // Se o Studio recusar, já estiver desconectado ou continuar conectado sem responder, a solicitação não foi enviada. Se a conexão cair enquanto a resposta chega, a troca provavelmente começou; continue procurando o Microduck.
     if (!r.ok && (r.reason || !wasOpen || link.status === 'open')) {
-      setSwitching(false); setFind(null); setMsg(r.reason || r.error || '没发出去');
+      setSwitching(false); setFind(null); setMsg(r.reason || r.error || 'Não foi possível enviar a solicitação.');
     }
   };
 
@@ -345,57 +344,57 @@ export function WifiFlow({ net, link, variant = 'card' }) {
         return html`<div class=${'wifi-net' + (on ? ' on' : '')} data-ssid=${n.ssid}>
           <button class="wifi-net-head" type="button" aria-expanded=${on ? 'true' : 'false'} onClick=${() => pick(n)}>
             <${Bars} signal=${n.signal} />
-            <span class="wifi-name"><b>${n.ssid}</b><span class="wifi-sub">${secLabel(n.security)}${n.saved ? ' · 已保存' : ''}</span></span>
-            ${n.saved ? html`<span class="wifi-badge">已保存</span>` : null}
+            <span class="wifi-name"><b>${n.ssid}</b><span class="wifi-sub">${secLabel(n.security)}${n.saved ? ' · salva' : ''}</span></span>
+            ${n.saved ? html`<span class="wifi-badge">Salva</span>` : null}
             ${open ? null : html`<span class="wifi-lock" title="${secLabel(n.security)}">🔒</span>`}
           </button>
           ${on ? html`<div class="wifi-row-body">
             ${needs ? html`<div class="wifi-psk-row">
               <input class="wifi-psk" type=${show ? 'text' : 'password'} value=${psk} autocomplete="new-password"
-                placeholder="家里 WiFi 的密码" onInput=${(e) => setPsk(e.target.value)} />
-              <label class="wifi-show"><input type="checkbox" checked=${show} onChange=${(e) => setShow(e.target.checked)} /> 显示密码</label>
-            </div>${n.saved ? html`<div class="wifi-note">已保存；鸭子每次连都要密码（官方配网程序的规矩）。</div>` : null}`
-              : html`<div class="wifi-note">这是开放网络，不用密码。</div>`}
+                placeholder="Senha do Wi-Fi doméstico" onInput=${(e) => setPsk(e.target.value)} />
+              <label class="wifi-show"><input type="checkbox" checked=${show} onChange=${(e) => setShow(e.target.checked)} /> Mostrar senha</label>
+            </div>${n.saved ? html`<div class="wifi-note">Rede salva; o Microduck solicita a senha a cada conexão, conforme o comportamento do assistente oficial de configuração.</div>` : null}`
+              : html`<div class="wifi-note">Esta rede é aberta e não exige senha.</div>`}
             <div class="wifi-actions"><button class="wifi-btn primary wifi-connect" type="button" disabled=${!can || busy}
-              onClick=${() => ask(n.ssid, needs ? psk : '', needs)}>连接</button></div>
+              onClick=${() => ask(n.ssid, needs ? psk : '', needs)}>Conectar</button></div>
           </div>` : null}
         </div>`;
       })}
     </div>
     <div class="wifi-manual">
       <button class="wifi-manual-head" type="button" aria-expanded=${manual ? 'true' : 'false'} onClick=${() => setManual(!manual)}>
-        ${manual ? '收起' : '其他网络（手动输入名字）'}
+        ${manual ? 'Recolher' : 'Outra rede (informar o nome manualmente)'}
       </button>
       ${manual ? html`<div class="wifi-row-body">
-        <input class="wifi-manual-name" value=${manualName} placeholder="WiFi 名字" onInput=${(e) => setManualName(e.target.value)} />
+        <input class="wifi-manual-name" value=${manualName} placeholder="Nome da rede Wi-Fi" onInput=${(e) => setManualName(e.target.value)} />
         <input class="wifi-manual-psk" type=${manualShow ? 'text' : 'password'} value=${manualPsk}
-          placeholder="密码（开放网络留空）" autocomplete="new-password" onInput=${(e) => setManualPsk(e.target.value)} />
-        <label class="wifi-show"><input type="checkbox" checked=${manualShow} onChange=${(e) => setManualShow(e.target.checked)} /> 显示密码</label>
+          placeholder="Senha (deixe em branco para rede aberta)" autocomplete="new-password" onInput=${(e) => setManualPsk(e.target.value)} />
+        <label class="wifi-show"><input type="checkbox" checked=${manualShow} onChange=${(e) => setManualShow(e.target.checked)} /> Mostrar senha</label>
         <div class="wifi-actions"><button class="wifi-btn primary wifi-manual-connect" type="button" disabled=${busy || !manualName}
-          onClick=${() => ask(manualName, manualPsk)}>连接</button></div>
+          onClick=${() => ask(manualName, manualPsk)}>Conectar</button></div>
       </div>` : null}
     </div>
     <div class="wifi-actions">
       <button class="wifi-btn wifi-rescan" type="button" disabled=${scan.loading || busy} onClick=${rescan}>
-        ${scan.loading ? '正在扫描…' : '重新扫描'}</button>
-      ${ago ? html`<span class="wifi-note">这是 ${ago} 分钟前扫的</span>` : null}
+        ${scan.loading ? 'Procurando redes…' : 'Procurar novamente'}</button>
+      ${ago ? html`<span class="wifi-note">Última busca há ${ago} min</span>` : null}
     </div>
     ${msg ? html`<div class="wifi-msg">${msg}</div>` : null}
     ${confirm ? html`<div class="wifi-confirm-wrap"><${ConfirmBox} cls="wifi-confirm" lines=${confirmLines(net, confirm.ssid, variant)}
-      confirmLabel=${'断开去连「' + confirm.ssid + '」'} onCancel=${() => setConfirm(null)} onConfirm=${start} /></div>` : null}
+      confirmLabel=${'Desconectar e conectar a “' + confirm.ssid + '”'} onCancel=${() => setConfirm(null)} onConfirm=${start} /></div>` : null}
   </div>`;
 }
 
 export function WifiCard({ net, link, secure }) {
   if (!net || !net.known || net.mode !== 'hotspot') return null;
-  return html`<section class="board wifi-card" aria-label="连 WiFi">
-    <h2>连 WiFi</h2>
-    <p class="wifi-lead">现在是鸭子自己的热点（${net.hotspot && net.hotspot.ssid ? net.hotspot.ssid : 'Microduck'}）。
-      选家里的 WiFi、填密码，鸭子就连过去；连上以后手机（或电脑）连回家里的 WiFi，按设备打开：</p>
+  return html`<section class="board wifi-card" aria-label="Conectar ao Wi-Fi">
+    <h2>Conectar ao Wi-Fi</h2>
+    <p class="wifi-lead">O ponto de acesso do Microduck está ativo (${net.hotspot && net.hotspot.ssid ? net.hotspot.ssid : 'Microduck'}).
+      Selecione o Wi-Fi doméstico e informe a senha. Depois que o Microduck se conectar, conecte o celular (ou computador) novamente à rede doméstica e abra:</p>
     <ul class="wifi-open">${openLines(net).map((l) => html`<li>${l}</li>`)}</ul>
     <${LastTry} net=${net} />
     <${WifiFlow} net=${net} link=${link} />
-    ${secure === false ? html`<div class="wifi-note" role="note">热点密码大家都知道，附近的人也能连上控制鸭子；在外面演示前，去「更多」设个登录密码</div>` : null}
+    ${secure === false ? html`<div class="wifi-note" role="note">A senha do ponto de acesso é compartilhada. Qualquer pessoa por perto pode se conectar e controlar o Microduck; antes de demonstrá-lo fora de casa, defina uma senha de acesso em “Mais”.</div>` : null}
   </section>`;
 }
 
@@ -419,43 +418,42 @@ export function WifiSettings({ net, link }) {
   const doForget = async (ssid) => {
     setForget(null); setMsg(null);
     const r = await link.cmd('net.op', { op: 'forget', ssid }, 15000);
-    if (!r.ok) { setMsg(r.reason || r.error || '没忘掉'); return; }
-    setMsg(r.data && r.data.removed === false ? `鸭子本来就没记着「${ssid}」` : `忘掉了「${ssid}」`);
+    if (!r.ok) { setMsg(r.reason || r.error || 'Não foi possível remover a rede salva.'); return; }
+    setMsg(r.data && r.data.removed === false ? `“${ssid}” já não estava salva no Microduck.` : `Rede “${ssid}” removida.`);
     load();
   };
-  const current = net.mode === 'hotspot' ? '鸭子自己的热点' : (net.ssid || '没连着 WiFi');
-  return html`<div class="board wifi-settings" aria-label="WiFi 设置">
+  const current = net.mode === 'hotspot' ? 'Ponto de acesso do Microduck' : (net.ssid || 'Desconectado do Wi-Fi');
+  return html`<div class="board wifi-settings" aria-label="Configurações de Wi-Fi">
     <h2>WiFi</h2>
     <${LastTry} net=${net} />
     <div class="wifi-now">
-      <div class="big">现在：${current}</div>
-      ${net.mode === 'hotspot' ? html`<div>热点 ${net.hotspot && net.hotspot.ssid ? net.hotspot.ssid : '—'} · 密码 ${net.hotspot && net.hotspot.psk ? net.hotspot.psk : '—'}</div>`
-        : net.mode === 'wifi' ? html`<div class="wifi-actions"><${Bars} signal=${net.signal} /><span>信号 ${net.signal ?? '—'}</span><span>IP ${net.ip4 || '—'}</span></div>`
-          : html`<div>现在没连着 WiFi。</div>`}
-      <div class="wifi-note">打开 Studio 的地址见上面「这只鸭子的地址」（按设备挑一个，能复制）。</div>
+      <div class="big">Conectado a: ${current}</div>
+      ${net.mode === 'hotspot' ? html`<div>Ponto de acesso: ${net.hotspot && net.hotspot.ssid ? net.hotspot.ssid : '—'} · Senha: ${net.hotspot && net.hotspot.psk ? net.hotspot.psk : '—'}</div>`
+        : net.mode === 'wifi' ? html`<div class="wifi-actions"><${Bars} signal=${net.signal} /><span>Sinal ${net.signal ?? '—'}</span><span>IP ${net.ip4 || '—'}</span></div>`
+          : html`<div>O Wi-Fi está desconectado.</div>`}
+      <div class="wifi-note">Os endereços para abrir o Studio estão em “Endereços do Microduck” acima; escolha o adequado ao dispositivo e copie.</div>
     </div>
     <div class="wifi-actions"><button class="wifi-btn primary" type="button" onClick=${() => setFlow(!flow)}>
-      ${flow ? '收起' : '换一个 WiFi'}</button></div>
+      ${flow ? 'Recolher' : 'Trocar de rede Wi-Fi'}</button></div>
     ${flow ? html`<div class="wifi-flow"><${WifiFlow} net=${net} link=${link} variant="switch" /></div>` : null}
     <div>
-      <div class="wifi-note">已保存的网络</div>
+      <div class="wifi-note">Redes salvas</div>
       ${scan && scan.error ? html`<div class="wifi-msg">${scan.error}</div>` : null}
       ${saved.length ? saved.map((n) => html`<div class="wifi-saved-row">
         <span class="wifi-name">${n.ssid}</span>
-        ${n.ssid === net.ssid ? html`<span class="wifi-badge">正在用</span>` : null}
+        ${n.ssid === net.ssid ? html`<span class="wifi-badge">Em uso</span>` : null}
         <button class="wifi-btn wifi-forget" type="button" data-ssid=${n.ssid}
-          onClick=${() => n.ssid === net.ssid ? setForget(n.ssid) : doForget(n.ssid)}>忘掉</button>
-      </div>`) : html`<div class="wifi-note">${scan ? '还没有已保存的 WiFi。' : '读取中…'}</div>`}
+          onClick=${() => n.ssid === net.ssid ? setForget(n.ssid) : doForget(n.ssid)}>Remover</button>
+      </div>`) : html`<div class="wifi-note">${scan ? 'Ainda não há redes Wi-Fi salvas.' : 'Carregando…'}</div>`}
     </div>
     ${msg ? html`<div class="wifi-note">${msg}</div>` : null}
     ${forget ? html`<div class="wifi-confirm-wrap"><${ConfirmBox} cls="wifi-confirm"
-      lines=${[`忘掉「${forget}」以后鸭子会断开；没有别的 WiFi 可连的话，1 分钟后开热点。`]}
-      confirmLabel="忘掉" onCancel=${() => setForget(null)} onConfirm=${() => doForget(forget)} /></div>` : null}
+      lines=${[`Ao remover “${forget}”, o Microduck será desconectado. Se não houver outra rede disponível, o ponto de acesso será ativado após 1 min.`]}
+      confirmLabel="Remover" onCancel=${() => setForget(null)} onConfirm=${() => doForget(forget)} /></div>` : null}
   </div>`;
 }
 
-// 「更多」页的「这只鸭子的地址」（10-20 真机验收：开着 Clash 的电脑打不开 .local）：后端 net.urls 列出现在能用的
-// IP（configd net.status 的 ip4；热点模式是 10.42.0.1）、duck-xxxx、duck-xxxx.local，每个一个复制按钮
+// Endereços do Microduck na página Mais. net.urls lista os endereços disponíveis: IP (ip4 de configd net.status; 10.42.0.1 no modo ponto de acesso), duck-xxxx e duck-xxxx.local.
 export function DuckAddresses({ net }) {
   const [copied, setCopied] = useState(null);       // {url, ok}
   useEffect(() => {
@@ -466,17 +464,17 @@ export function DuckAddresses({ net }) {
   if (!net || !net.known) return null;
   const urls = net.urls || [];
   const copy = async (url) => setCopied({ url, ok: await copyText(url) });
-  return html`<div class="board wifi-settings duck-addr" aria-label="这只鸭子的地址">
-    <h2>这只鸭子的地址</h2>
-    <p class="wifi-lead">${net.mode === 'hotspot' ? '现在是鸭子自己的热点：连着热点的手机用 IP 那一个。'
-      : '跟鸭子在同一个 WiFi 里，按设备挑一个。'}</p>
+  return html`<div class="board wifi-settings duck-addr" aria-label="Endereços do Microduck">
+    <h2>Endereços do Microduck</h2>
+    <p class="wifi-lead">${net.mode === 'hotspot' ? 'O ponto de acesso do Microduck está ativo; no celular conectado a ele, use o endereço IP.'
+      : 'Conecte-se à mesma rede Wi-Fi do Microduck e escolha o endereço adequado ao dispositivo.'}</p>
     ${urls.map((u) => html`<div class="duck-addr-row" data-kind=${u.kind}>
       <span class="wifi-name"><a href=${u.url}>${u.url}</a><span class="wifi-sub">${u.note}</span></span>
       <button class="wifi-btn duck-addr-copy" type="button" onClick=${() => copy(u.url)}>
-        ${copied && copied.url === u.url ? (copied.ok ? '已复制' : '复制不了，长按地址复制') : '复制'}</button>
+        ${copied && copied.url === u.url ? (copied.ok ? 'Copiado' : 'Não foi possível copiar; mantenha o endereço pressionado para copiá-lo') : 'Copiar'}</button>
     </div>`)}
     ${urls.some((u) => u.kind === 'ip') ? null
-      : html`<div class="wifi-note">现在不知道 IP（没连上 WiFi，或者读不到配网程序）：去路由器的设备列表找 ${net.hostname || 'duck-xxxx'}。</div>`}
-    <div class="wifi-note">安卓手机打不开带名字的地址就用 IP；电脑开着 Clash 的 TUN 模式还打不开：在 Clash 里把局域网（192.168.0.0/16）设成直连。</div>
+      : html`<div class="wifi-note">IP indisponível (Wi-Fi desconectado ou serviço de configuração sem resposta). Localize ${net.hostname || 'duck-xxxx'} na lista de dispositivos do roteador.</div>`}
+    <div class="wifi-note">Se o endereço com nome não funcionar no Android, use o IP. Se o computador estiver no modo TUN do Clash, configure a rede local (192.168.0.0/16) como conexão direta no Clash.</div>
   </div>`;
 }
