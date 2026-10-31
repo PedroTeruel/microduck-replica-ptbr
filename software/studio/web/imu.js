@@ -1,69 +1,68 @@
-// IMU 页：看现在的姿态、选芯片、站着校安装方向。
-// 用户 10-18：「开启采集读数，官方站姿的时候收集左移右移前移后移，让代码自己去校准，校准成功写进去保存；旁边有鸭子的 3D」；
-// 接进 Studio 以后又定了流程：「点开始采集，采集开始，然后再点采集结束，采集完了，然后自动化校准」「大家装的都不一样，需要重新 offset 一下」。
+// Página da IMU: exibe a postura atual, permite selecionar o chip e calibrar a orientação de montagem com o robô em pé.
+// O assistente coleta leituras na pose oficial e inclinações para frente, para trás e para os lados; o código calcula a correção.
+// A instalação varia entre robôs, então a orientação precisa ser verificada e calibrada.
 //
-// - 一个大按钮三种状态：开始采集 → 采集中…（点这里结束）→ 正在算… → 出结果。
-// - 采集中：先在桌上静止 3 秒；然后前、后、左、右各倾一次（顺序随便），每一步先端平停半秒当零点，再倾、停 1 秒。
-//   3D 上一条弯箭头示范下一步往哪倾；做够一个方向，那个方向的圆点亮、响一声短的（Web Audio 自己合成，能静音）。
-//   五步齐了自动结束；中途点结束，缺哪步就说哪步，接着采或重来。
-// - 算完：3D 变成「校准前 / 校准后」两只并排，竖直参考线 + 大字倾角，下面写差了几度；再下面是写入（后端现在拒，上鸭子才接）。
-//   完整站着校完、跟主程序现在用的方向差 < 2°、站姿倾斜 ≤ 5°：后端给总览的上手清单记一笔「核对过」（res.check；只是记录，
-//   不往鸭子写任何东西：总览重排审查 O4）。
-//   没过：写原因，只让人补做没过的那几步（后端回的 redo）。
-// - 「停住了没有」「端平的那一下」两条规则跟 studio/imu_calib.py 的 find_hold / find_ref 一句一句对应，参数同名（RULES 上半截）；
-//   前端只是更严（倾 ≥12°、≤30°、停满 1 秒、方向离前后左右之一 ≤35°），前端放行的后端一定收。
-//   方向由后端算：link.cmd('imu.op', {op:'solve', samples})，samples 是平铺列表 [{step, t, g}]。
-//   端到端测试：tests/imu_wizard_e2e.mjs 喂读数给这里的向导，tests/test_imu_wizard_e2e.py 把采到的交给 Python 算。
-// - 后端（studio/imu.py）接 solve / coarse-capture / verify：出厂标定模式下用 busStatus.last_sample.imu
-//   采「静止 + 前倾」，算完交给主程序的 verify-imu（摆正 ≤5°，20 秒内往前低头 15–30°）写进标定文件。
-//   总线板卡由主程序启动时自动识别；I²C 芯片检测仍用 microduck-firstboot。
+// - O botão principal percorre os estados: iniciar coleta → coletando (clique para encerrar) → calculando → resultado.
+// - A coleta começa com 3 s parado sobre a mesa; depois inclina para frente, para trás, para a esquerda e para a direita, em qualquer ordem.
+//   Antes de cada inclinação, nivele e aguarde meio segundo; incline e mantenha por 1 s. A seta no modelo 3D demonstra a próxima direção.
+//   Cada direção concluída acende um ponto e toca um sinal curto. Ao concluir as cinco etapas, a coleta termina; é possível continuar ou recomeçar se faltar alguma.
+// - O resultado compara lado a lado as poses antes e depois da calibração, com referência vertical, ângulo e diferença.
+//   Quando a calibração completa em pé fica a menos de 2° da orientação usada pelo programa principal e a postura inclina no máximo 5°,
+//   o backend registra a verificação na lista inicial do painel (res.check); isso é apenas um registro e não grava dados no robô.
+//   Se a verificação falhar, o motivo e as etapas a repetir vêm em redo.
+// - As regras de estabilidade e nivelamento correspondem a find_hold / find_ref em studio/imu_calib.py, com parâmetros equivalentes em RULES.
+//   O frontend exige critérios mais rigorosos: inclinação de 12° a 30°, parada de 1 s e direção a no máximo 35° de um dos quatro eixos.
+//   O backend calcula a orientação via link.cmd('imu.op', {op:'solve', samples}), com samples no formato [{step, t, g}].
+// - O backend (studio/imu.py) recebe solve / coarse-capture / verify. No modo de calibração de fábrica, coleta repouso e inclinação frontal
+//   de busStatus.last_sample.imu e solicita ao programa principal que valide e grave a orientação.
+//   A placa do barramento é identificada na inicialização; a detecção de chips I²C continua usando microduck-firstboot.
 import { html, useState, useEffect, useRef } from './vendor/preact-htm.module.js';
 import { Duck3D } from './duck3d.js';
 import { TwoStep } from './confirm.js';
 
 const RULES = {
-  // ---- 跟 imu_calib.py RULES 同名同值（改一边就要改另一边，端到端测试会抓） ----
+  // ---- Mesmos nomes e valores que RULES em imu_calib.py; mantenha os dois lados sincronizados. ----
   still_min_n: 15,
   still_max_spread_deg: 1.5,
-  level_deg: 5,              // 端平：离桌上静止这么多以内
-  ref_min_n: 5,              // 端平至少连续这么多个读数
-  ref_spread_deg: 1.5,       // 端平时自己最多晃这么多
-  hold_band_deg: 1.8,        // 停住段：跟最后一个读数差这么多以内（单个乱跳读数跳过）
-  // ---- 前端自己的（比后端严） ----
-  still_s: 3.0,              // 静止采 3 秒
-  hold_min_n: 8,             // 后端 5
-  hold_s: 1.0,               // 停满 1 秒算这个方向做够了
-  tilt_go_deg: 12,           // 后端最少 10°
+  level_deg: 5,              // Nivelamento: dentro desta diferença em relação ao repouso na mesa.
+  ref_min_n: 5,              // Número mínimo de leituras consecutivas niveladas.
+  ref_spread_deg: 1.5,       // Oscilação máxima durante o nivelamento.
+  hold_band_deg: 1.8,        // Na parada, leituras dentro desta diferença da última; ignora um salto isolado.
+  // ---- Critérios mais rigorosos do frontend ----
+  still_s: 3.0,              // Coletar 3 s em repouso.
+  hold_min_n: 8,             // O backend exige 5.
+  hold_s: 1.0,               // Uma direção é concluída após 1 s de parada.
+  tilt_go_deg: 12,           // O backend exige no mínimo 10°.
   tilt_target_deg: 15,
-  tilt_max_deg: 30,          // 后端最多 35°
-  dir_max_deg: 35,           // 倾的方向离前后左右之一（按现在的方向）≤ 这么多才认
+  tilt_max_deg: 30,          // O backend permite até 35°.
+  dir_max_deg: 35,           // Desvio máximo em relação aos eixos frontal, traseiro e laterais.
   stale_ms: 1000,
-  dedupe_ms: 40,             // 没有 state_t_ns 时：两帧的「生成时间」差这么少，当成同一个读数
-  max_step_n: 600,           // 每段最多留这么多个读数（10 Hz 下 1 分钟）
+  dedupe_ms: 40,             // Sem state_t_ns, leituras com menos diferença no horário de geração são consideradas duplicadas.
+  max_step_n: 600,           // Máximo de leituras por etapa (um minuto a 10 Hz).
 };
 
 const STEPS = ['still', 'fwd', 'back', 'left', 'right'];
 const TILTS = ['fwd', 'back', 'left', 'right'];
-// dir：往这边倾时重力偏向哪（按「现在的方向」，从机身 +x 起逆时针，度）。只用来认方向、画箭头，不参与计算
+// dir: direção em que a gravidade se desloca ao inclinar o robô, relativa à orientação atual. Usada para identificar a inclinação e desenhar a seta.
 const STEP = {
-  still: { cn: '静止站好', short: '静止' },
-  fwd: { cn: '前倾', short: '前', dir: 0, how: '头那边往下' },
-  back: { cn: '后倾', short: '后', dir: 180, how: '屁股那边往下' },
-  left: { cn: '左倾', short: '左', dir: 90, how: '鸭子自己的左边往下（站在它后面看，就是你的左边）' },
-  right: { cn: '右倾', short: '右', dir: -90, how: '鸭子自己的右边往下（站在它后面看，就是你的右边）' },
+  still: { cn: 'Repouso em pé', short: 'repouso' },
+  fwd: { cn: 'Inclinação frontal', short: 'frente', dir: 0, how: 'abaixe o lado da cabeça' },
+  back: { cn: 'Inclinação para trás', short: 'trás', dir: 180, how: 'abaixe o lado da cauda' },
+  left: { cn: 'Inclinação para a esquerda', short: 'esquerda', dir: 90, how: 'abaixe o lado esquerdo do robô (visto por trás, o seu lado esquerdo)' },
+  right: { cn: 'Inclinação para a direita', short: 'direita', dir: -90, how: 'abaixe o lado direito do robô (visto por trás, o seu lado direito)' },
 };
-const DIRV = { fwd: [1, 0, 0], back: [-1, 0, 0], left: [0, 1, 0], right: [0, -1, 0] };   // 机身系（= 3D 场景的世界系）
+const DIRV = { fwd: [1, 0, 0], back: [-1, 0, 0], left: [0, 1, 0], right: [0, -1, 0] };   // Referencial do corpo, igual ao referencial mundial da cena 3D.
 
-const CHIP_CN = { bus: '总线小板（ID 200）', bno08x: 'BNO085（I²C）', lsm6dsv16x: 'LSM6DSV16X（I²C）' };
-const BUS_BOARD_CN = { ft6: 'FT6', imu_to_dxl: 'IMU-to-DXL', sflp_124_12: 'SFLP 124/12', qinmo: 'Qinmo（已配置）' };
+const CHIP_CN = { bus: 'Placa do barramento (ID 200)', bno08x: 'BNO085 (I²C)', lsm6dsv16x: 'LSM6DSV16X (I²C)' };
+const BUS_BOARD_CN = { ft6: 'FT6', imu_to_dxl: 'IMU-to-DXL', sflp_124_12: 'SFLP 124/12', qinmo: 'Qinmo (configurado)' };
 const BUS_PROTOCOL_CN = { feetech: 'Feetech', dxl2: 'Dynamixel 2.0' };
 const unsupportedProfile = info => info && info.profile !== undefined && !['legacy', 'qinmo'].includes(info.profile);
 const unsupportedTransport = info => info && (!['feetech', 'dxl2'].includes(info.protocol) || unsupportedProfile(info));
 function chipLabel(imu) {
   if (imu?.source !== 'bus') return CHIP_CN[imu?.source] || imu?.source || '—';
   const info = imu.imu_bus;
-  if (imu?.profile_error || unsupportedTransport(info)) return 'IMU 协议 / 类型待确认';
-  return info ? `${BUS_BOARD_CN[info.board] || info.board || '总线小板'} · ${BUS_PROTOCOL_CN[info.protocol] || info.protocol}（ID 200）`
+  if (imu?.profile_error || unsupportedTransport(info)) return 'Protocolo ou tipo da IMU não confirmado';
+  return info ? `${BUS_BOARD_CN[info.board] || info.board || 'Placa do barramento'} · ${BUS_PROTOCOL_CN[info.protocol] || info.protocol} (ID 200)`
     : CHIP_CN.bus;
 }
 function imuContext(mode, imu) {
@@ -72,7 +71,7 @@ function imuContext(mode, imu) {
     imu?.redo?.session_id || null, !!imu?.redo?.active]);
 }
 
-// ---------------- 小算术（跟 imu_calib.py 同一套） ----------------
+// ---------------- Cálculos auxiliares (mesmo método de imu_calib.py) ----------------
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -84,14 +83,14 @@ const rad = (d) => d * Math.PI / 180;
 const angle = (a, b) => { const ua = unit(a), ub = unit(b); return ua && ub ? deg(Math.acos(Math.max(-1, Math.min(1, dot(ua, ub))))) : null; };
 const meanDir = (vs) => (vs.length ? unit(vs.reduce((s, v) => [s[0] + v[0], s[1] + v[1], s[2] + v[2]], [0, 0, 0])) : null);
 const spread = (vs) => { const m = meanDir(vs); return m ? Math.max(0, ...vs.map((v) => angle(v, m) ?? 0)) : 0; };
-// 90% 分位（imu_calib.spread_p90_deg）：静止那一步用，一两帧乱跳不算晃
+// Percentil 90 (imu_calib.spread_p90_deg): usado na etapa de repouso para ignorar leituras isoladas fora do padrão.
 const spreadP90 = (vs) => {
   const m = meanDir(vs);
   if (!m) return 0;
   const ds = vs.map((v) => angle(v, m) ?? 0).sort((a, b) => a - b);
   return ds[Math.floor(0.9 * (ds.length - 1))];
 };
-// imu_calib.trimmed_mean_dir：去掉离平均最远的 10% 再平均（静止那一步定「上」用）
+// imu_calib.trimmed_mean_dir: remove os 10% mais distantes da média antes de calcular a direção média do repouso.
 const trimmedMeanDir = (vs) => {
   const m = meanDir(vs);
   if (!m) return null;
@@ -101,7 +100,7 @@ const trimmedMeanDir = (vs) => {
 const okVec = (g) => Array.isArray(g) && g.length === 3 && g.every((x) => typeof x === 'number' && Number.isFinite(x));
 const DOWN = [0, 0, -1];
 
-/** 相对 g0 倾了多少度、往哪边（在 g0 定的水平面里从 +x 起逆时针，度）。跟 imu_calib.tilt_of 一样。 */
+/** Calcula o ângulo e a direção da inclinação em relação a g0. Mesmo método de imu_calib.tilt_of. */
 function tiltOf(g0, g) {
   const t = angle(g0, g);
   const up = [-g0[0], -g0[1], -g0[2]];
@@ -124,9 +123,9 @@ function qRotate(q, v) {
 const fmt = (v, d = 1) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(d) : '—');
 const sgn = (v, d = 1) => (typeof v === 'number' && Number.isFinite(v) ? `${v > 0 ? '+' : ''}${v.toFixed(d)}` : '—');
 const dirDiff = (a, b) => Math.abs(((a - b) % 360 + 540) % 360 - 180);
-const names = (ks) => ks.map((k) => STEP[k].cn).join('、');
+const names = (ks) => ks.map((k) => STEP[k].cn).join(', ');
 
-// ---------------- 停住段、端平基准（imu_calib.py 的 _run_back / find_hold / find_ref，一句一句对应） ----------------
+// ---------------- Trechos estáveis e referência nivelada (correspondem a _run_back / find_hold / find_ref de imu_calib.py) ----------------
 
 function runBack(gs, end, band) {
   const last = gs[end];
@@ -134,7 +133,7 @@ function runBack(gs, end, band) {
   let skipped = 0, j = end - 1;
   while (j >= 0) {
     if (angle(gs[j], last) <= band) { idx.push(j); j--; }
-    else if (j - 1 >= 0 && angle(gs[j - 1], last) <= band) { skipped++; j--; }   // 单个乱跳：跳过
+    else if (j - 1 >= 0 && angle(gs[j - 1], last) <= band) { skipped++; j--; }   // Ignora uma leitura isolada fora do padrão.
     else break;
   }
   return { idx: idx.sort((a, b) => a - b), skipped };
@@ -162,14 +161,14 @@ function findRef(gs, g0, before) {
   return null;
 }
 
-// ---------------- 采集（状态放在 ref 里，每来一帧 st 喂一次） ----------------
-// phase：idle → collect →（齐了）solving → done / error；中途点结束、缺步 → short（接着采 / 重来）
+// ---------------- Coleta (estado em ref; alimentada a cada quadro de st) ----------------
+// phase: idle → collect → solving (etapas completas) → done / error; coleta encerrada incompleta → short (continuar / recomeçar).
 
 function freshWizard() {
   return { phase: 'idle', t0: 0, g0: null,
-    buf: { still: [], fwd: [], back: [], left: [], right: [] },          // 每个方向做够时，那一段读数（后端从里面找端平和停住）
+    buf: { still: [], fwd: [], back: [], left: [], right: [] },          // Leituras de cada etapa concluída; o backend encontra nelas o nivelamento e a parada.
     done: { still: false, fwd: false, back: false, left: false, right: false },
-    seg: [],                 // 上一个方向做够以后到现在的读数
+    seg: [],                 // Leituras desde a conclusão da direção anterior.
     ref: null, level: 0, cand: null, inZone: false, repeat: null, needLevel: false,
     live: null, progress: 0, hold: 0, paused: null, moved: false, over: false,
     lastKey: null, lastBirth: null, events: [], missing: [], result: null, error: null };
@@ -178,17 +177,17 @@ function freshWizard() {
 const missingSteps = (W) => STEPS.filter((k) => !W.done[k]);
 const nextTodo = (W) => TILTS.find((k) => !W.done[k]) || null;
 
-/** 喂一帧。live：页面给的「跟鸭子的连接是不是实时的」（跟总览同一个判断）；没给就看 joints_age_ms。返回 true = 要重画。
- *  做够一个方向往 W.events 里放一条（'still' / 'fwd' … / 'all'），页面拿去响一声。 */
+/** Processa um quadro. live indica se a conexão está atual, conforme o mesmo critério do painel; sem live, consulta joints_age_ms.
+ * Retorna true quando a tela deve redesenhar. Ao concluir uma etapa, adiciona um evento a W.events para tocar o sinal sonoro. */
 function feed(W, st, live) {
   if (W.phase !== 'collect') return false;
   const g = st?.gravity;
   const fresh = live !== false && st && st.joints_age_ms != null && st.joints_age_ms < RULES.stale_ms;
-  if (!okVec(g) || !fresh) { const p = W.paused; W.paused = '读数断了，等它回来（已采的不丢）'; return p !== W.paused; }
+  if (!okVec(g) || !fresh) { const p = W.paused; W.paused = 'Leitura interrompida. Aguardando a conexão; os dados coletados foram preservados.'; return p !== W.paused; }
   const gu = unit(g);
   if (!gu) return false;
-  // 去重：Studio 10 Hz 推状态，robot.state 也是 10 Hz，同一个读数可能推两次（robotd 卡住时会一直推同一个）。
-  // 有 state_t_ns（robot.state 的 t_ns）就认它；没有就用「生成时间」= 收到的时间 − joints_age_ms
+  // Remove duplicatas: Studio e robot.state publicam a 10 Hz, então uma leitura pode chegar duas vezes.
+  // Prefere state_t_ns; sem ele, usa o horário de geração estimado como hora de recebimento menos joints_age_ms.
   const birth = performance.now() - st.joints_age_ms;
   if (st.state_t_ns != null) {
     if (st.state_t_ns === W.lastKey) return false;
@@ -212,12 +211,12 @@ function feed(W, st, live) {
     }
     return true;
   }
-  // 倾的几步：顺序随便。读数一直攒在 seg 里，停住了就看往哪倾、这个方向做过没有
+  // As quatro inclinações podem ocorrer em qualquer ordem. Acumula leituras em seg e identifica a direção quando o robô para.
   const b = W.seg;
   b.push(s);
   if (b.length > RULES.max_step_n) b.splice(0, b.length - RULES.max_step_n);
   const gs = b.map((x) => x.g);
-  // 端平：最后 ref_min_n 个读数离桌上静止 ≤ level_deg、自己晃 ≤ ref_spread_deg → 下一次倾的零点（以最后一次为准）
+  // Nivelamento: as últimas ref_min_n leituras devem estar próximas do repouso na mesa e oscilar pouco; esse trecho é a referência da próxima inclinação.
   const n = RULES.ref_min_n;
   const tail = gs.slice(-n);
   const levelNow = tail.length === n && tail.every((v) => angle(W.g0, v) <= RULES.level_deg) && spread(tail) <= RULES.ref_spread_deg;
@@ -228,7 +227,7 @@ function feed(W, st, live) {
   W.live = tiltOf(W.ref || W.g0, gu);
   W.over = W.live.t > RULES.tilt_max_deg;
   W.hold = 0; W.inZone = false; W.cand = null; W.repeat = null; W.needLevel = false;
-  // 停住：跟后端同一套（停住段 + 它之前最后一次端平）；再加前端自己的：倾 12–30°、离前后左右之一 ≤35°、停满 1 秒
+  // A parada segue os mesmos critérios do backend, com exigências adicionais do frontend: inclinação de 12° a 30°, eixo a até 35° e parada de 1 s.
   const { idx } = findHold(gs);
   const hold = idx.map((i) => b[i]);
   const hm = meanDir(hold.map((x) => x.g));
@@ -258,12 +257,12 @@ function finishStep(W, k) {
   else W.events.push(k);
 }
 
-/** 开始采集（全新的一遍）。 */
+/** Inicia uma nova coleta. */
 function startCollect(W, now) {
   Object.assign(W, freshWizard(), { phase: 'collect', t0: now });
 }
 
-/** 点「结束」：齐了就去算，缺步就停在 short，说缺哪几步。 */
+/** Encerra a coleta: calcula se estiver completa ou informa as etapas faltantes. */
 function endCollect(W) {
   if (W.phase !== 'collect') return;
   const miss = missingSteps(W);
@@ -271,30 +270,30 @@ function endCollect(W) {
   W.phase = 'short'; W.missing = miss;
 }
 
-/** 接着采（做过的留着）。 */
+/** Continua a coleta preservando as etapas já concluídas. */
 function resumeCollect(W) {
   W.phase = 'collect'; W.seg = []; W.ref = null; W.paused = null; W.missing = []; W.result = null; W.error = null;
   if (!W.done.still) { W.buf.still = []; W.progress = 0; }
 }
 
-/** 只补做这几步（后端回的 redo）：清掉它们再接着采。 */
+/** Refaz somente as etapas indicadas pelo backend em redo. */
 function redoSteps(W, steps) {
   for (const k of steps) { if (k in W.done) { W.done[k] = false; W.buf[k] = []; } }
   resumeCollect(W);
 }
 
-/** 交给后端的读数：平铺列表，每个带 step（studio/imu.py 要列表） */
+/** Prepara a lista plana de leituras para o backend, com step em cada item (studio/imu.py espera uma lista). */
 function payload(W) {
   return STEPS.flatMap((k) => W.buf[k].map((x) => ({ step: k, t: x.t, g: x.g })));
 }
 
-// ---------------- 提示音（Web Audio 自己合成，很短很轻；静音记在 localStorage） ----------------
+// ---------------- Sinais sonoros (síntese via Web Audio; preferência de silêncio salva no localStorage) ----------------
 
 const MUTE_KEY = 'studio.imu.mute';
 function loadMute() { try { return localStorage.getItem(MUTE_KEY) === '1'; } catch { return false; } }
-function saveMute(v) { try { localStorage.setItem(MUTE_KEY, v ? '1' : '0'); } catch { /* 隐私模式：只在这一页有效 */ } }
+function saveMute(v) { try { localStorage.setItem(MUTE_KEY, v ? '1' : '0'); } catch { /* Em modo privado, vale somente nesta página. */ } }
 let actx = null;
-/** 浏览器要求「用户点过」才能出声：在「开始采集」的点击里调一次。 */
+/** O navegador exige uma interação do usuário para liberar áudio; chamado ao clicar em “Iniciar coleta”. */
 function audioUnlock() {
   try {
     const C = window.AudioContext || window.webkitAudioContext;
@@ -307,7 +306,7 @@ function beep(kind) {
   if (!actx) return;
   try {
     const t = actx.currentTime + 0.01;
-    // 做够一个方向：一声 990 Hz；静止：低一点 660 Hz；全齐：两声往上走
+    // Direção concluída: 990 Hz; repouso: 660 Hz; todas completas: dois tons ascendentes.
     const tones = kind === 'all' ? [[880, 0], [1320, 0.13]] : [[kind === 'still' ? 660 : 990, 0]];
     for (const [f, dt] of tones) {
       const o = actx.createOscillator(), gn = actx.createGain();
@@ -319,23 +318,23 @@ function beep(kind) {
       o.connect(gn); gn.connect(actx.destination);
       o.start(t + dt); o.stop(t + dt + 0.12);
     }
-  } catch { /* 出不了声就算了 */ }
+  } catch { /* Ignora falhas de áudio. */ }
 }
 
 // ---------------- 3D ----------------
 
 const reduceMotion = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 
-/** 在 3D 上面画：竖直参考线、示范箭头（从头顶往要倾的方向弯过去，来回摆）。用鸭子自己的相机投影，转视角也跟着。 */
+/** Desenha sobre o 3D a referência vertical e uma seta animada indicando a próxima inclinação, usando a projeção da câmera do robô. */
 function drawOverlay(d, canvas, svg, arrow, plumb, now) {
   if (!svg) return;
   if (!d || !d.ready || !d.home || !d.blob) { svg.innerHTML = ''; return; }
   const w = canvas.clientWidth, h = canvas.clientHeight;
   if (!w || !h) return;
-  const V = d.camera.position.constructor;           // three.js 的 Vector3（不用另外 import three）
+  const V = d.camera.position.constructor;           // Vector3 do three.js; não precisa importar three separadamente.
   d.camera.updateMatrixWorld();
-  const P = d.blob.position;                          // 脚下（地面）中心
-  const H = 2 * (d.home.target.z - P.z);              // 鸭子高度
+  const P = d.blob.position;                          // Centro no chão, sob os pés.
+  const H = 2 * (d.home.target.z - P.z);              // Altura do robô.
   const pr = (x, y, z) => { const v = new V(x, y, z).project(d.camera); return [(v.x + 1) / 2 * w, (1 - v.y) / 2 * h]; };
   let out = '';
   if (plumb) {
@@ -345,7 +344,7 @@ function drawOverlay(d, canvas, svg, arrow, plumb, now) {
   if (arrow && DIRV[arrow]) {
     const u = DIRV[arrow], R = H * 1.08;
     const swing = reduceMotion() ? 1 : 0.55 + 0.45 * Math.sin(now / 260);
-    const end = 6 + 20 * swing;                        // 弧从头顶（0°）摆到 6–26°
+    const end = 6 + 20 * swing;                        // O arco oscila de 6° a 26° a partir do topo da cabeça.
     const pts = [];
     for (let a = 0; a <= end + 1e-6; a += 2) {
       const s = Math.sin(rad(a)), c = Math.cos(rad(a));
@@ -355,21 +354,20 @@ function drawOverlay(d, canvas, svg, arrow, plumb, now) {
       const [ex, ey] = pts[pts.length - 1], [px, py] = pts[pts.length - 2];
       const dx = ex - px, dy = ey - py, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, sz = Math.max(12, h * 0.03);
       const head = `${ex + ux * sz},${ey + uy * sz} ${ex - uy * sz * 0.6},${ey + ux * sz * 0.6} ${ex + uy * sz * 0.6},${ey - ux * sz * 0.6}`;
-      // 示范的「倾下去的鸭子」：从脚下到箭头尖的一条虚线（机身中线倒向那边）
+      // Linha tracejada demonstra o robô inclinado, do chão até a ponta da seta.
       const [gx, gy] = pr(P.x, P.y, P.z);
       out += `<line class="ghost" x1="${gx}" y1="${gy}" x2="${ex}" y2="${ey}"/>`;
       out += `<polyline class="arc" points="${pts.map((p) => p.join(',')).join(' ')}"/><polygon class="head" points="${head}"/>`;
-      // 字放在箭头尖下面一点；别压到左上角的大字倾角、也别出框
+      // Posiciona o rótulo abaixo da seta, sem cobrir o ângulo nem sair da área visível.
       const lx = Math.min(w - 50, Math.max(50, ex)), ly = Math.min(h - 50, Math.max(120, ey + sz + 26));
-      out += `<text class="lbl" x="${lx}" y="${ly}">往${STEP[arrow].short}倾</text>`;
+      out += `<text class="lbl" x="${lx}" y="${ly}">Incline para ${STEP[arrow].short}</text>`;
     }
   }
   svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
   svg.innerHTML = out;
 }
 
-/** 换机位。字符串用 Duck3D 自带的（front34 / front / back34 / back）；{az, el} 是自己定的角度（度，跟 Duck3D 的 VIEWS 同一个算法：
- *  az 0 = 正前方，−90 = 鸭子右侧），先按 front 算好距离和看的点，再把机位挪过去（「回正」也回到这里）。 */
+/** Define a câmera. Aceita vistas predefinidas do Duck3D ou ângulos {az, el} em graus; az 0 é frontal e −90 é o lado direito do robô. */
 function applyView(d, view) {
   if (typeof view === 'string') { d.setView(view); return; }
   d.setView('front');
@@ -393,7 +391,7 @@ function DuckView({ g, joints, stale, arrow, plumb, view = 'front34', children }
     const d = new Duck3D(canvasRef.current, { view: 'front34', centerX: 0.5, centerY: 0.56, fill: 0.7 });
     duckRef.current = d;
     d.onUserMove = () => setMoved(true);
-    d.load('model/').then(() => setReady(true)).catch((e) => setErr(`3D 模型没加载：${e.message}`));
+    d.load('model/').then(() => setReady(true)).catch((e) => setErr(`Falha ao carregar o modelo 3D: ${e.message}`));
     return () => d.dispose();
   }, []);
 
@@ -424,13 +422,12 @@ function DuckView({ g, joints, stale, arrow, plumb, view = 'front34', children }
     <canvas ref=${canvasRef} class=${stale ? 'stale' : ''}></canvas>
     <svg class="imu-overlay" ref=${svgRef} aria-hidden="true"></svg>
     ${err ? html`<span class="imu-note" role="alert">${err}</span>` : children}
-    ${moved ? html`<button class="reset-view" onClick=${(e) => { e.currentTarget.blur(); duckRef.current?.resetView(); setMoved(false); }}>回正</button>` : null}
+    ${moved ? html`<button class="reset-view" onClick=${(e) => { e.currentTarget.blur(); duckRef.current?.resetView(); setMoved(false); }}>Redefinir visão</button>` : null}
   </div>`;
 }
 
-/** 平时一只鸭子（采集中带示范箭头）；算完一左一右「校准前 / 校准后」。第一只始终是同一个实例（key 不变），切换不重新加载。
- *  机位：采集中从后面看（鸭子的左 = 屏幕左 = 方向盘的左 = 站在它后面的人的左）；
- *  对比时，修正以前后为主就从侧面看（前倾、后倾正面看不出来），以左右为主就从正面看。 */
+/** Exibe um robô durante a coleta, com a seta da próxima etapa; após o cálculo, compara as poses antes e depois.
+ * Mantém a primeira instância 3D ao alternar. Durante a coleta, a vista é por trás; na comparação, escolhe a vista lateral ou frontal conforme a correção. */
 function ImuStage({ st, stale, corr, parts, collecting, arrow, cue }) {
   const g = okVec(st?.gravity) ? st.gravity : null;
   const joints = st?.joints;
@@ -439,38 +436,38 @@ function ImuStage({ st, stale, corr, parts, collecting, arrow, cue }) {
   const old = stale || !g;
   const sideways = corr && Math.abs(parts?.pitch_deg ?? 0) >= Math.abs(parts?.roll_deg ?? 0);
   const view = corr ? (sideways ? { az: -80, el: 6 } : 'front') : collecting ? 'back34' : 'front34';
-  const noteLive = old ? html`<span class="imu-note">${g ? '读数旧了，不是现在的样子' : '没有姿态数据'} · 主程序在运动模式时才有</span>`
-    : html`<span class="imu-note">实时 · 机身跟着 IMU 倾</span>`;
+  const noteLive = old ? html`<span class="imu-note">${g ? 'Leitura desatualizada; não representa a posição atual' : 'Sem dados de postura'} · disponíveis quando o programa principal está no modo de movimento</span>`
+    : html`<span class="imu-note">Ao vivo · inclinação do corpo conforme a IMU</span>`;
   return html`<div class="imu-stage-wrap">
     <div class=${'imu-stage' + (corr ? ' duo' : '')}>
       <${DuckView} key="before" g=${g} joints=${joints} stale=${old} arrow=${corr ? null : arrow} plumb=${!!corr} view=${view}>
-        <div class="imu-stage-read num"><span>${corr ? '校准前' : '机身倾角（跟竖直比）'}</span><b>${fmt(tb)}°</b></div>
+        <div class="imu-stage-read num"><span>${corr ? 'Antes da calibração' : 'Inclinação do corpo (em relação à vertical)'}</span><b>${fmt(tb)}°</b></div>
         ${!corr && cue ? html`<span class="imu-cue">${cue}</span>` : null}
-        ${corr ? html`<span class="imu-note">现在存的方向</span>` : noteLive}
+        ${corr ? html`<span class="imu-note">Orientação salva atual</span>` : noteLive}
       <//>
       ${corr ? html`<${DuckView} key="after" g=${after} joints=${joints} stale=${old} plumb=${true} view=${view}>
-        <div class="imu-stage-read num after"><span>校准后</span><b>${fmt(ta)}°</b></div>
-        <span class="imu-note">按新方向 · 还没写</span>
+        <div class="imu-stage-read num after"><span>Após a calibração</span><b>${fmt(ta)}°</b></div>
+        <span class="imu-note">Com a nova orientação · ainda não gravada</span>
       <//>` : null}
     </div>
-    ${corr ? html`<p class="imu-diff num">站着的时候：校准前倾 <b>${fmt(tb)}°</b> → 校准后 <b>${fmt(ta)}°</b>，差 <b>${fmt(g && after ? angle(g, after) : null)}°</b>。
-      两只鸭子都是现在的实时读数，虚线是竖直方向；${sideways ? '从侧面看（这次主要是前后歪）' : '从正面看（这次主要是左右歪）'}。</p>` : null}
+    ${corr ? html`<p class="imu-diff num">Em pé: inclinação antes <b>${fmt(tb)}°</b> → depois <b>${fmt(ta)}°</b>; diferença <b>${fmt(g && after ? angle(g, after) : null)}°</b>.
+      Ambos os modelos usam leituras atuais; a linha tracejada indica a vertical. ${sideways ? 'Vista lateral (correção principalmente frontal/traseira).' : 'Vista frontal (correção principalmente lateral).'}</p>` : null}
   </div>`;
 }
 
-// ---------------- 方向盘：前后左右四个点 + 中间静止；做够的亮，下一个闪，蓝点是现在往哪倾 ----------------
+// ---------------- Indicador de direção: quatro pontos cardeais e repouso ao centro; concluídos acendem, próximo pisca e o ponto azul mostra a inclinação atual. ----------------
 
 function DirPad({ W }) {
   const C = 100, R = 80, MAX = 32;
   const r = (t) => Math.min(t, MAX) / MAX * R;
-  const pt = (t, d) => [C - r(t) * Math.sin(rad(d)), C - r(t) * Math.cos(rad(d))];   // 头朝上：前 → 上，鸭子的左 → 左
+  const pt = (t, d) => [C - r(t) * Math.sin(rad(d)), C - r(t) * Math.cos(rad(d))];   // Cabeça para cima: frente para cima e esquerda do robô para a esquerda.
   const collecting = W.phase === 'collect';
   const next = collecting && W.done.still ? nextTodo(W) : null;
   const L = collecting && W.done.still ? W.live : null;
   const p = L && L.t != null ? pt(L.t, L.d ?? 0) : [C, C];
   const ring = (t) => html`<circle cx=${C} cy=${C} r=${r(t)} class="pad-ring" />`;
   return html`<svg class="imu-pad" viewBox="0 0 200 200" role="img"
-    aria-label=${`已做：${names(STEPS.filter((k) => W.done[k])) || '还没有'}`}>
+    aria-label=${`Concluído: ${names(STEPS.filter((k) => W.done[k])) || 'nenhuma etapa'}`}>
     <circle cx=${C} cy=${C} r=${R + 6} class="pad-bg" />
     ${ring(RULES.tilt_go_deg)}${ring(RULES.tilt_max_deg)}
     ${TILTS.map((k) => {
@@ -490,38 +487,37 @@ function DirPad({ W }) {
   </svg>`;
 }
 
-// ---------------- 右边几块 ----------------
+// ---------------- Cartões laterais ----------------
 
-// 方向确认没有，只认 imu 消息里的 mount.verified（calibration-status 回读，studio/imu.py 的 view）。
-// 不看 robotd 起不来时的原话：关节没标定时报的也是「…and verified IMU mounting」（feetech.rs:1018-1029）。
-// 主程序只有「确认 / 没确认」两种；「临时方向」是 Studio 以后可能加的（方案拍板 3 的 ②），后端给 imu.temporary 才显示。
+// Considera a orientação confirmada somente quando imu.mount.verified (retornado por calibration-status no studio/imu.py) é verdadeiro.
+// O programa principal só informa orientação confirmada ou não confirmada; a orientação temporária só aparece quando imu.temporary é enviado.
 function statusOf(st, imu, live) {
   const s = st?.imu?.status;
   const v = imu?.mount?.verified;
-  if (imu?.profile_error) return { word: 'IMU 类型无法确认', kind: 'bad', hint: imu.profile_error };
-  if (imu?.mount_protocol_mismatch) return { word: '方向需重新标定', kind: 'warn',
-    hint: '当前总线协议 / 类型与已存的安装方向不匹配：在下面重新标定，并交给主程序验证' };
+  if (imu?.profile_error) return { word: 'Tipo da IMU não confirmado', kind: 'bad', hint: imu.profile_error };
+  if (imu?.mount_protocol_mismatch) return { word: 'Recalibre a orientação', kind: 'warn',
+    hint: 'O protocolo ou tipo atual do barramento não corresponde à orientação de montagem salva. Recalibre abaixo e solicite a validação do programa principal.' };
   if (v === false) {
-    return { word: '方向没确认', kind: 'warn',
-      hint: st?.posture === 'starting' ? '主程序不让进运动模式（站不起来）：先粗校一次' : '装歪了走路会往前冲：先校准' };
+    return { word: 'Orientação não confirmada', kind: 'warn',
+      hint: st?.posture === 'starting' ? 'O programa principal não entra no modo de movimento: faça primeiro a calibração inicial.' : 'Uma montagem desalinhada pode fazer o robô avançar ao caminhar. Calibre primeiro.' };
   }
-  if (imu?.temporary) return { word: '临时方向', kind: 'warn', hint: '只认了哪边朝上，朝前没验过：能站，别走' };
-  if (live !== false && s === 'missing') return { word: '读不到 IMU', kind: 'bad', hint: '检查模块接线，或者在下面重新识别芯片' };
-  if (live !== false && s === 'frozen') return { word: '读数冻住了', kind: 'bad', hint: '姿态不更新，别走路' };
-  // imu 消息还没到时：运动模式下 IMU 正常就说明方向确认过（没确认 robotd 进不了运动模式）
+  if (imu?.temporary) return { word: 'Orientação temporária', kind: 'warn', hint: 'A direção para cima foi identificada, mas a direção frontal não foi verificada. Pode ficar em pé, mas não caminhe.' };
+  if (live !== false && s === 'missing') return { word: 'IMU indisponível', kind: 'bad', hint: 'Verifique a conexão do módulo ou redetecte o chip abaixo.' };
+  if (live !== false && s === 'frozen') return { word: 'Leitura da IMU congelada', kind: 'bad', hint: 'A postura não está sendo atualizada. Não caminhe.' };
+  // Se a mensagem da IMU ainda não chegou, IMU normal no modo de movimento indica orientação confirmada.
   if (v === true || (v == null && s === 'ok' && st?.mode === 'motion')) {
     const when = imu?.stand_calib_at;
-    return { word: '方向已确认', kind: 'ok', hint: when ? `上次站着校准：${when}` : '主程序验过「哪边朝上、哪边朝前」；还没站着校过站姿' };
+    return { word: 'Orientação confirmada', kind: 'ok', hint: when ? `Última calibração em pé: ${when}` : 'O programa principal verificou as direções para cima e para frente; a postura em pé ainda não foi calibrada.' };
   }
-  return { word: '不知道', kind: null, hint: '还没读到主程序存的安装方向' };
+  return { word: 'Desconhecida', kind: null, hint: 'A orientação de montagem salva pelo programa principal ainda não foi recebida.' };
 }
 
 function freshText(st, live, age) {
-  if (live === false) return { live: false, text: Number.isFinite(age) ? `${Math.round(age / 1000)} 秒没更新` : '连不上鸭子' };
+  if (live === false) return { live: false, text: Number.isFinite(age) ? `Sem atualização há ${Math.round(age / 1000)} s` : 'MicroDuck desconectado' };
   const a = st?.joints_age_ms;
-  if (a == null) return { live: false, text: '没有' };
-  if (a >= RULES.stale_ms) return { live: false, text: `${Math.round(a / 1000)} 秒没更新` };
-  return { live: true, text: `实时 · ${(a / 1000).toFixed(1)} 秒前` };
+  if (a == null) return { live: false, text: 'Sem leitura' };
+  if (a >= RULES.stale_ms) return { live: false, text: `Sem atualização há ${Math.round(a / 1000)} s` };
+  return { live: true, text: 'Ao vivo' };
 }
 
 function StatusCard({ st, imu, live, age }) {
@@ -530,28 +526,28 @@ function StatusCard({ st, imu, live, age }) {
   const src = imu?.source;
   const guard = st?.guard;
   return html`<section class=${'board imu-card' + (F.live ? '' : ' imu-stale')}>
-    <h3>现在${F.live ? '' : html` <span class="sv-small">（${F.text}，下面是断线前的）</span>`}</h3>
+    <h3>Estado atual${F.live ? '' : html` <span class="sv-small">(${F.text}; abaixo, últimos dados antes da desconexão)</span>`}</h3>
     <div class="imu-kv">
-      <span>方向</span><b class=${'imu-word ' + (S.kind || '')}>${S.kind === 'warn' || S.kind === 'bad' ? html`<span class=${'badge ' + S.kind}>${S.kind === 'bad' ? '×' : '!'}</span>` : S.kind === 'ok' ? '✓ ' : ''}${S.word}</b>
+      <span>Orientação</span><b class=${'imu-word ' + (S.kind || '')}>${S.kind === 'warn' || S.kind === 'bad' ? html`<span class=${'badge ' + S.kind}>${S.kind === 'bad' ? '×' : '!'}</span>` : S.kind === 'ok' ? '✓ ' : ''}${S.word}</b>
       <span></span><span class="sv-small">${S.hint}</span>
-      <span>芯片</span><b>${chipLabel(imu)}</b>
-      ${src === 'bus' ? html`<span>配置类型</span><b>${imu?.configured_imu_profile === 'qinmo' ? 'Qinmo（已配置）'
-        : imu?.configured_imu_profile === 'legacy' ? '现有板卡自动识别'
-        : imu?.metadata_error || unsupportedTransport(imu?.imu_bus) ? '待确认（诊断数据不受支持）'
-        : imu?.configured_imu_profile != null ? '不支持的类型（需确认）' : '现有板卡（旧版主程序）'}</b>
-        <span>实际连接</span><b>${imu?.imu_bus ? chipLabel(imu) : '尚未连接'}</b>
-        <span>角速度单位</span><b class="num">${imu?.profile_error || unsupportedTransport(imu?.imu_bus) ? '待确认（诊断数据不受支持）'
-          : imu?.imu_bus?.profile === 'qinmo' ? '原始值 ÷ 16.4 °/s'
-          : imu?.imu_bus ? '原始值 × 0.0175 °/s' : '连接后显示'}</b>` : null}
-      <span>倾角</span><b class="num">${fmt(st?.tilt_deg)}°<small> 跟竖直比；主程序 ${guard?.tilt_tolerance_deg ?? 10}° 以内才让走</small></b>
-      <span>站姿</span><b class="num">${st?.hold ? html`离 HOME 最多差 ${fmt(st.hold.max_error_deg)}°<small> 标定模式站姿使能${st.hold.stage === 'holding' ? '：站住了' : '：正在站起来'}</small>`
-        : guard?.max_joint_error_deg != null ? html`离 HOME 最多差 ${fmt(guard.max_joint_error_deg)}°<small> ${guard.joint_tolerance_deg ?? 5}° 以内算站好</small>` : '—'}</b>
-      <span>读数</span><b class=${'num' + (F.live ? '' : ' imu-dim')}>${F.text}${imu?.reader?.errors ? html`<small> 读错 ${imu.reader.errors} 次</small>` : null}</b>
+      <span>Chip</span><b>${chipLabel(imu)}</b>
+      ${src === 'bus' ? html`<span>Tipo configurado</span><b>${imu?.configured_imu_profile === 'qinmo' ? 'Qinmo (configurado)'
+        : imu?.configured_imu_profile === 'legacy' ? 'Placa existente detectada automaticamente'
+        : imu?.metadata_error || unsupportedTransport(imu?.imu_bus) ? 'Não confirmado (diagnóstico incompatível)'
+        : imu?.configured_imu_profile != null ? 'Tipo incompatível (requer confirmação)' : 'Placa existente (programa principal antigo)'}</b>
+        <span>Conexão real</span><b>${imu?.imu_bus ? chipLabel(imu) : 'Ainda não conectada'}</b>
+        <span>Unidade de velocidade angular</span><b class="num">${imu?.profile_error || unsupportedTransport(imu?.imu_bus) ? 'Não confirmada (diagnóstico incompatível)'
+          : imu?.imu_bus?.profile === 'qinmo' ? 'Valor bruto ÷ 16,4 °/s'
+          : imu?.imu_bus ? 'Valor bruto × 0,0175 °/s' : 'Exibida após a conexão'}</b>` : null}
+      <span>Inclinação</span><b class="num">${fmt(st?.tilt_deg)}°<small> em relação à vertical; o programa principal só permite andar dentro de ${guard?.tilt_tolerance_deg ?? 10}°</small></b>
+      <span>Postura em pé</span><b class="num">${st?.hold ? html`desvio máximo de HOME: ${fmt(st.hold.max_error_deg)}°<small> postura do modo de calibração ${st.hold.stage === 'holding' ? 'estável' : 'levantando'}</small>`
+        : guard?.max_joint_error_deg != null ? html`desvio máximo de HOME: ${fmt(guard.max_joint_error_deg)}°<small> postura válida dentro de ${guard.joint_tolerance_deg ?? 5}°</small>` : '—'}</b>
+      <span>Leitura</span><b class=${'num' + (F.live ? '' : ' imu-dim')}>${F.text}${imu?.reader?.errors ? html`<small> ${imu.reader.errors} falhas de leitura</small>` : null}</b>
     </div>
-    ${src === 'bus' && imu?.imu_bus?.protocol === 'dxl2' ? html`<p class="sv-small">这类板卡不提供采样序号、状态位和传感器读数年龄；主程序按主机接收新鲜度和原始字节是否冻结检查读数。</p>` : null}
-    ${imu?.mount?.quat ? html`<details class="imu-details"><summary>安装方向（四元数 w, x, y, z）</summary>
-      <code class="num">${imu.mount.quat.map((x) => fmt(x, 4)).join(', ')}</code>${imu.mount.verified ? ' · 已验证' : ' · 没验证'}
-      <p class="sv-small">装法改了或上次没调对，可以在下面「IMU 安装方向」重新标定、重新验证。</p></details>` : null}
+    ${src === 'bus' && imu?.imu_bus?.protocol === 'dxl2' ? html`<p class="sv-small">Este tipo de placa não fornece número de amostra, bits de estado nem idade da leitura. O programa principal verifica a atualidade do recebimento e se os bytes brutos estão congelados.</p>` : null}
+    ${imu?.mount?.quat ? html`<details class="imu-details"><summary>Orientação de montagem (quatérnio w, x, y, z)</summary>
+      <code class="num">${imu.mount.quat.map((x) => fmt(x, 4)).join(', ')}</code>${imu.mount.verified ? ' · verificada' : ' · não verificada'}
+      <p class="sv-small">Se a montagem mudou ou a última calibração ficou incorreta, calibre e valide novamente em “Orientação de montagem da IMU”.</p></details>` : null}
   </section>`;
 }
 
@@ -561,77 +557,74 @@ function ChipCard({ imu, link, live }) {
   const [message, setMessage] = useState(null);
   useEffect(() => { setProfile(imu?.configured_imu_profile || 'legacy'); }, [imu?.configured_imu_profile]);
   const selection = imu?.profile_selection;
-  const reason = live === false || link.status !== 'open' ? '连不上鸭子：等它回来'
-    : imu?.metadata_error || unsupportedTransport(imu?.imu_bus) ? imu?.metadata_error || imu?.profile_error || '主程序报告了不支持的 IMU 类型'
-    : !selection?.can_start ? selection?.reason || '主程序尚不支持网页选择类型：请先由维护者更新主程序' : null;
+  const reason = live === false || link.status !== 'open' ? 'MicroDuck desconectado; aguardando reconexão.'
+    : imu?.metadata_error || unsupportedTransport(imu?.imu_bus) ? imu?.metadata_error || imu?.profile_error || 'O programa principal informou um tipo de IMU incompatível.'
+    : !selection?.can_start ? selection?.reason || 'O programa principal ainda não permite selecionar o tipo pela interface web. Atualize-o primeiro.' : null;
   const select = async () => {
     setBusy(true); setMessage(null);
     try {
       const reply = await link.cmd('imu.op', { op: 'profile-select', profile, confirmed: true }, 180000);
-      setMessage(reply.ok ? '类型已保存，正在重连标定模式。双手扶稳并保持卸力，完成上面的安装方向采集与主程序验证。'
-        : reply.reason || reply.error || '类型选择未完成：查看会话状态，可取消并恢复原参数');
+      setMessage(reply.ok ? 'Tipo salvo; reconectando no modo de calibração. Segure o robô com as duas mãos e mantenha os motores sem força enquanto coleta e valida a orientação acima.'
+        : reply.reason || reply.error || 'A seleção do tipo não foi concluída. Confira o estado da sessão; é possível cancelar e restaurar os parâmetros anteriores.');
     } finally { setBusy(false); }
   };
   return html`<section class="board imu-card">
-    <h3>芯片 <span class="sv-small">正在用：${chipLabel(imu)}</span></h3>
-    <p class="sv-small">现有自动识别支持 FT6、IMU-to-DXL（Feetech）；SFLP 124/12（Dynamixel 2.0）。FT6 和自家小板按已知身份识别；通用 DXL2 只确认兼容布局。</p>
-    <p class="sv-small">Qinmo 没有文档可验证的唯一身份，需在这里选择一次。保存后以后开机会沿用此类型与单位；页面显示「已配置」，不会把兼容布局当成厂商认证。换板或装法改变后，必须重新验证安装方向。</p>
-    ${imu?.source === 'bus' || imu?.source == null ? html`<label class="sv-small">总线 IMU 类型
-      <select aria-label="总线 IMU 类型" value=${profile} disabled=${busy || !!imu?.redo?.active}
+    <h3>Chip <span class="sv-small">Em uso: ${chipLabel(imu)}</span></h3>
+    <p class="sv-small">A detecção automática reconhece FT6 e IMU-to-DXL (Feetech), além de SFLP 124/12 (Dynamixel 2.0). FT6 e placas próprias são identificados pela assinatura conhecida; DXL2 genérico só tem o layout compatível confirmado.</p>
+    <p class="sv-small">A identidade exclusiva do Qinmo não pode ser verificada pela documentação, então selecione-o aqui uma vez. A seleção e as unidades serão mantidas nas próximas inicializações. “Configurado” não significa certificação do fabricante. Se trocar a placa ou alterar a montagem, valide a orientação novamente.</p>
+    ${imu?.source === 'bus' || imu?.source == null ? html`<label class="sv-small">Tipo de IMU do barramento
+      <select aria-label="Tipo de IMU do barramento" value=${profile} disabled=${busy || !!imu?.redo?.active}
         onChange=${e => { setProfile(e.target.value); setMessage(null); }}>
-        <option value="legacy">自动识别（现有板卡）</option><option value="qinmo">Qinmo · Feetech · 原始值 ÷ 16.4 °/s</option>
+        <option value="legacy">Detecção automática (placa existente)</option><option value="qinmo">Qinmo · Feetech · valor bruto ÷ 16,4 °/s</option>
       </select></label>
-      <div class="imu-actions"><${TwoStep} key=${profile} label="保存类型并重新连接"
-        ask="已扶稳，确认重连并重新标定" onConfirm=${select} disabled=${busy || !!reason}
-        title=${reason} busyLabel="正在保存类型并重连…" /></div>
-      <p class="sv-small">先扶稳并卸力。保存后主程序会重启进入标定模式，旧安装方向失效；验证通过后才完成。取消可恢复原参数；启动失败恢复时会停留标定模式。</p>
+      <div class="imu-actions"><${TwoStep} key=${profile} label="Salvar tipo e reconectar"
+        ask="O robô está seguro. Confirmar reconexão e recalibração?" onConfirm=${select} disabled=${busy || !!reason}
+        title=${reason} busyLabel="Salvando tipo e reconectando…" /></div>
+      <p class="sv-small">Segure o robô e mantenha os motores sem força. Ao salvar, o programa principal reinicia no modo de calibração e invalida a orientação anterior; a operação só termina após a validação. É possível cancelar e restaurar os parâmetros anteriores.</p>
       ${reason ? html`<p class="sv-warn">${reason}</p>` : null}
       ${message ? html`<p role="status" class="sv-small">${message}</p>` : null}` : null}
-    <p class="sv-small">I²C 模块要在第一次开机前接好。之后才接的，用 SSH 在鸭子上运行</p>
+    <p class="sv-small">Conecte os módulos I²C antes da primeira inicialização. Se conectar depois, execute este comando via SSH no MicroDuck:</p>
     <p><code class="num">sudo microduck-firstboot --detect-imu-only --force</code></p>
-    <p class="sv-small">它会重新检测 IMU 并补上启动配置；跑完重启一次主程序。</p>
+    <p class="sv-small">O comando detecta novamente a IMU e atualiza a configuração de inicialização. Depois, reinicie o programa principal.</p>
   </section>`;
 }
 
 function blockReason(st, imu, live) {
-  if (!st) return '还没连上鸭子';
-  if (live === false) return '连不上鸭子：等它回来';
+  if (!st) return 'MicroDuck ainda não conectado.';
+  if (live === false) return 'MicroDuck desconectado; aguardando reconexão.';
   if (imu?.profile_error) return imu.profile_error;
-  if (imu?.redo?.active) return '正在重新标定安装方向：先完成主程序验证，或取消并恢复原参数';
-  if (st.posture === 'servo_session') return '舵机页还占着总线（有舵机保持着时不会自动交还）：点顶上的「交还主程序」';
-  if (st.posture === 'absent') return '鸭子主程序没在跑';
-  if (st.posture === 'starting') return `主程序还在启动${st.start_error ? `：${st.start_error}` : ''}`;
+  if (imu?.redo?.active) return 'Recalibração da orientação em andamento. Conclua a validação pelo programa principal ou cancele e restaure os parâmetros anteriores.';
+  if (st.posture === 'servo_session') return 'A página de servos ainda controla o barramento. Clique em “Devolver ao programa principal” no topo.';
+  if (st.posture === 'absent') return 'O programa principal do MicroDuck não está em execução.';
+  if (st.posture === 'starting') return `O programa principal ainda está iniciando${st.start_error ? `: ${st.start_error}` : ''}`;
   if (st.mode === 'commissioning') {
-    // 标定模式也能站（fork hold-home，用户 10-21）：站住了就能站着校，方向没确认过也能校（算出整份新方向，第 3 步写进去）
-    if (!st.hold) return '标定模式软着：先点上面的「站姿使能」让它站起来（双手扶着）';
-    if (st.hold.stage !== 'holding') return '正在站起来：等它站稳';
-    if (!okVec(st.gravity) || st.joints_age_ms == null || st.joints_age_ms > RULES.stale_ms) return '没有实时姿态数据';
+    // No modo de calibração também é possível ficar em pé para calibrar a postura e calcular uma orientação completa.
+    if (!st.hold) return 'No modo de calibração, clique em “Ativar postura em pé” e segure o robô enquanto ele se levanta.';
+    if (st.hold.stage !== 'holding') return 'Aguardando o robô estabilizar em pé.';
+    if (!okVec(st.gravity) || st.joints_age_ms == null || st.joints_age_ms > RULES.stale_ms) return 'Sem dados atuais de postura.';
     return null;
   }
-  if (imu?.mount?.verified === false) return '方向还没确认过：先做上面的「粗校」';
-  // 站姿没使能：提示先点上面的「站姿使能」（任务 17）
-  if (st.posture === 'limp') return '软着：先点上面的「站姿使能」让它站起来（双手托着）';
-  if (st.posture === 'homing') return '正在站起来：等它站稳';
-  if (st.posture === 'walking') return '正在走：先停下';
-  if (st.posture === 'policy') return '策略在跑，一提起来它会迈腿：按一下手柄 +，回到「站好」再做';
-  if (st.posture === 'sitting') return '坐着：先点上面的「站姿使能」让它站起来';
-  if (st.posture !== 'holding') return '读不出它现在的姿势';
-  if (!okVec(st.gravity) || st.joints_age_ms == null || st.joints_age_ms > RULES.stale_ms) return '没有实时姿态数据';
-  if (st.imu?.status === 'missing' || st.imu?.status === 'frozen') return 'IMU 读数不正常，先查线';
+  if (imu?.mount?.verified === false) return 'A orientação ainda não foi confirmada. Faça primeiro a calibração inicial acima.';
+  // Se o robô não estiver em pé, oriente a pessoa a ativar a postura em pé.
+  if (st.posture === 'limp') return 'Motores sem força. Clique em “Ativar postura em pé” e segure o robô enquanto ele se levanta.';
+  if (st.posture === 'homing') return 'O robô está se levantando; aguarde estabilizar.';
+  if (st.posture === 'walking') return 'O robô está andando; pare-o primeiro.';
+  if (st.posture === 'policy') return 'A política está em execução e o robô pode mover as pernas ao ser levantado. Pressione + no controle para voltar à postura segura.';
+  if (st.posture === 'sitting') return 'O robô está sentado. Clique em “Ativar postura em pé” para levantá-lo.';
+  if (st.posture !== 'holding') return 'Não foi possível identificar a postura atual.';
+  if (!okVec(st.gravity) || st.joints_age_ms == null || st.joints_age_ms > RULES.stale_ms) return 'Sem dados atuais de postura.';
+  if (st.imu?.status === 'missing' || st.imu?.status === 'frozen') return 'Leitura da IMU inválida. Verifique os cabos.';
   return null;
 }
 
-// ---------------- 站姿使能 / 失能（任务 17，用户 10-21：「得有个按钮站姿使能、失能」） ----------------
-// 「站姿使能」走遥控卡「站起来」同一条路：link.cmd('pad.op', {op: 'stand'})，后端按姿势再判一遍（软着 robot.init、坐着 sit_toggle）；
-// 能不能按用手柄快照里遥控卡那颗「站起来」的判断（pd.motion.buttons.stand）。「失能（卸力）」走顶上「卸力」同一条路：link.cmd('relax')。
-// 标定模式也能站（用户 10-21：「咱标定也能站姿不就好了吗？非要切到运动模式」）：「站姿使能」发 imu.op hold →
-// fork 标定模式的 hold-home，15 颗一起 3 秒转到 HOME 锁住（没有平衡，扶着点），IMU 照常读，站着校准就在标定模式做；
-// 「失能」一样走顶上「卸力」（标定模式下 robot.relax 就是总线 relax）。
-const POSE_CN = { holding: '站着', policy: '站着（策略在跑）', walking: '在走', limp: '软着', homing: '正在站起来',
-  sitting: '坐着', commissioning: '标定模式（软着）', starting: '主程序在启动', absent: '主程序没在跑', servo_session: '调舵机中' };
-const HOLD_CN = { holding: '标定模式（站着）', ramping: '标定模式（正在站起来）' };
-const HOLD_CONFIRM = '标定模式站姿使能：15 颗舵机会在 3 秒内一起转到站姿并锁住。\n'
-  + '标定模式不管平衡，站起来以后要扶着点；方向用舵机页设的（没设过的沿用主程序文件里的）。\n双手扶好鸭子，确定吗？';
+// ---------------- Ativar ou desativar a postura em pé ----------------
+// Fora do modo de calibração, usa o mesmo comando “levantar” do cartão de controle e respeita as verificações do backend.
+// “Desativar” usa o comando de liberação global. No modo de calibração, os 15 servos vão juntos para HOME em 3 s; não há equilíbrio, então segure o robô.
+const POSE_CN = { holding: 'Em pé', policy: 'Em pé (política em execução)', walking: 'Andando', limp: 'Sem força', homing: 'Levantando',
+  sitting: 'Sentado', commissioning: 'Modo de calibração (sem força)', starting: 'Programa principal iniciando', absent: 'Programa principal parado', servo_session: 'Ajustando servos' };
+const HOLD_CN = { holding: 'Modo de calibração (em pé)', ramping: 'Modo de calibração (levantando)' };
+const HOLD_CONFIRM = 'No modo de calibração, os 15 servos irão juntos para a postura em pé em 3 segundos e a manterão.\n'
+  + 'Este modo não controla o equilíbrio; segure o robô depois que ele se levantar. A direção dos servos vem da página de servos ou, se nunca foi configurada, do arquivo do programa principal.\nSegure o MicroDuck com as duas mãos. Deseja continuar?';
 
 function StanceCard({ st, imu, pd, link, live }) {
   const [msg, setMsg] = useState(null);
@@ -639,14 +632,14 @@ function StanceCard({ st, imu, pd, link, live }) {
   const commissioning = (st?.mode || imu?.mode) === 'commissioning';
   const open = link.status === 'open';
   const hold = st?.hold || imu?.hold || null;
-  const now = !st ? '还没连上' : live === false ? '连不上鸭子' : st.posture === 'servo_session' ? POSE_CN.servo_session
-    : commissioning && hold ? HOLD_CN[hold.stage] || '标定模式（站着）' : (POSE_CN[st.posture] || '读不出');
-  const sb = pd?.motion?.buttons?.stand;              // 遥控卡「站起来」的判断（后端推的手柄快照，1 Hz 也够用）
-  const standWhy = !st || live === false ? '连不上鸭子：等它回来'
-    : imu?.redo?.active ? '重新标定方向期间保持卸力：双手托住，完成或取消后再站起来'
-    : st.posture === 'servo_session' ? '舵机页还占着总线：点顶上的「交还主程序」'
-      : st.posture === 'starting' ? '主程序还在启动：等它起来'
-        : commissioning ? (hold ? (hold.stage === 'holding' ? '已经站着了' : '正在站起来') : null)
+  const now = !st ? 'Ainda não conectado' : live === false ? 'MicroDuck desconectado' : st.posture === 'servo_session' ? POSE_CN.servo_session
+    : commissioning && hold ? HOLD_CN[hold.stage] || 'Modo de calibração (em pé)' : (POSE_CN[st.posture] || 'Estado desconhecido');
+  const sb = pd?.motion?.buttons?.stand;              // Verificação do botão “Levantar” enviada pelo backend no estado do controle.
+  const standWhy = !st || live === false ? 'MicroDuck desconectado; aguardando reconexão.'
+    : imu?.redo?.active ? 'Mantenha os motores sem força durante a recalibração e segure o robô. Levante-o após concluir ou cancelar.'
+    : st.posture === 'servo_session' ? 'A página de servos ainda controla o barramento. Clique em “Devolver ao programa principal”.'
+      : st.posture === 'starting' ? 'O programa principal ainda está iniciando; aguarde.'
+        : commissioning ? (hold ? (hold.stage === 'holding' ? 'O robô já está em pé.' : 'O robô está se levantando.') : null)
           : sb && !sb.ok ? sb.why : null;
   const stand = async () => {
     if (commissioning) {
@@ -654,55 +647,55 @@ function StanceCard({ st, imu, pd, link, live }) {
       setBusy(true); setMsg(null);
       const r = await link.cmd('imu.op', { op: 'hold' }, 25000);
       setBusy(false);
-      setMsg(r.ok ? { ok: true, text: '站住了：双手扶住，现在可以做初次安装方向标定或「站着校准」；做完点「失能」或顶上「卸力」' }
-        : { ok: false, text: r.reason || r.error || '没站起来' });
+      setMsg(r.ok ? { ok: true, text: 'O robô está em pé. Segure-o; agora você pode calibrar a orientação de montagem ou fazer a calibração em pé. Ao terminar, clique em “Desativar” ou em “Liberar” no topo.' }
+        : { ok: false, text: r.reason || r.error || 'Não foi possível levantar o robô.' });
       return;
     }
     if (typeof st?.tilt_deg === 'number' && st.tilt_deg > 30
-      && !window.confirm(`它现在是躺着的（倾斜 ${Math.round(st.tilt_deg)}°）。站起来时腿会突然用力：确定托好了吗？`)) return;
+      && !window.confirm(`O robô está deitado (inclinação de ${Math.round(st.tilt_deg)}°). As pernas podem se mover bruscamente ao levantar. Você está segurando-o com firmeza?`)) return;
     setBusy(true); setMsg(null);
     const r = await link.cmd('pad.op', { op: 'stand' }, 10000);
     setBusy(false);
-    setMsg(r.ok ? { ok: true, text: '站起来发出去了：双手托着它，站稳了再开始站着校准' } : { ok: false, text: r.reason || r.error || '没站起来' });
+    setMsg(r.ok ? { ok: true, text: 'Comando para levantar enviado. Segure o robô e aguarde estabilizar antes da calibração em pé.' } : { ok: false, text: r.reason || r.error || 'Não foi possível levantar o robô.' });
   };
   const relax = async () => {
     setMsg(null);
     const r = await link.cmd('relax', {}, 7000);
-    setMsg(r.ok ? { ok: true, text: '卸力发出去了：鸭子会软下来，扶住' } : { ok: false, text: r.reason || r.error || '卸力没发出去：用手柄 − 或关电源' });
+    setMsg(r.ok ? { ok: true, text: 'Comando para liberar os motores enviado. Segure o MicroDuck.' } : { ok: false, text: r.reason || r.error || 'Falha ao liberar os motores. Use − no controle ou desligue a alimentação.' });
   };
   return html`<section class="board imu-card imu-stance">
-    <h3>站姿 <span class="sv-small">站着校准要它先站住</span></h3>
+    <h3>Postura em pé <span class="sv-small">O robô precisa estar estável para a calibração em pé.</span></h3>
     <div class="imu-actions">
       <button class="btn-dark imu-stand" disabled=${!!standWhy || busy} onClick=${stand}
-        title=${standWhy || '跟遥控卡上的「站起来」同一条路'}>${busy ? '等它回话…' : '站姿使能'}</button>
+        title=${standWhy || 'Usa o mesmo comando “Levantar” do cartão de controle.'}>${busy ? 'Aguardando resposta…' : 'Ativar postura em pé'}</button>
       <button class="btn-light imu-relax" disabled=${!open} onClick=${relax}
-        title="跟顶上的「卸力」同一条路：15 颗舵机全部卸力">失能（卸力）</button>
-      <span class="sv-small imu-stance-now">现在：<b>${now}</b></span>
+        title="Usa o comando “Liberar” do topo; libera os 15 servos">Desativar (liberar motores)</button>
+      <span class="sv-small imu-stance-now">Estado atual: <b>${now}</b></span>
     </div>
     ${standWhy ? html`<p class="sv-small imu-stance-why">${standWhy}</p>` : null}
     ${imu?.redo?.active ? null : commissioning
-      ? html`<p class="sv-small">标定模式也能站：站姿使能 = 15 颗一起转到站姿锁住（不管平衡，扶着点）；失能 = 顶上的「卸力」，鸭子会软下来，扶住。站住以后就能做下面的「站着校准」。</p>`
+      ? html`<p class="sv-small">Também é possível ficar em pé no modo de calibração: “Ativar postura em pé” move e mantém os 15 servos juntos, sem controle de equilíbrio; segure o robô. “Desativar” libera os servos. Depois de estabilizar, faça a calibração em pé abaixo.</p>`
       : standWhy ? null
-        : html`<p class="sv-small">站姿使能 = 遥控卡上的「站起来」（双手托着它）；失能 = 顶上的「卸力」，鸭子会软下来，扶住。</p>`}
+        : html`<p class="sv-small">“Ativar postura em pé” usa o comando “Levantar” do cartão de controle; segure o robô. “Desativar” libera os motores, então continue segurando-o.</p>`}
     ${msg ? html`<div class=${'banner ' + (msg.ok ? 'warn' : 'bad')} role="status"><span>${msg.text}</span></div>` : null}
   </section>`;
 }
 
-/** 采集中这一刻该跟人说的一句话（大字）+ 一句补充（小字）。 */
+/** Mensagem principal e instrução complementar durante a coleta. */
 function collectWords(W) {
   if (W.paused) return [W.paused, ''];
   if (!W.done.still) {
-    return [W.moved ? '动了一下，重新数' : '放在平桌上，松手，别碰它',
-      `鸭子自己站着的这 3 秒就是「官方站姿」的参照 · 还要 ${Math.max(0, RULES.still_s * (1 - W.progress)).toFixed(1)} 秒`];
+    return [W.moved ? 'O robô se moveu; reiniciando a contagem.' : 'Coloque em uma mesa plana, solte e não toque no robô.',
+      `Os 3 segundos em pé e parado definem a referência · faltam ${Math.max(0, RULES.still_s * (1 - W.progress)).toFixed(1)} s`];
   }
   const next = nextTodo(W);
   const n = next ? STEP[next] : null;
-  const tip = n ? `双手捏住躯干两侧提起来一点（脚离桌 2–3 cm），端平停半秒，再往${n.short}倾（${n.how}）15° 左右，停 1 秒。顺序随便` : '';
-  if (W.over) return ['太多了，回一点', tip];
-  if (W.repeat) return [`${STEP[W.repeat].cn}已经记下了`, `放回端平，做${next ? STEP[next].cn : '下一个'}`];
-  if (W.needLevel) return ['先端平停一下', '零点没记上：每次倾之前，端平停半秒'];
-  if (W.inZone && W.cand) return [`${STEP[W.cand].cn}：停住…`, '再停一下就记下了'];
-  return [n ? `下一个：${n.cn}` : '都齐了', tip];
+  const tip = n ? `Segure o tronco pelas laterais e levante um pouco (pés a 2–3 cm da mesa). Nivele por meio segundo, incline cerca de 15° para ${n.short} (${n.how}) e mantenha por 1 s. A ordem é livre.` : '';
+  if (W.over) return ['Inclinação excessiva; volte um pouco.', tip];
+  if (W.repeat) return [`${STEP[W.repeat].cn} já foi registrada.`, `Volte ao nivelamento e faça ${next ? STEP[next].cn : 'a próxima etapa'}.`];
+  if (W.needLevel) return ['Nivele e aguarde um instante.', 'A referência não foi registrada; nivele por meio segundo antes de cada inclinação.'];
+  if (W.inZone && W.cand) return [`${STEP[W.cand].cn}: mantenha parado…`, 'Mais um instante e a etapa será registrada.'];
+  return [n ? `Próxima etapa: ${n.cn}` : 'Todas as etapas concluídas.', tip];
 }
 
 function CollectCard({ st, imu, live, W, act, muted, setMuted }) {
@@ -710,44 +703,44 @@ function CollectCard({ st, imu, live, W, act, muted, setMuted }) {
   const ph = W.phase;
   const guardErr = st?.guard?.max_joint_error_deg;
   const res = W.result;
-  const mute = html`<label class="imu-mute" title="做够一个方向时响一声"><input type="checkbox" checked=${muted}
-    onChange=${(e) => setMuted(e.target.checked)} /> 静音</label>`;
+  const mute = html`<label class="imu-mute" title="Toca um sinal ao concluir cada direção"><input type="checkbox" checked=${muted}
+    onChange=${(e) => setMuted(e.target.checked)} /> Silenciar</label>`;
   let button;
-  if (ph === 'collect') button = html`<button class="imu-big rec" onClick=${act.end}><span class="rec-dot"></span>采集中…（点这里结束）</button>`;
-  else if (ph === 'solving') button = html`<button class="imu-big" disabled>正在算…</button>`;
-  else if (ph === 'short') button = html`<button class="imu-big" onClick=${act.resume}>接着采</button>`;
-  else button = html`<button class="imu-big" disabled=${!!block} onClick=${act.start}>${ph === 'idle' ? '开始采集' : '重新采集'}</button>`;
+  if (ph === 'collect') button = html`<button class="imu-big rec" onClick=${act.end}><span class="rec-dot"></span>Coletando… (clique para encerrar)</button>`;
+  else if (ph === 'solving') button = html`<button class="imu-big" disabled>Calculando…</button>`;
+  else if (ph === 'short') button = html`<button class="imu-big" onClick=${act.resume}>Continuar coleta</button>`;
+  else button = html`<button class="imu-big" disabled=${!!block} onClick=${act.start}>${ph === 'idle' ? 'Iniciar coleta' : 'Recomeçar coleta'}</button>`;
   const [say, sub] = ph === 'collect' ? collectWords(W) : ['', ''];
   return html`<section class="board imu-card imu-collect">
-    <h3>站着校准 <span class="sv-small">约 1 分钟 · 两只手</span>${mute}</h3>
+    <h3>Calibração em pé <span class="sv-small">Cerca de 1 minuto · use as duas mãos</span>${mute}</h3>
     ${ph === 'idle' ? html`<ol class="imu-howto">
-      <li>鸭子站好（点上面的「站姿使能」或者按手柄 +，别开走路），点「开始采集」。</li>
-      <li>放在平桌上，<b>别碰它 3 秒</b>。</li>
-      <li>站到鸭子后面（跟它朝一个方向，它的左就是你的左），双手捏住躯干两侧提起来，<b>前、后、左、右各倾一次</b>：
-        每次先端平停半秒，再倾 15° 左右停 1 秒。顺序随便，3D 上的箭头会示范。</li>
-      <li>做够一个方向那个点就亮、响一声；四个都亮了自动结束、自动算。</li>
+      <li>Coloque o robô em pé (clique em “Ativar postura em pé” ou pressione + no controle; não inicie a marcha) e clique em “Iniciar coleta”.</li>
+      <li>Coloque-o sobre uma mesa plana e <b>não toque por 3 segundos</b>.</li>
+      <li>Fique atrás do robô, segurando o tronco pelas laterais. <b>Incline uma vez para frente, para trás, para a esquerda e para a direita</b>:
+        nivele por meio segundo antes de cada inclinação, depois incline cerca de 15° e mantenha por 1 s. A ordem é livre; a seta 3D mostra a direção.</li>
+      <li>O ponto acende e um sinal toca ao concluir cada direção; quando os quatro acenderem, a coleta termina e o cálculo começa automaticamente.</li>
     </ol>` : null}
     ${ph === 'collect' || ph === 'solving' || ph === 'short' ? html`<div class="imu-live">
       <${DirPad} W=${W} />
       <div class="imu-live-txt">
         ${ph === 'collect' ? html`<p class="imu-say"><b>${say}</b><br /><span class="sv-small">${sub}</span></p>
-          ${!W.done.still ? html`<div class="imu-bar" aria-label="静止进度"><span style=${{ width: `${Math.round(W.progress * 100)}%` }}></span></div>`
-            : html`<p class="imu-tilt num"><b>${fmt(W.live?.t)}°</b><span>离端平那一下</span></p>`}`
-        : ph === 'solving' ? html`<p class="imu-say"><b>采完了，正在算…</b></p>`
-          : html`<p class="imu-say"><b>还差：${names(W.missing)}</b><br />
-            <span class="sv-small">做过的都留着。点「接着采」把${names(W.missing)}补上；不想要这一遍就「重来」。</span></p>`}
+          ${!W.done.still ? html`<div class="imu-bar" aria-label="Progresso do repouso"><span style=${{ width: `${Math.round(W.progress * 100)}%` }}></span></div>`
+            : html`<p class="imu-tilt num"><b>${fmt(W.live?.t)}°</b><span>em relação ao nivelamento</span></p>`}`
+        : ph === 'solving' ? html`<p class="imu-say"><b>Coleta concluída; calculando…</b></p>`
+          : html`<p class="imu-say"><b>Faltam: ${names(W.missing)}</b><br />
+            <span class="sv-small">As etapas concluídas foram mantidas. Clique em “Continuar coleta” para completar ${names(W.missing)} ou em “Recomeçar” para iniciar tudo novamente.</span></p>`}
       </div>
     </div>` : null}
-    ${ph === 'error' ? html`<div class="banner bad" role="alert"><b>没算成</b><span class="more">${W.error}</span></div>` : null}
-    ${ph === 'done' && res && !res.ok ? html`<p class="sv-warn">没校成，原因和要补做哪步在下面「结果」里。</p>` : null}
+    ${ph === 'error' ? html`<div class="banner bad" role="alert"><b>Falha no cálculo</b><span class="more">${W.error}</span></div>` : null}
+    ${ph === 'done' && res && !res.ok ? html`<p class="sv-warn">A calibração falhou. Confira o motivo e as etapas a refazer em “Resultado”, abaixo.</p>` : null}
     ${block && ph !== 'solving' ? html`<p class="sv-warn">${block}</p>`
-      : ph === 'idle' && guardErr != null && guardErr > 5 ? html`<p class="sv-warn">腿离 HOME 还差 ${fmt(guardErr)}°：站姿不准，补偿也会跟着不准。先把舵机零位校好</p>` : null}
+      : ph === 'idle' && guardErr != null && guardErr > 5 ? html`<p class="sv-warn">As pernas estão a ${fmt(guardErr)}° de HOME. A postura e a compensação ficarão imprecisas. Calibre primeiro a posição zero dos servos.</p>` : null}
     <div class="imu-actions">${button}
-      ${ph === 'short' || ph === 'collect' ? html`<button class="btn-light" onClick=${act.start} disabled=${!!block && ph !== 'collect'}>重来</button>` : null}</div>
+      ${ph === 'short' || ph === 'collect' ? html`<button class="btn-light" onClick=${act.start} disabled=${!!block && ph !== 'collect'}>Recomeçar</button>` : null}</div>
   </section>`;
 }
 
-const GRADE = { good: ['好', 'ok'], ok: ['能用', 'warn'], coarse: ['粗校', 'warn'] };
+const GRADE = { good: ['Boa', 'ok'], ok: ['Utilizável', 'warn'], coarse: ['Inicial', 'warn'] };
 
 function ResultCard({ res, imu, link, onRedo }) {
   const [checks, setChecks] = useState({});
@@ -761,53 +754,53 @@ function ResultCard({ res, imu, link, onRedo }) {
   const [gw, gk] = GRADE[Q.grade] || ['—', ''];
   const redo = (res.redo || []).filter((k) => STEP[k]);
   const save = () => {
-    // 站着精校的结果后端已经记进 imu-pending.json；真正写进主程序统一走第 3 步
-    setOut({ ok: true, text: '这次的方向已经记在 Studio 里：去上手清单第 3 步点「写进主程序」。' });
+    // O resultado da calibração em pé já está em imu-pending.json; a gravação no programa principal ocorre na etapa 3.
+    setOut({ ok: true, text: 'A orientação foi registrada no Studio. Vá à etapa 3 da lista inicial e clique em “Gravar no programa principal”.' });
     location.hash = '#/';
     setTimeout(() => document.querySelector('[data-step="commit"]')?.scrollIntoView({ block: 'center' }), 300);
   };
   const detail = html`<table class="imu-table num">
-      <thead><tr><th>步骤</th><th class="r">倾了</th><th class="r">斜了</th><th class="r">晃</th><th></th></tr></thead>
+      <thead><tr><th>Etapa</th><th class="r">Inclinação</th><th class="r">Desvio</th><th class="r">Oscilação</th><th></th></tr></thead>
       <tbody>${STEPS.map((k) => { const s = (res.steps || {})[k] || {}; return html`<tr class=${s.ok === false ? 'bad' : ''}
-        title=${s.ref ? `零点：${s.ref}${s.ref_offset_deg != null ? `（离桌上静止 ${fmt(s.ref_offset_deg)}°）` : ''}` : ''}>
+        title=${s.ref ? `Referência: ${s.ref}${s.ref_offset_deg != null ? ` (diferença do repouso na mesa: ${fmt(s.ref_offset_deg)}°)` : ''}` : ''}>
         <td>${STEP[k].cn}</td><td class="r">${k === 'still' ? '—' : `${fmt(s.tilt_deg, 0)}°`}</td>
         <td class="r">${s.skew_deg != null ? `${fmt(s.skew_deg, 0)}°` : '—'}</td><td class="r">${s.spread_deg != null ? `${fmt(s.spread_deg)}°` : '—'}</td>
         <td>${s.ok ? '✓' : s.msg || (s.ok === false ? '×' : '')}</td></tr>`; })}</tbody>
     </table>
-    ${res.ok && Q.grade !== 'coarse' ? html`<p class="sv-small">自检：前后两次差 ${fmt(Q.fb_pair_deg)}°、左右两次差 ${fmt(Q.lr_pair_deg)}°、前后和左右差 ${fmt(Q.cross_deg)}°、
-      最斜的一步 ${fmt(Q.max_skew_deg)}°（越小越好；每步斜 ≤${R.good_skew_deg ?? 10}°、两对差 ≤${R.good_cross_deg ?? 6}° 评「好」，
-      斜 >${R.skew_max_deg ?? 20}° 或两对差 >${R.cross_max_deg ?? 12}° 判失败）</p>` : null}
-    ${res.standard ? html`<p class="sv-small">新方向：${res.standard.text}${res.standard.off_deg > 0.5 ? `（再偏 ${fmt(res.standard.off_deg)}°）` : ''}</p>` : null}
-    ${res.mount ? html`<details class="imu-details"><summary>新安装方向（四元数 w, x, y, z）</summary><code class="num">${res.mount.map((x) => fmt(x, 6)).join(', ')}</code></details>` : null}`;
+    ${res.ok && Q.grade !== 'coarse' ? html`<p class="sv-small">Verificação: diferença entre inclinações frontal/traseira ${fmt(Q.fb_pair_deg)}°, lateral ${fmt(Q.lr_pair_deg)}° e entre os eixos ${fmt(Q.cross_deg)}°.
+      Maior desvio: ${fmt(Q.max_skew_deg)}° (quanto menor, melhor; “Boa” exige desvio ≤${R.good_skew_deg ?? 10}° por etapa e diferença ≤${R.good_cross_deg ?? 6}° entre pares;
+      desvio >${R.skew_max_deg ?? 20}° ou diferença >${R.cross_max_deg ?? 12}° é reprovado).</p>` : null}
+    ${res.standard ? html`<p class="sv-small">Orientação calculada: ${res.standard.text}${res.standard.off_deg > 0.5 ? ` (diferença adicional de ${fmt(res.standard.off_deg)}°)` : ''}</p>` : null}
+    ${res.mount ? html`<details class="imu-details"><summary>Nova orientação de montagem (quatérnio w, x, y, z)</summary><code class="num">${res.mount.map((x) => fmt(x, 6)).join(', ')}</code></details>` : null}`;
   return html`<section class="board imu-card">
-    <h3>结果 ${res.ok ? html`<span class=${'imu-grade ' + gk}>${gw}</span>` : html`<span class="imu-grade bad">没过</span>`}</h3>
+    <h3>Resultado ${res.ok ? html`<span class=${'imu-grade ' + gk}>${gw}</span>` : html`<span class="imu-grade bad">Reprovado</span>`}</h3>
     ${!res.ok ? html`<p class="sv-warn">${res.reason}</p>
-      ${redo.length ? html`<div class="imu-actions"><button class="btn-dark" onClick=${() => onRedo(redo)}>补做${names(redo)}</button>
-        <span class="sv-small">别的几步留着，只重做这${redo.length > 1 ? '几' : '一'}步</span></div>` : null}` : html`
+      ${redo.length ? html`<div class="imu-actions"><button class="btn-dark" onClick=${() => onRedo(redo)}>Refazer ${names(redo)}</button>
+        <span class="sv-small">As outras etapas foram mantidas; somente ${redo.length > 1 ? 'estas etapas' : 'esta etapa'} serão repetidas.</span></div>` : null}` : html`
       <div class="imu-parts num">
-        <div><span>前后</span><b>${sgn(P.pitch_deg)}°</b><small>+ = 站着时读数前倾</small></div>
-        <div><span>左右</span><b>${sgn(P.roll_deg)}°</b><small>+ = 左倾</small></div>
-        <div><span>朝向</span><b>${sgn(P.yaw_deg)}°</b><small>绕竖直轴，站着看不出</small></div>
-        <div><span>一共</span><b>${fmt(P.total_deg)}°</b><small>相对现在的方向</small></div>
+        <div><span>Frente / trás</span><b>${sgn(P.pitch_deg)}°</b><small>+ = leitura inclinada para frente em pé</small></div>
+        <div><span>Esquerda / direita</span><b>${sgn(P.roll_deg)}°</b><small>+ = inclinação para a esquerda</small></div>
+        <div><span>Orientação</span><b>${sgn(P.yaw_deg)}°</b><small>Rotação no eixo vertical; não é visível em pé</small></div>
+        <div><span>Total</span><b>${fmt(P.total_deg)}°</b><small>Em relação à orientação atual</small></div>
       </div>`}
     ${res.check ? html`<p class=${res.check.ok ? 'sv-small imu-check' : 'sv-warn imu-check'}>${res.check.ok
-      ? `✓ 跟主程序现在用的方向只差 ${fmt(res.check.diff_deg)}°、站姿倾斜 ${fmt(res.check.tilt_deg)}°：${res.check.recorded ? '记下了「核对过」（总览上手清单第 2 步）' : '够近，但没记上（看日志）'}`
-      : `这次不算「核对过」：${res.check.why}`}</p>` : null}
+      ? `✓ Diferença de ${fmt(res.check.diff_deg)}° em relação à orientação usada pelo programa principal; inclinação em pé de ${fmt(res.check.tilt_deg)}°: ${res.check.recorded ? 'verificação registrada (etapa 2 da lista inicial)' : 'dentro do limite, mas não registrada (consulte os registros)'}`
+      : `A verificação não foi registrada: ${res.check.why}`}</p>` : null}
     ${(res.notes || []).map((n) => html`<p class="sv-small">· ${n}</p>`)}
-    ${res.ok ? html`<details class="imu-details"><summary>详细数据</summary>${detail}</details>` : detail}
+    ${res.ok ? html`<details class="imu-details"><summary>Dados detalhados</summary>${detail}</details>` : detail}
     ${confirms.map((c, i) => html`<label class="imu-confirm"><input type="checkbox" checked=${!!checks[i]} onChange=${(e) => setChecks({ ...checks, [i]: e.target.checked })} /> ${c}</label>`)}
     ${res.ok ? html`<div class="imu-save">
-      <button class="btn-dark" disabled=${!res.mount} onClick=${save}>去上手清单第 3 步</button>
-      <span class="sv-small">这里只记下方向；第 3 步「写进主程序」才会重启主程序、切到运动模式</span>
+      <button class="btn-dark" disabled=${!res.mount} onClick=${save}>Ir para a etapa 3 da lista inicial</button>
+      <span class="sv-small">Esta etapa apenas registra a orientação; “Gravar no programa principal”, na etapa 3, reinicia o programa e ativa o modo de movimento.</span>
     </div>` : null}
-    ${!res.mount && res.ok ? html`<p class="sv-warn">算不出新方向（不知道现在的方向），不能写</p>` : null}
-    ${out ? html`<div class=${'banner ' + (out.ok ? 'warn' : 'bad')} role="status"><b>${out.ok ? '写好了' : '没写成'}</b><span class="more">${out.text}</span></div>` : null}
+    ${!res.mount && res.ok ? html`<p class="sv-warn">Não foi possível calcular a nova orientação; sem a orientação atual, não é possível gravar.</p>` : null}
+    ${out ? html`<div class=${'banner ' + (out.ok ? 'warn' : 'bad')} role="status"><b>${out.ok ? 'Registrado' : 'Falha ao registrar'}</b><span class="more">${out.text}</span></div>` : null}
   </section>`;
 }
 
-// 站着精校的结果先记在 Studio（imu-pending.json）；写进主程序统一在上手清单第 3 步做。
+// O resultado da calibração em pé é salvo no Studio (imu-pending.json); a gravação no programa principal ocorre na etapa 3 da lista inicial.
 
-// ---------------- 方向没确认、站不起来：先粗校 ----------------
+// ---------------- Orientação não confirmada ou robô sem conseguir ficar em pé: calibração inicial ----------------
 
 function CoarseCard({ st, imu, link, live }) {
   const [opened, setOpened] = useState(false);
@@ -823,15 +816,15 @@ function CoarseCard({ st, imu, link, live }) {
   const working = !!(imu?.job && !imu.job.done && !imu.job.failed);
   const canCollect = commissioning && !imu?.profile_error && (!redo.active || ['commissioning', 'finish_failed'].includes(redo.phase));
   const showSteps = canCollect && (!verified || opened || redo.active);
-  const startWhy = !open ? '连不上鸭子：等它回来' : imu?.profile_error ? imu.profile_error : working ? '上一项操作还没结束'
-    : commissioning ? null : !redo.can_start ? redo.reason || '暂时不能返回标定模式：先卸力并等待读数更新' : null;
+  const startWhy = !open ? 'MicroDuck desconectado; aguardando reconexão.' : imu?.profile_error ? imu.profile_error : working ? 'A operação anterior ainda não terminou.'
+    : commissioning ? null : !redo.can_start ? redo.reason || 'Não é possível voltar ao modo de calibração agora. Libere os motores e aguarde novas leituras.' : null;
   const run = async (op) => {
     setBusy(true); setMsg(null);
     const r = await link.cmd('imu.op', { op, confirmed: true }, 90000);
     setBusy(false);
     setMsg({ ok: r.ok, text: r.ok ? r.data?.note || (op === 'redo-start'
-      ? '已回到标定模式，保持卸力，双手托住鸭子开始采集。' : '已取消，原来的安装方向和模式已恢复。')
-      : r.reason || r.error || '操作没完成：查看当前状态后重试' });
+      ? 'Modo de calibração retomado. Mantenha os motores sem força, segure o MicroDuck e inicie a coleta.' : 'Cancelado; a orientação e o modo anteriores foram restaurados.')
+      : r.reason || r.error || 'Operação incompleta. Confira o estado atual e tente novamente.' });
   };
   const start = async () => {
     if (startWhy || busy) return;
@@ -839,21 +832,21 @@ function CoarseCard({ st, imu, link, live }) {
     else await run('redo-start');
   };
   return html`<section class="board imu-card imu-coarse">
-    <h3>IMU 安装方向 <span class="sv-small">${redo.active ? '重标定未结束' : verified ? '已保存，可重新校验' : '第一次标定'}</span></h3>
-    <p class="sv-small">先采静止和前倾，计算安装方向（四元数），再由主程序验证。装法改了或上次没调对，都可以重新做。</p>
-    ${imu?.mount_protocol_mismatch ? html`<p class="sv-warn">总线协议与已存安装方向不匹配：需要重新标定；主程序验证通过后才确认这份方向。</p>` : null}
+    <h3>Orientação de montagem da IMU <span class="sv-small">${redo.active ? 'Recalibração incompleta' : verified ? 'Salva; pode ser validada novamente' : 'Calibração inicial'}</span></h3>
+    <p class="sv-small">Colete o repouso e a inclinação frontal, calcule a orientação de montagem (quatérnio) e solicite a validação do programa principal. Repita se a montagem mudou ou a calibração anterior ficou incorreta.</p>
+    ${imu?.mount_protocol_mismatch ? html`<p class="sv-warn">O protocolo do barramento não corresponde à orientação salva. Recalibre; a nova orientação só será confirmada após a validação do programa principal.</p>` : null}
     ${redo.active ? html`<p class="sv-warn">${canCollect
-      ? '本次重标定还没完成：双手托住鸭子，保持卸力。验证通过后会恢复原模式；也可以取消并恢复原参数。'
-      : '正在切换或恢复标定会话，请等当前操作结束；如未能恢复，可以取消并恢复原参数。'}</p>
-      <div class="imu-actions"><${TwoStep} label="取消并恢复原参数" ask="扶好鸭子，确认恢复原方向和模式？"
+      ? 'A recalibração ainda não terminou. Segure o MicroDuck com os motores sem força. Após a validação, o modo anterior será restaurado; você também pode cancelar e restaurar os parâmetros anteriores.'
+      : 'A sessão de calibração está mudando ou sendo restaurada. Aguarde a operação atual; se a restauração falhar, cancele para recuperar os parâmetros anteriores.'}</p>
+      <div class="imu-actions"><${TwoStep} label="Cancelar e restaurar parâmetros" ask="Segure o MicroDuck. Restaurar a orientação e o modo anteriores?"
         disabled=${!open || busy || working}
-        onConfirm=${() => run('redo-cancel')} busyLabel="正在恢复…" /></div>` : null}
+        onConfirm=${() => run('redo-cancel')} busyLabel="Restaurando…" /></div>` : null}
     ${!showSteps && !redo.active ? html`<div class="imu-actions"><${TwoStep}
-      label="重新标定方向" ask=${commissioning ? '扶好鸭子，确认重新采集？' : '扶好并已卸力，确认重启并进入标定模式？'}
-      cls="btn-dark" disabled=${!!startWhy || busy} title=${startWhy} onConfirm=${start} busyLabel="正在进入标定模式…" /></div>
+      label="Recalibrar orientação" ask=${commissioning ? 'Segure o MicroDuck. Iniciar uma nova coleta?' : 'Segure o MicroDuck com os motores sem força. Reiniciar no modo de calibração?'}
+      cls="btn-dark" disabled=${!!startWhy || busy} title=${startWhy} onConfirm=${start} busyLabel="Entrando no modo de calibração…" /></div>
       <p class="sv-small">${commissioning
-        ? '双手扶稳，可卸力托住，也可站姿使能后等站稳，再重新采集。'
-        : '重新标定前先点「失能（卸力）」并扶住鸭子。进入和完成时会重启主程序，并备份原 IMU 方向。'}保留舵机零位、方向和限位；验证通过才采用新方向。</p>
+        ? 'Segure o robô. Você pode mantê-lo sem força ou ativar a postura em pé e aguardar estabilizar antes de coletar novamente.'
+        : 'Antes de recalibrar, clique em “Desativar (liberar motores)” e segure o robô. O programa principal reinicia ao entrar e ao concluir; a orientação original da IMU é copiada para backup.'} A posição zero, a direção e os limites dos servos são preservados; a nova orientação só será adotada após validação.</p>
       ${startWhy ? html`<p class="sv-warn">${startWhy}</p>` : null}` : null}
     ${showSteps ? html`<${CoarseSteps} key=${context} link=${link} disabled=${!open || busy || working} unloadedOnly=${!!redo.active}
       onBegin=${() => setOpened(true)} onDone=${(text) => setMsg({ ok: true, text })} />` : null}
@@ -877,14 +870,14 @@ function CoarseSteps({ link, disabled, unloadedOnly, onBegin, onDone }) {
     const r = await link.cmd('imu.op', { op: 'coarse-capture', phase, seconds }, 15000);
     if (!alive.current) return null;
     setBusy(false);
-    if (!r.ok) { setOut({ ok: false, text: r.reason || r.error || '没采到读数' }); return null; }
+    if (!r.ok) { setOut({ ok: false, text: r.reason || r.error || 'Não foi possível coletar as leituras.' }); return null; }
     return r.data || {};
   };
   const takeStill = async () => {
     const d = await grab('still', 3);
     if (!d) return;
     setStill(d); setStep('fwd');
-    setOut({ ok: true, text: `静止采到 ${d.n} 个读数。现在往前低头 15–30°，停住再点下一步。` });
+    setOut({ ok: true, text: `${d.n} leituras de repouso coletadas. Incline o tronco para frente de 15° a 30°, mantenha parado e clique na próxima etapa.` });
   };
   const takeFwd = async () => {
     const d = await grab('fwd', 3);
@@ -896,11 +889,11 @@ function CoarseSteps({ link, disabled, unloadedOnly, onBegin, onDone }) {
     setBusy(false);
     if (!r.ok || !r.data || r.data.ok !== true) {
       setStep('failed');
-      setOut({ ok: false, text: r.reason || (r.data && r.data.reason) || r.error || '算不出方向' });
+      setOut({ ok: false, text: r.reason || (r.data && r.data.reason) || r.error || 'Não foi possível calcular a orientação.' });
       return;
     }
     setRes(r.data); setStep('confirm');
-    setOut({ ok: true, text: '方向算出来了：对照模块实际装法勾一下，再交给主程序验证。' });
+    setOut({ ok: true, text: 'Orientação calculada. Compare com a montagem real do módulo, confirme as opções e solicite a validação do programa principal.' });
   };
   const reset = () => { setStep('idle'); setStill(null); setRes(null); setChecks({}); setOut(null); };
   const verify = async () => {
@@ -908,78 +901,78 @@ function CoarseSteps({ link, disabled, unloadedOnly, onBegin, onDone }) {
     setBusy(true); setStep('verifying'); setOut(null);
     const r = await link.cmd('imu.op', { op: 'verify', confirmed: true, mount_wxyz: res.mount }, 90000);
     if (!alive.current) return;
-    if (r.ok) onDone(r.data?.note || '主程序验证通过，安装方向已经保存。');
+    if (r.ok) onDone(r.data?.note || 'Validação do programa principal aprovada; orientação de montagem salva.');
     setBusy(false);
-    if (r.ok) { setStep('done'); setOut({ ok: true, text: (r.data && r.data.note) || '主程序验证通过，安装方向已经写进标定文件' }); }
-    else { setStep('failed'); setOut({ ok: false, text: r.reason || r.error || '主程序没通过验证' }); }
+    if (r.ok) { setStep('done'); setOut({ ok: true, text: (r.data && r.data.note) || 'Validação do programa principal aprovada; orientação gravada no arquivo de calibração.' }); }
+    else { setStep('failed'); setOut({ ok: false, text: r.reason || r.error || 'O programa principal reprovou a validação.' }); }
   };
   const confirms = (res && res.confirm) || [];
   const allChecked = confirms.every((_, i) => checks[i]);
   const nowStep = step === 'idle' ? 'still' : step;
   return html`<div class="imu-coarse-steps">
     <p class="sv-small">${unloadedOnly
-      ? '本次重标定会话要恢复原来的运行模式：保持失能（卸力），双手托住鸭子。'
-      : '粗校在标定模式做：可先点「站姿使能」，等站稳后双手扶住；也可失能（卸力）后双手托住。站姿使能只锁住关节，需要一直扶稳。'}
-      先把整个鸭子摆正、别动，采 3 秒；再让整个躯干前倾 15–30° 停住，采 3 秒；电脑算出方向，再交给主程序自己验一遍。</p>
+      ? 'Esta sessão de recalibração restaurará o modo anterior. Mantenha os motores sem força e segure o MicroDuck.'
+      : 'A calibração inicial ocorre no modo de calibração. Você pode ativar a postura em pé e segurar o robô após estabilizar ou mantê-lo sem força enquanto o segura. A postura em pé trava as articulações, mas não controla o equilíbrio; segure-o continuamente.'}
+      Nivele o robô inteiro e colete por 3 s; depois incline o tronco para frente de 15° a 30°, mantenha parado e colete por 3 s. O computador calcula a orientação e o programa principal a valida.</p>
     ${nowStep === 'still' ? html`<div class="imu-coarse-step">
-      <p class="imu-say"><b>① 扶住鸭子，摆正，别动</b></p>
-      <p class="sv-small">双手扶住躯干，让实物站直、脚朝下，保持不动；已站姿使能的先等站稳。屏幕仍按旧方向显示，先以实物摆正为准。</p>
-      <button class="btn-dark" disabled=${busy || disabled} onClick=${takeStill}>${busy ? '采集中…' : '采静止（3 秒）'}</button>
+      <p class="imu-say"><b>① Segure o robô, nivele e não se mova</b></p>
+      <p class="sv-small">Segure o tronco com as duas mãos, mantenha o robô em pé com os pés para baixo e fique parado. Se ativou a postura em pé, aguarde estabilizar. A tela ainda usa a orientação antiga; guie-se pela posição física.</p>
+      <button class="btn-dark" disabled=${busy || disabled} onClick=${takeStill}>${busy ? 'Coletando…' : 'Coletar repouso (3 s)'}</button>
     </div>` : null}
     ${nowStep === 'fwd' ? html`<div class="imu-coarse-step">
-      <p class="imu-say"><b>② 往前低头 15–30°，停住</b></p>
-      <p class="sv-small">托住整个躯干往前倾，头那边往下，慢慢低到 15–30°，保持不动 3 秒。不要只转头，也不要往左右歪。</p>
+      <p class="imu-say"><b>② Incline para frente de 15° a 30° e mantenha parado</b></p>
+      <p class="sv-small">Segure o tronco inteiro e incline-o para frente, abaixando o lado da cabeça até 15°–30°. Fique parado por 3 s. Não mova apenas a cabeça nem incline para os lados.</p>
       <div class="imu-actions">
-        <button class="btn-dark" disabled=${busy || disabled} onClick=${takeFwd}>${busy ? '采集 / 计算中…' : '采前倾（3 秒）'}</button>
-        <button class="btn-light" disabled=${busy || disabled} onClick=${takeStill}>重采静止</button>
+        <button class="btn-dark" disabled=${busy || disabled} onClick=${takeFwd}>${busy ? 'Coletando / calculando…' : 'Coletar inclinação frontal (3 s)'}</button>
+        <button class="btn-light" disabled=${busy || disabled} onClick=${takeStill}>Coletar repouso novamente</button>
       </div>
     </div>` : null}
     ${nowStep === 'confirm' && res ? html`<div class="imu-coarse-step">
-      <p class="sv-small">粗校算出来：${res.standard ? `${res.standard.text}${res.standard.off_deg > 0.5 ? `（再偏 ${fmt(res.standard.off_deg)}°）` : ''}` : '方向已算出'}。
-        这次只采静止和前倾，左右还没验；之后再做下面的「站着校准」精校一次。</p>
+      <p class="sv-small">Resultado da calibração inicial: ${res.standard ? `${res.standard.text}${res.standard.off_deg > 0.5 ? ` (diferença adicional de ${fmt(res.standard.off_deg)}°)` : ''}` : 'orientação calculada'}.
+        Esta etapa coleta somente repouso e inclinação frontal; as direções laterais ainda não foram verificadas. Depois, faça a calibração completa em pé abaixo.</p>
       ${(res.notes || []).map((n) => html`<p class="sv-small">· ${n}</p>`)}
       ${confirms.map((c, i) => html`<label class="imu-confirm"><input type="checkbox" checked=${!!checks[i]}
         onChange=${(e) => setChecks({ ...checks, [i]: e.target.checked })} /> ${c}</label>`)}
       <div class="imu-actions">
-        <button class="btn-dark" disabled=${busy || disabled || !res.mount || !allChecked} onClick=${verify}>交给主程序验证</button>
-        <button class="btn-light" disabled=${busy} onClick=${reset}>重做</button>
+        <button class="btn-dark" disabled=${busy || disabled || !res.mount || !allChecked} onClick=${verify}>Solicitar validação do programa principal</button>
+        <button class="btn-light" disabled=${busy} onClick=${reset}>Recomeçar</button>
       </div>
-      <p class="sv-small"><b>点击验证前，先把实物回正并停住。</b>点了以后，再按提示在 20 秒内往前倾 15–30° 并停住。</p>
+      <p class="sv-small"><b>Antes de solicitar a validação, nivele o robô e mantenha-o parado.</b> Depois, siga as instruções para inclinar o tronco para frente de 15° a 30° em até 20 s.</p>
     </div>` : null}
     ${nowStep === 'verifying' ? html`<div class="imu-coarse-step">
-      <p class="imu-say"><b>按主程序提示，在 20 秒内往前倾 15–30°</b></p>
-      <p class="sv-small">保持双手托住。主程序会先检查摆正，再检查前倾；验证成功后会保存，重标定会话还需等原模式恢复完毕。</p>
+      <p class="imu-say"><b>Siga as instruções do programa principal e incline para frente de 15° a 30° em até 20 s</b></p>
+      <p class="sv-small">Continue segurando o robô. O programa principal verifica primeiro o nivelamento e depois a inclinação frontal. Após a validação, a sessão de recalibração ainda precisa restaurar o modo anterior.</p>
     </div>` : null}
-    ${nowStep === 'done' ? html`<p class="sv-small">主程序验证通过，方向已经写进标定文件。下面「站着校准」还可以再精校一次。</p>` : null}
+    ${nowStep === 'done' ? html`<p class="sv-small">Validação aprovada; orientação gravada no arquivo de calibração. Faça a calibração completa em pé abaixo para refinar o resultado.</p>` : null}
     ${nowStep === 'failed' ? html`<div class="imu-actions">
-      <button class="btn-dark" onClick=${reset}>重做</button>
-      <span class="sv-small">按下面的具体原因处理；重标定会话可以取消并恢复原参数。</span>
+      <button class="btn-dark" onClick=${reset}>Recomeçar</button>
+      <span class="sv-small">Resolva o motivo informado abaixo. A sessão de recalibração pode ser cancelada para restaurar os parâmetros anteriores.</span>
     </div>` : null}
     ${out ? html`<div class=${'banner ' + (out.ok ? 'warn' : 'bad')} role="status"><span>${out.text}</span></div>` : null}
   </div>`;
 }
 
-// ---------------- 后端在做的事（粗校、写入、换芯片）：一步一步报给页面 ----------------
+// ---------------- Progresso das operações do backend (calibração inicial, gravação e seleção do chip) ----------------
 // imu.job = { kind: 'coarse'|'save'|'set_chip'|'detect', title, msg, tilt_deg?, target_deg?, hold?, failed?, done? }
-// 托着鸭子的那几步（摆正 ≤5°、低头 15–30°）要看倾角，所以 tilt_deg 放大写
+// tilt_deg é enviado em destaque porque as etapas com o robô apoiado verificam nivelamento (≤5°) e inclinação frontal (15°–30%).
 
 function JobBanner({ job }) {
   if (!job) return null;
   const kind = job.failed ? 'bad' : 'warn';
   return html`<div class=${'banner imu-job ' + kind} role="status" aria-live="polite">
-    <b>${job.title || '在做'}</b><span class="more">${job.msg || ''}</span>
+    <b>${job.title || 'Em andamento'}</b><span class="more">${job.msg || ''}</span>
     ${job.tilt_deg != null ? html`<span class="imu-job-tilt num">${fmt(job.tilt_deg)}°${job.target_deg ? html`<small> / ${job.target_deg}</small>` : null}</span>` : null}
     ${job.hold != null && !job.done ? html`<span class="imu-bar small"><span style=${{ width: `${Math.round(Math.min(1, job.hold) * 100)}%` }}></span></span>` : null}
   </div>`;
 }
 
-// 给测试用（不接浏览器也能喂一串读数，看采集怎么走）
+// Interface auxiliar para fornecer leituras e inspecionar a coleta sem abrir o navegador.
 export const _test = { RULES, STEPS, TILTS, feed, freshWizard, startCollect, endCollect, resumeCollect, redoSteps,
   missingSteps, payload, findHold, findRef, spreadP90, tiltOf, qRotate };
 
-// ---------------- 页面 ----------------
+// ---------------- Página ----------------
 
-/** live / age：跟总览同一个判断（app.js 的 Main 里算好传进来）；没传就只看 st.joints_age_ms。 */
+/** live / age usam o mesmo critério do painel (calculado em Main de app.js); sem esses valores, consulta st.joints_age_ms. */
 export function ImuPage({ st, imu, link, live, age, pd }) {
   const W = useRef(freshWizard());
   const [, bump] = useState(0);
@@ -1002,7 +995,7 @@ export function ImuPage({ st, imu, link, live, age, pd }) {
     redraw();
   }, [st, live]);
 
-  // 采完了：交给后端算（旧方向后端自己从 calibration-status 拿，不用页面传）
+  // Envia a coleta ao backend; ele lê a orientação anterior de calibration-status.
   const phase = W.current.phase;
   useEffect(() => {
     if (phase !== 'solving') return undefined;
@@ -1011,7 +1004,7 @@ export function ImuPage({ st, imu, link, live, age, pd }) {
     link.cmd('imu.op', { op: 'solve', frame: 'body', mode: 'full', samples: payload(w) }, 15000).then((r) => {
       if (dead || W.current !== w) return;
       if (r.ok && r.data) { w.phase = 'done'; w.result = r.data; setRes(r.data); }
-      else { w.phase = 'error'; w.error = r.reason || r.error || '没算出来'; }
+      else { w.phase = 'error'; w.error = r.reason || r.error || 'Não foi possível calcular.'; }
       redraw();
     });
     return () => { dead = true; };
@@ -1028,27 +1021,27 @@ export function ImuPage({ st, imu, link, live, age, pd }) {
     setBusy(true); setMsg(null);
     const r = await link.cmd('imu.op', args, timeout);
     setBusy(false);
-    setMsg(r.ok ? { ok: true, text: `${what}：${r.data?.note || '好了'}` } : { ok: false, text: `${what}没成：${r.reason || r.error || '没说原因'}` });
+    setMsg(r.ok ? { ok: true, text: `${what}: ${r.data?.note || 'Concluído.'}` } : { ok: false, text: `${what}: falha — ${r.reason || r.error || 'motivo não informado'}` });
     return r;
   };
   const w = W.current;
   const S = statusOf(st, imu, live);
   const F = freshText(st, live, age);
   const arrow = w.phase === 'collect' && w.done.still ? nextTodo(w) : null;
-  const cue = w.phase === 'collect' ? (!w.done.still ? '静止 3 秒：别碰它' : arrow ? `下一个：${STEP[arrow].cn}（顺序随便）` : null) : null;
+  const cue = w.phase === 'collect' ? (!w.done.still ? 'Repouso por 3 s: não toque no robô.' : arrow ? `Próxima etapa: ${STEP[arrow].cn} (ordem livre)` : null) : null;
   return html`<div class="imu-page">
     <header class="sv-head">
       <h1>IMU</h1>
       <span class="sv-metrics num">
-        <span>方向 <b>${S.word}</b></span>
-        <span>倾角 <b>${fmt(st?.tilt_deg)}°</b>${F.live ? '' : `（${F.text}）`}</span>
-        <span>芯片 <b>${chipLabel(imu)}</b></span>
+        <span>Orientação <b>${S.word}</b></span>
+        <span>Inclinação <b>${fmt(st?.tilt_deg)}°</b>${F.live ? '' : ` (${F.text})`}</span>
+        <span>Chip <b>${chipLabel(imu)}</b></span>
       </span>
     </header>
-    <div class="sv-sub">IMU 告诉策略「机身往哪边歪」。大家装的都不一样，装歪几度站着看不出来，一走就往前冲（一号鸭 10-12 装歪 8.5° 就是这样），所以要重新校一下。</div>
+    <div class="sv-sub">A IMU informa à política para que lado o corpo está inclinado. A montagem varia entre robôs e alguns graus de desalinhamento podem passar despercebidos em pé, mas fazer o MicroDuck avançar ao caminhar. Por isso, calibre a orientação de montagem.</div>
     <${JobBanner} job=${imu?.job} />
     ${msg ? html`<div class=${'banner ' + (msg.ok ? 'warn' : 'bad')} role="status"><span>${msg.text}</span>
-      <a href="#" onClick=${(e) => { e.preventDefault(); setMsg(null); }}>知道了</a></div>` : null}
+      <a href="#" onClick=${(e) => { e.preventDefault(); setMsg(null); }}>Entendi</a></div>` : null}
     <div class="imu-grid">
       <${ImuStage} st=${st} stale=${!F.live} corr=${res?.ok ? res.correction : null} parts=${res?.parts}
         collecting=${w.phase === 'collect'} arrow=${arrow} cue=${cue} />
