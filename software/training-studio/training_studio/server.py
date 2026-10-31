@@ -14,13 +14,13 @@ from .config import StudioError
 
 def safe_file(root, relative):
     if not isinstance(relative, str) or "\\" in relative or ":" in relative or relative.startswith("/") or any(part in ("", ".", "..") for part in relative.split("/")):
-        raise StudioError("禁止访问此路径", 403)
+        raise StudioError("Acesso a este caminho não permitido", 403)
     root = Path(root).resolve()
     path = (root / relative).resolve()
     if not path.is_relative_to(root):
-        raise StudioError("禁止访问此路径", 403)
+        raise StudioError("Acesso a este caminho não permitido", 403)
     if not path.is_file():
-        raise StudioError("未找到文件", 404)
+        raise StudioError("Arquivo não encontrado", 404)
     return path
 
 
@@ -40,7 +40,7 @@ class StudioHTTPServer(ThreadingHTTPServer):
 
 def create_server(service, host="127.0.0.1", port=8093, *, web_root=None, shared_root=None, token=None):
     if not is_loopback(host) and not token:
-        raise StudioError("非回环监听必须配置访问令牌（--token 或 STUDIO_ACCESS_TOKEN）。", 403)
+        raise StudioError("Para escutar fora do loopback, configure um token de acesso (--token ou STUDIO_ACCESS_TOKEN).", 403)
     here = Path(__file__).resolve().parent.parent
     web_root = Path(web_root or here / "web").resolve()
     shared_root = Path(shared_root or here.parent / "studio" / "web").resolve()
@@ -85,7 +85,7 @@ def create_server(service, host="127.0.0.1", port=8093, *, web_root=None, shared
         def _check_request(self, api):
             hosts = self.headers.get_all("Host", [])
             if len(hosts) != 1:
-                raise StudioError("Host 请求头无效", 403)
+                raise StudioError("Cabeçalho Host inválido", 403)
             raw_host = hosts[0]
             try:
                 parsed = urlsplit("http://" + raw_host)
@@ -96,36 +96,36 @@ def create_server(service, host="127.0.0.1", port=8093, *, web_root=None, shared
             except ValueError:
                 valid = False
             if not valid:
-                raise StudioError("Host 不被允许", 403)
+                raise StudioError("Host não autorizado", 403)
             origin = self.headers.get("Origin")
             if origin and origin != "http://" + raw_host:
-                raise StudioError("禁止跨站请求", 403)
+                raise StudioError("Solicitação entre sites não permitida", 403)
             if self.headers.get("Sec-Fetch-Site") == "cross-site":
-                raise StudioError("禁止跨站请求", 403)
+                raise StudioError("Solicitação entre sites não permitida", 403)
             if api and token:
                 supplied = self.headers.get("X-Studio-Token", "")
                 if not hmac.compare_digest(supplied.encode("utf-8"), token.encode("utf-8")):
-                    raise StudioError("访问令牌缺失或不正确", 401)
+                    raise StudioError("Token de acesso ausente ou incorreto", 401)
 
         def _payload(self):
             if self.headers.get("Transfer-Encoding"):
-                raise StudioError("不支持分块请求正文")
+                raise StudioError("Corpo da solicitação em blocos não é compatível")
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
-                raise StudioError("Content-Length 无效") from None
+                raise StudioError("Content-Length inválido") from None
             if not 0 <= length <= 100000:
-                raise StudioError("请求正文不得超过 100000 字节")
+                raise StudioError("O corpo da solicitação não pode exceder 100.000 bytes")
             if length and self.headers.get_content_type() != "application/json":
-                raise StudioError("请求正文必须是 application/json")
+                raise StudioError("O corpo da solicitação precisa ser application/json")
             try:
                 def invalid_constant(value):
                     raise ValueError(value)
                 data = json.loads(self.rfile.read(length).decode("utf-8"), parse_constant=invalid_constant) if length else {}
             except (ValueError, UnicodeError, RecursionError):
-                raise StudioError("请求正文不是有效 JSON") from None
+                raise StudioError("O corpo da solicitação não contém JSON válido") from None
             if not isinstance(data, dict):
-                raise StudioError("请求正文必须是 JSON 对象")
+                raise StudioError("O corpo da solicitação precisa ser um objeto JSON")
             return data
 
         def _file(self, path, *, artifact=False):
@@ -139,14 +139,14 @@ def create_server(service, host="127.0.0.1", port=8093, *, web_root=None, shared
             if range_header:
                 match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header)
                 if not match or (not match[1] and not match[2]) or size == 0:
-                    raise StudioError("Range 请求无效")
+                    raise StudioError("Solicitação Range inválida")
                 if match[1]:
                     start = int(match[1])
                     end = min(int(match[2]) if match[2] else size - 1, size - 1)
                 else:
                     start = max(0, size - int(match[2]))
                 if start > end or start >= size:
-                    raise StudioError("Range 超出文件范围")
+                    raise StudioError("O Range solicitado está fora dos limites do arquivo")
                 status = 206
                 extra["Content-Range"] = f"bytes {start}-{end}/{size}"
             if artifact and mime not in ("video/mp4", "image/svg+xml"):
@@ -167,10 +167,10 @@ def create_server(service, host="127.0.0.1", port=8093, *, web_root=None, shared
         def _dispatch(self):
             parsed = urlsplit(self.path)
             if parsed.scheme or parsed.netloc or parsed.query:
-                raise StudioError("请求路径无效")
+                raise StudioError("Caminho da solicitação inválido")
             path = unquote(parsed.path)
             if "\x00" in path:
-                raise StudioError("请求路径无效")
+                raise StudioError("Caminho da solicitação inválido")
             api = path.startswith("/api/")
             self._check_request(api)
             method = self.command
@@ -188,11 +188,11 @@ def create_server(service, host="127.0.0.1", port=8093, *, web_root=None, shared
                 if match:
                     return self._file(service.artifact_path(match[1], match[2]), artifact=True)
                 if api:
-                    raise StudioError("未找到 API", 404)
+                    raise StudioError("API não encontrada", 404)
                 if path.startswith("/shared/"):
                     relative = path[len("/shared/"):]
                     if relative not in ("duck3d.js", "model-worker.js") and not relative.startswith(("vendor/", "model/")):
-                        raise StudioError("未找到共享资源", 404)
+                        raise StudioError("Recurso compartilhado não encontrado", 404)
                     return self._file(safe_file(shared_root, relative))
                 return self._file(safe_file(web_root, "index.html" if path == "/" else path.lstrip("/")))
             if method == "POST":
@@ -204,14 +204,14 @@ def create_server(service, host="127.0.0.1", port=8093, *, web_root=None, shared
                     run_id, action = match.groups()
                     if action in ("pause", "stop"):
                         if payload:
-                            raise StudioError("此操作不接受额外参数")
+                            raise StudioError("Esta operação não aceita parâmetros adicionais")
                         run = getattr(service, action)(run_id)
                     elif action == "resume":
                         run = service.resume(run_id, payload)
                     else:
                         run = service.operate(run_id, action, payload)
                     return self._json(200, {"run": run})
-            raise StudioError("未找到 API 或操作", 404)
+            raise StudioError("API ou operação não encontrada", 404)
 
         def _handle(self):
             try:
@@ -226,7 +226,7 @@ def create_server(service, host="127.0.0.1", port=8093, *, web_root=None, shared
                 self.close_connection = True
             except (OSError, ValueError):
                 self.close_connection = True
-                self._json(400, {"error": "请求处理失败，请查看任务状态与本地文件。"})
+                self._json(400, {"error": "Falha ao processar a solicitação; confira o estado da tarefa e os arquivos locais."})
 
         do_GET = _handle
         do_HEAD = _handle

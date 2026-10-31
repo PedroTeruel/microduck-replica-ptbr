@@ -95,9 +95,9 @@ class StudioService:
                     continue
                 interrupted = run.get("status") in ACTIVE
                 if interrupted:
-                    run.update(status="interrupted", phase="服务重启，原任务已中断", error="服务重启后不恢复旧进程；可从已保存检查点创建新任务。")
+                    run.update(status="interrupted", phase="Serviço reiniciado; tarefa anterior interrompida", error="O serviço não restaura processos antigos após reiniciar; crie uma nova tarefa a partir de um checkpoint salvo.")
                 if run.get("operation", {}).get("status") == "running":
-                    run["operation"].update(status="failed", error="服务重启，中断的操作不会自动重试。")
+                    run["operation"].update(status="failed", error="O serviço reiniciou; operações interrompidas não são repetidas automaticamente.")
                     interrupted = True
                 self._runs[run["id"]] = run
                 if interrupted:
@@ -114,12 +114,12 @@ class StudioService:
 
     def _run_dir(self, run_id):
         if not isinstance(run_id, str) or not re.fullmatch(r"[a-f0-9]{12}", run_id):
-            raise StudioError("未找到任务", 404)
+            raise StudioError("Tarefa não encontrada", 404)
         return self.state_dir / "runs" / run_id
 
     def _get(self, run_id):
         if run_id not in self._runs:
-            raise StudioError("未找到任务", 404)
+            raise StudioError("Tarefa não encontrada", 404)
         return self._runs[run_id]
 
     def _log(self, run, line):
@@ -202,10 +202,10 @@ class StudioService:
             except Exception as exc:
                 with self._condition:
                     run = self._runs[run_id]
-                    detail = f"进程退出监视或清理失败：{exc}"
+                    detail = f"Falha ao monitorar a saída ou limpar o processo: {exc}"
                     self._log(run, detail)
                     run["error"] = detail
-                    run["phase"] = "进程清理失败，请查看日志；资源仍由本服务保留"
+                    run["phase"] = "Falha ao limpar o processo; confira os logs. Os recursos continuam reservados por este serviço."
                     if run.get("operation", {}).get("status") == "running":
                         run["operation"].update(status="failed", error=detail)
                     else:
@@ -221,37 +221,37 @@ class StudioService:
 
     def _ensure_available(self):
         if self._closing:
-            raise StudioError("服务正在关闭", 409)
+            raise StudioError("O serviço está encerrando", 409)
         if self._active is not None:
-            raise StudioError("已有任务占用训练资源；暂停任务仍占用资源。", 409)
+            raise StudioError("Outra tarefa já está usando os recursos de treinamento; tarefas pausadas continuam ocupando recursos.", 409)
 
     def create_run(self, payload, *, parent=None, checkpoint=None):
         if not isinstance(payload, dict) or set(payload) - {"name", "recipe_id", "kind", "config", "profile", "skill"}:
-            raise StudioError("任务请求包含未知字段或格式无效")
+            raise StudioError("A solicitação da tarefa contém campos desconhecidos ou formato inválido")
         recipe_id = payload.get("recipe_id", "hd1910-flat")
         if not isinstance(recipe_id, str) or recipe_id not in RECIPE_BY_ID:
-            raise StudioError("未知训练配方")
+            raise StudioError("Receita de treinamento desconhecida")
         recipe = RECIPE_BY_ID[recipe_id]
         kind = payload.get("kind", "smoke")
         config = recipe_config(recipe_id, payload.get("config", {}), kind)
         profile = validate_profile(payload.get("profile"))
         skill = validate_skill(recipe_id, payload.get("skill"))
-        name = payload.get("name") or (recipe["title"] + (" · 冒烟测试" if kind == "smoke" else " · 训练"))
+        name = payload.get("name") or (recipe["title"] + (" · teste rápido" if kind == "smoke" else " · treinamento"))
         if not isinstance(name, str) or not name.strip() or len(name) > 100 or any(ord(c) < 32 for c in name):
-            raise StudioError("任务名称最多 100 字，不能包含控制字符")
+            raise StudioError("O nome da tarefa pode ter até 100 caracteres e não pode conter caracteres de controle")
         with self._condition:
             self._ensure_available()
             if not self._environment["ready"]:
-                raise StudioError("真实训练环境未就绪", 409, self.environment())
+                raise StudioError("O ambiente de treinamento real não está pronto", 409, self.environment())
             family = smoke_family(recipe_id, self.mode, config, profile, skill)
             if kind == "train" and not any(r["kind"] == "smoke" and r["status"] == "completed" and
                                             json.dumps(smoke_family(r["recipe_id"], r["mode"], r["config"], r.get("profile"), r.get("skill")), sort_keys=True) == json.dumps(family, sort_keys=True)
                                             for r in self._runs.values()):
-                raise StudioError("请先用同一配方、动作目标、随机种子、学习率和鸭子档案完成 64 环境、5 轮短试跑。", 409)
+                raise StudioError("Primeiro faça um teste curto de 5 iterações e 64 ambientes com a mesma receita, alvo de ação, semente aleatória, taxa de aprendizado e perfil do pato.", 409)
             run_id = uuid.uuid4().hex[:12]
             start_iteration = checkpoint["iteration"] if checkpoint else 0
             run = {"id": run_id, "name": name.strip(), "recipe_id": recipe_id, "task_id": recipe["task_id"],
-                   "kind": kind, "mode": self.mode, "status": "starting", "phase": "启动子进程",
+                   "kind": kind, "mode": self.mode, "status": "starting", "phase": "Iniciando processo filho",
                    "created_at": now(), "updated_at": now(), "config": config,
                    "experiment_name": recipe["experiment_name"], "skill": skill,
                    "progress": {"iteration": start_iteration, "total": start_iteration + config["iterations"], "elapsed_seconds": 0},
@@ -268,7 +268,7 @@ class StudioService:
                 run["profile"] = profile
                 run["profile_summary"] = {"applied_to_physics": False, "schema": profile["schema"],
                                           "joint_count": len(profile.get("joints") or []),
-                                          "note": "仅归档与追溯；档案参数未自动应用到训练物理。"}
+                                          "note": "Somente arquivado para rastreabilidade; os parâmetros do perfil não foram aplicados automaticamente à física do treinamento."}
                 self._log(run, run["profile_summary"]["note"])
             if self.mode == "demo":
                 argv = [sys.executable, "-u", str(Path(__file__).with_name("demo_worker.py")),
@@ -287,10 +287,10 @@ class StudioService:
                                          bufsize=1, start_new_session=os.name != "nt",
                                          env=runtime_environment())
             except OSError as exc:
-                run.update(status="failed", phase="启动失败", error=str(exc))
+                run.update(status="failed", phase="Falha ao iniciar", error=str(exc))
                 self._active = None
                 self._save(run)
-                raise StudioError("启动训练进程失败", 409, str(exc)) from None
+                raise StudioError("Falha ao iniciar o processo de treinamento", 409, str(exc)) from None
             self._children[run_id] = child
             self._start_leader_watcher(run_id, child)
             self._started[run_id] = (time.monotonic(), 0.0)
@@ -318,14 +318,14 @@ class StudioService:
     def _demo_event(self, run, event):
         kind = event.get("event")
         if kind == "ready":
-            run.update(status="running", phase="演示训练中")
+            run.update(status="running", phase="Demonstração de treinamento em andamento")
             self._log(run, event["message"])
         elif kind == "paused":
-            run.update(status="paused", phase="已暂停（子进程已确认）")
-            self._log(run, "子进程确认暂停；迭代已冻结。")
+            run.update(status="paused", phase="Pausado (confirmado pelo processo filho)")
+            self._log(run, "O processo filho confirmou a pausa; as iterações estão suspensas.")
         elif kind == "resumed":
-            run.update(status="running", phase="演示训练中")
-            self._log(run, "从内存中的同一子进程继续。")
+            run.update(status="running", phase="Demonstração de treinamento em andamento")
+            self._log(run, "Retomado no mesmo processo filho em memória.")
         elif kind == "metric":
             metric = {key: event[key] for key in ("iteration", "reward", "episode_length", "fps")}
             run["metrics"].append(metric)
@@ -334,7 +334,7 @@ class StudioService:
         elif kind == "checkpoint":
             iteration = event["iteration"]
             filename = f"checkpoints/demo_{iteration}.json"
-            record = {"demo": True, "warning": "合成演示记录，不是策略权重，无法部署。",
+            record = {"demo": True, "warning": "Registro de demonstração sintético; não contém pesos de política e não pode ser implantado.",
                       "task_id": run["task_id"], "iteration": iteration, "config": run["config"],
                       "skill": run.get("skill")}
             atomic_json(self._run_dir(run["id"]) / filename, record)
@@ -342,7 +342,7 @@ class StudioService:
             run["checkpoints"].append({"id": f"demo-{iteration}", "iteration": iteration,
                                         "name": Path(filename).name, "created_at": now(), "demo": True,
                                         "task_id": run["task_id"], "relative_path": filename})
-            self._log(run, f"DEMO 保存演示记录 {Path(filename).name}（无模型权重）")
+            self._log(run, f"DEMO: registro de demonstração salvo em {Path(filename).name} (sem pesos do modelo)")
 
     def _real_line(self, run, line):
         line = ANSI.sub("", line).strip()
@@ -350,7 +350,7 @@ class StudioService:
             return
         self._log(run, line)
         if run["status"] == "starting":
-            run.update(status="running", phase="真实训练中")
+            run.update(status="running", phase="Treinamento real em andamento")
         match = re.search(r"Logging experiment in directory:\s*(.+)", line)
         if match:
             path = Path(match[1].strip())
@@ -443,14 +443,14 @@ class StudioService:
                 self._scan_checkpoints(run, complete=True)
                 self._elapsed(run)
                 if run_id in self._stop_requested:
-                    run.update(status="stopped", phase="已停止；保留已保存的检查点")
-                    self._log(run, "任务已停止；未保证停止瞬间的最后迭代已保存。")
+                    run.update(status="stopped", phase="Parado; checkpoints salvos foram mantidos")
+                    self._log(run, "A tarefa foi parada; não há garantia de que a última iteração tenha sido salva no momento da parada.")
                 elif code == 0:
-                    run.update(status="completed", phase="冒烟测试完成（不是训练成品）" if run["kind"] == "smoke" else "训练完成，需评估实际策略")
+                    run.update(status="completed", phase="Teste rápido concluído (não é um modelo final)" if run["kind"] == "smoke" else "Treinamento concluído; avalie a política real")
                     if self.mode == "real":
                         run["progress"]["iteration"] = run["progress"]["total"]
                 else:
-                    run.update(status="failed", phase="子进程失败", error=f"训练进程退出码 {code}，请查看日志。")
+                    run.update(status="failed", phase="Falha no processo filho", error=f"O processo de treinamento terminou com código {code}; confira os logs.")
                 self._save(run)
                 self._children.pop(run_id, None)
                 if self._active == run_id:
@@ -459,8 +459,8 @@ class StudioService:
         except Exception as exc:
             with self._condition:
                 run = self._runs[run_id]
-                run.update(status="failed", phase="日志处理失败", error=str(exc))
-                self._log(run, f"日志处理失败：{exc}")
+                run.update(status="failed", phase="Falha ao processar os logs", error=str(exc))
+                self._log(run, f"Falha ao processar os logs: {exc}")
                 self._stop_requested.add(run_id)
             self._terminate(child)
             with self._condition:
@@ -479,7 +479,7 @@ class StudioService:
         deadline = time.monotonic() + 4
         while run["status"] not in expected:
             if run["status"] in TERMINAL or time.monotonic() >= deadline:
-                raise StudioError("子进程未确认状态变化，请查看任务日志。", 409)
+                raise StudioError("O processo filho não confirmou a mudança de estado; confira o log da tarefa.", 409)
             self._condition.wait(timeout=min(0.1, deadline - time.monotonic()))
 
     def _send(self, child, command):
@@ -487,16 +487,16 @@ class StudioService:
             child.stdin.write(command + "\n")
             child.stdin.flush()
         except (OSError, ValueError):
-            raise StudioError("训练进程已结束", 409) from None
+            raise StudioError("O processo de treinamento terminou", 409) from None
 
     def pause(self, run_id):
         with self._condition:
             run = self._get(run_id)
             if run["status"] not in {"starting", "running"} or run_id not in self._children:
-                raise StudioError("只有运行中的任务可以暂停", 409)
+                raise StudioError("Somente uma tarefa em execução pode ser pausada", 409)
             child = self._children[run_id]
             if self._peek(child) is not None:
-                raise StudioError("训练进程已结束", 409)
+                raise StudioError("O processo de treinamento terminou", 409)
             if self.mode == "demo":
                 self._send(child, "pause")
                 self._wait_status(run, {"paused"})
@@ -504,14 +504,14 @@ class StudioService:
                 try:
                     with self._process_lock(child):
                         if self._peek(child) is not None:
-                            raise StudioError("训练进程已结束", 409)
+                            raise StudioError("O processo de treinamento terminou", 409)
                         os.killpg(child.pid, signal.SIGSTOP)
                     # waitid observes the kernel's stopped state, rather than optimistic UI state.
                     deadline = time.monotonic() + 3
                     while True:
                         with self._process_lock(child):
                             if self._peek(child) is not None:
-                                raise StudioError("训练进程已结束，未确认暂停。", 409)
+                                raise StudioError("O processo de treinamento terminou; a pausa não foi confirmada.", 409)
                             acknowledgement = os.waitid(os.P_PID, child.pid, os.WSTOPPED | os.WNOHANG)
                         if acknowledgement is not None and acknowledgement.si_pid == child.pid:
                             break
@@ -520,26 +520,26 @@ class StudioService:
                             with self._process_lock(child):
                                 if self._peek(child) is None:
                                     os.killpg(child.pid, signal.SIGCONT)
-                            raise StudioError("等待内核暂停确认超时，已尝试继续进程。", 409)
+                            raise StudioError("O tempo limite para confirmar a pausa do kernel expirou; foi solicitada a retomada do processo.", 409)
                         self._condition.wait(timeout=0.025)
                 except (OSError, ChildProcessError):
-                    raise StudioError("进程未能确认暂停", 409) from None
-                run.update(status="paused", phase="已暂停；仍占用显存和计费资源")
-                self._log(run, "进程组已 SIGSTOP 暂停；策略与优化器保留在内存，仍占用 GPU。")
+                    raise StudioError("O processo não confirmou a pausa", 409) from None
+                run.update(status="paused", phase="Pausado; ainda ocupa VRAM e recursos computacionais")
+                self._log(run, "O grupo de processos foi pausado com SIGSTOP; a política e o otimizador permanecem em memória e continuam ocupando a GPU.")
                 self._save(run)
             else:
-                raise StudioError("真实暂停仅支持 Linux", 409)
+                raise StudioError("A pausa real só é compatível com Linux", 409)
             return self._public(run)
 
     def _checkpoint(self, run, payload):
         experiment = experiment_for(run)
         validate_skill(run["recipe_id"], run.get("skill"))
         if not isinstance(payload, dict) or set(payload) - {"checkpoint_id"}:
-            raise StudioError("请提供有效的 checkpoint_id")
+            raise StudioError("Forneça um checkpoint_id válido")
         selected = payload.get("checkpoint_id")
         checkpoint = next((c for c in run["checkpoints"] if c["id"] == selected), None)
         if not checkpoint or checkpoint.get("task_id") != run["task_id"] or bool(checkpoint.get("demo")) != (self.mode == "demo"):
-            raise StudioError("检查点不存在，或不属于此任务与模式", 400)
+            raise StudioError("Checkpoint não encontrado ou não pertence a esta tarefa e modo", 400)
         if self.mode == "demo":
             self.artifact_path(run["id"], checkpoint["relative_path"])
         else:
@@ -547,7 +547,7 @@ class StudioService:
             folder = Path(run.get("engine_log_dir", "")).resolve()
             expected = (self.training_root / "logs" / "rsl_rl" / experiment).resolve()
             if folder.parent != expected or not folder.name.endswith("_studio_" + run["id"]) or path.parent != folder or not path.is_file() or not re.fullmatch(r"model_\d+\.pt", path.name) or not self._complete_checkpoint(path):
-                raise StudioError("检查点文件已缺失或来源不正确", 409)
+                raise StudioError("O arquivo de checkpoint está ausente ou sua origem é inválida", 409)
         return checkpoint
 
     def resume(self, run_id, payload):
@@ -555,26 +555,26 @@ class StudioService:
             run = self._get(run_id)
             if run["status"] == "paused":
                 if payload:
-                    raise StudioError("暂停中的任务直接从内存继续，请勿指定检查点")
+                    raise StudioError("Retome a tarefa pausada diretamente da memória; não especifique um checkpoint")
                 child = self._children.get(run_id)
                 if not child or self._peek(child) is not None:
-                    raise StudioError("原训练进程已不存在", 409)
+                    raise StudioError("O processo de treinamento original não existe mais", 409)
                 if self.mode == "demo":
                     self._send(child, "resume")
                     self._wait_status(run, {"running"})
                 else:
                     with self._process_lock(child):
                         if self._peek(child) is not None:
-                            raise StudioError("原训练进程已不存在", 409)
+                            raise StudioError("O processo de treinamento original não existe mais", 409)
                         os.killpg(child.pid, signal.SIGCONT)
-                    run.update(status="running", phase="真实训练中")
-                    self._log(run, "SIGCONT：继续内存中的同一训练进程。")
+                    run.update(status="running", phase="Treinamento real em andamento")
+                    self._log(run, "SIGCONT: retomando o mesmo processo de treinamento em memória.")
                     self._save(run)
                 return self._public(run)
             if run["status"] not in TERMINAL:
-                raise StudioError("当前任务无法恢复", 409)
+                raise StudioError("Não é possível retomar a tarefa atual", 409)
             checkpoint = self._checkpoint(run, payload)
-            return self.create_run({"name": run["name"][:95] + " · 续训", "recipe_id": run["recipe_id"], "kind": run["kind"],
+            return self.create_run({"name": run["name"][:95] + " · continuação", "recipe_id": run["recipe_id"], "kind": run["kind"],
                                     "config": run["config"], "profile": run.get("profile"), "skill": run.get("skill")}, parent=run, checkpoint=checkpoint)
 
     def _terminate(self, child):
@@ -634,8 +634,8 @@ class StudioService:
         with self._condition:
             run = self._get(run_id)
             if run["status"] not in ACTIVE or run_id not in self._children:
-                raise StudioError("当前任务无法停止", 409)
-            run.update(status="stopping", phase="正在停止；保留已有检查点")
+                raise StudioError("Não é possível parar a tarefa atual", 409)
+            run.update(status="stopping", phase="Parando; checkpoints existentes serão mantidos")
             self._stop_requested.add(run_id)
             self._save(run)
             child = self._children[run_id]
@@ -658,26 +658,26 @@ class StudioService:
         with self._condition:
             run = self._get(run_id)
             if not isinstance(relative, str) or "\\" in relative or ":" in relative or relative.startswith("/") or any(p in ("", ".", "..") for p in relative.split("/")):
-                raise StudioError("无效产物路径", 403)
+                raise StudioError("Caminho do artefato inválido", 403)
             if relative not in run.get("artifacts", []):
-                raise StudioError("未找到产物", 404)
+                raise StudioError("Artefato não encontrado", 404)
             root = self._run_dir(run_id).resolve()
             path = (root / relative).resolve()
             if not path.is_relative_to(root) or not path.is_file():
-                raise StudioError("未找到产物", 404)
+                raise StudioError("Artefato não encontrado", 404)
             return path
 
     def operate(self, run_id, kind, payload):
         if kind not in {"evaluate", "export"}:
-            raise StudioError("未知操作")
+            raise StudioError("Operação desconhecida")
         with self._condition:
             run = self._get(run_id)
             self._ensure_available()
             if run["status"] not in TERMINAL or run["mode"] != self.mode:
-                raise StudioError("请先停止训练，再评估或导出对应模式的检查点。", 409)
+                raise StudioError("Pare o treinamento antes de avaliar ou exportar um checkpoint do modo correspondente.", 409)
             checkpoint = self._checkpoint(run, payload)
             if self.mode == "real" and not self._environment["ready"]:
-                raise StudioError("真实训练环境未就绪", 409)
+                raise StudioError("O ambiente de treinamento real não está pronto", 409)
             run["operation"] = {"status": "running", "kind": kind, "checkpoint_id": checkpoint["id"], "started_at": now()}
             self._active = run_id
             self._save(run)
@@ -692,7 +692,7 @@ class StudioService:
     def _operation_child(self, run, argv):
         with self._condition:
             if self._closing:
-                raise RuntimeError("服务正在关闭")
+                raise RuntimeError("O serviço está encerrando")
             child = subprocess.Popen(argv, cwd=self.training_root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      text=True, encoding="utf-8", errors="replace", start_new_session=os.name != "nt",
                                      env=runtime_environment())
@@ -709,7 +709,7 @@ class StudioService:
                     break
                 time.sleep(0.025)
             if code != 0:
-                raise RuntimeError(f"{run['operation']['kind']} 子进程退出码 {code}")
+                raise RuntimeError(f"O processo filho {run['operation']['kind']} terminou com código {code}")
         finally:
             # Keep ownership until the process group is stopped even when pipe
             # decoding, iteration or persistence raises before child.wait().
@@ -731,7 +731,7 @@ class StudioService:
                           "run_id": run_id, "checkpoint": {k: v for k, v in checkpoint.items() if k != "engine_path"},
                           "config": run["config"], "profile": run.get("profile"), "profile_applied_to_physics": False,
                           "created_at": now(), "smoke_test_only": run["kind"] == "smoke",
-                          "engine_source": run.get("engine_source", {"unavailable": True, "note": "旧任务未保存训练启动时的源信息。"})}
+                          "engine_source": run.get("engine_source", {"unavailable": True, "note": "A tarefa antiga não salvou as informações da fonte usada ao iniciar o treinamento."})}
             if skill is not None:
                 provenance["command_contract"] = run.get("command_contract") or skill_command_contract(skill)
             outputs = []
@@ -744,7 +744,7 @@ class StudioService:
                     outputs = [relative]
                     if skill is not None:
                         evaluation_summary = {"demo": True, "skill": skill,
-                                              "note": "演示预览：没有策略或物理评估，不提供动作成功率。"}
+                                              "note": "Pré-visualização de demonstração: sem política ou avaliação física; taxa de sucesso das ações não disponível."}
                         summary_relative = f"evaluations/{suffix}/evaluation.json"
                         atomic_json(folder / summary_relative, evaluation_summary)
                         outputs.append(summary_relative)
@@ -762,7 +762,7 @@ class StudioService:
                         evaluation_summary = self._balance_evaluation_summary(eval_folder / "evaluation.json", skill)
                     videos = sorted(eval_folder.glob("*.mp4"))
                     if not videos:
-                        raise RuntimeError("评估没有生成实际视频，请查看渲染器日志。")
+                        raise RuntimeError("A avaliação não gerou um vídeo real; confira os logs do renderizador.")
                     outputs = [p.relative_to(folder).as_posix() for p in videos]
                     outputs += [p.relative_to(folder).as_posix() for p in eval_folder.glob("*.json")]
                 url = self._artifact_url(run_id, outputs[0])
@@ -778,11 +778,11 @@ class StudioService:
                         argv += ["--balance-config", str(skill_file)]
                     self._operation_child(run, argv)
                     if not policy.is_file() or policy.stat().st_size == 0:
-                        raise RuntimeError("引擎未生成 ONNX 文件")
+                        raise RuntimeError("O mecanismo não gerou o arquivo ONNX")
                     provenance["onnx_normalizer"] = "engine scripts/export.py runner.export_policy_to_onnx (built-in observation normalizer)"
                     provenance["checkpoint_sha256"] = self._sha256(Path(checkpoint["engine_path"]))
                 else:
-                    provenance["warning"] = "DEMO：仅配置、档案和文本检查点；没有 PT/ONNX 权重，不可部署。"
+                    provenance["warning"] = "DEMO: contém somente configuração, perfil e checkpoint de texto; sem pesos PT/ONNX, não pode ser implantado."
                 relative = f"exports/{suffix}/{'demo-records' if self.mode == 'demo' else 'policy-bundle'}.zip"
                 evidence = [item for item in run["artifacts"] if item.startswith(f"evaluations/{suffix}/")]
                 provenance["evaluation_evidence"] = ["evaluation/" + Path(item).name for item in evidence]
@@ -817,11 +817,11 @@ class StudioService:
                 if evaluation_summary is not None:
                     selected["evaluation_summary"] = evaluation_summary
                 run["operation"].update(status="completed", completed_at=now())
-                self._log(run, f"{'DEMO ' if self.mode == 'demo' else ''}{kind} 完成；检查点 {checkpoint['name']}")
+                self._log(run, f"{'DEMO ' if self.mode == 'demo' else ''}{kind} concluído; checkpoint {checkpoint['name']}")
         except Exception as exc:
             with self._condition:
                 run["operation"].update(status="failed", error=str(exc))
-                self._log(run, f"{kind} 失败：{exc}")
+                self._log(run, f"Falha em {kind}: {exc}")
         finally:
             with self._condition:
                 if self._active == run_id:
@@ -833,7 +833,7 @@ class StudioService:
     def _balance_evaluation_summary(path, skill):
         summary = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(summary, dict):
-            raise RuntimeError("单脚平衡评估摘要格式无效")
+            raise RuntimeError("Formato do resumo de avaliação do equilíbrio em um pé inválido")
         # Reject NaN/Infinity and incomplete evidence instead of displaying an
         # invented physical result from a process that merely exited cleanly.
         json.dumps(summary, allow_nan=False)
@@ -848,7 +848,7 @@ class StudioService:
                 or any(not isinstance(result, dict) or type(result.get("success")) is not bool for result in results)
                 or sum(result["success"] for result in results) != successes
                 or not isinstance(summary.get("note"), str)):
-            raise RuntimeError("单脚平衡评估摘要缺少匹配的完整周期证据")
+            raise RuntimeError("O resumo da avaliação de equilíbrio em um pé não contém evidências correspondentes de um ciclo completo")
         return summary
 
     @staticmethod

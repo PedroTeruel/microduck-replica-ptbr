@@ -25,7 +25,7 @@ def main():
         print(json.dumps({"event": event, **data}), flush=True)
 
     threading.Thread(target=reader, daemon=True).start()
-    emit("ready", message="DEMO：流程演示，曲线为合成数据，检查点不是模型。")
+    emit("ready", message="DEMO: demonstração do fluxo; as curvas usam dados sintéticos e o checkpoint não é um modelo.")
     paused = False
     iteration = args.start_iteration
     # The count represents additional iterations, as rsl_rl runner.learn does.
