@@ -1,18 +1,18 @@
-"""配网（WiFi）：读 netcheck 的状态文件、调 configd 的 net.status / scan / connect / forget、跟小助手开关热点。
+"""Configuração de Wi-Fi: lê o estado do netcheck, chama net.status/scan/connect/forget no configd e pede ao auxiliar para ativar/desativar o hotspot.
 
-镜像里的 microduck-netcheck 开机连不上 WiFi 就开热点（NM 连接名 Microduck-Hotspot，地址 10.42.0.1），
-并把现在的样子写进 /run/microduck/net.json。Studio 只读它：
+Se não conseguir se conectar ao Wi-Fi na inicialização, microduck-netcheck ativa o hotspot (nome de conexão NM Microduck-Hotspot, endereço 10.42.0.1)
+e grava o estado atual em /run/microduck/net.json. O Studio apenas lê esse arquivo:
 
     {"mode": "wifi" | "hotspot" | "none",
      "hotspot_ssid": "Microduck-c51b", "hotspot_ip": "10.42.0.1", "hotspot_psk": "microduck",
      "hostname": "duck-c51b", "since": 1790000000.0,
      "scan": [{"ssid": "Home", "signal": 72, "security": "wpa_psk"}], "scan_at": 1790000000.0}
 
-文件不在（电脑上开发、老镜像）就当「不知道」：页面整块 WiFi 隐藏，别的照常。
-热点模式下 wlan0 扫不了（AP 模式），configd 的 net.scan 空 / 出错就用文件里开热点前的 scan，并标 cached。
+Se o arquivo não existir (desenvolvimento no computador ou imagem antiga), o estado é “desconhecido”: o painel Wi-Fi fica oculto e o restante funciona normalmente.
+No modo hotspot, wlan0 não pode buscar redes (modo AP). Se net.scan do configd retornar vazio ou falhar, usa a busca anterior à ativação do hotspot salva no arquivo e marca o resultado como cached.
 
-密码：家里的 WiFi 密码只在内存里从网页 → configd 传一次，从不写日志、state、last-try 或诊断包。
-state 里的 hotspot.psk 是鸭子自己热点的公共密码（microduck），页面要显示给用户，不是家里的密码。
+Senha: a senha do Wi-Fi doméstico é transmitida uma única vez da página para o configd, somente em memória. Nunca é gravada em logs, state, last-try ou no pacote de diagnóstico.
+hotspot.psk em state é a senha pública do próprio hotspot do robô (microduck) e deve ser exibida ao usuário; não é a senha do Wi-Fi doméstico.
 """
 import asyncio
 import json
@@ -31,57 +31,57 @@ LAST_TRY_NAME = "net-last-try.json"
 READ_EVERY_S = 2.0
 STATUS_EVERY_S = 5.0
 STATUS_TIMEOUT_S = 4.0
-CONNECT_DELAY_S = 2.0          # 先让页面收到「开始切换」，再动热点
+CONNECT_DELAY_S = 2.0          # Aguarda a página receber o aviso de início antes de alterar o hotspot.
 CONNECT_TIMEOUT_S = 60.0
 SCAN_TIMEOUT_S = 15.0
 FORGET_TIMEOUT_S = 10.0
-STATUS_MAX_AGE_S = 15.0        # 5 秒一次，三次都失败才当作不知道
+STATUS_MAX_AGE_S = 15.0        # Consulta a cada 5 segundos; considera desconhecido após três falhas.
 PORT = 8000
-HOTSPOT_IP = "10.42.0.1"       # NetworkManager 共享热点的默认地址（net.json 没写 hotspot_ip 时用）
-OWN_PREFIX = "Microduck-"      # 鸭子热点的名字都是 Microduck-xxxx（netcheck 起的）
+HOTSPOT_IP = "10.42.0.1"       # Endereço padrão do hotspot compartilhado do NetworkManager se net.json não informar hotspot_ip.
+OWN_PREFIX = "Microduck-"      # O netcheck nomeia os hotspots do robô como Microduck-xxxx.
 PSK_HEX = re.compile(r"^[0-9A-Fa-f]{64}$")
-PERMISSION = "Studio 没权限改 WiFi（configd 没放行 radxa）"
+PERMISSION = "O Studio não tem permissão para alterar o Wi-Fi (radxa não foi autorizado pelo configd)."
 
 REASON_TEXT = {
-    "bad_key": "密码不对",
-    "not_found": "鸭子找不到这个 WiFi（名字对吗？离路由器近一点；隐藏的 WiFi 现在不支持）",
-    "timeout": "连上了但拿不到地址，可以再试一次",
-    "studio_timeout": "鸭子的配网程序 60 秒没回话",
-    "unsupported": "这个 WiFi 鸭子连不了（企业认证或没填密码）",
-    "other": "没连上",
+    "bad_key": "Senha incorreta.",
+    "not_found": "O robô não encontrou esta rede Wi-Fi. Confira o nome e aproxime-se do roteador; redes ocultas não são compatíveis.",
+    "timeout": "Conectado, mas não foi possível obter um endereço. Tente novamente.",
+    "studio_timeout": "O configurador de rede do robô não respondeu em 60 segundos.",
+    "unsupported": "Não é possível conectar o robô a esta rede Wi-Fi (autenticação corporativa ou senha ausente).",
+    "other": "Não foi possível conectar.",
 }
 
 
 class Refused(Exception):
-    """配网操作没法做 / 参数不对：message 是给页面看的人话。"""
+    """Operação de rede indisponível ou parâmetro inválido; message é exibido ao usuário na página."""
 
 
 def validate_ssid(value):
-    """SSID 1–32 字节（UTF-8；中文一个字 3 个字节）。不 strip：SSID 前后的空格可能是名字的一部分。"""
+    """SSID de 1 a 32 bytes (UTF-8; alguns caracteres ocupam vários bytes). Não aplique strip: espaços podem fazer parte do nome da rede."""
     if not isinstance(value, str) or value == "":
-        raise Refused("WiFi 名字要是 1–32 个字节")
+        raise Refused("O nome do Wi-Fi deve ter de 1 a 32 bytes.")
     try:
         size = len(value.encode("utf-8"))
     except UnicodeEncodeError as e:
-        raise Refused(f"WiFi 名字里有不能用的字符：{e}") from None
+        raise Refused(f"O nome do Wi-Fi contém um caractere inválido: {e}") from None
     if size > 32:
-        raise Refused("WiFi 名字最长 32 个字节（中文一个字算 3 个）")
+        raise Refused("O nome do Wi-Fi não pode ultrapassar 32 bytes.")
     if "\x00" in value:
-        raise Refused("WiFi 名字里不能有 NUL")
+        raise Refused("O nome do Wi-Fi não pode conter NUL.")
     return value
 
 
 def validate_psk(value):
-    """空 = 开放网络；否则 8–63 个字符，或者 64 位十六进制（WPA 的两种写法）。"""
+    """Vazio indica rede aberta; caso contrário, aceita 8 a 63 caracteres ou 64 dígitos hexadecimais (formatos WPA)."""
     if value is None or value == "":
         return None
     if not isinstance(value, str):
-        raise Refused("WiFi 密码要是文字")
+        raise Refused("A senha do Wi-Fi deve ser texto.")
     if PSK_HEX.fullmatch(value):
         return value
     if 8 <= len(value) <= 63:
         return value
-    raise Refused("WiFi 密码要 8–63 个字符，或者 64 位十六进制")
+    raise Refused("A senha do Wi-Fi deve ter de 8 a 63 caracteres ou 64 dígitos hexadecimais.")
 
 
 def validate_connect(ssid, psk):
@@ -89,19 +89,19 @@ def validate_connect(ssid, psk):
 
 
 def addresses(host, ip, port=PORT):
-    """「这只鸭子的地址」：现在能用的几个，按设备说该用哪个（10-20 真机：开着 Clash 系统代理的 Windows 打不开 .local——
-    走了代理、502；不带点的主机名 Windows 用 LLMNR 问得到，代理按 <local> 绕过；IP 哪儿都能开）。"""
+    """Endereços disponíveis para este robô, com indicação de qual usar em cada dispositivo.
+    Em um teste real, o Windows com proxy Clash não abriu .local (erro 502); o nome sem ponto resolveu via LLMNR e ignorou o proxy por <local>. O endereço IP funciona em qualquer dispositivo."""
     out = []
     if ip:
-        out.append({"kind": "ip", "url": f"http://{ip}:{port}/", "note": "IP：哪台设备都能打开（换了路由器、重新分了地址会变）"})
-    out.append({"kind": "host", "url": f"http://{host}:{port}/", "note": "Windows 电脑用这个：开着代理也能打开"})
-    out.append({"kind": "local", "url": f"http://{host}.local:{port}/", "note": "苹果手机、Mac 用这个"})
+        out.append({"kind": "ip", "url": f"http://{ip}:{port}/", "note": "IP: funciona em qualquer dispositivo (pode mudar ao trocar de roteador ou endereço)"})
+    out.append({"kind": "host", "url": f"http://{host}:{port}/", "note": "Para computadores Windows; funciona mesmo com proxy ativo"})
+    out.append({"kind": "local", "url": f"http://{host}.local:{port}/", "note": "Para iPhone, iPad e Mac"})
     return out
 
 
 def own_hotspot(n, hotspot_ssid):
-    """扫描结果里这一条是不是鸭子自己的热点（真机扫出来 Microduck-0de6、显示「已保存」，点了会让人往里填家里密码）。
-    net.json 有 hotspot_ssid 就按它认；没有就认「Microduck- 开头、而且是已保存」的。"""
+    """Verifica se a rede encontrada é o próprio hotspot do robô. Em um dispositivo real, Microduck-0de6 aparecia como salva; selecioná-la poderia levar o usuário a informar a senha doméstica.
+    Se net.json fornecer hotspot_ssid, compare com ele; caso contrário, reconheça redes salvas cujo nome começa com Microduck-."""
     ssid = n.get("ssid") if isinstance(n, dict) else None
     if not isinstance(ssid, str):
         return False
@@ -111,7 +111,7 @@ def own_hotspot(n, hotspot_ssid):
 
 
 def explain(reason, detail=None):
-    """configd 的失败原因 → 页面上的一句话。other 附上 detail；没权限的错误原样说出来。"""
+    """Converte o motivo de falha do configd em uma mensagem curta para a página. Inclui detail para other e mantém explícitos os erros de permissão."""
     if detail and str(detail).strip() == PERMISSION:
         return PERMISSION
     base = REASON_TEXT.get(reason, REASON_TEXT["other"])
@@ -121,7 +121,7 @@ def explain(reason, detail=None):
 
 
 def _scrub(text, psk=None):
-    """写日志 / last-try 之前再兜一层：家里的密码和它在 URL 里出现的样子都换成 [oculto]。"""
+    """Antes de gravar logs ou last-try, oculta a senha doméstica e sua forma codificada em URL como [oculto]."""
     if text is None:
         return None
     out = str(text)
@@ -134,14 +134,14 @@ def _rpc_error(e, what):
     if isinstance(e, RpcError):
         if e.code == 14 or re.search(r"permission|not authori[sz]ed|not allowed|access denied", e.message or "", re.I):
             return PERMISSION
-        return f"{what}：{e.message}"
+        return f"{what}: {e.message}"
     if isinstance(e, Timeout):
-        return f"{what}超时了（{e}）"
-    return f"连不上 configd：{e}"
+        return f"Tempo limite excedido em {what} ({e})."
+    return f"Não foi possível conectar ao configd: {e}"
 
 
 class Net:
-    """配网状态 + 操作。start() 起两个循环：2 秒读 net.json、5 秒问 configd net.status（只在文件在时）。"""
+    """Estado e operações de rede. start() inicia dois ciclos: lê net.json a cada 2 segundos e consulta net.status do configd a cada 5 segundos, somente se o arquivo existir."""
 
     def __init__(self, configd_addr, state_file=NET_STATE, state_dir=None, log=None, *, dev_mode=False,
                  hostname=None, port=PORT):
@@ -162,9 +162,9 @@ class Net:
         self._bad_state_logged = False
         self._status_error_logged = False
         self._tasks = []
-        self.connect_task = None       # app.py 放后台连 WiFi 的那一路（页面断开也不能被回收）
+        self.connect_task = None       # Tarefa de conexão Wi-Fi em segundo plano iniciada por app.py; não deve ser cancelada se a página desconectar.
 
-    # ---- 生命周期 ----
+    # ---- Ciclo de vida ----
 
     def start(self):
         loop = asyncio.get_running_loop()
@@ -185,9 +185,9 @@ class Net:
         while True:
             try:
                 await asyncio.to_thread(self._read_once)
-            except Exception as e:  # noqa: BLE001 —— 读状态文件出错不能让整个 Studio 停
+            except Exception as e:  # noqa: BLE001 — um erro ao ler o arquivo de estado não deve encerrar todo o Studio.
                 if self.log:
-                    self.log.warn("读配网状态文件时出错", cat="Rede", step=str(self.state_file),
+                    self.log.warn("Falha ao ler o arquivo de estado da rede", cat="Rede", step=str(self.state_file),
                                   raw=f"{type(e).__name__}: {e}", dedup=True)
             await asyncio.sleep(READ_EVERY_S)
 
@@ -200,24 +200,24 @@ class Net:
             self.status, self.status_at = None, None
             self._bad_state_logged = False
             if had and self.log:
-                self.log.info("配网状态文件不在了：WiFi 那一块先隐藏，别的照常", cat="Rede")
+                self.log.info("Arquivo de estado de rede ausente; painel Wi-Fi oculto, demais funções normais", cat="Rede")
             return
         except OSError as e:
-            self._state_bad(f"读不了 {self.state_file}：{type(e).__name__}: {e}")
+            self._state_bad(f"Não foi possível ler {self.state_file}: {type(e).__name__}: {e}")
             return
         try:
             data = json.loads(raw)
         except ValueError as e:
-            self._state_bad(f"不是 JSON：{e}")
+            self._state_bad(f"JSON inválido: {e}")
             return
         if not isinstance(data, dict) or data.get("mode") not in ("wifi", "hotspot", "none"):
-            self._state_bad("不是对象，或者 mode 不是 wifi / hotspot / none")
+            self._state_bad("O conteúdo não é um objeto ou mode não é wifi/hotspot/none.")
             return
         was_bad = self._bad_state_logged
         self.info, self.info_at = data, time.monotonic()
         self._bad_state_logged = False
         if was_bad and self.log:
-            self.log.info("配网状态文件又读到了", cat="Rede")
+            self.log.info("Arquivo de estado de rede voltou a ser lido", cat="Rede")
 
     def _state_bad(self, why):
         self.info, self.info_at = None, None
@@ -225,8 +225,8 @@ class Net:
         if self._bad_state_logged or self.log is None:
             return
         self._bad_state_logged = True
-        self.log.warn("配网状态文件读不懂：WiFi 那一块先隐藏", cat="Rede", step=str(self.state_file),
-                      raw=why, hint="这是 netcheck 写的；它下次会重写。别的功能照常，不用管")
+        self.log.warn("Não foi possível interpretar o arquivo de estado de rede; painel Wi-Fi oculto", cat="Rede", step=str(self.state_file),
+                      raw=why, hint="O arquivo é gravado pelo netcheck e será atualizado na próxima execução. As demais funções continuam normais.")
 
     async def _status_loop(self):
         while True:
@@ -234,29 +234,29 @@ class Net:
                 try:
                     r = await self.cfg.call("net.status", {}, timeout=STATUS_TIMEOUT_S)
                     if not isinstance(r, dict):
-                        raise RpcError("net.status", None, f"回的不是对象（{type(r).__name__}）")
+                        raise RpcError("net.status", None, f"A resposta não é um objeto ({type(r).__name__}).")
                     self.status, self.status_at = r, time.monotonic()
                     if self._status_error_logged and self.log:
-                        self.log.info("WiFi 状态恢复了", cat="Rede")
+                        self.log.info("Estado do Wi-Fi restabelecido", cat="Rede")
                     self._status_error_logged = False
                 except (Unreachable, Timeout, RpcError) as e:
                     self.status, self.status_at = None, None
                     if not self._status_error_logged and self.log:
                         self._status_error_logged = True
-                        self.log.warn("读不到 WiFi 状态", cat="Rede", step="configd net.status", raw=str(e),
-                                      hint="configd 没在跑？不影响站和走，只是 WiFi 那一块显示不知道")
+                        self.log.warn("Não foi possível ler o estado do Wi-Fi", cat="Rede", step="configd net.status", raw=str(e),
+                                      hint="O configd pode não estar em execução. Isso não afeta ficar em pé ou caminhar; somente o painel Wi-Fi ficará como desconhecido.")
             else:
                 self.status, self.status_at = None, None
                 self._status_error_logged = False
             await asyncio.sleep(STATUS_EVERY_S)
 
-    # ---- 给页面 ----
+    # ---- Dados para a página ----
 
     def mode(self):
         return self.info.get("mode") if isinstance(self.info, dict) else None
 
     def view(self, now=None):
-        """推给页面的 net 字段。文件不在 / 坏了 = {"known": false}。"""
+        """Campo net enviado à página. Arquivo ausente ou inválido resulta em {"known": false}."""
         if not isinstance(self.info, dict):
             return {"known": False}
         now = time.monotonic() if now is None else now
@@ -270,7 +270,7 @@ class Net:
             last["reason_text"] = explain(last.get("reason"), last.get("detail"))
         mode = self.info.get("mode")
         ip4 = st.get("ip4") if connected else None
-        # 现在能用的 IP：热点模式就是鸭子热点的地址（10.42.0.1），否则是 configd net.status 的 ip4（没连上就没有）
+        # Endereço IP disponível: endereço do hotspot do robô (10.42.0.1) no modo hotspot; caso contrário, ip4 de configd net.status (nulo se desconectado).
         ip_now = (self.info.get("hotspot_ip") or HOTSPOT_IP) if mode == "hotspot" else ip4
         return {
             "known": True,
@@ -290,57 +290,57 @@ class Net:
         }
 
     def begin_connect(self):
-        """占住「正在连」：第二个 connect 回 False。不知道配网状态时抛 Refused。"""
+        """Marca a conexão como em andamento; um segundo connect retorna False. Lança Refused se o estado da rede for desconhecido."""
         if not isinstance(self.info, dict):
-            raise Refused("不知道鸭子的配网状态：WiFi 功能现在用不了")
+            raise Refused("O estado da rede do robô é desconhecido; o Wi-Fi está indisponível.")
         if self.busy is not None:
             return False
         self.busy = "connecting"
         return True
 
-    # ---- 扫描 ----
+    # ---- Busca de redes ----
 
     async def scan(self):
-        """configd net.scan。热点模式下网卡可能扫不了：空 / 出错就用 net.json 里开热点前的 scan。
-        鸭子自己的热点滤掉（own_hotspot）：不然它在列表里显示「已保存」，点了会让人往里填家里的密码。"""
+        """Busca redes com configd net.scan. No modo hotspot, o adaptador pode não conseguir buscar; se o resultado vier vazio ou ocorrer um erro, usa a busca anterior à ativação do hotspot salva em net.json.
+        Filtra o próprio hotspot do robô para não exibi-lo como rede salva e induzir o usuário a informar a senha doméstica."""
         if not isinstance(self.info, dict):
-            raise Refused("不知道鸭子的配网状态：WiFi 功能现在用不了")
+            raise Refused("O estado da rede do robô é desconhecido; o Wi-Fi está indisponível.")
         own = self.info.get("hotspot_ssid")
         result, error = None, None
-        with log_cmd(self.log, "扫 WiFi", "configd net.scan") as t:
+        with log_cmd(self.log, "Buscar redes Wi-Fi", "configd net.scan") as t:
             try:
                 r = await call_once(self.configd_addr, "net.scan", {}, timeout=SCAN_TIMEOUT_S)
                 nets = r.get("networks") if isinstance(r, dict) else None
                 if not isinstance(nets, list):
-                    raise Refused("configd 回的 WiFi 列表看不懂")
+                    raise Refused("Não foi possível interpretar a lista de redes Wi-Fi retornada pelo configd.")
                 result = [n for n in nets if isinstance(n, dict) and n.get("ssid") and not own_hotspot(n, own)]
                 t.ok({"networks": len(result)})
             except (Unreachable, Timeout, RpcError, Refused) as e:
-                error = _rpc_error(e, "扫 WiFi") if not isinstance(e, Refused) else str(e)
+                error = _rpc_error(e, "buscar redes Wi-Fi") if not isinstance(e, Refused) else str(e)
                 result = None
-                t.fail(error, hint="热点模式下用开热点前的那次扫描")
+                t.fail(error, hint="No modo hotspot, use a busca feita antes da ativação do hotspot.")
         if self.mode() == "hotspot" and not result:
             cached = self.info.get("scan")
             if isinstance(cached, list):
                 if self.log:
-                    self.log.info("热点模式下用开热点前的扫描结果", cat="Rede", raw=error or "configd 回的列表是空的",
+                    self.log.info("Usando a busca anterior à ativação do hotspot", cat="Rede", raw=error or "A lista retornada pelo configd está vazia.",
                                   dedup=True)
                 return {"networks": [n for n in cached if isinstance(n, dict) and not own_hotspot(n, own)], "cached": True,
                         "scan_at": self.info.get("scan_at")}
         if result is None:
-            raise Refused(error or "读不到 WiFi 列表")
+            raise Refused(error or "Não foi possível ler a lista de redes Wi-Fi.")
         return {"networks": result, "cached": False, "scan_at": None}
 
-    # ---- 连接 ----
+    # ---- Conexão ----
 
     async def connect(self, ssid, psk, by):
-        """关热点 → configd net.connect → 写 last-try。调用前先 begin_connect()。
-        回 last-try 那份记录（不含密码）。失败时马上把热点开回来；bad_key 还要先忘掉这次写坏的配置。"""
+        """Desativa o hotspot, chama configd net.connect e grava last-try. Chame begin_connect() antes.
+        Retorna o registro last-try sem a senha. Em caso de falha, reativa o hotspot imediatamente; para bad_key, remove primeiro a configuração inválida criada nesta tentativa."""
         ssid, psk = validate_connect(ssid, psk)
         if self.busy is None:
             self.busy = "connecting"
         if psk and self.log:
-            self.log.hide(psk)                    # 兜底：万一别的代码把密码带进日志，也打码
+            self.log.hide(psk)                    # Proteção adicional caso outro código envie a senha aos logs.
         outcome = {"ok": False, "reason": "other", "detail": None, "ip4": None}
         hotspot_stopped = False
         hotspot_down_tried = False
@@ -349,43 +349,43 @@ class Net:
             if self.mode() == "hotspot":
                 if self.dev_mode:
                     if self.log:
-                        self.log.info("电脑上开发（--dev-autologin）：不关热点，直接连 WiFi", cat="Rede",
+                        self.log.info("Desenvolvimento no computador (--dev-autologin): mantendo o hotspot ativo e conectando ao Wi-Fi", cat="Rede",
                                       raw=f"by={by}", dedup=False)
                 else:
                     if not helper.available(refresh=True):
                         if self.log:
-                            self.log.warn("连 WiFi 前发现小助手不在", cat="Rede", step="wifi-hotspot-down",
-                                          hint="先在鸭子上运行 deploy/install.sh")
-                        raise Refused("还没装小助手：先在鸭子上运行 deploy/install.sh，Studio 才能关热点去连 WiFi")
+                            self.log.warn("Auxiliar ausente antes da conexão Wi-Fi", cat="Rede", step="wifi-hotspot-down",
+                                          hint="Execute deploy/install.sh no robô primeiro.")
+                        raise Refused("O auxiliar não está instalado. Execute deploy/install.sh no robô para permitir que o Studio desative o hotspot e conecte ao Wi-Fi.")
                     hotspot_down_tried = True
-                    with log_cmd(self.log, "关热点", "小助手 wifi-hotspot-down", who=by) as th:
+                    with log_cmd(self.log, "Desativar hotspot", "Auxiliar wifi-hotspot-down", who=by) as th:
                         try:
                             ok_h, result_h, detail_h = await asyncio.to_thread(helper.wifi_hotspot_down, by, ssid)
                         except Exception as e:  # noqa: BLE001
-                            th.fail(f"{type(e).__name__}: {e}", hint="看小助手装没装、版本对不对")
-                            raise Refused(f"小助手没跑成：{type(e).__name__}: {e}") from None
+                            th.fail(f"{type(e).__name__}: {e}", hint="Confira se o auxiliar está instalado e atualizado.")
+                            raise Refused(f"Falha ao executar o auxiliar: {type(e).__name__}: {e}") from None
                         if result_h == "bad_verb":
-                            th.fail("小助手太旧，不认 wifi-hotspot-down", hint="重装 deploy/install.sh")
-                            raise Refused("小助手太旧，重装 deploy/install.sh")
+                            th.fail("Auxiliar antigo não reconhece wifi-hotspot-down", hint="Reinstale com deploy/install.sh.")
+                            raise Refused("O auxiliar está desatualizado. Reinstale com deploy/install.sh.")
                         if not ok_h:
                             why = helper.friendly(result_h, detail_h, "wifi-hotspot-down")
-                            th.fail(why, raw=str(detail_h), hint="看 nmcli 是不是能看到 Microduck-Hotspot")
-                            raise Refused(f"关热点没成：{why}")
+                            th.fail(why, raw=str(detail_h), hint="Confira se nmcli detecta Microduck-Hotspot.")
+                            raise Refused(f"Não foi possível desativar o hotspot: {why}")
                         th.ok({"result": result_h})
                     hotspot_stopped = True
             params = {"ssid": ssid}
             if psk:
                 params["psk"] = psk
-            with log_cmd(self.log, f"连 WiFi「{ssid}」", "configd net.connect", who=by,
-                         args={"ssid": ssid, "密码": "带密码" if psk else "没密码"}) as t:
+            with log_cmd(self.log, f"Conectar ao Wi-Fi “{ssid}”", "configd net.connect", who=by,
+                         args={"ssid": ssid, "senha": "com senha" if psk else "sem senha"}) as t:
                 try:
                     r = await call_once(self.configd_addr, "net.connect", params, timeout=CONNECT_TIMEOUT_S)
                 except (Unreachable, Timeout, RpcError) as e:
                     if isinstance(e, Timeout):
                         outcome = {"ok": False, "reason": "studio_timeout",
-                                   "detail": f"鸭子的配网程序 {CONNECT_TIMEOUT_S:.0f} 秒没回话", "ip4": None}
+                                   "detail": f"O configurador de rede do robô não respondeu em {CONNECT_TIMEOUT_S:.0f} segundos.", "ip4": None}
                     else:
-                        outcome = {"ok": False, "reason": "other", "detail": _scrub(_rpc_error(e, "连 WiFi"), psk),
+                        outcome = {"ok": False, "reason": "other", "detail": _scrub(_rpc_error(e, "conectar ao Wi-Fi"), psk),
                                    "ip4": None}
                     t.fail(explain(outcome["reason"], outcome["detail"]), raw=_scrub(str(e), psk))
                 else:
@@ -396,17 +396,17 @@ class Net:
                     else:
                         t.fail(explain(outcome["reason"], outcome["detail"]),
                                raw={"outcome": r.get("outcome"), "reason": r.get("reason")} if isinstance(r, dict) else None,
-                               hint="热点马上就回来，手机重新连鸭子热点就能看到原因")
+                               hint="O hotspot será reativado em breve; reconecte o celular ao hotspot do robô para ver o motivo.")
         except Refused as e:
             outcome = {"ok": False, "reason": "other", "detail": _scrub(str(e), psk), "ip4": None}
             if self.log:
-                self.log.warn("连 WiFi 没开始", cat="Rede", step="关热点", raw=_scrub(str(e), psk),
-                              hint="看小助手装没装、版本对不对")
-        except Exception as e:  # noqa: BLE001 —— Studio 自己的 bug 也要写 last-try
+                self.log.warn("Não foi possível iniciar a conexão Wi-Fi", cat="Rede", step="Desativar hotspot", raw=_scrub(str(e), psk),
+                              hint="Confira se o auxiliar está instalado e atualizado.")
+        except Exception as e:  # noqa: BLE001 — erros internos do Studio também precisam ser registrados em last-try.
             outcome = {"ok": False, "reason": "other", "detail": _scrub(f"{type(e).__name__}: {e}", psk), "ip4": None}
             if self.log:
-                self.log.error("连 WiFi 时 Studio 出错", cat="Rede", raw=_scrub(f"{type(e).__name__}: {e}", psk),
-                               exc=True, hint="这是 Studio 的问题，导出诊断包发出来")
+                self.log.error("Erro do Studio durante a conexão Wi-Fi", cat="Rede", raw=_scrub(f"{type(e).__name__}: {e}", psk),
+                               exc=True, hint="Este é um problema do Studio. Exporte e envie o pacote de diagnóstico.")
         finally:
             rec = {"ssid": ssid, "at": time.time(), "ok": bool(outcome["ok"]),
                    "reason": outcome["reason"], "detail": _scrub(outcome["detail"], psk),
@@ -424,40 +424,40 @@ class Net:
 
     def _read_connect(self, r, psk):
         if not isinstance(r, dict):
-            return {"ok": False, "reason": "other", "detail": "configd 回的不是对象", "ip4": None}
+            return {"ok": False, "reason": "other", "detail": "A resposta do configd não é um objeto.", "ip4": None}
         if r.get("outcome") == "connected":
             return {"ok": True, "reason": None, "detail": None, "ip4": r.get("ip4")}
         if r.get("outcome") == "failed":
             reason = r.get("reason") if r.get("reason") in REASON_TEXT else "other"
             detail = _scrub(r.get("detail"), psk) if r.get("detail") else None
             return {"ok": False, "reason": reason, "detail": detail, "ip4": None}
-        return {"ok": False, "reason": "other", "detail": _scrub(f"看不懂的回包：{r}", psk), "ip4": None}
+        return {"ok": False, "reason": "other", "detail": _scrub(f"Resposta não reconhecida: {r}", psk), "ip4": None}
 
     async def _hotspot_up(self, by):
-        with log_cmd(self.log, "开热点", "小助手 wifi-hotspot-up", who=by) as t:
+        with log_cmd(self.log, "Ativar hotspot", "Auxiliar wifi-hotspot-up", who=by) as t:
             try:
                 ok, result, detail = await asyncio.to_thread(helper.wifi_hotspot_up, by)
             except Exception as e:  # noqa: BLE001
-                t.fail(f"{type(e).__name__}: {e}", hint="连接窗口结束后 netcheck 也会自己开")
+                t.fail(f"{type(e).__name__}: {e}", hint="O netcheck também ativa o hotspot quando a janela de conexão termina.")
                 return
             if result == "bad_verb":
-                t.fail("小助手太旧，不认 wifi-hotspot-up", hint="重装 deploy/install.sh；连接窗口结束后 netcheck 也会自己开")
+                t.fail("Auxiliar antigo não reconhece wifi-hotspot-up", hint="Reinstale com deploy/install.sh; o netcheck ativa o hotspot ao fim da janela de conexão.")
             elif ok:
                 t.ok({"result": result})
             else:
                 t.fail(helper.friendly(result, detail, "wifi-hotspot-up"), raw=str(detail),
-                       hint="连接窗口结束后 netcheck 也会自己开")
+                       hint="O netcheck também ativa o hotspot quando a janela de conexão termina.")
 
     async def _forget_bad_key(self, ssid, by):
-        """密码错了：官方 connect 已经用这次的错密码替换了同名配置，先忘掉，免得 netcheck 以后还去试。"""
-        with log_cmd(self.log, f"忘掉密码不对的 WiFi「{ssid}」", "configd net.forget", who=by) as t:
+        """Senha incorreta: o connect do sistema já substituiu a configuração de mesmo nome pela senha inválida; remova-a para evitar novas tentativas do netcheck."""
+        with log_cmd(self.log, f"Remover Wi-Fi com senha incorreta “{ssid}”", "configd net.forget", who=by) as t:
             try:
                 r = await call_once(self.configd_addr, "net.forget", {"ssid": ssid}, timeout=FORGET_TIMEOUT_S)
             except (Unreachable, Timeout, RpcError) as e:
-                t.fail(_rpc_error(e, "忘掉 WiFi"), raw=str(e), hint="热点照样马上开回来；这个配置可能还留着")
+                t.fail(_rpc_error(e, "remover Wi-Fi"), raw=str(e), hint="O hotspot será reativado imediatamente; a configuração pode continuar salva.")
                 return
             if not isinstance(r, dict):
-                t.fail("configd 回的不是对象", raw=repr(r)[:200])
+                t.fail("A resposta do configd não é um objeto.", raw=repr(r)[:200])
                 return
             t.ok({"removed": bool(r.get("removed"))})
 
@@ -465,29 +465,29 @@ class Net:
         self.status = {"state": "connected", "ssid": ssid, "ip4": ip4}
         self.status_at = time.monotonic()
 
-    # ---- 忘掉 ----
+    # ---- Remover rede salva ----
 
     async def forget(self, ssid):
         ssid = validate_ssid(ssid)
         if not isinstance(self.info, dict):
-            raise Refused("不知道鸭子的配网状态：WiFi 功能现在用不了")
-        with log_cmd(self.log, f"忘掉 WiFi「{ssid}」", "configd net.forget") as t:
+            raise Refused("O estado da rede do robô é desconhecido; o Wi-Fi está indisponível.")
+        with log_cmd(self.log, f"Remover Wi-Fi “{ssid}”", "configd net.forget") as t:
             try:
                 r = await call_once(self.configd_addr, "net.forget", {"ssid": ssid}, timeout=FORGET_TIMEOUT_S)
             except (Unreachable, Timeout, RpcError) as e:
-                text = _rpc_error(e, "忘掉 WiFi")
+                text = _rpc_error(e, "remover Wi-Fi")
                 t.fail(text, raw=str(e))
                 raise Refused(text) from None
             if not isinstance(r, dict):
-                t.fail("configd 回的不是对象", raw=repr(r)[:200])
-                raise Refused("configd 回的不是对象")
+                t.fail("A resposta do configd não é um objeto.", raw=repr(r)[:200])
+                raise Refused("A resposta do configd não é um objeto.")
             removed = bool(r.get("removed"))
             t.ok({"removed": removed})
         if isinstance(self.status, dict) and self.status.get("ssid") == ssid:
             self.status, self.status_at = None, None
         return {"removed": removed}
 
-    # ---- last-try 文件 ----
+    # ---- Arquivo last-try ----
 
     def _load_last_try(self):
         if self.last_try_path is None:
@@ -514,6 +514,6 @@ class Net:
             os.replace(tmp, self.last_try_path)
         except OSError as e:
             if self.log:
-                self.log.warn("上次连 WiFi 的结果没写进去", cat="Rede", step=str(self.last_try_path),
+                self.log.warn("Não foi possível gravar o resultado da última conexão Wi-Fi", cat="Rede", step=str(self.last_try_path),
                               raw=f"{type(e).__name__}: {e}",
-                              hint="页面重新连上时看不到上次失败的原因；看看 state 目录满没满、有没有权限")
+                              hint="A página não mostrará o motivo da falha anterior quando se reconectar. Confira se o diretório state está cheio ou sem permissão.")

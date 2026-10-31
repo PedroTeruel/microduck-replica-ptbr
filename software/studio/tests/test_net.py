@@ -1,7 +1,6 @@
-"""studio/net.py：读 net.json、configd net.status/scan/connect/forget、小助手关/开热点的顺序和密码不外泄。
+"""Cobertura de studio/net.py: leitura de net.json, chamadas ao configd, controle de hotspot e proteção de senhas.
 
-全部在本机跑：假 configd 就是替换 net.call_once，假小助手就是替换 helper.wifi_hotspot_*；
-不连鸭子、不碰 192.168.0.x，也不碰任何真 socket。
+Os testes rodam localmente com configd e helper simulados; não conectam ao robô nem abrem sockets reais.
 """
 import asyncio
 import io
@@ -37,7 +36,7 @@ def state_json(mode="hotspot", **over):
 
 
 class FakeRpc:
-    """替身 call_once：记下 (method, params, timeout)，按 handler 回话（可以抛异常）。"""
+    """Substitui call_once: registra (method, params, timeout) e responde pelo handler (que pode lançar exceções)."""
 
     def __init__(self, handler, events=None):
         self.handler, self.calls, self.events = handler, [], events
@@ -112,7 +111,7 @@ class StateFileTest(Base):
         self.net._read_once()
         self.assertEqual(self.net.view(), {"known": False})
         msgs = [e["msg"] for e in self.log.recent()]
-        self.assertEqual(sum("读不懂" in m for m in msgs), 1)
+        self.assertEqual(sum("interpretar" in m for m in msgs), 1)
 
     def test_each_mode_is_known(self):
         for mode in ("wifi", "hotspot", "none"):
@@ -140,12 +139,11 @@ class StateFileTest(Base):
         self.net.last_try = {"ssid": "Home", "at": 1.0, "ok": False, "reason": "bad_key", "detail": None, "ip4": None}
         v = self.net.view()
         self.assertEqual((v["ssid"], v["signal"], v["ip4"]), ("Home", 72, "192.168.1.50"))
-        self.assertEqual(v["last_try"]["reason_text"], "密码不对")
+        self.assertEqual(v["last_try"]["reason_text"], "Senha incorreta.")
         self.assertIsNone(v["busy"])
 
     def test_addresses_hotspot_and_wifi(self):
-        """任务 16：「这只鸭子的地址」——IP（热点模式是 10.42.0.1，否则 net.status 的 ip4）、duck-xxxx、duck-xxxx.local，
-        按设备写该用哪个（开着 Clash 系统代理的 Windows 打不开 .local，不带点的能开）。"""
+        """Valida os endereços do robô em modo hotspot e Wi-Fi, incluindo IP, hostname e domínio local."""
         self.write_state(mode="hotspot")
         self.net._read_once()
         v = self.net.view()
@@ -154,28 +152,28 @@ class StateFileTest(Base):
         self.assertEqual([(u["kind"], u["url"]) for u in v["urls"]],
                          [("ip", "http://10.42.0.1:8000/"), ("host", "http://duck-c51b:8000/"), ("local", "http://duck-c51b.local:8000/")])
         self.assertIn("Windows", v["urls"][1]["note"])
-        self.assertIn("苹果", v["urls"][2]["note"])
+        self.assertIn("iPhone", v["urls"][2]["note"])
         self.write_state(mode="wifi")
         self.net._read_once()
-        self.assertEqual([u["kind"] for u in self.net.view()["urls"]], ["host", "local"])     # 没连上：不知道 IP 就不列
+        self.assertEqual([u["kind"] for u in self.net.view()["urls"]], ["host", "local"])
         self.net.status = {"state": "connected", "ssid": "Home", "signal": 72, "ip4": "192.168.0.102"}
         self.net.status_at = time.monotonic()
         v = self.net.view()
         self.assertEqual(v["ip_now"], "192.168.0.102")
         self.assertEqual(v["urls"][0], {"kind": "ip", "url": "http://192.168.0.102:8000/",
-                                        "note": "IP：哪台设备都能打开（换了路由器、重新分了地址会变）"})
+                                        "note": "IP: funciona em qualquer dispositivo (pode mudar ao trocar de roteador ou endereço)"})
 
     def test_state_summarize_has_net_shapes(self):
         rd = FakeRd()
-        self.assertEqual(summarize(rd, {"label": "鸭"})["net"], {"known": False})
+        self.assertEqual(summarize(rd, {"label": "Robô"})["net"], {"known": False})
         self.write_state(mode="hotspot")
         self.net._read_once()
-        s = summarize(rd, {"label": "鸭"}, net=self.net)
+        s = summarize(rd, {"label": "Robô"}, net=self.net)
         self.assertTrue(s["net"]["known"])
         self.assertEqual(s["net"]["mode"], "hotspot")
         self.write_state(mode="wifi")
         self.net._read_once()
-        s = summarize(rd, {"label": "鸭"}, net=self.net)
+        s = summarize(rd, {"label": "Robô"}, net=self.net)
         self.assertEqual(s["net"]["mode"], "wifi")
 
 
@@ -193,15 +191,14 @@ class ScanTest(Base):
     async def test_hotspot_error_uses_cache(self):
         self.write_state(mode="hotspot")
         self.net._read_once()
-        fake = FakeRpc(lambda m, p: N.Timeout("net.scan 15 秒没回话"))
+        fake = FakeRpc(lambda m, p: N.Timeout("net.scan timed out after 15 seconds"))
         with mock.patch.object(N, "call_once", fake):
             data = await self.net.scan()
         self.assertTrue(data["cached"])
         self.assertEqual(data["networks"][0]["ssid"], "Cached")
 
     async def test_own_hotspot_is_filtered(self):
-        """任务 16：真机扫描结果里有鸭子自己的热点（Microduck-0de6，显示「已保存」），点了会让人往里填家里密码：滤掉。
-        按 net.json 的 hotspot_ssid 认；没有 hotspot_ssid 时认「Microduck- 开头、而且是已保存」的。"""
+        """Filtra o hotspot do próprio robô, sem ocultar redes Microduck de outros robôs."""
         nets = [{"ssid": "Microduck-c51b", "signal": 90, "security": "wpa_psk", "saved": True},
                 {"ssid": "Home", "signal": 70, "security": "wpa_psk", "saved": False},
                 {"ssid": "Microduck-0de6", "signal": 40, "security": "wpa_psk", "saved": False}]
@@ -209,13 +206,13 @@ class ScanTest(Base):
         self.net._read_once()
         with mock.patch.object(N, "call_once", FakeRpc(lambda m, p: {"networks": [dict(n) for n in nets]})):
             data = await self.net.scan()
-        self.assertEqual([n["ssid"] for n in data["networks"]], ["Home", "Microduck-0de6"])   # 别的鸭子的热点不滤
+        self.assertEqual([n["ssid"] for n in data["networks"]], ["Home", "Microduck-0de6"])
         self.write_state(mode="wifi", hotspot_ssid=None)
         self.net._read_once()
         nets.append({"ssid": "Microduck-0de6", "signal": 40, "security": "wpa_psk", "saved": True})
         with mock.patch.object(N, "call_once", FakeRpc(lambda m, p: {"networks": [dict(n) for n in nets]})):
             data = await self.net.scan()
-        self.assertEqual([n["ssid"] for n in data["networks"]], ["Home", "Microduck-0de6"])   # 已保存的 Microduck-* 滤掉
+        self.assertEqual([n["ssid"] for n in data["networks"]], ["Home", "Microduck-0de6"])
         self.assertTrue(all(not (n["ssid"].startswith("Microduck-") and n["saved"]) for n in data["networks"]))
         self.write_state(mode="hotspot", scan=[{"ssid": "Microduck-c51b", "signal": 99, "security": "wpa_psk"},
                                                {"ssid": "Cached", "signal": 61, "security": "wpa_psk"}])
@@ -223,7 +220,7 @@ class ScanTest(Base):
         with mock.patch.object(N, "call_once", FakeRpc(lambda m, p: {"networks": []})):
             data = await self.net.scan()
         self.assertTrue(data["cached"])
-        self.assertEqual([n["ssid"] for n in data["networks"]], ["Cached"])              # 开热点前的缓存也滤
+        self.assertEqual([n["ssid"] for n in data["networks"]], ["Cached"])
 
     async def test_wifi_mode_error_is_not_hidden_by_cache(self):
         self.write_state(mode="wifi")
@@ -246,7 +243,7 @@ class ConnectTest(Base):
              mock.patch.object(N.helper, "wifi_hotspot_up", side_effect=up), \
              mock.patch.object(N, "call_once", fake):
             self.assertTrue(self.net.begin_connect())
-            rec = await self.net.connect("Home", "SecretPSK123", "电脑")
+            rec = await self.net.connect("Home", "SecretPSK123", "Computador")
         self.assertEqual(ev, ["down", "connect"])
         self.assertTrue(rec["ok"])
         self.assertEqual(rec["ip4"], "192.168.1.66")
@@ -267,10 +264,10 @@ class ConnectTest(Base):
              mock.patch.object(N.helper, "wifi_hotspot_up", side_effect=up), \
              mock.patch.object(N, "call_once", fake):
             self.net.begin_connect()
-            rec = await self.net.connect("Nope", "SecretPSK123", "电脑")
+            rec = await self.net.connect("Nope", "SecretPSK123", "Computador")
         self.assertEqual(ev, ["down", "connect", "up"])
         self.assertEqual(rec["reason"], "not_found")
-        self.assertIn("找不到", N.explain(rec["reason"], rec["detail"]))
+        self.assertIn("não encontrou", N.explain(rec["reason"], rec["detail"]))
 
     async def test_unsupported_restores_hotspot_immediately(self):
         self.write_state(mode="hotspot")
@@ -282,10 +279,10 @@ class ConnectTest(Base):
              mock.patch.object(N.helper, "wifi_hotspot_up", side_effect=up), \
              mock.patch.object(N, "call_once", fake):
             self.net.begin_connect()
-            rec = await self.net.connect("Office", "SecretPSK123", "电脑")
+            rec = await self.net.connect("Office", "SecretPSK123", "Computador")
         self.assertEqual(ev, ["down", "connect", "up"])
         self.assertEqual(rec["reason"], "unsupported")
-        self.assertIn("连不了", N.explain(rec["reason"], rec["detail"]))
+        self.assertIn("Não é possível conectar", N.explain(rec["reason"], rec["detail"]))
 
     async def test_bad_key_forgets_then_restores_hotspot(self):
         self.write_state(mode="hotspot")
@@ -297,10 +294,10 @@ class ConnectTest(Base):
              mock.patch.object(N.helper, "wifi_hotspot_up", side_effect=up), \
              mock.patch.object(N, "call_once", fake):
             self.net.begin_connect()
-            rec = await self.net.connect("Home", "SecretPSK123", "电脑")
+            rec = await self.net.connect("Home", "SecretPSK123", "Computador")
         self.assertEqual(ev, ["down", "connect", "forget", "up"])
         self.assertEqual(rec["reason"], "bad_key")
-        self.assertIn("密码不对", N.explain(rec["reason"]))
+        self.assertIn("Senha incorreta", N.explain(rec["reason"]))
 
     async def test_timeout_and_other_restore_hotspot_immediately(self):
         for reason in ("timeout", "other"):
@@ -315,7 +312,7 @@ class ConnectTest(Base):
                      mock.patch.object(N.helper, "wifi_hotspot_up", side_effect=up), \
                      mock.patch.object(N, "call_once", fake):
                     self.net.begin_connect()
-                    rec = await self.net.connect("Home", "SecretPSK123", "电脑")
+                    rec = await self.net.connect("Home", "SecretPSK123", "Computador")
                 self.assertEqual(ev, ["down", "connect", "up"])
                 self.assertEqual(rec["reason"], reason)
 
@@ -323,16 +320,16 @@ class ConnectTest(Base):
         self.write_state(mode="hotspot")
         self.net._read_once()
         ev, down, up = self.events()
-        fake = FakeRpc(lambda m, p: N.Timeout("60 秒没回话"), ev)
+        fake = FakeRpc(lambda m, p: N.Timeout("no response after 60 seconds"), ev)
         with mock.patch.object(N, "CONNECT_DELAY_S", 0), \
              mock.patch.object(N.helper, "wifi_hotspot_down", side_effect=down), \
              mock.patch.object(N.helper, "wifi_hotspot_up", side_effect=up), \
              mock.patch.object(N, "call_once", fake):
             self.net.begin_connect()
-            rec = await self.net.connect("Home", "SecretPSK123", "电脑")
+            rec = await self.net.connect("Home", "SecretPSK123", "Computador")
         self.assertEqual(ev, ["down", "connect", "up"])
         self.assertEqual(rec["reason"], "studio_timeout")
-        self.assertIn("配网程序 60 秒没回话", N.explain(rec["reason"], rec["detail"]))
+        self.assertIn("não respondeu em 60 segundos", N.explain(rec["reason"], rec["detail"]))
 
     async def test_hotspot_down_failure_still_tries_to_bring_it_back(self):
         self.write_state(mode="hotspot")
@@ -348,10 +345,10 @@ class ConnectTest(Base):
              mock.patch.object(N.helper, "wifi_hotspot_up", side_effect=up), \
              mock.patch.object(N, "call_once", FakeRpc(lambda m, p: {})):
             self.net.begin_connect()
-            rec = await self.net.connect("Home", "SecretPSK123", "电脑")
+            rec = await self.net.connect("Home", "SecretPSK123", "Computador")
         self.assertEqual(ev, ["down", "up"])
         self.assertFalse(rec["ok"])
-        self.assertIn("关热点没成", rec["detail"])
+        self.assertIn("Não foi possível desativar o hotspot", rec["detail"])
 
     async def test_hotspot_connect_refuses_without_helper(self):
         self.write_state(mode="hotspot")
@@ -363,7 +360,7 @@ class ConnectTest(Base):
              mock.patch.object(N.helper, "wifi_hotspot_up", side_effect=up), \
              mock.patch.object(N, "call_once", FakeRpc(lambda m, p: {})):
             self.net.begin_connect()
-            rec = await self.net.connect("Home", "SecretPSK123", "电脑")
+            rec = await self.net.connect("Home", "SecretPSK123", "Computador")
         self.assertEqual(ev, [])
         self.assertFalse(rec["ok"])
         self.assertIn("deploy/install.sh", rec["detail"])
@@ -381,17 +378,17 @@ class ConnectTest(Base):
         fake = FakeRpc(lambda m, p: N.RpcError("net.connect", 14, "not allowed"))
         with mock.patch.object(N, "CONNECT_DELAY_S", 0), mock.patch.object(N, "call_once", fake):
             self.net.begin_connect()
-            rec = await self.net.connect("Home", "SecretPSK123", "电脑")
+            rec = await self.net.connect("Home", "SecretPSK123", "Computador")
         self.assertEqual(rec["detail"], N.PERMISSION)
-        self.assertIn("configd 没放行 radxa", json.loads(
+        self.assertIn("O Studio não tem permissão", json.loads(
             (self.dir / "state" / "net-last-try.json").read_text(encoding="utf-8"))["detail"])
 
 
 class ValidateTest(unittest.TestCase):
     def test_ssid_bytes(self):
         self.assertEqual(N.validate_ssid("x" * 32), "x" * 32)
-        self.assertEqual(N.validate_ssid("中" * 10), "中" * 10)
-        for bad in ("", "x" * 33, "中" * 11, 3, None):
+        self.assertEqual(N.validate_ssid("€" * 10), "€" * 10)
+        for bad in ("", "x" * 33, "€" * 11, 3, None):
             with self.subTest(bad=bad):
                 with self.assertRaises(N.Refused):
                     N.validate_ssid(bad)
@@ -427,20 +424,20 @@ class SecretTest(Base):
              mock.patch.object(N.helper, "wifi_hotspot_down", return_value=(True, "hotspot_down", {})), \
              mock.patch.object(N, "call_once", fake):
             self.net.begin_connect()
-            rec = await self.net.connect("Home", psk, "电脑")
+            rec = await self.net.connect("Home", psk, "Computador")
         self.assertEqual(rec["reason"], "bad_key")
         texts = [json.dumps(self.net.view(), ensure_ascii=False),
                  (self.dir / "state" / "net-last-try.json").read_text(encoding="utf-8")]
         for p in self.log.files():
             texts.append(p.read_text(encoding="utf-8"))
         from studio.app import _diag_zip
-        data = _diag_zip(self.log, summarize(FakeRd(), {"label": "鸭"}, net=self.net), {})
+        data = _diag_zip(self.log, summarize(FakeRd(), {"label": "Robô"}, net=self.net), {})
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             for name in z.namelist():
                 texts.append(z.read(name).decode("utf-8", "replace"))
         for text in texts:
             self.assertNotIn(psk, text)
-        self.assertIn("带密码", "\n".join(texts))
+        self.assertIn("com senha", "\n".join(texts))
         self.assertIn("[oculto]", "\n".join(texts))
 
 
