@@ -1,7 +1,9 @@
-"""IMU 站着校准的纯计算（studio/imu_calib.py）。
+"""Cálculos puros da calibração do IMU em pé (studio/imu_calib.py).
 
-合成数据：随机安装方向 + 读数噪声 + 人手倾得不正，看能不能算回来；倾角不够、方向自相矛盾要判失败。
-另外用真机录的 now-20261018.jsonl 核对两条约定：四元数 [w,x,y,z]（机身 → 世界）、safety.gravity = R(q)ᵀ·(0,0,-1)。
+Os dados sintéticos combinam orientações de montagem aleatórias, ruído de leitura e inclinações imprecisas feitas à mão.
+Os casos verificam a recuperação da orientação e a rejeição de inclinações insuficientes ou contraditórias.
+O arquivo real now-20261018.jsonl também confirma duas convenções: quaternion [w,x,y,z] (corpo → mundo) e
+safety.gravity = R(q)ᵀ·(0,0,-1).
 """
 import json
 import math
@@ -35,16 +37,17 @@ def q_diff_deg(a, b):
 
 
 def jitter(rng, g, sigma_deg):
-    """给方向加一点噪声（各轴高斯，σ 按角度给）。"""
+    """Adiciona ruído à direção usando distribuições gaussianas por eixo e sigma em graus."""
     s = math.radians(sigma_deg)
     return ic.unit(ic.add(g, (rng.gauss(0, s), rng.gauss(0, s), rng.gauss(0, s))))
 
 
 class Duck:
-    """合成一只鸭子：世界系 z 朝上；HOME 时机身姿态 stance（机身 → 世界）；芯片装在 mount（芯片 → 机身）。
-    人手把整只鸭子绕世界的水平轴倾：前倾 = 绕 +y 转 +θ（头往下），左倾 = 绕 +x 转 −θ（左边往下）。
-    skew：人手没对正，倾的轴绕竖直方向偏了几度。
-    hand：提起来以后手的「零点」跟桌上站着差的那一点转动（人不可能正好端平）。"""
+    """Robô sintético: z aponta para cima no referencial mundial; stance é a postura do corpo no HOME (corpo → mundo)
+    e mount é a orientação do sensor (sensor → corpo). O operador inclina o robô em torno de um eixo horizontal:
+    inclinar para a frente gira +θ em torno de +y (abaixa a cabeça); para a esquerda gira −θ em torno de +x.
+    skew representa o desvio do eixo de inclinação em torno da vertical. hand representa o pequeno desvio de
+    nivelamento da mão em relação à postura na mesa; não é possível nivelar perfeitamente ao erguer o robô."""
 
     def __init__(self, mount, stance=(1.0, 0.0, 0.0, 0.0), old_mount=None, noise_deg=0.15, seed=1, hand=(1.0, 0.0, 0.0, 0.0)):
         self.mount, self.stance, self.hand = mount, stance, hand
@@ -53,11 +56,11 @@ class Duck:
         self.noise = noise_deg
 
     def reading(self, q_wb):
-        g_b = ic.gravity_from_quat(q_wb)                                    # 机身系里的重力
-        g_s = ic.mat_vec(ic.mat_t(ic.mat_from_q(self.mount)), g_b)          # 芯片系
+        g_b = ic.gravity_from_quat(q_wb)                                    # Gravidade no referencial do corpo.
+        g_s = ic.mat_vec(ic.mat_t(ic.mat_from_q(self.mount)), g_b)          # Referencial do sensor.
         if self.old is None:
             return g_s
-        return ic.q_rotate(self.old, g_s)                                    # 按旧方向换到「旧机身系」（robot.state 那样）
+        return ic.q_rotate(self.old, g_s)                                    # Converte para o referencial do corpo antigo, como em robot.state.
 
     def pose(self, step, deg, skew=0.0):
         if step == "still":
@@ -67,7 +70,8 @@ class Duck:
         return ic.q_mul(q_axis(axis, deg), ic.q_mul(self.hand, self.stance))
 
     def samples(self, step, deg=18.0, skew=0.0, seconds=None, ramp=True, noise=None, pause=0.0, overshoot=0.0):
-        """一步的读数：（pause 秒提起来端平）→ 慢慢倾过去（ramp）→（冲过头 overshoot° 再回来）→ 停住 1 秒。"""
+        """Leituras de uma etapa: ergue e nivela por pause segundos, inclina gradualmente (ramp),
+        talvez ultrapasse overshoot graus e volte, depois mantém a posição por 1 segundo."""
         noise = self.noise if noise is None else noise
         out = []
         if step == "still":
@@ -113,7 +117,7 @@ class Helpers(unittest.TestCase):
         self.assertEqual(d["text"], "Eixo x do sensor aponta para frente; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para cima")
         self.assertLess(d["off_deg"], 1e-6)
         self.assertEqual(len(ic.STANDARD_MOUNTS), 24)
-        # 绕 y 转 90°：芯片 x → 机身下、z → 机身前
+        # Rotação de 90° em torno de y: x do sensor aponta para baixo no corpo; z aponta para a frente.
         d = ic.describe_mount(q_axis((0, 1, 0), 90))
         self.assertEqual(d["text"], "Eixo x do sensor aponta para baixo; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para frente")
         d = ic.describe_mount(ic.q_mul(q_axis((0, 1, 0), 90), q_axis((1, 0, 0), 7)))
@@ -140,7 +144,7 @@ class Helpers(unittest.TestCase):
 
 
 class RealData(unittest.TestCase):
-    """真机录的数据：约定对不对。"""
+    """Confere as convenções com dados gravados no robô real."""
 
     def rows(self):
         out = []
@@ -153,8 +157,9 @@ class RealData(unittest.TestCase):
     def test_gravity_is_projected_quat_wxyz(self):
         rows = self.rows()
         self.assertGreater(len(rows), 20)
-        # robotd 的重力是最近 3 个读数取中值（官方 duck-control/src/imu.rs:140-155），跟这一刻的四元数差一点点：
-        # 录的数据里最多差 0.08°。约定要是错了（xyzw、或者转反了）会差几度到几十度
+        # robotd usa a mediana das três leituras mais recentes de gravidade (duck-control/src/imu.rs:140-155),
+        # portanto há uma pequena diferença em relação ao quaternion do instante. Nos dados gravados, o máximo é 0,08°.
+        # Uma convenção incorreta (xyzw ou rotação invertida) produziria diferenças de vários graus.
         exact = 0
         for p in rows:
             g = ic.gravity_from_quat(p["imu"]["quat"])
@@ -162,15 +167,15 @@ class RealData(unittest.TestCase):
             self.assertLess(d, 0.25)
             exact += d < 1e-3
         self.assertGreater(exact, 0)
-        wrong = ic.gravity_from_quat([rows[0]["imu"]["quat"][i] for i in (1, 2, 3, 0)])       # 当成 xyzw 读
-        self.assertGreater(ic.angle_deg(wrong, rows[0]["safety"]["gravity"]), 5)      # 实际差 17°
+        wrong = ic.gravity_from_quat([rows[0]["imu"]["quat"][i] for i in (1, 2, 3, 0)])       # Interpreta incorretamente como xyzw.
+        self.assertGreater(ic.angle_deg(wrong, rows[0]["safety"]["gravity"]), 5)      # Diferença observada: 17°.
 
     def test_still_on_real_standing_data(self):
         rows = self.rows()
         st, g0 = ic.check_still([{"g": p["safety"]["gravity"]} for p in rows])
         self.assertTrue(st["ok"], st)
         self.assertLess(st["spread_deg"], 0.2)
-        self.assertAlmostEqual(ic.tilt_of(ic.DOWN, g0)[0], 2.6, delta=0.2)   # 跟 home_start_guard.tilt_deg 2.63° 一致
+        self.assertAlmostEqual(ic.tilt_of(ic.DOWN, g0)[0], 2.6, delta=0.2)   # Compatível com home_start_guard.tilt_deg = 2,63°.
 
 
 class Solve(unittest.TestCase):
@@ -196,10 +201,10 @@ class Solve(unittest.TestCase):
             res = ic.solve(Duck(mount, noise_deg=0.3, seed=100 + i).run(tilts, skews), frame="sensor")
             self.assertTrue(res["ok"], res.get("reason"))
             worst = max(worst, q_diff_deg(res["mount"], mount))
-        self.assertLess(worst, 5.0)        # 四步手歪 ±5° 互相抵掉一部分；只剩朝向有误差，上下由静止定、很准
+        self.assertLess(worst, 5.0)        # Os desvios manuais de ±5° se compensam parcialmente; o repouso define cima com precisão.
 
     def test_body_frame_corrects_old_mount(self):
-        """robot.state 的读数已经乘过旧方向：修正 ∘ 旧方向 = 真方向；8.5° 那种装歪能算出来。"""
+        """robot.state já aplica a orientação antiga: correção ∘ orientação antiga = orientação real, inclusive com montagem inclinada em 8,5°."""
         rng = random.Random(13)
         for i in range(20):
             mount = q_random(rng)
@@ -208,14 +213,14 @@ class Solve(unittest.TestCase):
             res = ic.solve(Duck(mount, old_mount=old, noise_deg=0.0, seed=i).run(), frame="body", old_mount=old)
             self.assertMount(res, mount, 0.01)
             self.assertAlmostEqual(res["parts"]["total_deg"], ic.q_angle_deg(err), delta=0.01)
-        # 只是往前装歪了 8.5°（10-12 一号鸭猛冲的情形）：拆出来的前倾 ≈ 8.5°，朝向 ≈ 0
+        # Apenas 8,5° de inclinação frontal na montagem; a decomposição deve apontar pitch ≈ 8,5° e yaw ≈ 0.
         mount = q_axis((0, 1, 0), 90)
         old = ic.q_normalize(ic.q_mul(q_axis((0, 1, 0), -8.5), mount))
         res = ic.solve(Duck(mount, old_mount=old, noise_deg=0.0).run(), frame="body", old_mount=old)
         self.assertMount(res, mount, 0.01)
         self.assertAlmostEqual(res["parts"]["pitch_deg"], 8.5, delta=0.05)
         self.assertAlmostEqual(res["parts"]["yaw_deg"], 0.0, delta=0.05)
-        self.assertTrue(res["confirm"])                    # 8.5° > 8°：要人确认
+        self.assertTrue(res["confirm"])                    # 8,5° > 8°: exige confirmação.
         self.assertEqual(res["standard"]["text"], "Eixo x do sensor aponta para baixo; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para frente")
 
     def test_small_correction_needs_no_confirm(self):
@@ -226,21 +231,21 @@ class Solve(unittest.TestCase):
         self.assertEqual(res["confirm"], [])
 
     def test_stance_tilt_is_folded_in(self):
-        """HOME 时机身其实前倾了 4°（腿的原因）：整体补偿后，站好时读数 = 官方 HOME（水平）。"""
+        """O corpo está inclinado 4° para a frente no HOME por causa das patas; após compensar, a leitura em pé coincide com o HOME oficial."""
         mount = q_axis((0, 0, 1), 30)
         stance = q_axis((0, 1, 0), 4.0)
         res = ic.solve(Duck(mount, stance=stance, noise_deg=0.0).run(), frame="sensor")
         self.assertTrue(res["ok"], res.get("reason"))
         g_still_sensor = ic.mat_vec(ic.mat_t(ic.mat_from_q(mount)), ic.gravity_from_quat(stance))
         self.assertLess(ic.angle_deg(ic.q_rotate(res["mount"], g_still_sensor), ic.DOWN), 1e-6)
-        # 朝向不受影响：新机身系里前倾还是往 +x
+        # A direção permanece correta: a inclinação frontal aponta para +x no novo referencial do corpo.
         g_fwd = ic.mat_vec(ic.mat_t(ic.mat_from_q(mount)), ic.gravity_from_quat(ic.q_mul(q_axis((0, 1, 0), 18), stance)))
         g_new = ic.q_rotate(res["mount"], g_fwd)
         self.assertGreater(g_new[0], 0.25)
         self.assertLess(abs(g_new[1]), 1e-6)
 
     def test_home_gravity_not_level(self):
-        """官方 HOME 机身本来就前倾 3°，鸭子站得也正好是这样：真方向原样算回来。"""
+        """O HOME oficial já inclina o corpo 3° para a frente; como o robô está nessa mesma postura, a orientação real deve ser recuperada."""
         rng = random.Random(14)
         stance = q_axis((0, 1, 0), 3.0)
         hg = ic.gravity_from_quat(stance)
@@ -308,7 +313,7 @@ class Fails(unittest.TestCase):
         self.assertIn("direita", res["reason"])
 
     def test_not_held_still(self):
-        """倾到 18° 马上回来、没停住：最大倾角附近只有一两个读数。"""
+        """Inclina até 18° e volta sem parar: há apenas uma ou duas leituras perto da inclinação máxima."""
         duck = Duck(self.mount)
         data = duck.run()
         swing = [2, 4, 6, 8, 10, 12, 14, 16, 18, 16, 14, 12, 10, 8, 6, 4, 2]
@@ -318,7 +323,7 @@ class Fails(unittest.TestCase):
         self.assertIn("não ficou parado", res["steps"]["back"]["msg"])
 
     def test_circling_not_held(self):
-        """倾角一直 15°，但方向在转圈：倾角够、停住的读数也够，方向晃得太厉害。"""
+        """A inclinação permanece em 15°, mas a direção gira: o ângulo e as leituras estáveis são suficientes, porém a direção oscila demais."""
         duck = Duck(self.mount)
         data = duck.run()
         data["fwd"] = [{"g": list(duck.reading(duck.pose("fwd", 15, skew=s)))} for s in range(-30, 31, 5)]
@@ -327,7 +332,7 @@ class Fails(unittest.TestCase):
         self.assertIn("não ficou parado", res["steps"]["fwd"]["msg"])
 
     def test_same_side_twice(self):
-        """「后倾」那步其实又往前倾了。"""
+        """A etapa para trás foi feita inclinando o robô para a frente."""
         duck = Duck(self.mount)
         data = duck.run()
         data["back"] = duck.samples("fwd")
@@ -342,7 +347,7 @@ class Fails(unittest.TestCase):
         res = self.solve(data)
         self.assertFalse(res["ok"])
         self.assertIn("invertido", res["reason"])
-        # 旧方向可信（frame=body）时能说出是哪一对做反了
+        # Com uma orientação anterior confiável (frame=body), identifica qual par foi invertido.
         duck = Duck(self.mount, old_mount=self.mount)
         data = duck.run()
         data["left"], data["right"] = duck.samples("right"), duck.samples("left")
@@ -351,13 +356,13 @@ class Fails(unittest.TestCase):
         self.assertIn("As inclinações para a esquerda e para a direita foram invertidas", res["reason"])
 
     def test_tilted_diagonally(self):
-        """左倾、右倾都斜了 30°（每步只斜 15°，但两对差 30°）：前后和左右不垂直。"""
+        """As inclinações para ambos os lados desviam 30° (15° cada), deixando os pares frente/trás e esquerda/direita fora de perpendicularidade."""
         res = self.solve(Duck(self.mount).run(skews={"left": 30, "right": 30}))
         self.assertFalse(res["ok"])
         self.assertIn("não estão perpendiculares", res["reason"])
 
     def test_turned_around_needs_confirm(self):
-        """前后、左右都做反了（鸭子转了个身）：自检查不出来，但跟旧方向比朝向改了 180°，要人确认。"""
+        """Os dois pares foram invertidos, como se o robô tivesse girado: a autoverificação não percebe, mas a comparação com a orientação antiga exige confirmação para uma mudança de 180°."""
         duck = Duck(self.mount, old_mount=self.mount)
         data = duck.run()
         data["fwd"], data["back"] = duck.samples("back"), duck.samples("fwd")
@@ -381,12 +386,12 @@ class Fails(unittest.TestCase):
 
 
 class RobotdFormula(unittest.TestCase):
-    """A1：照 fork 固件 robotd 的 TrunkFrame::push 逐字合成读数（duck-control/src/imu.rs:137-170）：
-        q_机身 = q_芯片 ⊗ mount⁻¹，gravity = rotate_inverse(q_机身, [0,0,-1]) = q⁻¹·v·q。
-    四元数乘法、转动都在这里另写一份，不用被测代码的 q_mul / q_rotate / gravity_from_quat。"""
+    """A1: sintetiza leituras seguindo TrunkFrame::push do robotd no firmware do fork (duck-control/src/imu.rs:137-170):
+    q_corpo = q_sensor ⊗ mount⁻¹ e gravity = rotate_inverse(q_corpo, [0,0,-1]) = q⁻¹·v·q.
+    A multiplicação de quaternions e a rotação são implementadas separadamente, sem reutilizar q_mul, q_rotate ou gravity_from_quat testados."""
 
     @staticmethod
-    def hmul(a, b):                       # Hamilton 乘积，照教科书逐项写
+    def hmul(a, b):                       # Produto de Hamilton implementado termo a termo.
         w1, x1, y1, z1 = a
         w2, x2, y2, z2 = b
         return (w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
@@ -418,53 +423,53 @@ class RobotdFormula(unittest.TestCase):
         rng = random.Random(31)
         worst = 0.0
         for _ in range(60):
-            true_mount = self.norm4([rng.gauss(0, 1) for _ in range(4)])     # 芯片 → 机身（真的）
-            stored = self.norm4([rng.gauss(0, 1) for _ in range(4)])         # 鸭子上存的（错多少都行）
-            stance = self.axis_angle((0, 0, 1), rng.uniform(-180, 180))       # 站好：水平，偏航随便
+            true_mount = self.norm4([rng.gauss(0, 1) for _ in range(4)])     # Orientação real do sensor para o corpo.
+            stored = self.norm4([rng.gauss(0, 1) for _ in range(4)])         # Orientação armazenada no robô, com erro arbitrário.
+            stance = self.axis_angle((0, 0, 1), rng.uniform(-180, 180))       # Robô em pé e nivelado; yaw arbitrário.
 
             def reading(q_trunk_world):
-                q_sensor_world = self.hmul(q_trunk_world, true_mount)         # 芯片姿态 = 机身姿态 ⊗ 芯片→机身
-                q_trunk_robotd = self.hmul(q_sensor_world, self.conj(stored))  # robotd：q_芯片 ⊗ mount⁻¹
+                q_sensor_world = self.hmul(q_trunk_world, true_mount)         # Postura do sensor = postura do corpo ⊗ sensor→corpo.
+                q_trunk_robotd = self.hmul(q_sensor_world, self.conj(stored))  # robotd: q_sensor ⊗ mount⁻¹.
                 g = self.rotate_inverse(q_trunk_robotd, (0.0, 0.0, -1.0))
-                # 被测代码的约定也顺手核一下：gravity_from_quat 跟 rotate_inverse 一致
-                self.assertLess(ic.angle_deg(g, ic.gravity_from_quat(q_trunk_robotd)), 1e-4)   # acos 在 0 附近只准到 ~1e-6°
+                # Confere também se gravity_from_quat segue a mesma convenção de rotate_inverse.
+                self.assertLess(ic.angle_deg(g, ic.gravity_from_quat(q_trunk_robotd)), 1e-4)   # acos perto de zero tem precisão de ~1e-6°.
                 return {"g": list(g)}
 
             data = {"still": [reading(stance)] * 20}
             for k, ax in {"fwd": (0, 1, 0), "back": (0, -1, 0), "left": (-1, 0, 0), "right": (1, 0, 0)}.items():
-                ax_w = self.rotate_inverse(self.conj(stance), ax)              # 机身的这根轴在世界里（q·v·q⁻¹）
+                ax_w = self.rotate_inverse(self.conj(stance), ax)              # Eixo do corpo expresso no referencial mundial (q·v·q⁻¹).
                 data[k] = [reading(self.hmul(self.axis_angle(ax_w, 18), stance))] * 10
             res = ic.solve(data, frame="body", old_mount=stored, old_verified=False)
             self.assertTrue(res["ok"], res.get("reason"))
             d = abs(sum(a * b for a, b in zip(res["mount"], true_mount)))
             worst = max(worst, math.degrees(2 * math.acos(min(1.0, d))))
-        self.assertLess(worst, 0.01)          # 十来次连乘的舍入误差，acos 在 1 附近会放大
+        self.assertLess(worst, 0.01)          # Erro de arredondamento acumulado; acos amplifica a diferença perto de 1.
 
     def test_default_mounts_in_words(self):
-        # BNO08x 默认：trunk_imu.rs:63「mounted sensor X left, Y up, Z forward」
+        # Montagem padrão do BNO08x: trunk_imu.rs:63, sensor X à esquerda, Y para cima e Z para a frente.
         self.assertEqual(ic.describe_mount([0.5, 0.5, 0.5, 0.5])["text"], "Eixo x do sensor aponta para esquerda; Eixo y do sensor aponta para cima; Eixo z do sensor aponta para frente")
-        # 总线小板默认：官方 imu.rs:76「trunk = [+raw_z, +raw_y, −raw_x]」
+        # Padrão da placa de barramento: imu.rs:76, trunk = [+raw_z, +raw_y, −raw_x].
         r = math.sqrt(0.5)
         self.assertEqual(ic.describe_mount([r, 0, r, 0])["text"], "Eixo x do sensor aponta para baixo; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para frente")
-        # 二号鸭现在存的（fixture 第 6 行）：标准装法再偏 6°
+        # Orientação armazenada no robô 2 (linha 6 do fixture): montagem padrão com desvio adicional de 6°.
         d = ic.describe_mount([0.698208849, 0.036261753, 0.714055021, 0.036261753])
         self.assertEqual(d["text"], "Eixo x do sensor aponta para baixo; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para frente")
         self.assertAlmostEqual(d["off_deg"], 6.0, delta=0.1)
 
 
 class HumanHandling(unittest.TestCase):
-    """A2：真人手上会出的状况。"""
+    """A2: situações que podem ocorrer ao manusear o robô."""
     mount = q_axis((0, 1, 0), 90)
 
     def test_overshoot_then_settle(self):
-        """冲过头 4° 再回来停住：只算回来以后停住的那段。"""
+        """Ultrapassa a posição em 4° e volta a parar: considere somente o trecho estável após o retorno."""
         res = ic.solve(Duck(self.mount, noise_deg=0.2).run(overshoot=4.0), frame="sensor")
         self.assertTrue(res["ok"], res.get("reason"))
         self.assertLess(q_diff_deg(res["mount"], self.mount), 1.0)
         self.assertAlmostEqual(res["steps"]["fwd"]["tilt_deg"], 18, delta=0.6)
 
     def test_overshoot_reviewer_case(self):
-        """审查员的例子：倾到 21° 回到 17° 停 1.5 秒（以前判「只有 1 个读数」）。"""
+        """Caso de revisão: inclina até 21°, volta a 17° e mantém por 1,5 s (antes era classificado como apenas uma leitura)."""
         g = lambda d: {"g": list(ic.gravity_from_quat(q_axis((0, 1, 0), d)))}
         still = [g(0)] * 30
         step = lambda ax, d, n=15: [{"g": list(ic.gravity_from_quat(q_axis(ax, d)))}] * n
@@ -475,7 +480,7 @@ class HumanHandling(unittest.TestCase):
         self.assertAlmostEqual(res["steps"]["fwd"]["tilt_deg"], 17, delta=0.01)
 
     def test_single_spike(self):
-        """停住时混进一帧乱跳（BNO085 那种），在中间、在最后都不该判失败。"""
+        """Um quadro instável (como pode ocorrer no BNO085) durante a pausa, no meio ou no final, não deve causar falha."""
         duck = Duck(self.mount, noise_deg=0.1)
         data = duck.run()
         spike = {"g": list(duck.reading(duck.pose("fwd", 33)))}
@@ -489,7 +494,7 @@ class HumanHandling(unittest.TestCase):
         self.assertLess(q_diff_deg(res["mount"], self.mount), 0.5)
 
     def test_hand_reference_offset(self):
-        """提起来时手的零点偏 4.9°（端平只要求 5° 以内）：每步以自己端平的那一下为零点，不再判成「斜着倾」。"""
+        """A mão fica 4,9° fora de nível ao erguer o robô (o limite é 5°): cada etapa usa seu próprio nivelamento como zero, sem confundir isso com uma inclinação diagonal."""
         rng = random.Random(41)
         for i in range(20):
             hand = q_axis((rng.gauss(0, 1), rng.gauss(0, 1), 0), 4.9)
@@ -498,21 +503,21 @@ class HumanHandling(unittest.TestCase):
             res = ic.solve(duck.run(tilts={"fwd": 13, "back": 13, "left": 13, "right": 13}, pause=0.8), frame="sensor")
             self.assertTrue(res["ok"], res.get("reason"))
             self.assertEqual(res["steps"]["fwd"]["ref"], "Posição nivelada")
-            self.assertAlmostEqual(res["steps"]["fwd"]["ref_offset_deg"], 4.9, delta=0.3)   # 端平窗口可能带上爬坡第一个读数（沿倾的方向，不影响朝向）
+            self.assertAlmostEqual(res["steps"]["fwd"]["ref_offset_deg"], 4.9, delta=0.3)   # A janela de nivelamento pode incluir a primeira leitura da inclinação, sem afetar a direção.
             self.assertLess(q_diff_deg(res["mount"], mount), 0.3)
-            self.assertLess(res["quality"]["max_skew_deg"], 1.0)      # 零点偏 4.9° 只剩二阶的一点点
+            self.assertLess(res["quality"]["max_skew_deg"], 1.0)      # O desvio de 4,9° deixa apenas um pequeno erro de segunda ordem.
 
     def test_consistent_twist_fails(self):
-        """前倾、后倾都拧着 15°（审查员 probe3：以前「相反差 0」能过、朝向错 7.5°）：前后和左右差 15° → 判失败。"""
+        """Inclinações para a frente e para trás torcidas em 15° (probe3): apesar de serem opostas, os pares diferem 15° e a calibração deve falhar."""
         res = ic.solve(Duck(self.mount, noise_deg=0.0).run(skews={"fwd": 15, "back": 15}), frame="sensor")
         self.assertFalse(res["ok"])
         self.assertIn("não estão perpendiculares", res["reason"])
         res = ic.solve(Duck(self.mount, noise_deg=0.0).run(skews={"fwd": 5, "back": 5}), frame="sensor")
-        self.assertTrue(res["ok"], res.get("reason"))           # 拧 5° 还能用，朝向大约准到 ±2.5°
+        self.assertTrue(res["ok"], res.get("reason"))           # Com torção de 5°, ainda é utilizável; direção com precisão aproximada de ±2,5°.
         self.assertAlmostEqual(res["quality"]["yaw_uncert_deg"], 2.5, delta=0.1)
 
     def test_tilt_max_by_any_held_reading(self):
-        """G6：停住段里有一个 36° 就算太多（以前按平均 34.6° 放过去了）。"""
+        """G6: uma leitura de 36° no trecho estável excede o limite (a média anterior de 34,6° deixava o caso passar)."""
         g = lambda ax, d: {"g": list(ic.gravity_from_quat(q_axis(ax, d)))}
         still = [g((0, 1, 0), 0)] * 30
         step = lambda ax, d: [g(ax, d)] * 12
@@ -524,12 +529,12 @@ class HumanHandling(unittest.TestCase):
         self.assertAlmostEqual(res["steps"]["fwd"]["max_tilt_deg"], 36, delta=0.01)
 
     def test_bad_numbers_dropped(self):
-        """G5：inf / nan 的读数丢掉，不崩。"""
+        """G5: descarta leituras inf/nan sem falhar."""
         self.assertIsNone(ic.sample_gravity({"g": [float("inf"), 0, -1]}))
         self.assertIsNone(ic.sample_gravity({"g": [float("nan"), 0, -1]}))
         self.assertIsNone(ic.sample_gravity({"acc": [0, float("inf"), 9.8]}))
         self.assertIsNone(ic.sample_gravity({"quat": [float("nan"), 0, 0, 0]}))
-        self.assertIsNone(ic.sample_gravity({"g": [1e308, 1e308, 1e308]}))     # 平方溢出成 inf
+        self.assertIsNone(ic.sample_gravity({"g": [1e308, 1e308, 1e308]}))     # O quadrado transborda para inf.
         data = Duck(self.mount).run()
         data["still"] = data["still"][:25] + [{"g": [float("inf"), 0, 0]}] * 10
         data["left"] = data["left"] + [{"g": [float("nan")] * 3}]
@@ -543,7 +548,7 @@ class HumanHandling(unittest.TestCase):
         self.assertIn("Há apenas 0 leituras em repouso", res["reason"])
 
     def test_still_spikes_tolerated(self):
-        """静止那 3 秒里乱跳两帧（30 帧里不到 10%）：不算晃；一直晃 2° 才算。"""
+        """Dois quadros instáveis em 3 segundos de repouso (menos de 10% dos 30 quadros) não contam como oscilação; uma oscilação contínua de 2° conta."""
         duck = Duck(self.mount, noise_deg=0.1)
         data = duck.run()
         spike = {"g": list(duck.reading(duck.pose("left", 12)))}
@@ -555,7 +560,7 @@ class HumanHandling(unittest.TestCase):
         self.assertLess(q_diff_deg(res["mount"], self.mount), 0.5)
 
     def test_big_stand_offset_needs_confirm(self):
-        """G4：站着时读数离 HOME 超过 5°（静止时手按着、桌子斜、腿没校好）要人确认。"""
+        """G4: uma leitura em pé a mais de 5° do HOME (mão apoiada, mesa desnivelada ou patas sem calibração) exige confirmação."""
         duck = Duck(self.mount, stance=q_axis((0, 1, 0), 6.0), old_mount=self.mount, noise_deg=0.0)
         res = ic.solve(duck.run(), frame="body", old_mount=self.mount)
         self.assertTrue(res["ok"], res.get("reason"))
@@ -566,7 +571,7 @@ class HumanHandling(unittest.TestCase):
         self.assertFalse(any("difere" in c for c in res["confirm"]))
 
     def test_flip_after_coarse(self):
-        """旧方向是上次粗校写的：转了个身的提示改成「上次粗校可能做反了」。"""
+        """Quando a orientação antiga vem de uma calibração aproximada, o aviso de inversão deve mencionar a calibração anterior."""
         duck = Duck(self.mount, old_mount=self.mount)
         data = duck.run()
         data["fwd"], data["back"] = duck.samples("back"), duck.samples("fwd")
@@ -576,7 +581,7 @@ class HumanHandling(unittest.TestCase):
 
 
 class Redo(unittest.TestCase):
-    """没过时 redo 说清楚要补做哪几步（页面只让人补那几步）。"""
+    """Em caso de falha, redo identifica as etapas a refazer; a página solicita apenas essas etapas."""
     mount = q_axis((0, 1, 0), 90)
 
     def test_each_failure_names_steps(self):
@@ -610,7 +615,7 @@ class Redo(unittest.TestCase):
 
 
 class Coarse(unittest.TestCase):
-    """粗校：方向一次都没确认过、站不起来时，软着托起来做「静止 + 前倾（+ 后倾）」。"""
+    """Calibração aproximada para orientação ainda não confirmada e robô incapaz de ficar em pé: apoie-o e colete repouso e inclinação para a frente (mais a etapa para trás, se possível)."""
 
     def test_still_and_fwd_only(self):
         rng = random.Random(21)
@@ -624,7 +629,7 @@ class Coarse(unittest.TestCase):
             self.assertTrue(any("Calibração aproximada" in n for n in res["notes"]))
 
     def test_with_back_and_default_old_mount(self):
-        """LSM6DSV16X 的默认方向是单位四元数（trunk_imu.rs:56-58），跟真方向差很多：没验过就不要人确认「改太多」。"""
+        """O padrão do LSM6DSV16X é o quaternion identidade (trunk_imu.rs:56-58), que pode diferir muito da orientação real; não exija confirmação por grande mudança se o padrão não foi verificado."""
         mount = q_axis((0, 1, 0), 90)
         old = (1.0, 0.0, 0.0, 0.0)
         data = Duck(mount, old_mount=old, noise_deg=0.2).run()
@@ -632,7 +637,7 @@ class Coarse(unittest.TestCase):
         res = ic.solve(part, frame="body", old_mount=old, mode="coarse", old_verified=False)
         self.assertTrue(res["ok"], res.get("reason"))
         self.assertLess(q_diff_deg(res["mount"], mount), 1.0)
-        # 不拿没验过的默认值比「改太多」，但一定要人对照模块实际装法勾一下（做反了 robotd 验不出左右，方案 S1）
+        # Não compare com um padrão não verificado para detectar uma grande mudança, mas exija confirmação da montagem física (o robotd não detecta inversão dos lados; plano S1).
         self.assertEqual(len(res["confirm"]), 1)
         self.assertIn("Eixo x do sensor aponta para baixo; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para frente", res["confirm"][0])
         res2 = ic.solve(part, frame="body", old_mount=old, mode="coarse", old_verified=True)
