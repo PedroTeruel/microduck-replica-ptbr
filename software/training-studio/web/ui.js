@@ -10,13 +10,13 @@ export function Empty({icon='flask',title,children,action}) {return html`<div cl
 export function Stat({label,value,unit,icon,sub}) {return html`<div class="stat"><span class="stat-label">${icon&&html`<${Icon} name=${icon} size=${15}/>`}${label}</span><div class="stat-value">${value}<small>${unit}</small></div>${sub&&html`<span class="stat-sub">${sub}</span>`}</div>`;}
 
 let chartId=0;
-export function Chart({series=[],metric='reward',title='平均奖励',compact=false}) {
+export function Chart({series=[],metric='reward',title='Recompensa média',compact=false}) {
   const id=useRef(`gradient-${++chartId}`).current;
   const [hover,setHover]=useState(null),[width,setWidth]=useState(640),box=useRef(null);
   const data=series.map((s,i)=>({...s,color:s.color||['#0071E3','#B25000'][i%2],points:metricPoints(s.metrics,metric)}));
   const all=data.flatMap(s=>s.points),w=width,h=compact?156:208,pad={l:48,r:16,t:18,b:32};
   useEffect(()=>{const el=box.current;if(!el)return;const resize=()=>setWidth(Math.max(240,Math.round(el.getBoundingClientRect().width)));resize();const observer=new ResizeObserver(resize);observer.observe(el);return()=>observer.disconnect();},[all.length>0]);
-  if(!all.length)return html`<div class="chart-empty"><${Icon} name="chart" size=${24}/><span>等待训练指标</span><small>收到实际日志后，曲线会出现在这里</small></div>`;
+  if(!all.length)return html`<div class="chart-empty"><${Icon} name="chart" size=${24}/><span>Aguardando métricas de treinamento</span><small>O gráfico aparecerá aqui quando os registros reais forem recebidos</small></div>`;
   const xmin=Math.min(...all.map(p=>p.x)),xmax=Math.max(xmin+1,...all.map(p=>p.x));
   let ymin=Math.min(...all.map(p=>p.y)),ymax=Math.max(...all.map(p=>p.y));
   const spread=Math.max((ymax-ymin)*.15,Math.abs(ymax)*.03,0.1);ymin-=spread;ymax+=spread;
@@ -30,15 +30,15 @@ export function Chart({series=[],metric='reward',title='平均奖励',compact=fa
       ${data.map((s,i)=>{const p=s.points.map((p,j)=>`${j?'L':'M'}${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ');return html`<g>${i===0&&s.points.length>1&&html`<path d=${`${p} L${X(s.points.at(-1).x)},${h-pad.b} L${X(s.points[0].x)},${h-pad.b} Z`} fill=${`url(#${id})`}/>`}<path d=${p} fill="none" stroke=${s.color} stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${s.points.length===1&&html`<circle cx=${X(s.points[0].x)} cy=${Y(s.points[0].y)} r="3" fill=${s.color}/>`}</g>`;})}
       ${nearest?.[0]?.point&&html`<line x1=${X(nearest[0].point.x)} x2=${X(nearest[0].point.x)} y1=${pad.t} y2=${h-pad.b} stroke="#6E6E73" stroke-dasharray="3 3"/>`}
     </svg>
-    ${nearest&&html`<div class="chart-tooltip">${nearest.filter(s=>s.point).map(s=>html`<span><i style=${`background:${s.color}`}/>${s.name||title} · 第 ${s.point.x} 轮：<b>${formatNumber(s.point.y,2)}</b></span>`)}</div>`}
+    ${nearest&&html`<div class="chart-tooltip">${nearest.filter(s=>s.point).map(s=>html`<span><i style=${`background:${s.color}`}/>${s.name||title} · Rodada ${s.point.x}:<b>${formatNumber(s.point.y,2)}</b></span>`)}</div>`}
   </div>`;
 }
 
-export function ArtifactMedia({url,alt='检查点评估回放'}) {
+export function ArtifactMedia({url,alt='Reprodução da avaliação do checkpoint'}) {
   const [src,setSrc]=useState(null),[error,setError]=useState('');
   useEffect(()=>{let active=true,obj;setSrc(null);setError('');request(url,{blob:true}).then(blob=>{if(!active)return;obj=URL.createObjectURL(blob);setSrc(obj);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;if(obj)URL.revokeObjectURL(obj);};},[url]);
-  if(error)return html`<div class="media-error"><${Icon} name="alert"/>回放读取失败：${error}</div>`;
-  if(!src)return html`<div class="media-loading"><span class="spinner"/>正在读取回放…</div>`;
+  if(error)return html`<div class="media-error"><${Icon} name="alert"/>Falha ao carregar a reprodução: ${error}</div>`;
+  if(!src)return html`<div class="media-loading"><span class="spinner"/>Carregando reprodução…</div>`;
   return /\.(svg|png|jpg|webp)(?:\?|$)/i.test(url)?html`<img class="artifact-image" src=${src} alt=${alt}/>`:html`<video class="artifact-video" src=${src} controls playsinline preload="metadata" aria-label=${alt}/>`;
 }
 
@@ -51,15 +51,15 @@ export function DuckStage({demo=false,checkpoint=null,allowDemoMotion=true}) {
   useEffect(()=>{if(!play||!demo||!allowDemoMotion||checkpoint?.video_url){duck.current?.setJoints(new Array(15).fill(0));return;}let raf,last=0;const animate=t=>{if(t-last>45){last=t;const s=Math.sin(t*.004),r=Math.max(0,s),l=Math.max(0,-s);duck.current?.setJoints([0,.01*s,.12*s,.18*l,-.12*s-.18*l,.03*Math.sin(t*.002),0,.04*s,0,0,0,-.01*s,.12*s,-.18*r,-.12*s+.18*r]);}raf=requestAnimationFrame(animate);};raf=requestAnimationFrame(animate);return()=>cancelAnimationFrame(raf);},[play,demo,allowDemoMotion,checkpoint?.video_url]);
   const url=checkpoint?.video_url;
   return html`<div class=${'duck-stage '+(url?'has-video':'')}>
-    <canvas ref=${canvas} style=${url?'visibility:hidden':''} aria-label="Microduck CAD 模型，可拖动旋转视角"/>
+    <canvas ref=${canvas} style=${url?'visibility:hidden':''} aria-label="Modelo CAD do Microduck; arraste para girar a visualização"/>
     ${url&&html`<${ArtifactMedia} url=${url}/>`}
-    ${!url&&!ready&&!error&&html`<div class="stage-loading"><span class="spinner"/>正在加载小鸭子…</div>`}
-    ${!url&&error&&html`<div class="stage-loading">3D 预览暂不可用<small>${error}</small></div>`}
-    <span class="stage-label"><span class="status-dot"/>${url?(demo?'演示回放 · 非模型推理':'检查点评估回放'):(play?'动作示意 · 非模型推理':'CAD 模型预览')}</span>
-    ${!url&&html`<div class="stage-tools">${demo&&allowDemoMotion&&html`<button class="btn small white" onClick=${()=>setPlay(v=>!v)} disabled=${!ready}><${Icon} name=${play?'pause':'play'} size=${14}/>${play?'暂停示意':'播放动作示意'}</button>`}<button class="icon-button white" aria-label="重置模型视角" onClick=${()=>duck.current?.resetView()}><${Icon} name="refresh" size=${16}/></button></div>`}
+    ${!url&&!ready&&!error&&html`<div class="stage-loading"><span class="spinner"/>Carregando o Microduck…</div>`}
+    ${!url&&error&&html`<div class="stage-loading">A prévia 3D está indisponível<small>${error}</small></div>`}
+    <span class="stage-label"><span class="status-dot"/>${url?(demo?'Reprodução de demonstração · não é inferência do modelo':'Reprodução da avaliação do checkpoint'):(play?'Demonstração do movimento · não é inferência do modelo':'Prévia do modelo CAD')}</span>
+    ${!url&&html`<div class="stage-tools">${demo&&allowDemoMotion&&html`<button class="btn small white" onClick=${()=>setPlay(v=>!v)} disabled=${!ready}><${Icon} name=${play?'pause':'play'} size=${14}/>${play?'Pausar demonstração':'Reproduzir demonstração do movimento'}</button>`}<button class="icon-button white" aria-label="Redefinir ângulo do modelo" onClick=${()=>duck.current?.resetView()}><${Icon} name="refresh" size=${16}/></button></div>`}
   </div>`;
 }
 
 export function RunTable({runs=[],onSelect,selected}) {
-  return html`<div class="table-scroll"><table class="run-table"><thead><tr><th>实验名称</th><th>状态</th><th>训练轮数</th><th>检查点</th><th>创建时间</th><th/></tr></thead><tbody>${runs.map(r=>html`<tr class=${r.id===selected?'selected':''} key=${r.id}><td><button class="run-name" onClick=${()=>onSelect(r.id)}><span class="run-table-icon"><${Icon} name=${r.kind==='smoke'?'check':'flask'} size=${17}/></span><span><b>${r.name}</b><small>${r.kind==='smoke'?'环境短试跑':'正式训练'} · ${recipeTitle(r)}${r.mode==='demo'?' · 演示':''}</small>${r.skill&&html`<small>${skillSummary(r.skill)}</small>`}</span></button></td><td><${Status} run=${r}/></td><td class="numeric">${formatNumber(r.progress?.iteration,0)}<span class="muted"> / ${formatNumber(r.progress?.total||r.config?.iterations,0)}</span></td><td class="numeric">${r.checkpoints?.length||0}</td><td class="muted nowrap">${dateText(r.created_at)}</td><td><button class="icon-button" aria-label=${`打开 ${r.name}`} onClick=${()=>onSelect(r.id)}><${Icon} name="chevron" size=${16}/></button></td></tr>`)}</tbody></table></div>`;
+  return html`<div class="table-scroll"><table class="run-table"><thead><tr><th>Nome do experimento</th><th>Status</th><th>Rodadas de treinamento</th><th>Checkpoint</th><th>Data de criação</th><th/></tr></thead><tbody>${runs.map(r=>html`<tr class=${r.id===selected?'selected':''} key=${r.id}><td><button class="run-name" onClick=${()=>onSelect(r.id)}><span class="run-table-icon"><${Icon} name=${r.kind==='smoke'?'check':'flask'} size=${17}/></span><span><b>${r.name}</b><small>${r.kind==='smoke'?'Teste rápido do ambiente':'Treinamento completo'} · ${recipeTitle(r)}${r.mode==='demo'?' · Demonstração':''}</small>${r.skill&&html`<small>${skillSummary(r.skill)}</small>`}</span></button></td><td><${Status} run=${r}/></td><td class="numeric">${formatNumber(r.progress?.iteration,0)}<span class="muted"> / ${formatNumber(r.progress?.total||r.config?.iterations,0)}</span></td><td class="numeric">${r.checkpoints?.length||0}</td><td class="muted nowrap">${dateText(r.created_at)}</td><td><button class="icon-button" aria-label=${`Abrir ${r.name}`} onClick=${()=>onSelect(r.id)}><${Icon} name="chevron" size=${16}/></button></td></tr>`)}</tbody></table></div>`;
 }
