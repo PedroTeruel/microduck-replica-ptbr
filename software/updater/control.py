@@ -52,7 +52,7 @@ def json_socket(path,body,timeout=3,limit=1024*1024):
         connection.sendall(json.dumps(body,separators=(',',':')).encode()+b'\n')
         with connection.makefile('rb') as reader:
             raw=reader.readline(limit+1)
-            if len(raw)>limit or not raw.endswith(b'\n'): raise UpdateError('protocol','服务回包超限或中断')
+            if len(raw)>limit or not raw.endswith(b'\n'): raise UpdateError('protocol','A resposta do serviço excedeu o limite ou foi interrompida')
             return json.loads(raw)
 
 class Engine:
@@ -65,58 +65,58 @@ class Engine:
             with connection.makefile('rb') as reader:
                 while True:
                     raw=reader.readline(1024*1024+1)
-                    if len(raw)>1024*1024 or not raw.endswith(b'\n'): raise UpdateError('engine','升级引擎连接中断')
+                    if len(raw)>1024*1024 or not raw.endswith(b'\n'): raise UpdateError('engine','A conexão com o mecanismo de atualização foi interrompida')
                     message=json.loads(raw)
                     if message.get('id')==1:
-                        if 'error' in message: raise UpdateError('engine',str(message['error'].get('message','升级引擎拒绝请求'))[:500])
+                        if 'error' in message: raise UpdateError('engine',str(message['error'].get('message','O mecanismo de atualização recusou a solicitação'))[:500])
                         return message['result']
                     if progress and isinstance(message.get('params'),dict): progress(message['params'])
 
 def numeric(value): return type(value) in (int,float) and math.isfinite(value)
 
 def check_robot(bus,health,previous):
-    if not isinstance(bus,dict) or not isinstance(previous,dict): raise UpdateError('preflight','无法确认主程序状态')
+    if not isinstance(bus,dict) or not isinstance(previous,dict): raise UpdateError('preflight','Não foi possível confirmar o estado do programa principal')
     if (any(bus.get(key)!=value or previous.get(key)!=value for key,value in [('mode','motion'),('phase','control')])
         or any(bus.get(key) is not value or previous.get(key) is not value for key,value in
             [('homed',True),('policy_enabled',False),('fresh_sample',True),('all_joints_fresh',True)])):
-        raise UpdateError('preflight','请回到运动控制状态、完成 HOME 并关闭策略，等待关节反馈恢复')
+        raise UpdateError('preflight','Volte ao modo de controle de movimento, conclua HOME, desative a política e aguarde a recuperação do feedback das juntas')
     rows=bus.get('native',{}).get('joints',[]); old=previous.get('native',{}).get('joints',[])
-    if len(rows)!=15 or len(old)!=15: raise UpdateError('preflight','缺少十五个关节的实时反馈')
+    if len(rows)!=15 or len(old)!=15: raise UpdateError('preflight','Falta o feedback em tempo real das 15 juntas')
     old={row.get('id'):row for row in old}
-    if len(old)!=15 or len({row.get('id') for row in rows})!=15: raise UpdateError('preflight','关节反馈不完整')
+    if len(old)!=15 or len({row.get('id') for row in rows})!=15: raise UpdateError('preflight','O feedback das juntas está incompleto')
     for row in rows:
         before=old.get(row.get('id'),{})
         for sample in (row,before):
             if (sample.get('feedback_fresh') is not True or not numeric(sample.get('sample_age_ms')) or sample['sample_age_ms']>250
                 or not numeric(sample.get('velocity_rad_s')) or abs(sample['velocity_rad_s'])>.08
-                or not numeric(sample.get('position_rad'))): raise UpdateError('preflight','关节尚未停稳或反馈过期')
-        if abs(row['position_rad']-before['position_rad'])>.02: raise UpdateError('preflight','检测到关节实际运动，请等待停稳')
+                or not numeric(sample.get('position_rad'))): raise UpdateError('preflight','As juntas ainda não pararam ou o feedback expirou')
+        if abs(row['position_rad']-before['position_rad'])>.02: raise UpdateError('preflight','Foi detectado movimento real nas juntas; aguarde até pararem')
     battery=health.get('battery',{}) if isinstance(health,dict) else {}
     if not numeric(battery.get('volts')) or battery['volts']<7.0 or not numeric(battery.get('percent')) or battery['percent']<25:
-        raise UpdateError('preflight','电量不足或无法确认供电，请充电后重试')
+        raise UpdateError('preflight','A bateria está baixa ou não foi possível confirmar a alimentação; carregue e tente novamente')
 
 def preflight(config):
     # The root marker is installed BEFORE this read: Studio refuses new commands
     # while its existing command set is inspected over its private local socket.
     studio=json_socket(config['studio_socket'],{'op':'readiness'})
-    if studio.get('ready') is not True: raise UpdateError('preflight',studio.get('error','网页控制会话尚未空闲'))
+    if studio.get('ready') is not True: raise UpdateError('preflight',studio.get('error','A sessão de controle Web ainda não está ociosa'))
     audio=json_socket(config['audio_socket'],{'method':'status'})
     status=audio.get('status',{})
     if audio.get('ok') is not True or status.get('listening') is not False or status.get('music') is not False:
-        raise UpdateError('preflight','请关闭语音监听和音乐律动后重试')
+        raise UpdateError('preflight','Desative a escuta por voz e o acompanhamento musical e tente novamente')
     robot=Engine(config['robot_socket'])
     previous=robot.call('robot.busStatus'); time.sleep(.3)
     bus=robot.call('robot.busStatus'); health=robot.call('robot.health')
     check_robot(bus,health,previous)
     if shutil.disk_usage(config['state_dir']).free<512*1024*1024:
-        raise UpdateError('preflight','可用磁盘空间不足 512 MiB')
+        raise UpdateError('preflight','Há menos de 512 MiB de espaço livre em disco')
     from health import identities
     atomic_json(Path(config['marker']).parent/'protected-services.json',identities())
 
 def version_key(version): return tuple(int(piece) for piece in version.split('+')[0].split('-')[0].split('.'))
 
 def choose_release(releases):
-    if not isinstance(releases,list): raise UpdateError('network','发布源返回格式不正确')
+    if not isinstance(releases,list): raise UpdateError('network','A fonte de versões retornou um formato inválido')
     choices=[]
     for release in releases:
         if not isinstance(release,dict) or release.get('draft') or release.get('prerelease'): continue
@@ -129,7 +129,7 @@ def choose_release(releases):
         if len(assets)!=1: continue
         asset=assets[0]; url=f'https://github.com/{REPOSITORY}/releases/download/{tag}/{name}'
         if asset.get('browser_download_url')!=url or type(asset.get('size')) is not int or not 0<asset['size']<=MAX_OUTER:
-            raise UpdateError('network','软件发布包地址或大小不符合固定发布规则')
+            raise UpdateError('network','O endereço ou o tamanho do pacote de software não corresponde às regras fixas de publicação')
         choices.append({'version':version,'url':url,'size':asset['size'],'changelog':str(release.get('body') or '')[:8000]})
     return max(choices,key=lambda item:version_key(item['version']),default=None)
 
@@ -137,18 +137,18 @@ class RestrictedRedirect(HTTPRedirectHandler):
     def __init__(self,allow_loopback=False): self.allow_loopback=allow_loopback
     def redirect_request(self,request,fp,code,msg,headers,newurl):
         validate_url(newurl,self.allow_loopback)
-        if getattr(request,'redirect_count',0)>=3: raise UpdateError('network','下载跳转次数超限')
+        if getattr(request,'redirect_count',0)>=3: raise UpdateError('network','O download excedeu o limite de redirecionamentos')
         result=super().redirect_request(request,fp,code,msg,headers,newurl)
         result.redirect_count=getattr(request,'redirect_count',0)+1
         return result
 
 def validate_url(url,loopback=False):
     parts=urlsplit(url)
-    if parts.username or parts.password or parts.fragment: raise UpdateError('network','下载地址无效')
+    if parts.username or parts.password or parts.fragment: raise UpdateError('network','O endereço de download é inválido')
     if loopback and parts.scheme=='http' and parts.hostname in {'127.0.0.1','::1','localhost'}: return
     if parts.scheme!='https' or parts.port not in (None,443) or parts.hostname not in {
         'api.github.com','github.com','release-assets.githubusercontent.com','objects.githubusercontent.com'}:
-        raise UpdateError('network','下载必须使用固定发布源的 HTTPS 地址')
+        raise UpdateError('network','O download precisa usar um endereço HTTPS da fonte fixa de versões')
 
 def fetch(url,destination,maximum,loopback=False):
     validate_url(url,loopback)
@@ -156,12 +156,12 @@ def fetch(url,destination,maximum,loopback=False):
     deadline=time.monotonic()+120; received=0
     with opener.open(Request(url,headers={'User-Agent':'Microduck-Software-Updater/1','Accept':'application/vnd.github+json' if url==CATALOG else 'application/octet-stream'}),timeout=15) as response:
         length=response.headers.get('Content-Length')
-        if length and (not length.isdigit() or int(length)>maximum): raise UpdateError('network','下载大小超限')
+        if length and (not length.isdigit() or int(length)>maximum): raise UpdateError('network','O download excede o limite de tamanho')
         while True:
             chunk=response.read(min(1024*1024,maximum-received+1))
             if not chunk: break
             received+=len(chunk)
-            if received>maximum or time.monotonic()>deadline: raise UpdateError('network','下载大小或时间超限')
+            if received>maximum or time.monotonic()>deadline: raise UpdateError('network','O download excedeu o limite de tamanho ou de tempo')
             destination.write(chunk)
     return received
 
@@ -190,7 +190,7 @@ class Controller:
         def get(url):
             buffer=io.BytesIO();fetch(url,buffer,2*1024*1024);return json.loads(buffer.getvalue())
         releases=get(CATALOG)
-        if not isinstance(releases,list):raise UpdateError('network','发布源返回格式不正确')
+        if not isinstance(releases,list):raise UpdateError('network','A fonte de versões retornou um formato inválido')
         # Some unauthenticated GitHub list responses omit assets. Fetch only
         # matching formal releases, newest first, bounded to three detail calls.
         missing=[entry for entry in releases if isinstance(entry,dict) and not entry.get('assets')
@@ -200,7 +200,7 @@ class Controller:
         for entry in sorted(missing,key=lambda item:version_key(item['tag_name'][len(PREFIX):]),reverse=True)[:3]:
             detail=get(f'https://api.github.com/repos/{REPOSITORY}/releases/{entry["id"]}')
             if not isinstance(detail,dict) or detail.get('id')!=entry['id'] or detail.get('tag_name')!=entry['tag_name']:
-                raise UpdateError('network','发布详情与目录不一致')
+                raise UpdateError('network','Os detalhes da versão não correspondem ao índice')
             releases[releases.index(entry)]=detail
         return releases
 
@@ -226,9 +226,9 @@ class Controller:
                 'job':dict(self.job) if self.job else None}
 
     def start(self,operation):
-        if not isinstance(operation,str) or operation not in {'check','download','validate','install','rollback'}: raise UpdateError('validation','不支持的更新操作')
-        if operation=='install' and not self.ready: raise UpdateError('validation','请先让升级引擎完成软件包验证')
-        if not self.lock.acquire(blocking=False): raise UpdateError('busy','另一项更新任务正在进行')
+        if not isinstance(operation,str) or operation not in {'check','download','validate','install','rollback'}: raise UpdateError('validation','Operação de atualização não compatível')
+        if operation=='install' and not self.ready: raise UpdateError('validation','Aguarde o mecanismo de atualização validar o pacote primeiro')
+        if not self.lock.acquire(blocking=False): raise UpdateError('busy','Já há outra atualização em andamento')
         self.busy=True
         self.job={'id':uuid.uuid4().hex,'operation':operation,'phase':'queued','started_at':time.time(),'error':None}
         self.save()
@@ -236,12 +236,12 @@ class Controller:
         return self.view()
 
     def upload(self,source):
-        if not self.lock.acquire(blocking=False): raise UpdateError('busy','另一项更新任务正在进行')
+        if not self.lock.acquire(blocking=False): raise UpdateError('busy','Já há outra atualização em andamento')
         self.busy=True; self.ready=False
         self.job={'id':uuid.uuid4().hex,'operation':'upload','phase':'uploading','started_at':time.time(),'error':None}; self.save()
         try: self.stage(source)
         except Exception:
-            self.save(phase='failed',error='更新包格式无效'); self.busy=False; self.lock.release(); raise
+            self.save(phase='failed',error='Formato do pacote de atualização inválido'); self.busy=False; self.lock.release(); raise
         threading.Thread(target=self.run,args=('validate',),daemon=True).start()
         return self.view()
 
@@ -261,20 +261,20 @@ class Controller:
 
     def fingerprint(self,path):
         entries=sorted(path.iterdir())
-        if len(entries)!=4: raise UpdateError('cache','缓存文件发生变化，请重新上传或下载')
+        if len(entries)!=4: raise UpdateError('cache','Os arquivos em cache foram alterados; envie ou baixe novamente')
         digest=hashlib.sha256()
         for file in entries:
-            if not file.is_file() or file.is_symlink() or file.stat().st_nlink!=1: raise UpdateError('cache','缓存文件类型不正确')
+            if not file.is_file() or file.is_symlink() or file.stat().st_nlink!=1: raise UpdateError('cache','Tipo de arquivo em cache inválido')
             digest.update(file.name.encode())
             with file.open('rb') as stream:
                 while chunk:=stream.read(1024*1024): digest.update(chunk)
         return digest.hexdigest()
 
     def validate(self,apply=False):
-        if not self.staged or not valid_version(self.staged.get('version')): raise UpdateError('validation','请先下载或上传软件包')
+        if not self.staged or not valid_version(self.staged.get('version')): raise UpdateError('validation','Baixe ou envie o pacote de software primeiro')
         directory=self.root/'cache'/self.staged['version']
         if self.fingerprint(directory)!=self.staged['fingerprint']:
-            self.ready=False; raise UpdateError('cache','缓存校验值发生变化，请重新下载或上传')
+            self.ready=False; raise UpdateError('cache','O checksum do cache foi alterado; baixe ou envie novamente')
         self.ready=False; self.save(phase='preflight'); self.preflight()
         self.save(phase='verifying' if not apply else 'applying',version=self.staged['version'])
         options={'from_dir':str(directory)}
@@ -289,9 +289,9 @@ class Controller:
 
     def finish_result(self,result):
         outcome=result.get('outcome')
-        if outcome=='rolled_back': self.save(phase='rolled_back',result=result,error=result.get('reason','更新失败，已恢复旧版'))
+        if outcome=='rolled_back': self.save(phase='rolled_back',result=result,error=result.get('reason','A atualização falhou; a versão anterior foi restaurada'))
         elif outcome in {'applied','already_current'}: self.save(phase='completed',result=result)
-        else: raise UpdateError('engine',str(result.get('reason','升级引擎未确认操作成功'))[:500])
+        else: raise UpdateError('engine',str(result.get('reason','O mecanismo de atualização não confirmou o sucesso da operação'))[:500])
 
     def progress(self,progress):
         if progress.get('component')=='software':
@@ -307,7 +307,7 @@ class Controller:
                 try:fcntl.flock(descriptor,fcntl.LOCK_EX|fcntl.LOCK_NB);break
                 except BlockingIOError:
                     if deadline is not None and time.monotonic()>deadline:
-                        raise UpdateError('preflight','语音动作尚未结束，请等待停稳后重试')
+                        raise UpdateError('preflight','A ação de voz ainda não terminou; aguarde até parar e tente novamente')
                     time.sleep(.05)
             self.motion_descriptor=descriptor
         except Exception:os.close(descriptor);raise
@@ -328,11 +328,11 @@ class Controller:
                 self.source_state='no_release' if not self.candidate else 'up_to_date' if installed and version_key(installed)>=version_key(self.candidate['version']) else 'available'
                 self.save(phase='completed',source_state=self.source_state)
             elif operation=='download':
-                if not self.candidate: raise UpdateError('validation','请先检查更新')
+                if not self.candidate: raise UpdateError('validation','Verifique se há atualizações primeiro')
                 self.save(phase='downloading'); self.ready=False
                 with tempfile.TemporaryFile(dir=self.root) as stream:
                     size=self.fetcher(self.candidate['url'],stream,MAX_OUTER)
-                    if size!=self.candidate['size']: raise UpdateError('network','下载大小与发布元信息不一致')
+                    if size!=self.candidate['size']: raise UpdateError('network','O tamanho do download não corresponde aos metadados da versão')
                     stream.seek(0); self.stage(stream)
                 self.marker.parent.mkdir(parents=True,exist_ok=True,mode=0o755)
                 self.marker.write_text(self.job['id']); os.chmod(self.marker,0o644)
@@ -346,17 +346,17 @@ class Controller:
                 self.dispatched=False
         except UpdateError as error:
             if self.dispatched:
-                self.save(phase='recovering',error='引擎连接中断，正在读取持久任务结果');self.recover(release=False)
+                self.save(phase='recovering',error='Conexão com o mecanismo interrompida; lendo o resultado persistido da tarefa');self.recover(release=False)
             elif operation in {'download','validate'} and error.code=='preflight': self.save(phase='waiting_validation',error=str(error))
             else:
                 if operation=='check': self.source_state='network_error'
                 self.save(phase='failed',error=str(error)[:500],code=error.code)
         except Exception:
             if self.dispatched:
-                self.save(phase='recovering',error='引擎连接中断，正在读取持久任务结果');self.recover(release=False)
+                self.save(phase='recovering',error='Conexão com o mecanismo interrompida; lendo o resultado persistido da tarefa');self.recover(release=False)
             else:
                 if operation=='check': self.source_state='network_error'
-                self.save(phase='failed',error='更新服务未完成操作；请检查服务和网络后重试',code='service')
+                self.save(phase='failed',error='O serviço de atualização não concluiu a operação; confira o serviço e a rede e tente novamente',code='service')
         finally:
             self.refresh();self.leave_motion_gate();self.marker.unlink(missing_ok=True);self.busy=False;self.lock.release()
 
@@ -374,10 +374,10 @@ class Controller:
                     if attempt.get('at',0)>=int(self.job['started_at']):
                         kind=(attempt.get('outcome') or {}).get('kind')
                         if kind=='success': self.save(phase='completed',result={'outcome':'applied','to':attempt.get('to')},engine_attempt=attempt)
-                        elif kind=='rolled_back': self.save(phase='rolled_back',error=attempt['outcome'].get('reason','已恢复旧版'),engine_attempt=attempt)
-                        elif kind=='aborted': self.save(phase='failed',error=attempt['outcome'].get('reason','引擎拒绝更新'),engine_attempt=attempt)
-                        else: self.save(phase='interrupted',error='引擎任务已结束，请核对记录后重新验证',engine_attempt=attempt)
-                    else: self.save(phase='interrupted',error='更新请求曾中断；引擎当前空闲，未发现本次完成记录，请重新验证')
+                        elif kind=='rolled_back': self.save(phase='rolled_back',error=attempt['outcome'].get('reason','A versão anterior foi restaurada'),engine_attempt=attempt)
+                        elif kind=='aborted': self.save(phase='failed',error=attempt['outcome'].get('reason','O mecanismo recusou a atualização'),engine_attempt=attempt)
+                        else: self.save(phase='interrupted',error='A tarefa do mecanismo terminou; confira o registro e valide novamente',engine_attempt=attempt)
+                    else: self.save(phase='interrupted',error='A solicitação de atualização foi interrompida; o mecanismo está ocioso e não há registro de conclusão desta tarefa. Valide novamente.')
                     return
                 time.sleep(1)
         finally:

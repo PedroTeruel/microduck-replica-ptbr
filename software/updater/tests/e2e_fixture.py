@@ -37,11 +37,11 @@ class Fixture:
         self.engine=FixtureEngine()
         self.controller=Controller(self.root,self.engine,self.preflight,self.catalog,marker=marker,fetcher=self.download)
     def preflight(self):
-        if self.waiting:raise UpdateError('preflight','测试鸭子尚未停稳')
+        if self.waiting:raise UpdateError('preflight','O robô de teste ainda não parou')
     def catalog(self):
         if self.no_release:return []
-        if not self.package:raise UpdateError('network','本地发布源连接失败')
-        return [{'tag_name':'microduck-software-v2026.10.27','draft':False,'prerelease':False,'body':'本地语音坐下/站起与网页更新测试',
+        if not self.package:raise UpdateError('network','Falha ao conectar à fonte local de versões')
+        return [{'tag_name':'microduck-software-v2026.10.27','draft':False,'prerelease':False,'body':'Teste local dos comandos de voz para sentar/levantar e da atualização Web',
             'assets':[{'name':'2026.10.27.software-update.tar','size':self.package.stat().st_size,
             'browser_download_url':'https://github.com/fanhao375/microduck-replica/releases/download/microduck-software-v2026.10.27/2026.10.27.software-update.tar'}]}]
     def download(self,url,stream,maximum):

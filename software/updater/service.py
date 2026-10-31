@@ -44,20 +44,20 @@ class Server:
         try:
             connection.settimeout(15)
             uid=struct.unpack('3i',connection.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))[1]
-            if uid not in self.allowed_uids: raise UpdateError('unauthorized','本机用户无权操作更新服务')
+            if uid not in self.allowed_uids: raise UpdateError('unauthorized','Este usuário local não tem permissão para operar o serviço de atualização')
             with connection.makefile('rb') as reader:
                 raw=reader.readline(8193)
-                if len(raw)>8192 or not raw.endswith(b'\n'): raise UpdateError('validation','更新请求过大')
+                if len(raw)>8192 or not raw.endswith(b'\n'): raise UpdateError('validation','A solicitação de atualização é grande demais')
                 request=json.loads(raw)
-                if not isinstance(request,dict): raise UpdateError('validation','更新请求必须为对象')
+                if not isinstance(request,dict): raise UpdateError('validation','A solicitação de atualização precisa ser um objeto')
                 op=request.get('op')
                 if op=='status' and set(request)=={'op'}:
                     if not self.controller.busy: self.controller.refresh()
                     result=self.controller.view()
                 elif op=='upload' and set(request)=={'op','size'}:
                     size=request['size']
-                    if type(size) is not int or not 0<size<=MAX_OUTER: raise UpdateError('oversize','更新文件大小超限')
-                    if self.controller.busy: raise UpdateError('busy','另一项更新任务正在进行')
+                    if type(size) is not int or not 0<size<=MAX_OUTER: raise UpdateError('oversize','O arquivo de atualização excede o tamanho permitido')
+                    if self.controller.busy: raise UpdateError('busy','Já há outra atualização em andamento')
                     # At most eight bounded temporary streams, root-private, with
                     # a short inactivity timeout and a total upload ceiling.
                     import time
@@ -66,15 +66,15 @@ class Server:
                         remaining=size
                         while remaining:
                             block=reader.read(min(1024*1024,remaining))
-                            if not block or time.monotonic()>deadline: raise UpdateError('upload','上传中断或超时')
+                            if not block or time.monotonic()>deadline: raise UpdateError('upload','O envio foi interrompido ou excedeu o tempo limite')
                             stream.write(block); remaining-=len(block)
                         stream.seek(0); result=self.controller.upload(stream)
                 elif set(request)=={'op'}: result=self.controller.start(op)
-                else: raise UpdateError('validation','更新请求包含不支持的字段')
+                else: raise UpdateError('validation','A solicitação de atualização contém campos não compatíveis')
                 connection.sendall(json.dumps({'ok':True,**result},ensure_ascii=False).encode()+b'\n')
         except (OSError,ValueError,UpdateError) as error:
             try: connection.sendall(json.dumps({'ok':False,'code':getattr(error,'code','service'),
-                'error':str(error)[:500] if isinstance(error,UpdateError) else '更新服务请求未完成'},ensure_ascii=False).encode()+b'\n')
+                'error':str(error)[:500] if isinstance(error,UpdateError) else 'A solicitação ao serviço de atualização não foi concluída'},ensure_ascii=False).encode()+b'\n')
             except OSError: pass
         finally:
             connection.close()
