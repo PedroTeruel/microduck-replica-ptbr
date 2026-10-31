@@ -1,41 +1,36 @@
-# Projeto de treinamentoFonte e 维护位置
+# Origem do projeto de treinamento e manutenção
 
-本目录是普通源码目录，随 `microduck-replica` 一起克隆和下载，不是 Git 子模块。
-后续 HD1910 训练工作维护在这里；原 `fanhao375/microduck_rl` 的 HD1910 分支保留作历史来源。
+Este é um diretório comum de código-fonte, distribuído junto com `microduck-replica`; não é um submódulo Git. O trabalho futuro de treinamento HD1910 será mantido aqui. A branch HD1910 original de `fanhao375/microduck_rl` permanece como referência histórica.
 
-## 导入Versão
+## Versão importada
 
-2026-09-24 从以Inferior固定Versão导入已跟踪 de Completo源码快照：
+Em 24/09/2026, foi importado um snapshot completo e rastreado do código-fonte na versão fixa abaixo:
 
-- 来源：[fanhao375/microduck_rl @ d9e1926](https://github.com/fanhao375/microduck_rl/tree/d9e1926c5220a0eb79fa5aab9df7b336f8e9a226)
-- 完整提交：`d9e1926c5220a0eb79fa5aab9df7b336f8e9a226`
-- Pollen Robotics 上游基线：`d424a0c899f6b33cbd3daeb279913134349c0b63`；在其上增加 HD1910 任务、M6 参数引用、初始化适配和测试。
-- 导入方式：该提交的 `git archive` 源码快照；不包含 `.git`、虚拟环境、训练日志或检查点。
-- 原 README 原样保存为 [README.upstream.md](README.upstream.md)。迁移调整本Diretório de Instruções e 入口链接，
-  并修正 HF Jobs  de 打包根Diretório，让归档仅包含Projeto de treinamento；补充本地打包回归Teste。
-  训练/执行器逻辑、依赖锁Arquivo、Configuração、原有Testee几何资产保持该VersãoConteúdo。
+- Origem: [fanhao375/microduck_rl @ d9e1926](https://github.com/fanhao375/microduck_rl/tree/d9e1926c5220a0eb79fa5aab9df7b336f8e9a226)
+- Commit completo: `d9e1926c5220a0eb79fa5aab9df7b336f8e9a226`
+- Base upstream de Pollen Robotics: `d424a0c899f6b33cbd3daeb279913134349c0b63`; foram adicionados acima dela a tarefa HD1910, a referência aos parâmetros M6, a adaptação da inicialização e testes.
+- Método de importação: snapshot de código por `git archive`; não inclui `.git`, ambiente virtual, logs de treinamento ou checkpoints.
+- O README original foi preservado em [README.upstream.md](README.upstream.md). A migração ajustou as instruções deste diretório e os links de entrada, corrigiu a raiz de empacotamento do HF Jobs para incluir somente o projeto de treinamento e adicionou um teste de regressão do empacotamento local. A lógica de treinamento/atuador, o lock de dependências, as configurações, os testes existentes e os assets geométricos correspondem à versão importada.
 
-这份快照 em  de  Microduck 几何、质量惯量e关节约定来自训练项目，不代表飞特复刻实机已Concluído测量。
+A geometria Microduck, massa, inércia e convenções das articulações deste snapshot vêm do projeto de treinamento; não representam medições concluídas do robô físico com servos Feetech.
 
-## Autor e Licença
+## Autoria e licenças
 
-| Conteúdo | Fonte | Licença |
+| Conteúdo | Origem | Licença |
 |---|---|---|
-| 训练框架、原有任务、工具及文档 | [Pollen Robotics / microduck_rl](https://github.com/pollen-robotics/microduck_rl) | [Apache-2.0](LICENSE) |
-| Microduck 3D Modelo e 网格 | 同Superior | upstream README  de  CC BY-SA-NC 声明；本仓按 CC BY-NC-SA 4.0 PreservadoAtribuição、非商用 e 相同方式共享条件，见 [NOTICE](../../NOTICE.md#Licença名称Instruções) |
-| `1910_m6.json` 舵机动力学参数与配套配置参考 | [LuwuDynamics / xgoduck_rl](https://github.com/LuwuDynamics/xgoduck_rl) | [Apache-2.0 副本](src/mjlab_microduck/robot/hd1910/LICENSE) |
-| BAM 执行器模型与辨识库（通过依赖安装） | [Rhoban / BAM](https://github.com/Rhoban/bam) | Apache-2.0；锁文件固定 `62bd8ce12154340be97e06f7f41a0ca8f116d967` |
-| HD1910 任务、状态初始化适配、相应Teste e 本Diretório新增文档 | 本复刻项目 | Apache-2.0 |
+| Mecanismo de treinamento, tarefas originais, ferramentas e documentação | [Pollen Robotics / microduck_rl](https://github.com/pollen-robotics/microduck_rl) | [Apache-2.0](LICENSE) |
+| Modelo 3D e malhas Microduck | Mesmo upstream | O README upstream declara CC BY-SA-NC; este repositório preserva a atribuição e as condições de uso não comercial e compartilhamento pela mesma licença conforme CC BY-NC-SA 4.0. Consulte [NOTICE](../../NOTICE.md#licença) |
+| Parâmetros de dinâmica do servo `1910_m6.json` e referência de configuração | [LuwuDynamics / xgoduck_rl](https://github.com/LuwuDynamics/xgoduck_rl) | Cópia de [Apache-2.0](src/mjlab_microduck/robot/hd1910/LICENSE) |
+| Modelo de atuador BAM e biblioteca de identificação, instalados como dependência | [Rhoban / BAM](https://github.com/Rhoban/bam) | Apache-2.0; lock fixado em `62bd8ce12154340be97e06f7f41a0ca8f116d967` |
+| Tarefa HD1910, adaptação da inicialização de estado, testes correspondentes e documentação criada neste diretório | Este projeto de réplica | Apache-2.0 |
 
-根Diretório对este projeto其他文档 de  CC Licença不覆盖本训练Diretório de  Apache 文档；3D ModeloLicença单独Preservado。
-依赖库继续遵循各自Licença。
+A licença CC da documentação geral da raiz não se aplica à documentação Apache deste diretório. A licença do modelo 3D permanece separada; as bibliotecas dependentes continuam sob suas próprias licenças.
 
-## Parâmetrosoriginal出处
+## Origem dos parâmetros
 
-- LuwuDynamics 固定提交：`326d77a1122870bdefa2c36403937502c958e69c`
-- 原路径：`src/mjlab_microduck/robot/xgoduck/params/1910_m6.json`
-- 本目录路径：[`src/mjlab_microduck/robot/hd1910/1910_m6.json`](src/mjlab_microduck/robot/hd1910/1910_m6.json)
-- 原文件 SHA-256：`ef2d51adfb1cc0831b9b02ca19aa9176fceecdf725148d084378d7d9a64afceb`
+- Commit fixo da LuwuDynamics: `326d77a1122870bdefa2c36403937502c958e69c`
+- Caminho original: `src/mjlab_microduck/robot/xgoduck/params/1910_m6.json`
+- Caminho neste repositório: [`src/mjlab_microduck/robot/hd1910/1910_m6.json`](src/mjlab_microduck/robot/hd1910/1910_m6.json)
+- SHA-256 do arquivo original: `ef2d51adfb1cc0831b9b02ca19aa9176fceecdf725148d084378d7d9a64afceb`
 
-Parâmetros按原ArquivoPreservado，不是este projeto自行辨识 de Resultado。详细引用eConfiguração边界见
-[ParâmetrosFonte](src/mjlab_microduck/robot/hd1910/README.md)。以后基于这些Parâmetros训练自己 de 策略，仍PreservadoParâmetrosAutorAtribuição。
+Os parâmetros foram preservados do arquivo original e não são resultado de identificação feita por este projeto. Consulte [Origem dos parâmetros](src/mjlab_microduck/robot/hd1910/README.md) para as referências e limites de configuração. Se você treinar suas próprias políticas com esses parâmetros, mantenha a atribuição ao autor dos parâmetros.
