@@ -1,54 +1,54 @@
-#  e  kissqy 训练 em 控 de 对比 · 2026-10-23
+# Comparação do Training Studio de kissqy · 23/10/2026
 
-参考仓库：[kissqy/Microduck-kissqy](https://github.com/kissqy/Microduck-kissqy)，本次核对提交 `525a215a19397767a073b782f57e97cf53683761`。检查了公开训练中控页面、说明和实际后端源码；没有运行对方训练程序，也没有将其代码并入本项目。
+Projeto de referência: [kissqy/Microduck-kissqy](https://github.com/kissqy/Microduck-kissqy), revisado no commit `525a215a19397767a073b782f57e97cf53683761`. Foram examinados o painel público de controle do treinamento, a documentação e o código-fonte real do backend. O programa de treinamento do outro projeto não foi executado e nenhum código foi incorporado a este repositório.
 
-## Atual能用到哪一步
+## O que já está disponível aqui
 
-我们 de 本机演示流程已经实际por meio de：新建实验、短试跑、正式演示、暂停/继续/停止、持久记录、选定Verificação点评估、Baixar e 续训、实验比较。Linux 进程Controle经过真实 CPU 子进程e信号Teste。
+O fluxo local de demonstração foi exercitado: criar experimento, teste curto, demonstração de treinamento, pausar/retomar/encerrar, persistir registros, avaliar checkpoint selecionado, baixar e continuar, comparar experimentos. O controle de processos Linux foi verificado com subprocessos reais de CPU e sinais do sistema.
 
-真实训练模式已在本机 WSL2 / RTX 5060 Ti Concluído 64 环境、5 轮训练、视频评估、ONNX 导出 e  PT/ONNX 推理一致性核对，详见 [验收记录](verification.md)。Usuáriopode先在本机重复短试跑；目标云 GPU、长训练e真机仍未验收。演示Modelo、指标e回放不能证明策略已经学会动作。
+O modo de treinamento real foi executado no WSL2 local com RTX 5060 Ti: 64 ambientes, 5 iterações, avaliação em vídeo, exportação ONNX e comparação da inferência PT/ONNX. Consulte o [registro de validação](verification.md). GPU em nuvem de destino, treinamento longo e robô físico ainda não foram validados. Modelos, métricas e reproduções de demonstração não provam que uma política aprendeu a ação.
 
-## 主要差距
+## Principais diferenças
 
-| 优先级 | kissqy  de 实现 | 我们Atual状态 | 应补 de 工作 |
+| Prioridade | Implementação de kissqy | Estado atual deste projeto | Trabalho necessário |
 |---|---|---|---|
-| P0 真实训练Validação | 公开记录了冻结引擎 de  CPU 物理步进、PPO Atualização e  PT/ONNX 一致性Validação；并明确Preservado GPU 长训 e 真机验收限制 | 本机 GPU  de  64 环境、5 轮 e 产物核对已por meio de；缺目标云 GPU Validação | 在 GPULab 重复训练 → 保存 PT → 策略回放 → 导出 ONNX → 同输入推理比对，保存证据 |
-| P1 云端Conexão | PáginaConfiguração SSH、部署环境、建立端口转发；远端独立后台Serviço保存队列 e 成果 | Usuário需手工准备依赖、ExecuçãoServiçoe SSH 转发；Web关闭可继续，但Serviço关闭会停止它拥有 de 任务 | 增加Conexão引导 e 可重连 de 执行Serviço，再做Página化环境准备 |
-| P1 真实动作观察 | 能从正在训练 de 指定环境Leitura刚体姿态，也能Inicialização PT/ONNX  de 交互式物理评估 | 三维区域是 CAD；策略效果在停止训练后por meio de 250 步Verificação点评估视频查看 | 分清Modelo外观、训练现场、Verificação点评估；先补可交互策略评估，再增加有开销Controle de 训练现场采样 |
-| P1 导出Validação | ONNX checker、Runtime 推理、Modelo e Firmware de 关节/观测/动作/频率 e 标定约定 | 已调用现有归一化导出器，打包Fontee评估记录；本次样本por meio de独立推理核对，尚未内置每次导出后 de 推理VerificaçãoeCompleto部署兼容Verificação | 增加导出ValidaçãoResultadoe具体Falha原因；可Baixar不等于可部署 |
-| P2 批次实验 | 队列保存入队时Parâmetros快照、顺序执行、Falha处理；界面列出 14 类动作 e  35 种配方 | 单个活动任务、两个 HD1910 配方、五项常用进阶数值 | 先做复制实验 e 顺序队列，再逐个扩展经过Validação de 动作配方 |
-| P2 训练诊断 | GPU/显存/温度、预计剩余、分项奖励 e 课程信息 | atualmente以迭代、奖励、回合长度、采样速度e日志为主 | 显示真实资源Dados e 分项奖励，Instruções停滞或Falha原因；时间估算须标明估计 |
+| P0: validação de treinamento real | Registros públicos de simulação física em CPU com mecanismo fixado, atualização PPO e verificação de consistência PT/ONNX; limitações de treinamento longo em GPU e testes físicos são declaradas | Teste local em GPU com 64 ambientes e 5 iterações e artefatos verificados; falta validação na GPU de destino | Repetir no laboratório de GPU: treinar, salvar PT, reproduzir a política, exportar ONNX e comparar inferências com entradas iguais; guardar as evidências |
+| P1: conexão com a nuvem | Configuração SSH na página, preparação do ambiente, encaminhamento de porta e serviço remoto independente que preserva fila e resultados | O usuário prepara dependências, inicia o serviço e encaminha SSH manualmente. Fechar o navegador não interrompe a tarefa, mas fechar o serviço encerra os processos dele | Criar orientação de conexão e serviço de execução reconectável; depois automatizar a preparação do ambiente pela página |
+| P1: visualização da ação real | Lê a postura rígida de um ambiente específico durante o treinamento e inicia avaliações físicas interativas em PT/ONNX | A área 3D mostra o CAD; o resultado da política é visto em vídeo de avaliação de 250 passos depois de parar o treinamento | Distinguir visualização do modelo, treinamento ao vivo e avaliação de checkpoint; primeiro adicionar avaliação interativa, depois amostragem ao vivo controlada, considerando o custo |
+| P1: validação de exportação | ONNX checker e inferência em runtime; verifica modelo e convenções de articulações, observações, ações, frequência e calibração do firmware | Usa o exportador existente com normalização e inclui origem e registros de avaliação. A inferência foi comparada separadamente nesta amostra, mas ainda não é verificada automaticamente a cada exportação nem foi comprovada a compatibilidade completa de implantação | Incluir o resultado da validação pós-exportação e causas específicas de falha; poder baixar não significa que o modelo está pronto para implantação |
+| P2: experimentos em lote | Fila preserva os parâmetros ao enfileirar, executa sequencialmente e trata falhas; página lista 14 tipos de ação e 35 receitas | Uma tarefa ativa por vez, duas receitas HD1910 e cinco parâmetros avançados comuns | Primeiro permitir copiar experimentos e criar uma fila sequencial; depois ampliar as receitas uma a uma, após validação |
+| P2: diagnóstico do treinamento | GPU, memória de vídeo, temperatura, tempo restante estimado, recompensas por componente e informações do currículo | Principalmente iterações, recompensa, duração de episódios, taxa de amostragem e logs | Exibir recursos reais e recompensas por componente, orientar sobre estagnação e causas de falha; estimativas de tempo devem ser identificadas como estimativas |
 
-## 应Preservado de 设计
+## Decisões de projeto a preservar
 
-- 默认简单、进阶折叠。对方将Serviço器、队列、物理Parâmetros、课程等集 em 在长Página，功能丰富；我们 de 新Usuário入口pode更专注。这个判断来自Página比较，不是Usuário可用性Teste。
--  e 机器人 em 控相同 de 浅灰外壳、鸭子标识、按钮e移动导航，减少两套Ferramentas之间 de 学习成本。
-- 固定短试跑e学习率、种子、档案 de Configuração匹配Verificação。
-- 真实训练进程暂停/继续。对方 de 暂停队列允许Atual训练继续；另一组暂停/恢复usado para仿真 viewer，不能把这些操作当作同一种能力。
-- 实验对比、选定Verificação点 de 评估 e 续训、明确 de 演示标记e产物Fonte。
+- Manter padrões simples e opções avançadas recolhidas. O serviço de kissqy reúne servidor, fila, parâmetros físicos e currículo em uma página longa, com muitos recursos; a entrada para novos usuários deste projeto pode ser mais focada. Essa avaliação vem da comparação das páginas, não de um estudo de usabilidade.
+- Compartilhar a aparência clara, identidade do pato, botões e navegação móvel do Studio do robô para reduzir o custo de aprendizado entre ferramentas.
+- Manter teste curto fixo e conferir parâmetros de aprendizado, semente e perfil na correspondência de configuração.
+- Controlar pausa/retomada do processo de treinamento real. A pausa na fila de kissqy permite que o treinamento atual continue; outro grupo de controles pausa e retoma o visualizador de simulação. Essas operações não devem ser tratadas como a mesma capacidade.
+- Preservar comparação de experimentos, avaliação e retomada a partir do checkpoint selecionado, identificação clara de demonstrações e origem dos artefatos.
 
-## 实施顺序
+## Ordem de implementação
 
-1. 先Concluído目标 GPU  de 真实小任务闭环，定位环境 e 引擎接口问题。
-2. 再补云端Conexãoe交互式策略评估，让Usuário能看到自己训练出来 de 动作。
-3. 完善导出后Validação、Modelo e Firmware兼容Verificação。
-4. 增加队列、诊断e更多经Validação de 配方；Preservado默认简单 de 界面。
+1. Concluir o fluxo real de uma tarefa curta na GPU de destino e resolver problemas do ambiente e da interface do mecanismo.
+2. Depois, melhorar a conexão remota e a avaliação interativa da política para que o usuário veja a ação que treinou.
+3. Completar a validação pós-exportação e a compatibilidade entre modelo e firmware.
+4. Adicionar filas, diagnósticos e novas receitas validadas, preservando a simplicidade inicial da interface.
 
-此次对比没有Inicialização付费云资源、修改Imagem、复制对方代码或承诺训练收敛。参考仓库 de 原创部分声明Pessoal e não comercialLicença，后续如复用其代码需单独核对Licença；本轮只分析交互e实现思路。
+Esta comparação não iniciou recursos de nuvem pagos, não modificou imagens de sistema, não copiou código do outro projeto e não promete convergência do treinamento. Partes originais do repositório de referência são declaradas sob licença pessoal e não comercial; qualquer reutilização futura de código exige revisão específica da licença. Esta rodada analisou somente interações e ideias de implementação.
 
-### 后续实现Atualização
+### Atualizações implementadas depois
 
-同日后续已增加独立动作实验室、第三个 HD1910 单脚平衡实验配方，eOficial V8 / kissqy V167 各 10 项预训练ModeloFonteDiretório。Diretório提供Versão、Hardware e 获取链接，不代表已导入本地评估或续训。新建训练仍从零开始；Comunidade自有权重Preservado原发布方 de Licença，没有打包进este projeto。
+Ainda em 23/10 foi adicionada a página independente do Laboratório de Ações, a terceira receita experimental HD1910 de equilíbrio em uma perna e o catálogo de 10 modelos oficiais V8 e 10 modelos kissqy V167. O catálogo informa versão, hardware e links de obtenção, sem integrar avaliação local nem retomada. Novos treinamentos continuam começando do zero. Os pesos comunitários permanecem com seus publicadores, conforme as licenças, e não foram incluídos no pacote deste projeto.
 
-训练详情已增加真实 GPU 型号、利用率、温度、显存，CPU 型号、利用率e可用温度、内存读数，约 3 秒刷新。WSL 未暴露 de  CPU 温度显示不可读。以Superior是执行端Atual整体状态；分项奖励、课程、预计Concluído时间 e Histórico资源曲线仍未实现。远端Conexão管理e自动Instalação也仍需另外实现。
+Os detalhes do treinamento passaram a mostrar modelo, uso, temperatura e memória da GPU, modelo, uso e temperatura disponível da CPU e memória RAM, com atualização aproximada a cada três segundos. A temperatura da CPU aparece como indisponível quando não é exposta pelo WSL. Os valores mostram o estado geral atual do executor. Recompensas por componente, currículo, previsão de conclusão, histórico de recursos, gerenciamento remoto de conexão e instalação automática ainda não estão implementados.
 
-## 代码 e 文档依据
+## Referências de código e documentação
 
-- [项目训练说明](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/README.md)
-- [真实训练、评估与导出](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/runtime_adapter.py)
-- [训练现场采样](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/live_view.py)
-- [SSH 部署与连接](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/remote_ssh.py)
-- [独立远端服务](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/remote_server_boot.py)
-- [训练后台保活](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/durable_manager.py)
-- [队列快照与暂停语义](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/training_queue.py)
-- [公开验证记录与未验证范围](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/docs/Verification.md)
+- [Descrição do projeto de treinamento](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/README.md)
+- [Treinamento, avaliação e exportação reais](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/runtime_adapter.py)
+- [Amostragem durante o treinamento](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/live_view.py)
+- [Implantação e conexão por SSH](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/remote_ssh.py)
+- [Serviço remoto independente](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/remote_server_boot.py)
+- [Persistência do processo de treinamento](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/durable_manager.py)
+- [Snapshots da fila e semântica de pausa](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/training/training_queue.py)
+- [Registros públicos de validação e limites ainda não verificados](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/training-console/docs/Verification.md)
