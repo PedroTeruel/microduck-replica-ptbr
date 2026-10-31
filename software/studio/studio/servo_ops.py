@@ -1,22 +1,22 @@
-"""舵机页的全部操作：照搬 servo-web 的 server.py（同仓库 tools/servo-web v0.15.4，我们自己的代码，真机验证过）。
+"""Operações da página dos servos: adaptadas de server.py do servo-web (tools/servo-web v0.15.4 no mesmo repositório; código nosso, verificado em hardware real).
 
-搬过来的：
-- 扭矩开 / 关：开之前先把目标对准当前读数；
-- 拖滑块写目标；平滑 / 流式两种运动方式；目标回读、没收到的重发；「停」；
-- 官方姿势（零位 / 站 / 坐 / 折叠，折叠时膝只折 88°）；存的姿态（存、发、删进回收站）；
-- 中位校准：单颗 / 一键；先预览；探偏移符号；关扭矩回读确认；0x0B 不认就兜底写寄存器 31；补重力下垂；
-  收尾永远把目标写成当前读数；备份、撤销；校准后存的姿态跟着换算；
-- 扫描（已知 / 指定 / 全网 0–253）、导出寄存器 0–86、写寄存器（EEPROM 解锁写）、改 ID、重启 0x08、
-  sync_read 时序测试、方向 ±；
-- 灵动（头部随机小动作）：servo-web 是在网页里跑的，这里搬到后端线程里跑，页面关了也能停。
+Recursos adaptados:
+- Liga/desliga o torque: antes de ligar, alinha o alvo à leitura atual;
+- Grava alvos pelo controle deslizante; movimentos suaves ou em fluxo; leitura de retorno do alvo e reenvio se não houver resposta; “Parar”;
+- Posturas oficiais (zero/em pé/sentado/recolhido; joelhos flexionados somente 88° ao recolher); posturas salvas (salvar, executar e mover para a lixeira);
+- Calibração central: individual ou em lote; pré-visualização; detecta o sinal do offset; confirma torque desligado pela leitura de retorno; se 0x0B não for aceito, grava no registrador 31; compensa a queda por gravidade;
+  Sempre finaliza gravando a leitura atual como alvo; backup e desfazer; recalcula as posturas salvas após a calibração;
+- Varredura (conhecidos/especificados/todos de 0 a 253), exportação dos registradores 0–86, gravação de registrador (desbloqueia EEPROM), alteração de ID e reinicialização 0x08,
+  teste de temporização sync_read e orientação ±;
+- Animação (pequenos movimentos aleatórios da cabeça): no servo-web roda na página; aqui foi movida para uma thread do backend e pode ser interrompida mesmo ao fechar a página.
 
-Studio 改的（用户要求和方案审查）：
-- **卸力锁住**（session.latched）以后，上力、写目标、运动、校准、撤销、写寄存器、改 ID 一律拒绝，要人点「解除锁定」；
-- **校完自动保持**（用户：中位校准做完要立刻保持）：成功的那几颗走「对准再上力」；
-- **校准基准只用官方零位 2048**（用户：不用折叠）；
-- **上力的软硬跟主程序一样**（用户 10-19）：每条上力的路上，开扭矩之前先把 RAM 里的 P / D / 限力写成主程序上力时的
-  （参数文件，没有就 P5 · D0 · 限力 1000），写不进去不上力；见 MainGains、apply_gains；
-- 文件放在 Studio 的 state 目录（servo-calib/、servo-poses/）；模拟模式的校准备份放临时目录，不跟真舵机混。
+Alterações do Studio (pedidos do usuário e revisão do plano):
+- **Com a trava de torque ativa** (session.latched), rejeita habilitação de torque, gravação de alvo, movimento, calibração, desfazer, gravação de registrador e alteração de ID até alguém selecionar “Destravar”;
+- **Retém automaticamente após calibrar** (pedido do usuário: manter os servos logo após a calibração central): alinha e habilita o torque nos servos calibrados com sucesso;
+- **Usa somente o zero oficial 2048 como referência** (pedido do usuário: não usar a postura recolhida);
+- **Os ganhos ao habilitar torque são iguais aos do programa principal** (pedido de 19/10): antes de ligar o torque, grava na RAM P/D/limite de torque usados pelo programa principal
+  (arquivo de parâmetros; se não existir, P5 · D0 · limite 1000). Se não conseguir gravar, não habilita o torque; consulte MainGains e apply_gains;
+- Arquivos no diretório state do Studio (servo-calib/, servo-poses/); backups da calibração simulada ficam em diretório temporário, separados dos servos reais.
 """
 import json
 import math
@@ -28,48 +28,48 @@ import threading
 import time
 
 from .bus import feetech
-from .servo import IDS, Refused  # noqa: F401 —— Refused 放在 servo.py（会话的 op_begin 也要抛它），这里照旧导出
+from .servo import IDS, Refused  # noqa: F401 —— Refused fica em servo.py (op_begin da sessão também a lança); reexporta aqui por compatibilidade
 
-CALIB_TOLERANCE = 2      # 校准后读数离目标多少步算到位
-DROOP_TOLERANCE = 3      # 关扭矩那几毫秒关节垂了多少步以内就不补偿
-OFFSET_LIMIT = 2047      # 偏移寄存器 31 的安全量程（|偏移| ≤ 2047 几种编码理解都一致，超出不写）
-CALIB_BIG_DEG = 30       # 摆好的位置离目标差这么多度以上：页面再确认一次，日志单独列出来（不拦）
-FOLD_KNEE_SEND = 88 * math.pi / 180     # 发「折叠」时膝只折 88°：官方 90° 会让踝顶着大腿上的舵机
+CALIB_TOLERANCE = 2      # quantos passos a leitura após calibrar pode diferir do alvo
+DROOP_TOLERANCE = 3      # queda máxima em passos durante os poucos milissegundos com torque desligado para não compensar
+OFFSET_LIMIT = 2047      # faixa segura do registrador de offset 31 (|offset| ≤ 2047 em todas as codificações; não grava acima disso)
+CALIB_BIG_DEG = 30       # se a postura atual diferir do alvo por mais graus, a interface pede confirmação e o log registra separadamente (sem bloquear)
+FOLD_KNEE_SEND = 88 * math.pi / 180     # Ao executar “recolher”, flexiona os joelhos somente 88°; os 90° oficiais fazem os tornozelos baterem nos servos da coxa
 JOINT = {20: "left_hip_yaw", 21: "left_hip_roll", 22: "left_hip_pitch", 23: "left_knee", 24: "left_ankle",
          30: "neck_pitch", 31: "head_pitch", 32: "head_yaw", 33: "head_roll", 34: "mouth",
          10: "right_hip_yaw", 11: "right_hip_roll", 12: "right_hip_pitch", 13: "right_knee", 14: "right_ankle"}
-# 官方姿势：microduck_rl scene.xml 的 keyframe（跟 servo-web 同一份），弧度、模型约定，按舵机号。嘴只有零位带
+# Posturas oficiais: keyframes de microduck_rl scene.xml (iguais aos do servo-web), em radianos e seguindo o modelo, indexadas por ID do servo. A boca só tem posição zero
 OFFICIAL = {
-    "zero": ("零位", {i: 0.0 for i in IDS}),
-    "stand": ("站", {20: 0, 21: -0.0873, 22: -0.4579, 23: -0.0049, 24: 0.453, 30: 0.3491, 31: 0.3491, 32: 0, 33: 0,
+    "zero": ("Zero", {i: 0.0 for i in IDS}),
+    "stand": ("Em pé", {20: 0, 21: -0.0873, 22: -0.4579, 23: -0.0049, 24: 0.453, 30: 0.3491, 31: 0.3491, 32: 0, 33: 0,
                      10: 0, 11: 0.0873, 12: 0.4579, 13: 0.0049, 14: -0.453}),
-    "sit": ("坐", {20: 0, 21: 0, 22: -0.5236, 23: 1.0472, 24: 0, 30: 0.5, 31: 1.6, 32: 0, 33: 0,
+    "sit": ("Sentado", {20: 0, 21: 0, 22: -0.5236, 23: 1.0472, 24: 0, 30: 0.5, 31: 1.6, 32: 0, 33: 0,
                    10: 0, 11: 0, 12: 0.5236, 13: -1.0472, 14: 0}),
-    "fold": ("折叠", {20: 0, 21: 0, 22: 1.57, 23: 1.57, 24: 0, 30: 1, 31: 1, 32: 0, 33: 0,
+    "fold": ("Recolhido", {20: 0, 21: 0, 22: 1.57, 23: 1.57, 24: 0, 30: 1, 31: 1, 32: 0, 33: 0,
                       10: 0, 11: 0, 12: -1.57, 13: -1.57, 14: 0}),
 }
-# 写这些寄存器后果严重：页面标红并写明后果（审查 G3）
-DANGER = {5: "ID：改了会撞号，总线上只能接这一颗再改", 6: "波特率：改了就失联", 8: "应答级别：改成 0 写指令就不回包",
-          9: "最小角度限制", 11: "最大角度限制", 19: "卸载条件（保护开关）：关掉过热过流就不自动卸",
-          33: "运行模式：改成速度模式舵机会一直转", 40: "扭矩开关：用页面上的开关，别在这里写"}
+# Gravar estes registradores pode ter consequências graves; a interface os destaca em vermelho e explica o efeito (revisão G3)
+DANGER = {5: "ID: pode causar conflito; mantenha somente este servo no barramento ao alterar", 6: "Taxa de transmissão: alterar causa perda de conexão", 8: "Nível de resposta: com valor 0, comandos de gravação não respondem",
+          9: "Limite mínimo de ângulo", 11: "Limite máximo de ângulo", 19: "Condição de desativação (proteções): desativar superaquecimento/sobrecorrente impede o desligamento automático",
+          33: "Modo de operação: no modo de velocidade, o servo gira continuamente", 40: "Interruptor de torque: use o controle da interface, não grave por aqui"}
 DEG = 4096 / 360
-# 灵动：每个动作 [相对中心的度数, 秒]。32 yaw、33 roll、31 头 pitch、30 颈 pitch、34 嘴（正 = 张）。{} = 停住
+# Animação: cada movimento é [graus relativos ao centro, segundos]. 32 guinada, 33 rolagem, 31 inclinação da cabeça, 30 inclinação do pescoço, 34 boca (positivo = abrir). {} = parado
 GESTURES = [
-    (3, lambda s: [({33: 14 * s, 32: 8 * s}, 0.5), ({}, random.uniform(0.6, 1.4)), ({33: 0, 32: 0}, 0.6)]),           # 歪头
-    (3, lambda s: [({32: 30 * s, 33: -5 * s, 31: 4}, 0.6), ({}, random.uniform(0.8, 1.8)), ({32: 0, 33: 0, 31: 0}, 0.7)]),  # 看一边
-    (2, lambda s: [({32: -20}, 0.3), ({32: 20}, 0.38), ({32: -12}, 0.32), ({32: 0}, 0.35)]),                            # 摇头
-    (2, lambda s: [({31: 12}, 0.3), ({31: -7}, 0.34), ({31: 6}, 0.3), ({31: 0}, 0.35)]),                                # 点头
-    (2, lambda s: [({34: 16}, 0.22), ({34: 0}, 0.26), ({34: 13}, 0.22), ({34: 0}, 0.28)]),                              # 嘎嘎两下
-    (2, lambda s: [({33: 12 * s, 31: -8, 34: 9}, 0.55), ({}, random.uniform(0.5, 1.0)), ({34: 0}, 0.25), ({33: 0, 31: 0}, 0.6)]),  # 好奇
-    (2, lambda s: [({32: 18 * s, 31: 6}, 0.45), ({32: -18 * s, 31: 6}, 0.7), ({32: 0, 31: 0}, 0.5)]),                   # 扫视
-    (1, lambda s: [({33: 7, 32: 6}, 0.18), ({33: -7, 32: -6}, 0.2), ({33: 0, 32: 0}, 0.25)]),                           # 抖一下
+    (3, lambda s: [({33: 14 * s, 32: 8 * s}, 0.5), ({}, random.uniform(0.6, 1.4)), ({33: 0, 32: 0}, 0.6)]),           # inclina a cabeça
+    (3, lambda s: [({32: 30 * s, 33: -5 * s, 31: 4}, 0.6), ({}, random.uniform(0.8, 1.8)), ({32: 0, 33: 0, 31: 0}, 0.7)]),  # olha para o lado
+    (2, lambda s: [({32: -20}, 0.3), ({32: 20}, 0.38), ({32: -12}, 0.32), ({32: 0}, 0.35)]),                            # balança a cabeça
+    (2, lambda s: [({31: 12}, 0.3), ({31: -7}, 0.34), ({31: 6}, 0.3), ({31: 0}, 0.35)]),                                # faz que sim
+    (2, lambda s: [({34: 16}, 0.22), ({34: 0}, 0.26), ({34: 13}, 0.22), ({34: 0}, 0.28)]),                              # grasna duas vezes
+    (2, lambda s: [({33: 12 * s, 31: -8, 34: 9}, 0.55), ({}, random.uniform(0.5, 1.0)), ({34: 0}, 0.25), ({33: 0, 31: 0}, 0.6)]),  # curiosa
+    (2, lambda s: [({32: 18 * s, 31: 6}, 0.45), ({32: -18 * s, 31: 6}, 0.7), ({32: 0, 31: 0}, 0.5)]),                   # olha ao redor
+    (1, lambda s: [({33: 7, 32: 6}, 0.18), ({33: -7, 32: -6}, 0.2), ({33: 0, 32: 0}, 0.25)]),                           # dá uma sacudida
 ]
-CAT = {"运动": "总线", "寄存器": "总线", "方向": "校准", "姿态": "校准"}
+CAT = {"Movimento": "Barramento", "Registradores": "Barramento", "Orientações": "Calibração", "Posturas": "Calibração"}
 
 
 def enc_sm(v):
-    """符号-幅值编码：寄存器 31（偏移）、42（目标位置）、46（速度）都是 BIT15 当方向位，不是补码。
-    写 -5 要写 0x8005；写成 0xFFFB 舵机会理解成 -32763，然后满速撞限位。"""
+    """Codificação sinal-magnitude: nos registradores 31 (offset), 42 (posição-alvo) e 46 (velocidade), BIT15 é o bit de sinal; não é complemento de dois.
+    Para gravar -5, use 0x8005; com 0xFFFB, o servo interpreta -32763 e vai em velocidade máxima até o limite."""
     v = int(v)
     return (0x8000 | (-v & 0x7FFF)) if v < 0 else (v & 0x7FFF)
 
@@ -79,17 +79,17 @@ def fmt_off(v):
         return "?"
     if v < 0:
         return str(v)
-    return f"{feetech.sign15(v)}（原始{v}）" if v & 0x8000 else str(v)
+    return f"{feetech.sign15(v)}(bruto: {v})" if v & 0x8000 else str(v)
 
 
 def _ack(err):
-    """写指令的应答：0 = 正常；None = 没回包；别的 = 舵机状态位有报警。"""
-    return "✓" if err == 0 else ("（没应答）" if err is None else f"（状态 0x{err:02X}）")
+    """Resposta a um comando de gravação: 0 = normal; None = sem resposta; qualquer outro valor = alarme nos bits de status do servo."""
+    return "✓" if err == 0 else ("(sem resposta)" if err is None else f"(status 0x{err:02X})")
 
 
 def infer_offset_sign(before, after, d_off, slack=8):
-    """从一次校准反推偏移方向：读数从 before 变到 after，偏移变了 d_off。读数 = 原始 + s × 偏移，所以 after − before ≈ s × d_off
-    （中间关节可能又垂了几步，留 slack）。只有一个方向对得上、另一个明显对不上才算数；偏移变得太少分不清，回 None。"""
+    """Infere o sinal do offset após uma calibração: a leitura muda de before para after e o offset muda d_off. Como leitura = bruto + s × offset, after − before ≈ s × d_off
+    (a articulação pode ceder alguns passos nesse intervalo; mantém uma margem). Só aceita se um sinal corresponder e o outro claramente não; se o offset mudar pouco demais para distinguir, retorna None."""
     if before is None or after is None or d_off is None or abs(d_off) < 4:
         return None
     moved = after - before
@@ -101,9 +101,9 @@ def infer_offset_sign(before, after, d_off, slack=8):
 
 
 def parse_ids(text):
-    """「20-24,30-34,10-14」→ [20..24, 30..34, 10..14]。"""
+    """“20-24,30-34,10-14”→ [20..24, 30..34, 10..14]."""
     out = []
-    for part in str(text or "").replace("，", ",").split(","):
+    for part in str(text or "").replace(", ", ",").split(","):
         part = part.strip()
         if not part:
             continue
@@ -113,21 +113,21 @@ def parse_ids(text):
         else:
             out.append(int(part))
     if any(not 0 <= i <= 253 for i in out):
-        raise Refused("ID 要在 0–253 之间")
+        raise Refused("ID deve estar entre 0 e 253")
     return out
 
 
-# ---------------- 上力时的 P / D / 限力：跟主程序一样（用户 10-19） ----------------
-# 「P、D 那些应该跟主程序保持一致，也是默认 P5、D0、限力 1000」：Studio 给舵机上力时写的软硬，跟主程序（我们的 fork robotd）
-# 上力时写的一样，不用舵机 EEPROM 里的出厂值（P32 / D40，硬得多）。
-# 这样调舵机时的软硬跟走路时一样；以后「不卸力交接」主程序核对得过，也不用换 P（带载关节换 P 会塌一下）。
+# ---------------- P/D/limite de torque ao habilitar torque: iguais aos do programa principal (pedido de 19/10) ----------------
+# “P e D devem corresponder aos do programa principal; os padrões também são P5, D0 e limite 1000”: o Studio aplica os mesmos ganhos do nosso fork do robotd ao habilitar os servos
+# são os mesmos usados ao habilitar o torque; não usa os padrões da EEPROM do servo (P32/D40, muito mais rígidos).
+# Assim, a rigidez ao ajustar os servos é igual à usada ao andar; uma futura transferência sem desligar torque também passará na verificação do programa principal, sem trocar P (alterar P sob carga pode fazer a articulação ceder).
 ROBOT_ETC = "/etc/robot/feetech-ft5"
-SERVO_PARAMS = ROBOT_ETC + "/servo-test-parameters.json"       # 标定文件同目录（fork hd1910_test.rs:21-22）
-ROBOTD_TOMLS = (ROBOT_ETC + "/robotd.toml", "/etc/robot/robotd.toml")   # 跟 onboard.ROBOTD_CONFIGS 同一份
-POLICY_DIR = "/opt/robot/policies/current"                     # [policy] walk 没写时的目录（fork robotd-params lib.rs:41、1611-1666）
-DEFAULT_GAINS = (5, 0, 1000)      # V167 没参数文件：P = firmware_p() 没合约时 5（deployment.rs:78-80），D0、限力 1000（hd1910.rs:257-267）
-GAIN_REGS = {21: "EEPROM 的 P", 22: "EEPROM 的 D", 48: "限力", 49: "限力高字节", 50: "P", 51: "D"}
-GAINS_RECHECK_S = 3.0             # 页面每秒 10 帧要看「软硬」：文件最多每 3 秒 stat 一次，mtime 变了才重读
+SERVO_PARAMS = ROBOT_ETC + "/servo-test-parameters.json"       # no mesmo diretório do arquivo de calibração(fork hd1910_test.rs:21-22)
+ROBOTD_TOMLS = (ROBOT_ETC + "/robotd.toml", "/etc/robot/robotd.toml")   # Mesma lista de onboard.ROBOTD_CONFIGS
+POLICY_DIR = "/opt/robot/policies/current"                     # diretório usado se [policy] walk não estiver definido (fork robotd-params lib.rs:41, 1611–1666)
+DEFAULT_GAINS = (5, 0, 1000)      # V167 sem arquivo de parâmetros: P = 5 quando firmware_p() não encontra contrato (deployment.rs:78–80 em deployment.rs); D0 e limite 1000(hd1910.rs:257-267)
+GAIN_REGS = {21: "P da EEPROM", 22: "D da EEPROM", 48: "limite de torque", 49: "Byte alto do limite de torque", 50: "P", 51: "D"}
+GAINS_RECHECK_S = 3.0             # A interface verifica os ganhos a 10 quadros/s; consulta stat do arquivo no máximo a cada 3 s e relê somente se mtime mudar
 
 
 def _stat(path):
@@ -139,70 +139,70 @@ def _stat(path):
 
 
 def load_servo_params(path):
-    """照 fork hd1910_test.rs:21-42 读 servo-test-parameters.json：正好 kp、kd、torque_limit 三个键（deny_unknown_fields），
-    都是整数（serde 的 u8/u16 不收 5.0、true），P 1–32、D 0–64、限力 200–1000。不合法抛 ValueError（说清哪一条）。"""
+    """Lê servo-test-parameters.json conforme fork hd1910_test.rs:21–42: exatamente as chaves kp, kd e torque_limit (deny_unknown_fields),
+    todas inteiras (serde u8/u16 não aceita 5.0 nem true), P 1–32, D 0–64 e limite 200–1000. Valores inválidos geram ValueError indicando o problema."""
     def pairs(items):
         keys = [k for k, _ in items]
         if len(set(keys)) != len(keys):
-            raise ValueError("有重复的键")
+            raise ValueError("Há chaves duplicadas")
         return dict(items)
     with open(path, "rb") as f:
         obj = json.loads(f.read().decode("utf-8"), object_pairs_hook=pairs)
     if not isinstance(obj, dict) or set(obj) != {"kp", "kd", "torque_limit"}:
-        raise ValueError("要正好三个键 kp、kd、torque_limit")
+        raise ValueError("Deve conter exatamente três chaves: kp, kd e torque_limit")
     for k in ("kp", "kd", "torque_limit"):
         if type(obj[k]) is not int:
-            raise ValueError(f"{k} 要是整数，不是 {obj[k]!r}")
+            raise ValueError(f"{k} deve ser inteiro, não {obj[k]!r}")
     if not 1 <= obj["kp"] <= 32:
-        raise ValueError("P（kp）要在 1–32")
+        raise ValueError("P (kp) deve estar entre 1 e 32")
     if not 0 <= obj["kd"] <= 64:
-        raise ValueError("D（kd）要在 0–64")
+        raise ValueError("D (kd) deve estar entre 0 e 64")
     if not 200 <= obj["torque_limit"] <= 1000:
-        raise ValueError("限力（torque_limit）要在 200–1000")
+        raise ValueError("O limite de torque (torque_limit) deve estar entre 200 e 1000")
     return obj["kp"], obj["kd"], obj["torque_limit"]
 
 
 def _walk_contract(toml_path):
-    """robotd.toml 的 [policy] walk → 那个模型目录里的 deployment-contract.json（fork deployment.rs:147-150）。
-    walk 没写或写 "none"：按 mode 用默认（walk 模式 velstand.onnx，roller 模式 roller.onnx，在 POLICY_DIR 里）。"""
-    import tomllib     # noqa: PLC0415 —— Python 3.11+；鸭子上是 3.11
+    """Lê deployment-contract.json no diretório do modelo indicado por [policy] walk em robotd.toml (fork deployment.rs:147–150).
+    Se walk estiver ausente ou for “none”, usa o padrão conforme mode (velstand.onnx para walk, roller.onnx para roller, dentro de POLICY_DIR)."""
+    import tomllib     # noqa: PLC0415 —— Python 3.11+; no robô é 3.11
     with open(toml_path, "rb") as f:
         policy = tomllib.load(f).get("policy") or {}
     walk = policy.get("walk")
     if not isinstance(walk, str) or not walk.strip() or walk.strip().lower() == "none":
         walk = POLICY_DIR + "/" + ("roller.onnx" if policy.get("mode") == "roller" else "velstand.onnx")
     elif not (walk.startswith("/") or os.path.isabs(walk)):
-        walk = "/" + walk                 # 相对路径：robotd 在 systemd 下工作目录是 /（isabs 那半是给电脑上的测试）
+        walk = "/" + walk                 # caminho relativo: o diretório de trabalho do robotd no systemd é / (isabs também atende aos testes no computador)
     return walk.rsplit("/", 1)[0] + "/deployment-contract.json"
 
 
 def contract_kp(path):
-    """走路模型合约里训练用的舵机 P：model.actuators[0].kp_fw，整数 1–32（fork deployment.rs:556-568）。不合法抛 ValueError。"""
+    """Valor P do servo no contrato do modelo de caminhada: model.actuators[0].kp_fw, inteiro de 1 a 32 (fork deployment.rs:556–568). Valor inválido gera ValueError."""
     with open(path, encoding="utf-8") as f:
         v = json.load(f)
     acts = ((v.get("model") or {}).get("actuators")) if isinstance(v, dict) else None
     if not isinstance(acts, list) or len(acts) != 1 or not isinstance(acts[0], dict):
-        raise ValueError("model.actuators 要正好一个")
+        raise ValueError("model.actuators deve conter exatamente um item")
     p = acts[0].get("kp_fw")
     if isinstance(p, bool) or not isinstance(p, (int, float)) or not math.isfinite(p) or p != int(p) or not 1 <= p <= 32:
-        raise ValueError(f"kp_fw 要是 1–32 的整数，不是 {p!r}")
+        raise ValueError(f"kp_fw deve ser um inteiro de 1 a 32, não {p!r}")
     return int(p)
 
 
 class MainGains:
-    """主程序上力时给舵机的 P / D / 限力（fork robotd 的两条路，duck-control/src/hd1910.rs:106-191）：
-    1. 有 servo-test-parameters.json 且合法：用它（arm_with_file）；
-    2. 没有：V167 原版——P = 走路模型合约的 kp_fw（robotd selftrained_profile.rs:11-27 装进 firmware_p），D = 0，限力 = 1000；
-       合约读不到 P 按 5（firmware_p() 的默认）；
-    3. 文件坏 / 超范围：主程序会停在「等总线」、不上力（fork docs/project/replica-v167.zh-CN.md:16、39）。Studio 用 2 并记一条 warn。
-    电脑上（--bench 台架、演示舵机）没有这些文件，就是 5 / 0 / 1000。按 mtime 缓存：文件没变不重读。
-    get() 回 {"kp", "kd", "limit", "source"（「参数文件」/「主程序默认」）, "detail", "warn"}。"""
+    """P/D/limite de torque usados pelo programa principal ao habilitar os servos (dois fluxos do fork robotd, duck-control/src/hd1910.rs:106–191):
+    1. Se servo-test-parameters.json existir e for válido, usa-o (arm_with_file);
+    2. Se não existir: comportamento original V167 — P vem de kp_fw do contrato do modelo de caminhada (carregado em firmware_p por robotd selftrained_profile.rs:11–27), D=0 e limite=1000;
+       se não conseguir ler o contrato, P=5 (padrão de firmware_p());
+    3. Se o arquivo estiver inválido ou fora do limite, o programa principal para em “aguardando barramento” e não habilita o torque (fork docs/project/replica-v167.zh-CN.md:16, 39). O Studio usa o comportamento 2 e registra um aviso.
+    No computador (bancada --bench ou servos simulados), esses arquivos não existem; usa 5/0/1000. Mantém cache por mtime e não relê se o arquivo não mudar.
+    get() retorna {"kp", "kd", "limit", "source" ("arquivo de parâmetros"/"padrão do programa principal"), "detail", "warn"}."""
 
     def __init__(self, params_path=SERVO_PARAMS, robotd_tomls=ROBOTD_TOMLS, log=None):
         self.params_path, self.robotd_tomls, self.log = params_path, tuple(robotd_tomls), log
         self._lock = threading.Lock()
         self._key, self._value, self._checked = None, None, 0.0
-        self._walk = (None, None)          # (robotd.toml 的 key, 合约路径)：toml 没变不重新解析
+        self._walk = (None, None)          # (chave de robotd.toml, caminho do contrato): não reinterpreta se o TOML não mudar
 
     def get(self, max_age=0.0):
         with self._lock:
@@ -224,7 +224,7 @@ class MainGains:
             if key != self._key or self._value is None:
                 self._key, self._value = key, self._compute(toml, contract)
                 if self._value["warn"] and self.log:
-                    self.log(self._value["warn"], "总线", "warn")
+                    self.log(self._value["warn"], "Barramento", "warn")
             return self._value
 
     def _compute(self, toml, contract):
@@ -233,60 +233,60 @@ class MainGains:
         if _stat(self.params_path):
             try:
                 kp, kd, limit = load_servo_params(self.params_path)
-                return {"kp": kp, "kd": kd, "limit": limit, "source": "参数文件",
-                        "detail": f"{self.params_path}（主程序有这个文件时上力就写它）", "warn": None}
+                return {"kp": kp, "kd": kd, "limit": limit, "source": "Arquivo de parâmetros",
+                        "detail": f"{self.params_path} (o programa principal grava este arquivo ao habilitar o torque)", "warn": None}
             except Exception as e:  # noqa: BLE001
-                warn = (f"舵机参数文件 {self.params_path} 不合法（{e}）：主程序遇到它会停在「等总线」、不上力；"
-                        f"Studio 先按主程序默认上力。改好或删掉这个文件")
+                warn = (f"O arquivo de parâmetros dos servos {self.params_path} é inválido ({e}); o programa principal ficará em “aguardando barramento” e não habilitará o torque;"
+                        f"O Studio aplicará os valores padrão do programa principal. Corrija ou remova este arquivo")
         etc = os.path.dirname(self.params_path)
         if toml is None and not os.path.isdir(etc):
-            detail = f"这台机器上没有主程序的配置（{etc}），按主程序 V167 默认：P5、D0、限力 1000"
+            detail = f"Não há configuração do programa principal nesta máquina ({etc}); usando os padrões V167: P5, D0, limite de torque 1000"
         elif isinstance(contract, str):
             try:
                 kp = contract_kp(contract)
-                detail = f"主程序 V167：P 取走路模型合约的 kp_fw（{contract}），D0、限力 1000"
+                detail = f"Programa principal V167: P usa kp_fw do contrato do modelo de caminhada ({contract}), D0 e limite 1000"
             except Exception as e:  # noqa: BLE001
-                detail = f"走路模型合约 {contract} 读不出 kp_fw（{type(e).__name__}: {e}）：P 按主程序的默认 5，D0、限力 1000"
+                detail = f"Não foi possível ler kp_fw do contrato do modelo de caminhada {contract} ({type(e).__name__}: {e}); usando o padrão do programa principal: P5, D0 e limite 1000"
         else:
-            why = contract[1] if isinstance(contract, tuple) else "没找到 robotd.toml"
-            detail = f"读不到走路模型（{why}）：P 按主程序的默认 5，D0、限力 1000"
-        return {"kp": kp, "kd": 0, "limit": 1000, "source": "主程序默认", "detail": detail, "warn": warn}
+            why = contract[1] if isinstance(contract, tuple) else "robotd.toml não encontrado"
+            detail = f"Não foi possível ler o modelo de caminhada ({why}); usando o padrão do programa principal: P5, D0 e limite 1000"
+        return {"kp": kp, "kd": 0, "limit": 1000, "source": "Padrão do programa principal", "detail": detail, "warn": warn}
 
 
 def gains_bytes(g):
-    """RAM 48..51 一包：[限力低, 限力高, P, D]（fork hd1910_test.rs:44-47 payload）。"""
+    """Um pacote para RAM 48..51: [byte baixo do limite, byte alto do limite, P, D] (payload do fork hd1910_test.rs:44–47)."""
     return struct.pack("<H", g["limit"]) + bytes([g["kp"], g["kd"]])
 
 
 def gains_text(b):
-    return "读不到" if b is None else f"P{b[2]} · D{b[3]} · 限力 {b[0] | b[1] << 8}"
+    return "sem leitura" if b is None else f"P{b[2]} · D{b[3]} · limite de torque {b[0] | b[1] << 8}"
 
 
 class ServoOps:
     def __init__(self, session, state_dir):
         self.s = session
         self.state_dir = state_dir
-        self.offset_sign = None          # +1：读数 = 原始 + 偏移；-1：读数 = 原始 − 偏移。手册没写死，校准前探一次
-        self.speed_unit = 1.0            # 速度寄存器 46 一个单位 = 多少步/秒（相位 18 BIT2 决定）
-        self.max_speed_reg = 3000        # 「不限速」写多少（相位 BIT3=1 时 0 = 最快）
+        self.offset_sign = None          # +1: leitura = bruto + offset; -1: leitura = bruto − offset. O manual não especifica; detecta antes da calibração
+        self.speed_unit = 1.0            # quantos passos/s corresponde a uma unidade do registrador de velocidade 46 (definido por BIT2 da fase 18)
+        self.max_speed_reg = 3000        # valor para “sem limite de velocidade” (quando BIT3 da fase = 1, 0 = máximo)
         self.stream_last = {}
-        self.calib_lock = threading.Lock()   # 校准期间不让状态轮询抢总线（关扭矩的窗口里关节会垂）
+        self.calib_lock = threading.Lock()   # impede a consulta de estado de disputar o barramento durante a calibração (a articulação pode ceder na janela com torque desligado)
         self._motion = None
         self._motion_stop = threading.Event()
         self.idle_running = False
         self._idle_thread = None
         self._sim_calib_dir = None
-        # 上力用的 P / D / 限力（跟主程序一样，MainGains）；manual：寄存器面板手动写过的 P/D/限力 {id: {地址: 读回值}}
+        # P/D/limite de torque ao habilitar (iguais aos do programa principal, MainGains); manual: valores P/D/limite gravados manualmente pelo painel de registradores {id: {endereço: leitura de retorno}}
         self.gains = MainGains(log=self.log)
         self.manual = {}
         self._gains_logged = None
 
-    # ---- 小工具 ----
+    # ---- Utilitários ----
 
     @property
     def bus(self):
         if self.s.bus is None or self.s.state != "open":
-            raise Refused("舵机总线没打开：先点「开始调舵机」")
+            raise Refused("O barramento dos servos está fechado; selecione “Iniciar ajuste dos servos” primeiro.")
         return self.s.bus
 
     def log(self, msg, cat="Barramento", level="info", exc=False):
@@ -294,7 +294,7 @@ class ServoOps:
 
     def guard(self):
         if self.s.latched:
-            raise Refused("刚才全部卸了力：先点「全部扭矩开」或某颗的「保持」，再让它动")
+            raise Refused("O torque de todos os servos foi desligado. Selecione “Ligar torque de todos” ou “Reter” em um servo antes de movê-lo")
 
     def dirs(self):
         return self.s.directions
@@ -322,7 +322,7 @@ class ServoOps:
         return self.bus.write_u16(i, 31, enc_sm(v))
 
     def wait_off_change(self, i, was, ms=20):
-        """写完偏移就轮询它落地没有，最多等 ms 毫秒（落地通常 1~2 ms；固定睡 20 ms 等于白送重力下垂）。"""
+        """Após gravar o offset, consulta se foi aplicado e aguarda no máximo ms milissegundos (normalmente leva 1–2 ms; dormir sempre 20 ms deixaria a articulação ceder pela gravidade)."""
         end = time.monotonic() + ms / 1000.0
         off = was
         while True:
@@ -331,29 +331,29 @@ class ServoOps:
                 return off, off != was
 
     def read_phase(self):
-        """开总线时读一次相位 18，确定速度单位；保留舵机现有的速度、加速度和目标。"""
+        """Lê a fase 18 ao abrir o barramento para determinar a unidade de velocidade; mantém a velocidade, aceleração e alvo atuais dos servos."""
         if self.s.sim:
             return
         try:
             ph = self.bus.read_u8(self.present()[0], 18)
             self.speed_unit = 1.0 if ph & 0x04 else 50.0
             self.max_speed_reg = 0 if ph & 0x08 else int(3000 / self.speed_unit)
-            self.log(f"相位 18 = {ph} → 速度单位 {self.speed_unit:g} 步/秒，不限速写 {self.max_speed_reg}")
+            self.log(f"Fase 18 = {ph} → unidade de velocidade {self.speed_unit:g} passos/s; valor sem limite: {self.max_speed_reg}")
         except Exception as e:  # noqa: BLE001
-            self.log(f"读相位失败，速度单位按 1 步/秒：{type(e).__name__}: {e}", "系统", "warn")
+            self.log(f"Falha ao ler a fase; considera unidade de velocidade de 1 passo/s: {type(e).__name__}: {e}", "Sistema", "warn")
 
     def release_speed(self, ids):
-        """放开速度上限、加速度设最大（41 = 0，46 = 不限速）。只写这两个，**不碰目标 42**。"""
+        """Remove o limite de velocidade e define aceleração máxima (41=0, 46=sem limite). Grava somente esses dois registradores; **não altera o alvo 42**."""
         ids = list(ids)
         if ids:
             self.bus.sync_write(41, 1, [(i, bytes([0])) for i in ids])
             self.bus.sync_write(46, 2, [(i, struct.pack("<H", enc_sm(self.max_speed_reg))) for i in ids])
 
-    # ---- 上力时的 P / D / 限力（跟主程序一样） ----
+    # ---- P/D/limite de torque ao habilitar (iguais ao programa principal) ----
 
     def _read_gains(self, ids):
-        """RAM 48..51 回读（跟 fork hd1910_test.rs:70-81 verify 同一个 sync_read 48×4）；没回包的逐颗再读一次（总线偶尔丢一包）。
-        回 {id: 4 字节 或 None}；读到的顺手记进 session.static（表里显示运行中的 P / D / 限力）。"""
+        """Lê RAM 48..51 de volta (mesmo sync_read 48×4 usado por verify em fork hd1910_test.rs:70–81); consulta individualmente os servos sem resposta (o barramento pode perder um pacote).
+        Retorna {id: 4 bytes ou None}; também registra os valores lidos em session.static (a tabela mostra P/D/limite em operação)."""
         got = self.bus.sync_read(ids, 48, 4)
         out = {}
         for i in ids:
@@ -373,24 +373,24 @@ class ServoOps:
     def _log_gains(self, g):
         if self._gains_logged != g:
             self._gains_logged = g
-            self.log(f"上力用的软硬：P{g['kp']} · D{g['kd']} · 限力 {g['limit']}（跟主程序一样 · {g['source']}：{g['detail']}）")
+            self.log(f"Ganhos ao habilitar torque: P{g['kp']} · D{g['kd']} · limite {g['limit']} (iguais aos do programa principal · {g['source']}: {g['detail']})")
 
     def _clear_manual(self, i):
-        """这颗运行中的 P / D / 限力又跟主程序一样了：手动改过的 RAM 那几项（48–51）不再算；EEPROM 的 21 / 22 还记着。"""
+        """P/D/limite de torque em operação deste servo voltaram a corresponder ao programa principal: remove da lista os valores alterados manualmente na RAM (48–51); mantém EEPROM 21/22."""
         m = self.manual.get(i)
         if m:
-            for a in (47, 48, 49, 50, 51):            # 47：从 47 起写 2 字节也盖到了 48
+            for a in (47, 48, 49, 50, 51):            # 47: uma gravação de 2 bytes a partir de 47 também afeta 48
                 m.pop(a, None)
             if not m:
                 self.manual.pop(i, None)
 
     def apply_gains(self, ids):
-        """上力前：把这几颗（扭矩关着的）P / D / 限力写成主程序上力时的值（MainGains）。照 fork 有参数文件那条路的写法
-        （duck-control/src/hd1910.rs:159-191 arm_with_file、hd1910_test.rs:44-81）：RAM 48..51 一包 4 字节
-        [限力低, 限力高, P, D]，sync_write 写，sync_read 48×4 回读核对。不碰 EEPROM 21 / 22、不碰锁标志 55
-        （RAM 不受它管，fork 也不写）、不碰 52（I）/ 41（加速度）/ 46（速度）。
-        跟 fork 不一样的一处：只写回读跟要的不一样的那几颗（fork 每次 15 颗全写），没对上的再写一次。
-        回 {id: 原因}：读不到、写了读回不对的那几颗——调用方不给它们上力。"""
+        """Antes de habilitar o torque, grava P/D/limite dos servos desligados com os valores do programa principal (MainGains), seguindo o fluxo do fork com arquivo de parâmetros
+        (duck-control/src/hd1910.rs:159–191 arm_with_file, hd1910_test.rs:44–81): um pacote de 4 bytes na RAM 48..51
+        [byte baixo do limite, byte alto do limite, P, D], grava com sync_write e valida com sync_read 48×4. Não altera EEPROM 21/22 nem o sinalizador de trava 55
+        (não controlado pela RAM; o fork também não grava), nem 52 (I), 41 (aceleração) ou 46 (velocidade).
+        Diferença em relação ao fork: grava somente os servos cuja leitura diverge do valor desejado (o fork grava sempre os 15) e tenta novamente os divergentes.
+        Retorna {id: motivo} para servos sem leitura ou com retorno divergente; o chamador não habilita o torque neles."""
         ids = [int(i) for i in ids]
         if not ids:
             return {}
@@ -411,8 +411,8 @@ class ServoOps:
                 todo = [i for i in todo if cur[i] != want]
         except Exception as e:  # noqa: BLE001
             err = f"{type(e).__name__}: {e}"
-            bad = {i: f"写 P/D/限力时总线出错（{err}）" for i in ids if cur.get(i) != want}
-            self.log(f"上力前写 P/D/限力出错：{err}；这几颗不上力 {sorted(bad)}", "总线", "error", exc=True)
+            bad = {i: f"Erro no barramento ao gravar P/D/limite({err})" for i in ids if cur.get(i) != want}
+            self.log(f"Falha ao gravar P/D/limite antes de habilitar torque: {err}; estes servos permanecerão desligados: {sorted(bad)}", "Barramento", "error", exc=True)
             return bad
         bad = {}
         for i in ids:
@@ -420,22 +420,22 @@ class ServoOps:
                 self._clear_manual(i)
                 continue
             if cur[i] is None:
-                bad[i] = "读不到 P/D/限力（寄存器 48–51 没回包）"
+                bad[i] = "Não foi possível ler P/D/limite (sem resposta dos registradores 48–51)"
             else:
                 c = cur[i]
-                diff = [f"{a}（{name}）写 {w} 读回 {r}" for a, name, w, r in (
-                    (48, "限力", g["limit"], c[0] | c[1] << 8), (50, "P", g["kp"], c[2]), (51, "D", g["kd"], c[3])) if w != r]
-                bad[i] = "P/D/限力写不进去：寄存器 " + "、".join(diff)
-            self.log(f"#{i} 上力前写 P/D/限力（P{g['kp']} · D{g['kd']} · 限力 {g['limit']}）：{bad[i]}；这颗不上力", "总线", "error")
+                diff = [f"{a} ({name}): gravado {w}, retornou {r}" for a, name, w, r in (
+                    (48, "limite de torque", g["limit"], c[0] | c[1] << 8), (50, "P", g["kp"], c[2]), (51, "D", g["kd"], c[3])) if w != r]
+                bad[i] = "Falha ao gravar P/D/limite: registradores " + ", ".join(diff)
+            self.log(f"#{i} Gravação de P/D/limite antes de habilitar (P{g['kp']} · D{g['kd']} · torque {g['limit']}): {bad[i]}; torque não habilitado neste servo", "Barramento", "error")
         ok = [i for i in wrote if i not in bad]
         if ok:
-            self.log(f"上力前 P/D/限力写成 P{g['kp']} · D{g['kd']} · 限力 {g['limit']}（{g['source']}）："
-                     + " ".join(f"#{i}（原来 {gains_text(before.get(i))}）" for i in ok))
+            self.log(f"P/D/limite gravados antes de habilitar torque: P{g['kp']} · D{g['kd']} · limite {g['limit']} ({g['source']}): "
+                     + " ".join(f"#{i}(antes: {gains_text(before.get(i))})" for i in ok))
         return bad
 
     def check_gains(self, ids):
-        """已经上着力的：只核对、不写（fork 扭矩开着时 arm 也只核对：hd1910.rs:116-140、169-179；
-        上着力换 P 带载关节会塌一下）。回 {id: 说明}：跟主程序不一样的那几颗（照样算上着力，页头标黄）。"""
+        """Servos com torque já ativo: somente confere, não grava (no fork, arm também só confere quando o torque está ligado: hd1910.rs:116–140, 169–179;
+        alterar P com torque ativo pode fazer a articulação sob carga ceder). Retorna {id: descrição} para os servos diferentes do programa principal (continuam sendo considerados energizados e aparecem em amarelo no cabeçalho)."""
         ids = [int(i) for i in ids]
         if not ids:
             return {}
@@ -443,33 +443,33 @@ class ServoOps:
         try:
             cur = self._read_gains(ids)
         except Exception as e:  # noqa: BLE001
-            self.log(f"核对上着力的舵机的 P/D/限力出错：{type(e).__name__}: {e}", "总线", "warn")
+            self.log(f"Falha ao conferir P/D/limite dos servos energizados: {type(e).__name__}: {e}", "Barramento", "warn")
             return {}
         differ = {}
         for i in ids:
             if cur[i] == want:
                 self._clear_manual(i)
             elif cur[i] is not None:
-                differ[i] = (f"已经上着力，软硬是 {gains_text(cur[i])}，跟主程序（{gains_text(want)}）不一样：没改它"
-                             "（上着力换 P 带载关节会塌一下）；要改先松开再保持")
+                differ[i] = (f"Torque já ativo; ganhos {gains_text(cur[i])} diferem dos do programa principal ({gains_text(want)}); nenhum valor foi alterado"
+                             "(alterar P com torque ativo pode fazer a articulação sob carga ceder); para alterar, solte e depois retenha")
         if differ:
-            self.log("上着力的舵机软硬跟主程序不一样，没改：" + " ".join(f"#{i} {gains_text(cur[i])}" for i in differ)
-                     + f"（主程序 {gains_text(want)}）；要改先松开再保持", "总线", "warn")
+            self.log("Os ganhos dos servos energizados diferem dos do programa principal; não foram alterados: " + " ".join(f"#{i} {gains_text(cur[i])}" for i in differ)
+                     + f"(programa principal: {gains_text(want)}); para alterar, solte e depois retenha", "Barramento", "warn")
         return differ
 
-    def _gains_then_torque(self, i, trail, label="开扭矩"):
-        """校准 / 撤销里给这一颗恢复扭矩：先写主程序的 P/D/限力（apply_gains），写不进去就不恢复。回恢复了没有。"""
+    def _gains_then_torque(self, i, trail, label="Ligar torque"):
+        """Ao restaurar o torque deste servo durante calibração/desfazer, grava primeiro P/D/limite do programa principal (apply_gains); se falhar, não restaura. Retorna se foi restaurado."""
         bad = self.apply_gains([i])
         if bad:
-            trail.append(f"✗{bad[i]}，扭矩没恢复")
+            trail.append(f"✗{bad[i]}; torque não restaurado")
             return False
         trail.append(label + _ack(self.bus.write_u8(i, 40, 1)))
         return True
 
     def gains_view(self, rows=None):
-        """页头「软硬：P5 · D0 · 限力 1000（跟主程序一样 · 来源）」要的。rows（snapshot 的每一行）顺手补上运行中的
-        P / D / 限力（RAM 50 / 51 / 48，开总线时、上力前、写寄存器后读的）和 gains_ok（跟主程序一样没有；读不到 None）。
-        在事件循环里调：不碰总线，文件最多每 GAINS_RECHECK_S 秒 stat 一次。"""
+        """Usado no cabeçalho “Ganhos: P5 · D0 · limite 1000 (iguais ao programa principal · origem)”. Também adiciona aos rows (linhas do snapshot) os valores P/D/limite em operação
+        P/D/limite (RAM 50/51/48; lidos ao abrir o barramento, antes de habilitar torque e após gravar registradores) e gains_ok (se correspondem aos do programa principal; None se não for possível ler).
+        Chamado no event loop: não acessa o barramento e consulta stat do arquivo no máximo a cada GAINS_RECHECK_S segundos."""
         g = self.gains.get(max_age=GAINS_RECHECK_S)
         want = (g["kp"], g["kd"], g["limit"])
         differ_on = []
@@ -485,27 +485,27 @@ class ServoOps:
         return {"kp": g["kp"], "kd": g["kd"], "limit": g["limit"], "source": g["source"], "detail": g["detail"],
                 "warn": g["warn"], "manual": manual, "differ_on": differ_on}
 
-    # ---- 扭矩 ----
+    # ---- Torque ----
 
     def torque_on_aligned(self, ids):
-        """开扭矩前先把目标（42）对准当前读数：手掰过、扭矩关着时发过姿势 / 校准过，目标里还是旧值，
-        一开扭矩舵机就冲过去。读扭矩 → 关着的写 P/D/限力（跟主程序一样，apply_gains）→ 读位置 → 写目标 = 位置
-        → 读 42 核对 → 开扭矩（跟 fork 的顺序一样：arm 写增益 → 预载测到的位置 → 扭矩开，feetech.rs:1836-1873）。
-        本来就开着的不动它的目标、也不改它的 P/D/限力（只核对）。P/D/限力写不进去、读不到位置、目标写不进去的那颗不开。"""
+        """Antes de ligar o torque, alinha o alvo (42) à leitura atual: se alguém moveu o servo à mão ou executou uma postura/calibração com o torque desligado, o alvo ainda pode ser antigo,
+        e o servo pode avançar bruscamente ao energizar. Lê o torque → grava P/D/limite nos servos desligados (iguais ao programa principal, apply_gains) → lê a posição → grava alvo = posição
+        → relê 42 para conferir → liga o torque (mesma ordem do fork: arm grava ganhos → pré-carrega a posição lida → liga o torque, feetech.rs:1836–1873).
+        Servos que já estão ligados mantêm alvo e P/D/limite (somente conferidos). Não liga os servos se falhar a gravação dos ganhos, a leitura da posição ou a gravação do alvo."""
         self.guard()
         bus = self.bus
         tq = bus.sync_read(ids, 40, 1)
         already = [i for i in ids if tq.get(i) and tq[i][1][0] == 1]
         need = [i for i in ids if i not in already]
         aligned, bad = {}, {}
-        # 用户 10-19：上力的软硬跟主程序一样（不用 EEPROM 里的出厂 P32 / D40）。写不进去的那颗不开
-        bad.update({i: w + "，没开扭矩" for i, w in self.apply_gains(need).items()})
+        # Pedido de 19/10: ganhos ao habilitar torque iguais aos do programa principal (não usar P32/D40 de fábrica da EEPROM). Não liga os servos cujos ganhos não puder gravar
+        bad.update({i: w + " ; torque não ligado" for i, w in self.apply_gains(need).items()})
         differ = self.check_gains(already)
         need = [i for i in need if i not in bad]
         st = bus.states(need) if need else {}
         for i in need:
             if not st.get(i):
-                bad[i] = "读不到位置，没开扭矩（开了可能冲向旧目标）"
+                bad[i] = "Não foi possível ler a posição; torque não ligado (poderia avançar até um alvo antigo)"
                 continue
             p = st[i]["pos"]
             got = None
@@ -517,16 +517,16 @@ class ServoOps:
                         aligned[i] = p
                         break
                 else:
-                    bad[i] = f"目标写 {p} 读回 {got}，没开扭矩"
+                    bad[i] = f"Alvo gravado {p}, leitura de retorno {got}; torque não ligado"
             except Exception as e:  # noqa: BLE001
-                bad[i] = f"写目标出错（{type(e).__name__}: {e}），没开扭矩"
+                bad[i] = f"Erro ao gravar o alvo ({type(e).__name__}: {e}); torque não ligado"
         on = already + [i for i in need if i in aligned]
         if on:
-            self.guard()                                   # 对准的这几毫秒里有人按了卸力：不开
+            self.guard()                                   # Alguém desligou o torque durante o alinhamento; não liga
             bus.sync_write(40, 1, [(i, bytes([1])) for i in on])
         self.s._read_torque()
-        self.log(f"扭矩开 → {on}" + (f"；开之前目标对准当前位置：" + " ".join(f"#{i}→{p}" for i, p in aligned.items()) if aligned else "")
-                 + (f"；没开 " + " ".join(f"#{i}（{w}）" for i, w in bad.items()) if bad else ""), "运动",
+        self.log(f"Torque ligado → {on}" + (f" ; alvo alinhado à posição atual antes de ligar: " + " ".join(f"#{i}→{p}" for i, p in aligned.items()) if aligned else "")
+                 + (f"; não ligado " + " ".join(f"#{i}({w})" for i, w in bad.items()) if bad else ""), "Movimento",
                  "warn" if bad else "info")
         g = self.gains.get(max_age=GAINS_RECHECK_S)
         return {"on": on, "bad": {str(i): w for i, w in bad.items()}, "differ": {str(i): w for i, w in differ.items()},
@@ -535,10 +535,10 @@ class ServoOps:
     def torque_off(self, ids):
         self.bus.sync_write(40, 1, [(i, bytes([0])) for i in ids])
         self.s._read_torque()
-        self.log(f"扭矩关 → {ids}", "运动")
+        self.log(f"Torque desligado → {ids}", "Movimento")
         return {"off": ids}
 
-    # ---- 运动 ----
+    # ---- Movimento ----
 
     def goal(self, sid, pos):
         self.guard()
@@ -547,7 +547,7 @@ class ServoOps:
         return {"id": sid, "pos": pos}
 
     def goals_verify(self, want):
-        """写目标并回读核对，没收到的重发，最多 4 轮。"""
+        """Grava o alvo e confere pela leitura de retorno; reenvia os que não responderem, até quatro tentativas."""
         want = {int(i): max(0, min(4095, int(p))) for i, p in want.items()}
         attempt = 0
         for attempt in range(4):
@@ -558,16 +558,16 @@ class ServoOps:
             if not want:
                 break
         if want:
-            self.log(f"目标回读：{len(want)} 颗 4 轮后目标仍没写进去 {sorted(want)}", "运动", "warn")
+            self.log(f"Leitura de retorno do alvo: não foi possível gravar o alvo dos {len(want)} servos após quatro tentativas: {sorted(want)}", "Movimento", "warn")
         return {"missing": sorted(want), "attempts": attempt + 1}
 
     def move(self, goals, seconds=2.0, mode="profile", acc=30):
-        """从当前位置走到 goals（{id: 读数}）。profile = 平滑（舵机自己走梯形曲线）；stream = 流式（这边 20 Hz 插值）。
-        在后台线程里走，马上返回；「停」或卸力会打断它。"""
+        """Move da posição atual até goals ({id: leitura}). profile = suave (o servo executa uma curva trapezoidal); stream = contínuo (interpolação a 20 Hz aqui).
+        Executa em uma thread em segundo plano e retorna imediatamente; “Parar” ou desligar o torque interrompe o movimento."""
         self.guard()
         goals = {int(i): max(0, min(4095, int(p))) for i, p in goals.items() if int(i) in IDS}
         if not goals:
-            raise Refused("没有要动的舵机")
+            raise Refused("Nenhum servo selecionado para mover")
         self.stop(quiet=True)
         self._motion_stop.clear()
         t = threading.Thread(target=self._run_move, args=(goals, float(seconds), mode, int(acc)), name="servo-move", daemon=True)
@@ -603,10 +603,10 @@ class ServoOps:
         except Refused:
             pass
         except Exception as e:  # noqa: BLE001
-            self.log(f"运动出错：{type(e).__name__}: {e}", "运动", "error", exc=True)
+            self.log(f"Erro de movimento: {type(e).__name__}: {e}", "Movimento", "error", exc=True)
 
     def _profile(self, want, seconds, acc):
-        """一次写 41..47 = 加速度(1) 目标(2) 时间(2)=0 速度(2)，舵机自己走梯形曲线。"""
+        """Grava 41..47 em um pacote: aceleração (1), alvo (2), duração (2)=0 e velocidade (2); o servo executa sua própria curva trapezoidal."""
         self.guard()
         acc = max(1, min(254, acc))
         st = self.bus.states(list(want))
@@ -621,7 +621,7 @@ class ServoOps:
             self.stream_last.pop(i, None)
 
     def _stream(self, want, dt):
-        """连续流：每帧给目标，同时把速度上限设成「正好在 dt 内走到」，加速度最大。"""
+        """Fluxo contínuo: define o alvo a cada quadro e ajusta a velocidade máxima para chegar exatamente em dt, com aceleração máxima."""
         self.guard()
         fresh = [i for i in want if i not in self.stream_last]
         if fresh:
@@ -637,7 +637,7 @@ class ServoOps:
         self.bus.sync_write(41, 7, items)
 
     def stop(self, quiet=False):
-        """停：打断正在走的过渡和灵动，把目标改成当前位置（平滑模式下舵机已经拿到终点在自己走，这样它停在原地）。"""
+        """Parar: interrompe transições/animações e define o alvo como a posição atual (no modo suave, o servo já recebeu o destino e está se movendo sozinho; assim para onde está)."""
         self._motion_stop.set()
         self.idle_running = False
         if self._motion and self._motion.is_alive():
@@ -649,12 +649,12 @@ class ServoOps:
             g = {i: s["pos"] for i, s in st.items() if s}
             if g and not self.s.halted:
                 self.goals_verify(g)
-            self.log("已停止：目标改成当前位置", "运动")
+            self.log("Movimento parado; alvo definido como a posição atual", "Movimento")
         return {}
 
     def official_goals(self, key, for_send=True):
         if key not in OFFICIAL:
-            raise Refused(f"不认识的官方姿势：{key}")
+            raise Refused(f"Postura oficial desconhecida: {key}")
         label, rad = OFFICIAL[key]
         rad = dict(rad)
         if key == "fold" and for_send:
@@ -664,10 +664,10 @@ class ServoOps:
 
     def go_official(self, key, seconds, mode, acc):
         label, goals = self.official_goals(key)
-        self.log(f"去官方姿势「{label}」（{seconds:g} 秒，{'平滑' if mode == 'profile' else '流式'}）", "运动")
+        self.log(f"Indo para a postura oficial “{label}” ({seconds:g} s, {'suave' if mode == 'profile' else 'contínuo'})", "Movimento")
         return self.move(goals, seconds, mode, acc)
 
-    # ---- 灵动 ----
+    # ---- Animação ----
 
     def idle(self, on):
         if not on:
@@ -676,7 +676,7 @@ class ServoOps:
         self.guard()
         head = [i for i in (30, 31, 32, 33, 34) if i in self.present()]
         if len(head) < 3:
-            raise Refused("头部舵机不在线")
+            raise Refused("Os servos da cabeça estão offline")
         self.torque_on_aligned(head)
         st = self.bus.states(head)
         center = {i: st[i]["pos"] for i in head if st.get(i)}
@@ -684,7 +684,7 @@ class ServoOps:
         self.idle_running = True
         self._idle_thread = threading.Thread(target=self._run_idle, args=(center,), name="servo-idle", daemon=True)
         self._idle_thread.start()
-        self.log(f"灵动开始，中心 {center}", "运动")
+        self.log(f"Animação iniciada; centro {center}", "Movimento")
         return {"idle": True}
 
     def _run_idle(self, center):
@@ -716,15 +716,15 @@ class ServoOps:
             if not self.s.halted and self.s.state == "open":
                 head({i: 0 for i in center}, 0.7)
                 self.release_speed(list(center))
-            self.log("灵动结束，头回中心", "运动")
+            self.log("Animação concluída; cabeça voltou ao centro", "Movimento")
         except Refused:
             pass
         except Exception as e:  # noqa: BLE001
-            self.log(f"灵动出错：{type(e).__name__}: {e}", "运动", "error", exc=True)
+            self.log(f"Erro na animação: {type(e).__name__}: {e}", "Movimento", "error", exc=True)
         finally:
             self.idle_running = False
 
-    # ---- 中位校准 ----
+    # ---- Calibração central ----
 
     def backup_calibration(self, ids):
         rows = {}
@@ -736,7 +736,7 @@ class ServoOps:
                                 "firmware": f"{ver[0]}.{ver[1]}"}
             except Exception as e:  # noqa: BLE001
                 rows[str(i)] = {"error": f"{type(e).__name__}: {e}"}
-                self.log(f"#{i} 备份时读不到：{type(e).__name__}: {e}", "校准", "warn")
+                self.log(f"#{i} Não foi possível ler durante o backup: {type(e).__name__}: {e}", "Calibração", "warn")
         d = self.calib_dir()
         os.makedirs(d, exist_ok=True)
         now = time.time()
@@ -745,7 +745,7 @@ class ServoOps:
         return fn, rows
 
     def probe_offset_sign(self, i):
-        """探一次偏移的符号方向：偏移 +1，看读数往哪边动（只动 1 步 0.09°，在校准窗口之外做）。"""
+        """Detecta o sinal do offset: adiciona +1 e observa a direção da leitura (move apenas um passo, 0,09°, fora da janela de calibração)."""
         if self.offset_sign is not None:
             return self.offset_sign
         try:
@@ -760,17 +760,17 @@ class ServoOps:
             self.wait_off_change(i, o0 + 1)
             self.bus.lock(i)
             if r1 == r0:
-                self.log(f"偏移符号探针：#{i} 偏移 +1 读数没变（{r0}），方向未知，兜底时两个方向都试", "校准", "warn")
+                self.log(f"Teste do sinal do offset: #{i} não mudou a leitura com offset +1 ({r0}); sinal desconhecido, tenta ambos os sinais no modo de contingência", "Calibração", "warn")
                 return None
             self.offset_sign = 1 if r1 > r0 else -1
-            self.log(f"偏移符号探针：#{i} 偏移 +1 → 读数 {r0}→{r1}，即「读数 = 原始 {'+' if self.offset_sign > 0 else '−'} 偏移」", "校准")
+            self.log(f"Teste do sinal do offset: #{i}, offset +1 → leitura {r0}→{r1}; leitura = bruto {'+' if self.offset_sign > 0 else '−'} offset", "Calibração")
             return self.offset_sign
         except Exception as e:  # noqa: BLE001
-            self.log(f"偏移符号探针失败：{type(e).__name__}: {e}", "校准", "warn")
+            self.log(f"Falha ao detectar o sinal do offset: {type(e).__name__}: {e}", "Calibração", "warn")
             return None
 
     def calibrate_by_offset(self, i, target, trail):
-        """兜底：舵机连 0x0B 也不认时，自己算偏移写寄存器 31。没成功就把原偏移写回去。"""
+        """Contingência: se o servo não aceitar nem 0x0B, calcula o offset e grava no registrador 31. Se falhar, restaura o offset original."""
         o0, r0 = self.read_off(i), self.read_pos(i)
         signs = [self.offset_sign] if self.offset_sign else [1, -1]
         ok, pos, off = False, r0, o0
@@ -778,12 +778,12 @@ class ServoOps:
             for sign in signs:
                 cand = o0 + sign * (target - r0)
                 if abs(cand) > OFFSET_LIMIT:
-                    trail.append(f"偏移{cand:+d}超量程跳过")
+                    trail.append(f"offset {cand:+d} fora da faixa; ignorado")
                     continue
                 self.write_off(i, cand)
                 off, _ = self.wait_off_change(i, off)
                 pos = self.read_pos(i)
-                trail.append(f"写偏移{cand}→读数{pos}")
+                trail.append(f"offset gravado {cand} → leitura {pos}")
                 if abs(pos - target) <= CALIB_TOLERANCE:
                     ok = True
                     return True, pos, off
@@ -793,115 +793,115 @@ class ServoOps:
                 try:
                     self.write_off(i, o0)
                     off, _ = self.wait_off_change(i, off)
-                    trail.append(f"没成，偏移已还原成{o0}")
+                    trail.append(f"Falhou; offset restaurado para {o0}")
                 except Exception as e:  # noqa: BLE001
-                    self.log(f"#{i} 兜底失败后还原偏移也失败了：{type(e).__name__}: {e}", "校准", "error")
+                    self.log(f"#{i} Também falhou ao restaurar o offset após erro na contingência: {type(e).__name__}: {e}", "Calibração", "error")
 
     def calibrate_one(self, i, before, target=2048):
-        """一颗舵机的位置校准：让它「现在这个位置」的读数变成 target（2048 = 官方零位）。
-        判据不看应答，看偏移寄存器变没变（HD-1910 不认的指令也回「成功」）。
-        关扭矩期间关节被重力压下去：下垂 d = pre − target + 符号 × Δ偏移，算出来补偿。
-        收尾永远把目标写成当前读数（不写 target，判断错了也不会拉关节），扭矩复原，加锁，恢复速度。"""
+        """Calibração de posição de um servo: define a leitura da posição atual como target (2048 = zero oficial).
+        A validação não usa a resposta, mas verifica se o registrador de offset mudou (o HD-1910 pode retornar “sucesso” para comandos que não reconhece).
+        A articulação cede pela gravidade com o torque desligado: queda d = pre − target + sinal × Δoffset; calcula e compensa.
+        Ao finalizar, sempre grava a leitura atual como alvo (não target, para não puxar a articulação mesmo se a estimativa estiver errada), restaura o torque, trava e restaura a velocidade."""
         bus = self.bus
         was_on = before.get("torque") == 1
         old_off = before.get("offset")
-        trail, step, ok, pre, pos, off, why = [], "限速", False, None, None, None, ""
+        trail, step, ok, pre, pos, off, why = [], "Limite de velocidade", False, None, None, None, ""
         method, droop = "0x0B", 0
-        gains_bad = False             # 恢复扭矩前写 P/D/限力没写进去：收尾也不再恢复
+        gains_bad = False             # falha ao gravar P/D/limite antes de restaurar o torque; também não restaura ao finalizar
         try:
-            bus.write_u8(i, 41, 10)                                    # 万一判断错了，关节也是慢慢走
+            bus.write_u8(i, 41, 10)                                    # se a estimativa estiver errada, a articulação ainda se moverá lentamente
             bus.write_u16(i, 46, enc_sm(200))
-            step = "解锁"
-            trail.append("解锁" + _ack(bus.unlock(i)))
-            step = "读当前位置"
+            step = "Desbloquear"
+            trail.append("Desbloquear" + _ack(bus.unlock(i)))
+            step = "Ler posição atual"
             pre = self.read_pos(i)
             o_before = self.read_off(i)
             if was_on:
-                step = "关扭矩"
+                step = "Desligar torque"
                 bus.write_u8(i, 40, 0)
-                if bus.read_u8(i, 40) != 0:                           # 这包丢了的话 0x0B 会在扭矩开着时执行
+                if bus.read_u8(i, 40) != 0:                           # se este pacote se perder, 0x0B será executado com o torque ligado
                     bus.write_u8(i, 40, 0)
                     if bus.read_u8(i, 40) != 0:
-                        raise feetech.BusError("关扭矩没生效（回读不是 0），不敢往下做")
-                trail.append("关扭矩✓")
-            # 关扭矩以后、0x0B 之前再读一次：偏移方向没探出来时（扭矩开着探不出：舵机会顶回目标，读数不动），
-            # 拿「这一刻的读数 → 0x0B 以后的读数」跟偏移变化对一下，就知道方向（10-19 二号鸭 #24 补反了三次）
+                        raise feetech.BusError("Não foi possível desligar o torque (leitura de retorno diferente de 0); a operação foi interrompida")
+                trail.append("Torque desligado ✓")
+            # Lê novamente após desligar o torque e antes de 0x0B: se o sinal do offset não foi detectado (não dá para detectar com torque ligado: o servo força o alvo e a leitura não muda),
+            # compara a leitura atual e a leitura após 0x0B com a mudança do offset para determinar o sinal (em 19/10, corrigido três vezes no servo nº 24 do segundo robô)
             post = self.read_pos(i) if was_on else pre
-            step = "0x0B 位置校准"
+            step = "Calibração de posição 0x0B"
             trail.append(f"0x0B→{target}" + _ack(bus.calibrate_to(i, target)))
-            step = "确认偏移变了"
+            step = "Confirmação da mudança de offset"
             off, changed = self.wait_off_change(i, o_before)
             pos = self.read_pos(i)
             ok = changed or abs(pre - target) <= CALIB_TOLERANCE
             if not ok:
-                step = "兜底：写偏移寄存器 31"
-                trail.append("0x0B 没让偏移变，改用写偏移")
+                step = "Contingência: gravar offset no registrador 31"
+                trail.append("0x0B não alterou o offset; usando gravação direta")
                 ok, pos, off = self.calibrate_by_offset(i, target, trail)
-                method = "写偏移31"
+                method = "Gravar offset 31"
             if ok:
-                step = "算下垂并补偿"
+                step = "Calcula e compensa a queda"
                 sign = self.offset_sign
                 if sign is None:
                     sign = infer_offset_sign(post, pos, off - o_before)
                     if sign is not None:
                         self.offset_sign = sign
-                        trail.append(f"偏移方向由这次校准推出：读数 = 原始 {'+' if sign > 0 else '−'} 偏移")
+                        trail.append(f"Sinal do offset inferido nesta calibração: leitura = bruto {'+' if sign > 0 else '−'} offset")
                 if sign is None:
-                    # 方向不知道就不补：猜错了会把误差翻一倍（以前默认 +1，HD-1910 实际是 −）
+                    # Se o sinal for desconhecido, não compensa; um palpite errado dobraria o erro (antes assumia +1, mas no HD-1910 é −)
                     droop = 0
                     if abs(pre - pos) > DROOP_TOLERANCE:
-                        trail.append("偏移方向推不出来，没补下垂（校完的零位可能差几步：关扭矩、手扶到位再校一次）")
+                        trail.append("Não foi possível inferir o sinal do offset; queda não compensada (o zero após a calibração pode diferir alguns passos: desligue o torque, posicione à mão e calibre novamente)")
                 else:
                     droop = pre - target + sign * (off - o_before)
                 if abs(droop) > DROOP_TOLERANCE and abs(off - sign * droop) <= OFFSET_LIMIT:
                     self.write_off(i, off - sign * droop)
                     off, _ = self.wait_off_change(i, off)
                     pos = self.read_pos(i)
-                    trail.append(f"关扭矩期间垂了{droop:+d}步，偏移再补{-sign * droop:+d}")
+                    trail.append(f"Cedeu {droop:+d} passos com o torque desligado; ajuste adicional do offset: {-sign * droop:+d}")
                 elif abs(droop) > DROOP_TOLERANCE:
-                    trail.append(f"垂了{droop:+d}步但补偿超量程，没补")
-            step = "写目标"
-            trail.append(f"目标{pos}" + _ack(bus.write_u16(i, 42, enc_sm(pos))))
+                    trail.append(f"Cedeu {droop:+d} passos, mas a compensação excederia a faixa; não foi aplicada")
+            step = "Gravar alvo"
+            trail.append(f"Alvo {pos}" + _ack(bus.write_u16(i, 42, enc_sm(pos))))
             if was_on and not self.s.halted:
-                step = "写 P/D/限力并开扭矩"                          # 上力前先写主程序的 P/D/限力，写不进去就不开（用户 10-19）
+                step = "Gravar P/D/limite e ligar torque"                          # Antes de habilitar, grava os ganhos P/D/limite do programa principal; se falhar, não liga (pedido de 19/10)
                 gains_bad = not self._gains_then_torque(i, trail)
             if not ok:
-                why = f"0x0B 和写偏移都没让偏移变（还是 {fmt_off(o_before)}），读数 {pos} 不是 {target}"
+                why = f"Nem 0x0B nem a gravação direta alteraram o offset (continua {fmt_off(o_before)}); leitura {pos} difere de {target}"
         except Exception as e:  # noqa: BLE001
             ok = False
-            why = f"卡在「{step}」：{type(e).__name__}: {e}"
+            why = f"Falha na etapa “{step}”: {type(e).__name__}: {e}"
             trail.append("✗" + why)
-            self.log(f"#{i} {why}", "校准", "error")
+            self.log(f"#{i} {why}", "Calibração", "error")
         finally:
             try:
                 p = self.read_pos(i)
                 bus.write_u16(i, 42, enc_sm(p))
-                # 卸力锁住了就不恢复扭矩（servo-web 这里会恢复，审查 S4：中途按卸力会被重新上力）
+                # Com a trava de desligamento ativa, não restaura o torque (servo-web restauraria aqui; revisão S4: poderia religar após uma parada de emergência)
                 if was_on and not self.s.halted and not gains_bad and bus.read_u8(i, 40) != 1:
-                    self._gains_then_torque(i, trail, "扭矩已恢复")      # P/D/限力写不进去就不恢复
+                    self._gains_then_torque(i, trail, "Torque restaurado")      # Se não conseguir gravar P/D/limite, não restaura o torque
             except Exception as e:  # noqa: BLE001
-                trail.append(f"✗收尾（写目标/恢复扭矩）：{type(e).__name__}: {e}")
-                self.log(f"#{i} 收尾失败，这颗可能卸着力、目标寄存器指向旧位置：{type(e).__name__}: {e}", "校准", "error")
+                trail.append(f"✗Falha ao finalizar (gravar alvo/restaurar torque): {type(e).__name__}: {e}")
+                self.log(f"#{i} Falha ao finalizar; este servo pode estar sem torque e o registrador de alvo pode apontar para a posição antiga: {type(e).__name__}: {e}", "Calibração", "error")
             try:
                 bus.lock(i)
                 locked = bus.read_u8(i, 55)
-                trail.append("加锁✓" if locked == 1 else f"加锁后锁标志读回 {locked}")
+                trail.append("Travado ✓" if locked == 1 else f"sinalizador de trava retornou {locked} após bloquear")
             except Exception as e:  # noqa: BLE001
-                trail.append(f"✗加锁：{type(e).__name__}: {e}")
-                self.log(f"#{i} 加锁失败，舵机可能还是解锁状态：{type(e).__name__}: {e}", "校准", "error")
+                trail.append(f"✗Falha ao travar: {type(e).__name__}: {e}")
+                self.log(f"#{i} Falha ao travar; o servo pode continuar desbloqueado: {type(e).__name__}: {e}", "Calibração", "error")
             try:
                 self.release_speed([i])
             except Exception:  # noqa: BLE001
                 pass
-        gap = "" if pre is None else f"，差 {(target - pre) * 360 / 4096:+.1f}°"
-        head = (f"#{i} 读数 {pre if pre is not None else '?'}→{pos if pos is not None else '?'}（目标 {target}{gap}，{method}）"
-                f" 偏移 {fmt_off(old_off)}→{fmt_off(off)}" + (f" 下垂{droop:+d}步" if droop else "")
-                + f" 扭矩原来{'开' if was_on else '关'}")
-        self.log(head + " · " + " ".join(trail) + ("" if ok else f" · 失败：{why}"), "校准", "info" if ok else "warn")
+        gap = "" if pre is None else f", diferença de {(target - pre) * 360 / 4096:+.1f}°"
+        head = (f"#{i} leitura {pre if pre is not None else '?'}→{pos if pos is not None else '?'} (alvo {target}{gap}, {method})"
+                f" offset {fmt_off(old_off)}→{fmt_off(off)}" + (f" queda de {droop:+d} passos" if droop else "")
+                + f" torque originalmente {'ligado' if was_on else 'desligado'}")
+        self.log(head + " · " + " ".join(trail) + ("" if ok else f" · Falha: {why}"), "Calibração", "info" if ok else "warn")
         return {"ok": ok, "pre": pre, "pos": pos, "target": target, "droop": droop, "method": method, "why": why}
 
     def calib_plan(self, ids):
-        """校准前给页面看：每颗现在读多少、要写成多少（官方零位 2048）、差几度。只读。"""
+        """Prévia antes da calibração: leitura atual de cada servo, valor a gravar (zero oficial 2048) e diferença em graus. Somente leitura."""
         st = self.bus.states(ids)
         rows = []
         for i in ids:
@@ -909,15 +909,15 @@ class ServoOps:
             pos = s["pos"] if s else None
             rows.append({"id": i, "joint": JOINT.get(i), "pos": pos, "target": 2048,
                          "diff_deg": None if pos is None else round((2048 - pos) * 360 / 4096, 1)})
-        return {"name": "官方零位 2048", "rows": rows, "big_deg": CALIB_BIG_DEG, "sim": self.s.sim}
+        return {"name": "Zero oficial 2048", "rows": rows, "big_deg": CALIB_BIG_DEG, "sim": self.s.sim}
 
     def calibrate(self, ids):
-        """把选中舵机「现在的位置」校准成 2048（官方零位）。一颗一颗来，每颗只关几毫秒扭矩。
-        校完成功的那几颗走「对准再上力」保持住（用户要求）。整段不让状态轮询抢总线。"""
+        """Calibra a posição atual dos servos selecionados para 2048 (zero oficial), um por vez, desligando o torque por apenas alguns milissegundos.
+        Os servos calibrados com sucesso são alinhados e energizados para manter a posição (pedido do usuário). As consultas de estado não disputam o barramento durante a operação."""
         self.guard()
         ids = [i for i in ids if i in IDS]
         if not ids:
-            raise Refused("没选要校准的舵机")
+            raise Refused("Nenhum servo selecionado para calibrar")
         self.stop(quiet=True)
         with self.calib_lock:
             res = self._calibrate(ids)
@@ -928,21 +928,21 @@ class ServoOps:
 
     def _calibrate(self, ids):
         sim = self.s.sim
-        self.log(f"开始校准 {len(ids)} 颗到官方零位 2048：{ids}" + ("（模拟：只改虚拟舵机，备份放临时目录，存的姿态不挪）" if sim else ""), "校准")
+        self.log(f"Iniciando calibração de {len(ids)} servos para o zero oficial 2048: {ids}" + ("(simulação: altera somente os servos virtuais, salva o backup em diretório temporário e não move as posturas salvas)" if sim else ""), "Calibração")
         fn, before = self.backup_calibration(ids)
-        self.log(f"原来的偏移、读数、扭矩、锁标志备份在 {self.calib_dir()}{os.sep}{fn}", "校准")
+        self.log(f"Offsets, leituras, torque e sinalizador de trava originais salvos em {self.calib_dir()}{os.sep}{fn}", "Calibração")
         self.probe_offset_sign(next((i for i in ids if "offset" in before.get(str(i), {})), ids[0]))
         ok, bad, deltas, big = [], {}, {}, {}
         for i in ids:
             if self.s.latched:
-                bad[i] = "卸力锁住了，后面的没校"
+                bad[i] = "A trava de torque está ativa; os servos restantes não foram calibrados"
                 continue
             if self.s.closing:
-                bad[i] = "在交还主程序，后面的没校"
+                bad[i] = "Devolução ao programa principal em andamento; os servos restantes não foram calibrados"
                 continue
             b = before.get(str(i), {})
             if "offset" not in b:
-                bad[i] = "备份时读不到，没动它"
+                bad[i] = "Sem leitura durante o backup; servo não alterado"
                 continue
             r = self.calibrate_one(i, b, 2048)
             if r["ok"]:
@@ -952,13 +952,13 @@ class ServoOps:
                         from .commit import record_centered
                         record_centered(self.state_dir, [i], self.s.by)
                     except OSError as e:
-                        self.log(f"#{i} 零位校好了，但没记进 Studio 的清单：{e}", "校准", "warn")
+                        self.log(f"#{i} Zero calibrado, mas não foi registrado na lista do Studio: {e}", "Calibração", "warn")
                 deltas[str(i)] = r["target"] - r["pre"]
                 if abs(deltas[str(i)]) * 360 / 4096 > CALIB_BIG_DEG:
                     big[i] = deltas[str(i)] * 360 / 4096
             else:
                 bad[i] = r["why"]
-        # 先把「打算挪哪些姿态」落盘再真挪：反过来的话，中间崩了就再也挪不回去了
+        # Grava primeiro a lista de posturas que serão movidas; se houver falha durante a operação, elas poderão ser recuperadas
         bp = os.path.join(self.calib_dir(), fn)
         rec = _load_json(bp)
         plan = [p["file"] for p in self.list_poses() if p.get("goals")] if not sim else []
@@ -970,18 +970,18 @@ class ServoOps:
             rec["shifted"] = moved
             _save_json(bp, rec)
         if moved:
-            self.log(f"存的姿态换算到新零点：{moved}", "姿态")
+            self.log(f"Posturas salvas ajustadas ao novo zero: {moved}", "Posturas")
         if big:
-            self.log(f"这几颗摆好的位置离零位差 {CALIB_BIG_DEG}° 以上：" + " ".join(f"#{i} {d:+.1f}°" for i, d in big.items())
-                     + "。装舵盘时转了半圈没关系；要是方向 ± 设反了，这次校进去的零点是错的：上力用滑块推一点，"
-                     "看 3D 里这个关节跟实物转的方向是不是一致，不一致就撤销、改 ±、重校", "校准", "warn")
-        self.log(f"校准完：成功 {len(ok)} 颗 {ok}" + (f"；失败 {len(bad)} 颗 {sorted(bad)}" if bad else "")
-                 + f"；备份 {fn}", "校准", "warn" if bad or big else "info")
+            self.log(f"A posição atual destes servos difere mais de {CALIB_BIG_DEG}° do zero: " + " ".join(f"#{i} {d:+.1f}°" for i, d in big.items())
+                     + ".A meia-volta ao instalar o braço do servo é aceitável; se a orientação ± estiver invertida, o zero calibrado estará errado. Habilite o torque e mova um pouco pelo controle,"
+                     "confira se a articulação na visualização 3D gira como a peça real. Se não, desfaça, ajuste ± e calibre novamente", "Calibração", "warn")
+        self.log(f"Calibração concluída: {len(ok)} servos com sucesso {ok}" + (f"；{len(bad)} falhas: {sorted(bad)}" if bad else "")
+                 + f"；backup {fn}", "Calibração", "warn" if bad or big else "info")
         return {"ok": ok, "bad": {str(k): v for k, v in bad.items()}, "backup": fn,
                 "big": {str(k): round(v, 1) for k, v in big.items()}}
 
     def undo(self):
-        """把最近一次备份里的偏移写回去（关扭矩 → 解锁 → 写 31 → 加锁），目标改成当前读数，扭矩状态照旧。"""
+        """Restaura os offsets do backup mais recente (desliga torque → desbloqueia → grava 31 → trava), define o alvo como a leitura atual e mantém o estado de torque original."""
         self.guard()
         self.stop(quiet=True)
         with self.calib_lock:
@@ -994,63 +994,63 @@ class ServoOps:
         d = self.calib_dir()
         files = sorted(f for f in os.listdir(d) if f.startswith("eeprom-")) if os.path.isdir(d) else []
         if not files:
-            raise Refused("没有可撤销的中位校准" + ("（模拟模式只撤销模拟里做的校准）" if self.s.sim else ""))
+            raise Refused("Não há calibração central para desfazer" + ("(no modo de simulação, desfaz somente calibrações simuladas)" if self.s.sim else ""))
         fn = files[-1]
         rec = _load_json(os.path.join(d, fn))
-        self.log(f"开始撤销：把 {fn}（{rec.get('time', '?')}）里的偏移写回去", "校准")
+        self.log(f"Desfazendo: restaurando os offsets de {fn} ({rec.get('time', '?')})", "Calibração")
         ok, bad = [], {}
         for k, row in rec["servos"].items():
             i = int(k)
             if "offset" not in row:
-                self.log(f"#{i} 备份里没有偏移（{row.get('error', '?')}），跳过", "校准", "warn")
+                self.log(f"#{i} Backup sem offset ({row.get('error', '?')}); ignorado", "Calibração", "warn")
                 continue
-            trail, step, on = [], "读当前状态", False
-            gains_bad = False         # 恢复扭矩前写 P/D/限力没写进去：收尾也不再恢复
+            trail, step, on = [], "Ler estado atual", False
+            gains_bad = False         # falha ao gravar P/D/limite antes de restaurar o torque; também não restaura ao finalizar
             try:
                 on = bus.read_u8(i, 40) == 1
                 off0, p0 = bus.read_u16(i, 31), self.read_pos(i)
                 if on:
-                    step = "关扭矩"
+                    step = "Desligar torque"
                     bus.write_u8(i, 40, 0)
                     if bus.read_u8(i, 40) != 0:
                         bus.write_u8(i, 40, 0)
                         if bus.read_u8(i, 40) != 0:
-                            raise feetech.BusError("关扭矩没生效（回读不是 0），不敢写偏移")
-                    trail.append("关扭矩✓")
-                step = "解锁"
-                trail.append("解锁" + _ack(bus.unlock(i)))
-                step = "写偏移"
-                trail.append(f"写偏移{fmt_off(row['offset'])}" + _ack(bus.write_u16(i, 31, row["offset"])))
-                step = "读回"
+                            raise feetech.BusError("Não foi possível desligar o torque (leitura de retorno diferente de 0); gravação do offset cancelada")
+                    trail.append("Torque desligado ✓")
+                step = "Desbloquear"
+                trail.append("Desbloquear" + _ack(bus.unlock(i)))
+                step = "Gravar offset"
+                trail.append(f"Offset gravado: {fmt_off(row['offset'])}" + _ack(bus.write_u16(i, 31, row["offset"])))
+                step = "Leitura de retorno"
                 self.wait_off_change(i, feetech.sign15(off0))
                 off1, p1 = bus.read_u16(i, 31), self.read_pos(i)
-                step = "写目标"
-                trail.append(f"目标{p1}" + _ack(bus.write_u16(i, 42, enc_sm(p1))))
+                step = "Gravar alvo"
+                trail.append(f"Alvo {p1}" + _ack(bus.write_u16(i, 42, enc_sm(p1))))
                 if on and not self.s.halted:
-                    step = "写 P/D/限力并开扭矩"                      # 上力前先写主程序的 P/D/限力，写不进去就不开（用户 10-19）
+                    step = "Gravar P/D/limite e ligar torque"                      # Antes de habilitar, grava os ganhos P/D/limite do programa principal; se falhar, não liga (pedido de 19/10)
                     gains_bad = not self._gains_then_torque(i, trail)
                 good = off1 == row["offset"]
                 if good:
                     ok.append(i)
                 else:
-                    bad[i] = f"偏移写了 {row['offset']} 读回 {off1}"
-                self.log(f"#{i} 偏移 {fmt_off(off0)}→{fmt_off(off1)}（备份值 {fmt_off(row['offset'])}） 读数 {p0}→{p1} · "
-                         + " ".join(trail), "校准", "info" if good else "warn")
+                    bad[i] = f"Offset gravado {row['offset']}, retornou {off1}"
+                self.log(f"#{i} offset {fmt_off(off0)}→{fmt_off(off1)} (backup: {fmt_off(row['offset'])}), leitura {p0}→{p1} · "
+                         + " ".join(trail), "Calibração", "info" if good else "warn")
             except Exception as e:  # noqa: BLE001
-                bad[i] = f"卡在「{step}」：{type(e).__name__}: {e}"
-                self.log(f"#{i} 撤销{bad[i]}", "校准", "error")
+                bad[i] = f"Falha na etapa “{step}”: {type(e).__name__}: {e}"
+                self.log(f"#{i} Desfazer: {bad[i]}", "Calibração", "error")
             finally:
                 try:
                     p = self.read_pos(i)
                     bus.write_u16(i, 42, enc_sm(p))
                     if on and not self.s.halted and not gains_bad and bus.read_u8(i, 40) != 1:
-                        self._gains_then_torque(i, trail, "扭矩已恢复")  # P/D/限力写不进去就不恢复
+                        self._gains_then_torque(i, trail, "Torque restaurado")  # Se não conseguir gravar P/D/limite, não restaura o torque
                 except Exception as e:  # noqa: BLE001
-                    self.log(f"#{i} 撤销收尾失败，这颗可能卸着力：{type(e).__name__}: {e}", "校准", "error")
+                    self.log(f"#{i} Falha ao finalizar o desfazer; este servo pode estar sem torque: {type(e).__name__}: {e}", "Calibração", "error")
                 try:
                     bus.lock(i)
                 except Exception as e:  # noqa: BLE001
-                    self.log(f"#{i} 加锁失败：{type(e).__name__}: {e}", "校准", "error")
+                    self.log(f"#{i} Falha ao travar: {type(e).__name__}: {e}", "Calibração", "error")
         if not rec.get("sim") and "shifted" in rec:
             later, t0 = [], rec.get("time", "")
             for p in self.list_poses():
@@ -1058,21 +1058,21 @@ class ServoOps:
                     later.append(p["file"])
             moved = self.shift_saved_poses(rec.get("deltas", {}), sign=-1, only=set(rec["shifted"]) | set(later))
             if moved:
-                self.log(f"存的姿态换算回原来的零点：{moved}", "姿态")
+                self.log(f"Posturas salvas recalculadas para o zero original: {moved}", "Posturas")
         if ok and not rec.get("sim"):
             try:
                 from .commit import forget_centered
                 gone = forget_centered(self.state_dir, ok)
                 if gone:
-                    self.log(f"撤销成功的 {len(gone)} 颗也从「都已校过中位」的记录里删掉了：{gone}", "校准")
+                    self.log(f"Os {len(gone)} servos desfeitos também foram removidos do registro “calibração central concluída”: {gone}", "Calibração")
             except OSError as e:
-                self.log(f"撤销成功的颗没能从 Studio 的中位记录里删掉：{type(e).__name__}: {e}", "校准", "warn")
+                self.log(f"Não foi possível remover os servos desfeitos do registro de calibração central do Studio: {type(e).__name__}: {e}", "Calibração", "warn")
         os.rename(os.path.join(d, fn), os.path.join(d, "undone-" + fn))
-        self.log(f"撤销完（{fn} 已改名 undone-{fn}）：{len(ok)} 颗偏移写回" + (f"；失败 {sorted(bad)}" if bad else ""),
-                 "校准", "warn" if bad else "info")
+        self.log(f"Desfazer concluído ({fn} renomeado para undone-{fn}): offsets restaurados em {len(ok)} servos" + (f"; falhas {sorted(bad)}" if bad else ""),
+                 "Calibração", "warn" if bad else "info")
         return {"ok": ok, "bad": {str(k): v for k, v in bad.items()}, "backup": fn}
 
-    # ---- 姿态 ----
+    # ---- Posturas ----
 
     def list_poses(self):
         out = []
@@ -1085,7 +1085,7 @@ class ServoOps:
                         out.append({"file": fn, "name": p.get("name", fn[:-5]), "time": p.get("time", ""),
                                     "goals": {r["id"]: r["pos"] for r in p.get("rows", [])}})
                     except Exception as e:  # noqa: BLE001
-                        self.log(f"姿态文件 {fn} 读不了：{type(e).__name__}: {e}", "姿态", "warn")
+                        self.log(f"Não foi possível ler o arquivo de postura {fn}: {type(e).__name__}: {e}", "Posturas", "warn")
         return out
 
     def save_pose(self, name):
@@ -1097,33 +1097,33 @@ class ServoOps:
         fn = f"{safe}-{time.strftime('%Y-%m-%d')}.json"
         _save_json(os.path.join(self.poses_dir(), fn), {"name": safe, "time": time.strftime("%Y-%m-%d %H:%M"), "rows": rows})
         missing = [i for i, v in st.items() if not v]
-        self.log(f"姿态已存 {fn}（{len(rows)} 颗）" + (f"；读不到 {missing}，没存进去" if missing else ""), "姿态",
+        self.log(f"Postura salva: {fn} ({len(rows)} servos)" + (f"；sem leitura em {missing}; não foi salvo" if missing else ""), "Posturas",
                  "warn" if missing else "info")
         return {"file": fn}
 
     def delete_pose(self, fn):
-        """不真删：挪进回收站，文件名前加时间，删错了能拿回来。"""
+        """Não apaga de verdade: move para a lixeira e acrescenta a data ao nome do arquivo para permitir recuperação."""
         fn = str(fn or "")
         if not fn or os.path.basename(fn) != fn or not fn.endswith(".json"):
-            raise Refused(f"不认识的姿态文件 {fn!r}")
+            raise Refused(f"Arquivo de postura desconhecido: {fn!r}")
         src = os.path.join(self.poses_dir(), fn)
         if not os.path.isfile(src):
-            raise Refused(f"没有这个姿态：{fn}")
+            raise Refused(f"Postura não encontrada: {fn}")
         trash = os.path.join(self.poses_dir(), ".trash")
         os.makedirs(trash, exist_ok=True)
         os.replace(src, os.path.join(trash, f"{time.strftime('%Y%m%d-%H%M%S')}-{fn}"))
-        self.log(f"姿态已删除：{fn}（挪到回收站，要找回就挪回来）", "姿态")
+        self.log(f"Postura removida: {fn} (movida para a lixeira; mova de volta para recuperar)", "Posturas")
         return {}
 
     def go_pose(self, fn, seconds, mode, acc):
         p = next((x for x in self.list_poses() if x["file"] == fn), None)
         if not p:
-            raise Refused(f"没有这个姿态：{fn}")
-        self.log(f"去姿态「{p['name']}」（{seconds:g} 秒）", "运动")
+            raise Refused(f"Postura não encontrada: {fn}")
+        self.log(f"Executando postura “{p['name']}” ({seconds:g} s)", "Movimento")
         return self.move(p["goals"], seconds, mode, acc)
 
     def shift_saved_poses(self, deltas, sign=1, only=None):
-        """重新校准后，同一个物理姿势的读数变了 delta：存的姿态跟着挪。"""
+        """Após recalibrar, a leitura da mesma postura física muda por delta; ajusta as posturas salvas junto."""
         changed = []
         d = self.poses_dir()
         if not os.path.isdir(d) or not any(deltas.values()):
@@ -1145,30 +1145,30 @@ class ServoOps:
                 changed.append(fn)
         return changed
 
-    # ---- 总线工具 ----
+    # ---- Ferramentas do barramento ----
 
     def scan(self, ids):
         found = [i for i in ids if self.bus.ping(i) is not None]
         lost = [i for i in ids if i not in found] if len(ids) <= 32 else []
-        self.log(f"扫描 {ids[0]}..{ids[-1]}：在线 {len(found)} 颗 {found}" + (f"；不在线 {lost}" if lost else ""),
-                 "总线", "warn" if lost else "info")
+        self.log(f"Varredura {ids[0]}..{ids[-1]}: {len(found)} servos online {found}" + (f"；offline {lost}" if lost else ""),
+                 "Barramento", "warn" if lost else "info")
         return {"found": found, "lost": lost}
 
     def dump(self, sid):
         d = self.bus.dump(int(sid))
         r = d["raw"]
-        self.log(f"导出 #{sid}：固件 {r[0]}.{r[1]} 舵机 {r[3]}.{r[4]} 模式={r[33]} 相位={r[18]} P/D/I={r[21]}/{r[22]}/{r[23]}"
-                 f"（运行中 {r[50]}/{r[51]}/{r[52]}，限力 {r[48] | r[49] << 8}） "
-                 f"偏移={fmt_off(r[31] | r[32] << 8)} 扭矩={r[40]} 锁={r[55]} 应答级别={r[8]}", "寄存器")
+        self.log(f"Exportação #{sid}: firmware {r[0]}.{r[1]}, servo {r[3]}.{r[4]}, modo={r[33]}, fase={r[18]}, P/D/I={r[21]}/{r[22]}/{r[23]}"
+                 f"(em operação {r[50]}/{r[51]}/{r[52]}, limite de torque {r[48] | r[49] << 8}) "
+                 f"offset={fmt_off(r[31] | r[32] << 8)}, torque={r[40]}, trava={r[55]}, nível de resposta={r[8]}", "Registradores")
         return {"id": int(sid), **d}
 
     def write_reg(self, sid, addr, size, value, unlock):
         self.guard()
         sid, addr, size, value = int(sid), int(addr), int(size), int(value)
         if addr == 40:
-            raise Refused("扭矩开关用页面上的开关，别在这里写")
+            raise Refused("Use o controle da interface para o interruptor de torque; não grave aqui")
         if size not in (1, 2) or not 0 <= addr <= 86:
-            raise Refused("地址 0–86，字节 1 或 2")
+            raise Refused("Endereço de 0 a 86; 1 ou 2 bytes")
         bus = self.bus
         name = feetech.REGISTERS.get(addr, ("?",))[0]
         rd = bus.read_u8 if size == 1 else bus.read_u16
@@ -1182,18 +1182,18 @@ class ServoOps:
                 bus.lock(sid)
         new = rd(sid, addr)
         same = new == value & (0xFF if size == 1 else 0xFFFF)
-        self.log(f"#{sid} 写 {addr}「{name}」{old} → {value}{_ack(err)}，读回 {new}" + ("（解锁写入，已重新加锁）" if unlock else "")
-                 + ("" if same else "（读回跟写的不一样：只读？超范围？）"), "寄存器", "info" if same else "warn")
+        self.log(f"#{sid} Gravou {addr} “{name}” {old} → {value}{_ack(err)}; leitura de retorno {new}" + ("(gravado com desbloqueio; travado novamente)" if unlock else "")
+                 + ("" if same else "(leitura de retorno difere do valor gravado: somente leitura ou fora da faixa?)"), "Registradores", "info" if same else "warn")
         touched = sorted(set(range(addr, addr + size)) & set(GAIN_REGS))
         if touched:
-            # 手动改 P / D / 限力：高级用法照旧允许，页头写「手动改过，跟主程序不一样」（用户 10-19）
+            # Alteração manual de P/D/limite continua permitida para usuários avançados; o cabeçalho informa “alterado manualmente, diferente do programa principal” (pedido de 19/10)
             self.manual.setdefault(sid, {})[addr] = new
             g = self.gains.get(max_age=GAINS_RECHECK_S)
             eeprom = all(a in (21, 22) for a in touched)
-            self.log(f"#{sid} 手动改了{'、'.join(GAIN_REGS[a] for a in touched)}（寄存器 {addr} = {new}），跟主程序"
-                     f"（P{g['kp']} · D{g['kd']} · 限力 {g['limit']}）不一样"
-                     + ("：这是 EEPROM 里存的，上电后才用；Studio 上力时照样写运行中的（50 / 51 / 48）" if eeprom else
-                        "：上着力就一直这样；这颗下次从松开到上力时，Studio 会写回主程序的值"), "寄存器", "warn")
+            self.log(f"#{sid} alterou manualmente {', '.join(GAIN_REGS[a] for a in touched)} (registrador {addr} = {new}), diferente do programa principal"
+                     f"(P{g['kp']} · D{g['kd']} · limite {g['limit']})"
+                     + (" : estes valores estão na EEPROM e só são usados na inicialização; o Studio ainda grava os valores em operação (50/51/48) ao habilitar torque" if eeprom else
+                        "; enquanto houver torque, mantém estes valores; quando o servo for desligado e energizado novamente, o Studio grava os valores do programa principal"), "Registradores", "warn")
         self.s.refresh_static([sid])
         return {"old": old, "new": new, "same": same}
 
@@ -1201,25 +1201,25 @@ class ServoOps:
         sid = int(sid)
         self.bus.write_u8(sid, 40, 0)
         self.bus.reboot(sid)
-        self.log(f"#{sid} 重启 0x08（先关了扭矩，约 0.8 s 后回来）", "寄存器")
+        self.log(f"#{sid} Reinicialização 0x08 (desliga o torque antes; retorna em cerca de 0,8 s)", "Registradores")
         return {}
 
     def set_id(self, old, new):
         self.guard()
         old, new = int(old), int(new)
         if not 0 <= new <= 253:
-            raise Refused("新 ID 要在 0–253")
+            raise Refused("O novo ID deve estar entre 0 e 253")
         if new != old and self.bus.ping(new) is not None:
-            raise Refused(f"ID {new} 已经有舵机在用，会撞号")
+            raise Refused(f"O ID {new} já está em uso por outro servo; haverá conflito")
         ok = self.bus.set_id(old, new)
-        self.log(f"改 ID {old} → {new}：" + ("新 ID ping 得通" if ok else "新 ID ping 不通"), "寄存器", "info" if ok else "error")
+        self.log(f"Alterar ID {old} → {new}: " + ("o novo ID responde ao ping" if ok else "o novo ID não responde ao ping"), "Registradores", "info" if ok else "error")
         return {"ok": ok}
 
     def timing(self, n=200):
-        """sync_read 全部在线舵机 n 次，看耗时和失败。"""
+        """Executa sync_read em todos os servos online n vezes e mede duração e falhas."""
         ids = self.present()
         times, fails = [], 0
-        with self.calib_lock:                      # 测的时候轮询让开，测出来的才是总线本身
+        with self.calib_lock:                      # Suspende as consultas durante a medição para medir somente o barramento
             for _ in range(int(n)):
                 t = time.perf_counter()
                 r = self.bus.sync_read(ids, 56, 15)
@@ -1228,7 +1228,7 @@ class ServoOps:
         times.sort()
         res = {"n": n, "ids": len(ids), "min_ms": round(times[0], 2), "avg_ms": round(sum(times) / n, 2),
                "p99_ms": round(times[max(0, int(n * 0.99) - 1)], 2), "max_ms": round(times[-1], 2), "fails": fails}
-        self.log(f"时序测试：{res}", "总线", "warn" if fails else "info")
+        self.log(f"Teste de temporização: {res}", "Barramento", "warn" if fails else "info")
         return res
 
     def set_dir(self, sid, d):
@@ -1237,15 +1237,15 @@ class ServoOps:
         path = os.path.join(self.state_dir, "servo-directions.json")
         os.makedirs(self.state_dir, exist_ok=True)
         _save_json(path, {str(k): v for k, v in self.s.directions.items()})
-        self.log(f"方向 #{sid} → {d:+d}（已存 servo-directions.json）", "方向")
+        self.log(f"Orientação #{sid} → {d:+d} (salva em servo-directions.json)", "Orientações")
         return {"dirs": {str(k): v for k, v in self.s.directions.items()}}
 
-    # ---- 页面来的指令 ----
+    # ---- Comandos da interface ----
 
     def handle(self, args, tok=None):
-        """页面的指令（在线程里跑）。返回给页面的 dict；不能做就抛 Refused（原因给页面看）。
-        进出都记账：交还 / 离开要等在路上的做完，正在交还时新来的直接拒（审查 D2）。app 在事件循环里已经记上了（tok），
-        这里就不再记；直接调的（测试）这里记。记上了的照常做完——交还 / 离开等它做完以后再当场读扭矩。"""
+        """Processa comandos da interface (executados em uma thread). Retorna um dict; lança Refused se não for possível (motivo exibido na interface).
+        Registra início e fim: devolução/saída aguarda operações pendentes; novas solicitações são rejeitadas durante a devolução (revisão D2). app já registrou no event loop (tok),
+        por isso não registra novamente aqui; chamadas diretas (testes) são registradas. Operações iniciadas continuam normalmente; devolução/saída espera e depois lê o torque no momento."""
         if tok is not None:
             return self._handle(args)
         with self.s.op_slot(args.get("op")):
@@ -1259,11 +1259,11 @@ class ServoOps:
         if op == "torque":
             ids = [int(i) for i in (args.get("ids") or [])] or self.present()
             if int(args.get("on", 0)) and self.s.latched and self.s.closing:
-                raise Refused("正在交还主程序：卸力锁着，不许再上力")       # 交还时卸的力不许被手动上力清掉（审查 D2）
+                raise Refused("Devolução ao programa principal em andamento: a trava de torque impede nova habilitação")       # A desativação de torque feita durante a devolução não pode ser anulada por habilitação manual (revisão D2)
             if int(args.get("on", 0)) and self.s.latched:
-                # 卸力以后，人自己点「扭矩开 / 保持」就算解除（后台的过渡、灵动、校准收尾仍然不会自己上力）
+                # Após desligar o torque, uma ação explícita “Ligar torque/Reter” destrava; transições, animações e finalizações de calibração em segundo plano continuam sem reativá-lo
                 self.s.latched = False
-                self.log("手动上力：解除卸力锁定", "安全")
+                self.log("Habilitação manual do torque: trava de desligamento liberada", "Segurança")
             return self.torque_on_aligned(ids) if int(args.get("on", 0)) else self.torque_off(ids)
         if op == "goal":
             return self.goal(args["id"], args["pos"])
@@ -1309,17 +1309,17 @@ class ServoOps:
             return self.set_dir(args["id"], args["dir"])
         if op == "unlatch":
             self.s.latched = False
-            self.log("解除卸力锁定：可以再上力了", "安全")
+            self.log("Trava de desligamento liberada; o torque pode ser habilitado", "Segurança")
             return {}
         if op == "info":
             return {"danger": {str(k): v for k, v in DANGER.items()},
                     "registers": {str(k): v for k, v in feetech.REGISTERS.items()},
                     "official": {k: v[0] for k, v in OFFICIAL.items()}}
-        raise Refused(f"不认识的指令：{op}")
+        raise Refused(f"Comando desconhecido: {op}")
 
 
 def _save_json(path, obj):
-    """先写 .tmp 再改名：写一半崩了不会留半截文件。"""
+    """Grava primeiro em .tmp e depois renomeia: uma falha no meio não deixa um arquivo parcial."""
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=1)
