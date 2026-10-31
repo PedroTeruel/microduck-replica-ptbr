@@ -70,7 +70,7 @@ main(sys.argv[1:])
 
 
 @unittest.skipUnless(_node_ok() and EDGE and os.environ.get('STUDIO_E2E','1')!='0',
-                     '需要 Node >=22 和 Edge；STUDIO_E2E=0 时跳过浏览器测试')
+                     'Requer Node >=22 e Edge; defina STUDIO_E2E=0 para pular o teste no navegador')
 class SensorsE2E(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -97,16 +97,16 @@ class SensorsE2E(unittest.TestCase):
                 stdout=output('fake.out'),stderr=subprocess.STDOUT))
             cls.procs.append(subprocess.Popen([sys.executable,'-I',str(boot),'--listen',f'127.0.0.1:{web}',
                 '--robotd',f'tcp:127.0.0.1:{rd}','--configd',f'tcp:127.0.0.1:{cfg}','--dev-duck-root',str(root),
-                '--duck-label','传感器测试鸭','--dev-autologin','--tof',f'tcp:127.0.0.1:{tof}',
+                '--duck-label','Robô de teste dos sensores','--dev-autologin','--tof',f'tcp:127.0.0.1:{tof}',
                 '--camera-socket',f'tcp:127.0.0.1:{media}',
                 '--state-dir',str(cls.dir/'state'),'--log-dir',str(cls.dir/'logs')],cwd=ROOT,env=env,
                 stdout=output('studio.out'),stderr=subprocess.STDOUT))
-            _wait_http(f'http://127.0.0.1:{web}/healthz','传感器测试 Studio')
+            _wait_http(f'http://127.0.0.1:{web}/healthz','Studio de teste dos sensores')
             cls.procs.append(subprocess.Popen([EDGE,'--headless=new','--disable-gpu','--no-sandbox','--no-first-run',
                 '--no-default-browser-check','--autoplay-policy=no-user-gesture-required','--enable-unsafe-swiftshader',
                 f'--remote-debugging-port={cdp}',f'--user-data-dir={cls.dir/"edge"}','about:blank'],
                 stdout=output('edge.out'),stderr=subprocess.STDOUT))
-            _wait_http(f'http://127.0.0.1:{cdp}/json/version','传感器测试 Edge',timeout=60)
+            _wait_http(f'http://127.0.0.1:{cdp}/json/version','Edge de teste dos sensores',timeout=60)
         except Exception:
             cls.tearDownClass();raise
 
@@ -124,7 +124,7 @@ class SensorsE2E(unittest.TestCase):
             cwd=ROOT,capture_output=True,text=True,encoding='utf-8',timeout=160)
         (self.dir/'node.out').write_text(result.stdout or '',encoding='utf-8')
         (self.dir/'node.err').write_text(result.stderr or '',encoding='utf-8')
-        self.assertEqual(result.returncode,0,f'{result.stderr[-5000:]}\n测试日志：{self.dir}')
+        self.assertEqual(result.returncode,0,f'{result.stderr[-5000:]}\nLog do teste: {self.dir}')
         report=json.loads(result.stdout)
         self.assertEqual(report['errors'],[])
         self.assertTrue(report['mobileFits'])

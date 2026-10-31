@@ -486,7 +486,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         if not sess:
             return JSONResponse({"ok": False, "error": "先登录才能查看传感器"}, status_code=401, headers=headers)
         if sensors is None:
-            return JSONResponse({"ok": False, "error": "当前未开启传感器页面的后端"}, status_code=503, headers=headers)
+            return JSONResponse({"ok": False, "error": "O backend da página de sensores não está ativado"}, status_code=503, headers=headers)
         try:
             data = await getattr(sensors, kind)()
             return JSONResponse({"ok": True, "data": data}, headers=headers)

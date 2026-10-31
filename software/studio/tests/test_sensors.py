@@ -241,7 +241,7 @@ class SensorsTest(unittest.IsolatedAsyncioTestCase):
                 mock.patch.object(asyncio, "open_unix_connection", side_effect=AssertionError("disabled"), create=True):
             result = await self.sensors(camera_addr="none").camera()
         self.assertEqual(result["service_state"], "unknown")
-        self.assertIn("未配置", result["service_reason"])
+        self.assertIn("não está configurada", result["service_reason"])
 
     async def test_camera_refused_or_missing_service_is_offline(self):
         fake, sensors = await self.fake_camera()
@@ -334,7 +334,7 @@ class SensorsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["source_basis"], "config")
         self.assertIs(result["source_verified"], False)
         self.assertEqual(result["signaling_port"], 9443)
-        self.assertIn("测试", result["source_label"])
+        self.assertIn("teste", result["source_label"].lower())
         self.assertIsNone(result["error"])
         self.assertEqual(self.config.read_bytes(), before)
 
@@ -494,7 +494,7 @@ class SensorsTest(unittest.IsolatedAsyncioTestCase):
             self.fail("none must disable ToF without parsing a socket address")
         self.assertEqual(result["state"], "unavailable")
         self.assertFalse(result["connected"])
-        self.assertIn("未配置", result["reason"])
+        self.assertIn("não está configurado", result["reason"])
 
     async def test_tof_offline_and_disconnected_are_distinct(self):
         fake, sensors = await self.fake(frames=[])
@@ -505,7 +505,7 @@ class SensorsTest(unittest.IsolatedAsyncioTestCase):
             self.fail(f"disconnect must return an error view: {exc!r}")
         self.assertEqual(disconnected["state"], "error")
         self.assertFalse(disconnected["connected"])
-        self.assertIn("断开", disconnected["reason"])
+        self.assertIn("encerrada", disconnected["reason"])
         await fake.stop()
         self.servers.remove(fake)
         try:

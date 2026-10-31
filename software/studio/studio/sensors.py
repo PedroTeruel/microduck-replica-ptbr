@@ -34,28 +34,28 @@ def _geometry(data):
 
 def _metadata(data):
     if not isinstance(data, dict) or data.get("accepted") is not True:
-        raise ValueError("ToF 订阅没有被接受")
+        raise ValueError("A assinatura ToF não foi aceita")
     if not _geometry(data) or not _integer(data.get("hz"), 1, 255):
-        raise ValueError("ToF 服务返回的尺寸或频率不正确")
+        raise ValueError("O serviço ToF retornou dimensões ou frequência inválidas")
     for key, limit in (("sensor", 100), ("unavailable", 2048)):
         value = data.get(key)
         if value is not None and (not isinstance(value, str) or not value or len(value) > limit):
-            raise ValueError(f"ToF 服务返回的 {key} 不正确")
+            raise ValueError(f"O serviço ToF retornou um valor inválido para {key}")
     return data
 
 
 def _frame_view(data, metadata):
     if not isinstance(data, dict) or not _geometry(data):
-        raise ValueError("ToF 帧尺寸必须为 8×8")
+        raise ValueError("O quadro ToF deve ter tamanho 8×8")
     if not _integer(data.get("seq"), 0, 2**64 - 1):
-        raise ValueError("ToF 帧序号不正确")
+        raise ValueError("O número de sequência do quadro ToF é inválido")
     for key in ("at_us", "t_ns"):
         if key in data and not _integer(data[key], 0, 2**64 - 1):
-            raise ValueError("ToF 帧时间不正确")
+            raise ValueError("O horário do quadro ToF é inválido")
     distances, statuses = data.get("distance_mm"), data.get("status")
     for values, low, high in ((distances, -32768, 32767), (statuses, 0, 255)):
         if not isinstance(values, list) or len(values) != 64 or not all(_integer(v, low, high) for v in values):
-            raise ValueError("ToF 帧需要 64 个有界整数距离和状态")
+            raise ValueError("O quadro ToF precisa conter 64 distâncias e estados inteiros dentro dos limites")
     received = time.monotonic()
     zones, valid = [], []
     for mm, status in zip(distances, statuses):
@@ -74,26 +74,26 @@ def _frame_view(data, metadata):
 
 
 def _reject_constant(value):
-    raise ValueError(f"ToF JSON 含有非有限数值 {value}")
+    raise ValueError(f"O JSON ToF contém um valor não finito: {value}")
 
 
 async def _message(reader, service="ToF", line_limit=TOF_LINE_LIMIT):
     try:
         raw = await reader.readline()
     except (ValueError, asyncio.LimitOverrunError):
-        raise ValueError(f"{service} 消息超过 64 KiB") from None
+        raise ValueError(f"A mensagem do serviço {service} excede 64 KiB") from None
     if not raw:
-        raise ConnectionError(f"{service} 服务连接已断开")
+        raise ConnectionError(f"A conexão com o serviço {service} foi encerrada")
     if len(raw) > line_limit:
-        raise ValueError(f"{service} 消息超过 64 KiB")
+        raise ValueError(f"A mensagem do serviço {service} excede 64 KiB")
     if not raw.endswith(b"\n"):
-        raise ValueError(f"{service} 消息没有完整结束")
+        raise ValueError(f"A mensagem do serviço {service} terminou incompleta")
     try:
         message = json.loads(raw, parse_constant=_reject_constant)
     except (ValueError, UnicodeError, RecursionError):
-        raise ValueError(f"{service} 服务返回了无效 JSON") from None
+        raise ValueError(f"O serviço {service} retornou um JSON inválido") from None
     if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
-        raise ValueError(f"{service} 服务返回的消息格式不正确")
+        raise ValueError(f"O serviço {service} retornou uma mensagem em formato inválido")
     return message
 
 
@@ -120,7 +120,7 @@ class Sensors:
 
     async def _camera_service(self):
         if self.camera_addr == "none":
-            return "unknown", "未配置摄像头服务探测"
+            return "unknown", "A verificação do serviço de câmera não está configurada"
         writer = None
         try:
             # One fresh read-only hello; do not request a capture or start video.
@@ -129,32 +129,32 @@ class Sensors:
                 if kind == "unix":
                     open_unix = getattr(asyncio, "open_unix_connection", None)
                     if not callable(open_unix):
-                        return "unknown", "本机不支持 Unix socket，开发时请配置 tcp: 地址"
+                        return "unknown", "Este sistema não oferece suporte a socket Unix; em desenvolvimento, configure um endereço tcp:"
                     reader, writer = await open_unix(address[0], limit=CAMERA_LINE_LIMIT)
                 else:
                     reader, writer = await asyncio.open_connection(*address, limit=CAMERA_LINE_LIMIT)
                 writer.write(encode(1, "hello", {}))
                 await writer.drain()
-                response = await _message(reader, "摄像头", CAMERA_LINE_LIMIT)
+                response = await _message(reader, "câmera", CAMERA_LINE_LIMIT)
                 if type(response.get("id")) is not int or response["id"] != 1 or "method" in response:
-                    raise ValueError("摄像头服务 hello 回复格式不正确")
+                    raise ValueError("O serviço de câmera respondeu ao hello em formato inválido")
                 if "error" in response:
                     error = response["error"]
-                    message = error.get("message") if isinstance(error, dict) else "hello 失败"
-                    raise ValueError(f"摄像头服务拒绝 hello：{str(message)[:2048]}")
+                    message = error.get("message") if isinstance(error, dict) else "falha no hello"
+                    raise ValueError(f"O serviço de câmera recusou o hello: {str(message)[:2048]}")
                 result = response.get("result")
                 api_version = result.get("api_version") if isinstance(result, dict) else None
                 if type(api_version) is not int or api_version <= 0:
-                    raise ValueError("摄像头服务 hello 没有有效的 API 版本")
+                    raise ValueError("O hello do serviço de câmera não informou uma versão válida da API")
                 return "online", None
         except NotImplementedError:
-            return "unknown", "本机不支持 Unix socket，开发时请配置 tcp: 地址"
+            return "unknown", "Este sistema não oferece suporte a socket Unix; em desenvolvimento, configure um endereço tcp:"
         except TimeoutError:
-            return "offline", "摄像头服务没有及时回应"
+            return "offline", "O serviço de câmera não respondeu a tempo"
         except (ConnectionError, OSError):
-            return "offline", "摄像头服务未在线或连接已断开"
+            return "offline", "O serviço de câmera está offline ou a conexão foi encerrada"
         except ValueError as exc:
-            return "offline", f"摄像头服务回复无效：{exc}"
+            return "offline", f"O serviço de câmera respondeu com dados inválidos: {exc}"
         finally:
             if writer is not None:
                 writer.close()
@@ -164,35 +164,35 @@ class Sensors:
                     writer.transport.abort()
 
     def _camera_config(self):
-        result = {"source": "unknown", "source_label": "来源未知（等待视频确认）",
+        result = {"source": "unknown", "source_label": "Origem desconhecida (aguardando confirmação do vídeo)",
                   "source_basis": "config", "source_verified": False,
                   "signaling_port": self.camera_signaling_port, "error": None}
         try:
             config = tomllib.loads((self.root / "etc/robot/robotd.toml").read_text(encoding="utf-8"))
         except FileNotFoundError:
-            result["error"] = "未找到摄像头来源配置，仍可尝试连接视频"
+            result["error"] = "A configuração da origem da câmera não foi encontrada; ainda é possível tentar conectar o vídeo"
             return result
         except (OSError, UnicodeError, ValueError):
-            result["error"] = "摄像头来源配置无法读取，仍可尝试连接视频"
+            result["error"] = "Não foi possível ler a configuração da origem da câmera; ainda é possível tentar conectar o vídeo"
             return result
         media = config.get("media")
         if not isinstance(media, dict):
-            result["error"] = "未配置摄像头来源，等待视频元数据确认"
+            result["error"] = "A origem da câmera não está configurada; aguardando confirmação dos metadados do vídeo"
             return result
         source = media.get("source")
         if source in ("camera", "test"):
             result["source"] = source
-            result["source_label"] = ("摄像头（配置，尚未验证）" if source == "camera"
-                                      else "测试画面（配置）")
+            result["source_label"] = ("Câmera (configurada, ainda não verificada)" if source == "camera"
+                                      else "Vídeo de teste (configurado)")
         elif "camera" in media:
-            result["error"] = "配置仅含旧版 media.camera，当前运行端会忽略它；等待视频元数据确认"
+            result["error"] = "A configuração contém apenas o campo antigo media.camera, ignorado pela versão atual; aguardando confirmação dos metadados do vídeo"
         else:
-            result["error"] = "摄像头来源配置未知，等待视频元数据确认"
+            result["error"] = "A origem da câmera configurada é desconhecida; aguardando confirmação dos metadados do vídeo"
         return result
 
     async def tof(self):
         if self.tof_addr == "none":
-            return _view("unavailable", reason="未配置 ToF 服务")
+            return _view("unavailable", reason="O serviço ToF não está configurado")
         task = self._tof_task
         if task is None or task.done():
             task = self._tof_task = asyncio.create_task(self._read_tof())
@@ -221,7 +221,7 @@ class Sensors:
                 if kind == "unix":
                     open_unix = getattr(asyncio, "open_unix_connection", None)
                     if not callable(open_unix):
-                        return _view("unavailable", reason="本机不支持 Unix socket，开发时请配置 tcp: 地址")
+                        return _view("unavailable", reason="Este sistema não oferece suporte a socket Unix; em desenvolvimento, configure um endereço tcp:")
                     reader, writer = await open_unix(address[0], limit=TOF_LINE_LIMIT)
                 else:
                     reader, writer = await asyncio.open_connection(*address, limit=TOF_LINE_LIMIT)
@@ -231,31 +231,31 @@ class Sensors:
                 await writer.drain()
                 response = await _message(reader)
                 if type(response.get("id")) is not int or response["id"] != 1:
-                    raise ValueError("ToF 订阅回复序号不正确")
+                    raise ValueError("O serviço ToF respondeu com um número de sequência de assinatura inválido")
                 if "error" in response:
                     error = response["error"]
-                    message = error.get("message") if isinstance(error, dict) else "订阅失败"
-                    raise ValueError(f"ToF 服务拒绝订阅：{str(message)[:2048]}")
+                    message = error.get("message") if isinstance(error, dict) else "falha na assinatura"
+                    raise ValueError(f"O serviço ToF recusou a assinatura: {str(message)[:2048]}")
                 metadata = _metadata(response.get("result"))
                 notification = await _message(reader)
                 if notification.get("method") != "tof.frame" or "id" in notification:
-                    raise ValueError("ToF 订阅必须返回 tof.frame 通知")
+                    raise ValueError("A assinatura ToF deve retornar uma notificação tof.frame")
                 return _frame_view(notification.get("params"), metadata)
         except TimeoutError:
             if metadata is not None:
                 reason = metadata.get("unavailable")
                 return _view("unavailable" if reason else "waiting", True, metadata.get("sensor"),
-                             reason or "正在等待 ToF 第一帧", metadata["hz"])
+                             reason or "Aguardando o primeiro quadro ToF", metadata["hz"])
             return _view("error" if connected else "unavailable", connected,
-                         reason="ToF 服务没有及时回应" if connected else "连接 ToF 服务超时")
+                         reason="O serviço ToF não respondeu a tempo" if connected else "Tempo esgotado ao conectar ao serviço ToF")
         except (ConnectionError, OSError) as exc:
             return _view("error" if connected else "unavailable", False,
                          sensor=metadata.get("sensor") if metadata else None,
-                         reason="ToF 服务连接已断开" if connected else f"ToF 服务未在线：{exc}",
+                         reason="A conexão com o serviço ToF foi encerrada" if connected else f"O serviço ToF está offline: {exc}",
                          hz=metadata.get("hz") if metadata else None)
         except ValueError as exc:
             return _view("error", connected, sensor=metadata.get("sensor") if metadata else None,
-                         reason=f"ToF 数据无效：{exc}", hz=metadata.get("hz") if metadata else None)
+                         reason=f"Dados ToF inválidos: {exc}", hz=metadata.get("hz") if metadata else None)
         finally:
             if writer is not None:
                 writer.close()

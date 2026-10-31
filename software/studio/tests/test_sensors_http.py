@@ -16,7 +16,7 @@ class SensorStub:
                 'service_state': 'online', 'service_reason': None}
 
     async def tof(self):
-        return {'state': 'unavailable', 'connected': False, 'reason': '未接 ToF'}
+        return {'state': 'unavailable', 'connected': False, 'reason': 'Serviço ToF não conectado'}
 
 
 class SensorHttp(unittest.IsolatedAsyncioTestCase):
@@ -30,7 +30,7 @@ class SensorHttp(unittest.IsolatedAsyncioTestCase):
         self.rd = Robotd(f'tcp:127.0.0.1:{port}', f'tcp:127.0.0.1:{port}', self.log)
         self.sensors = SensorStub()
         app = build_app(auth=self.auth, robotd=self.rd, log=self.log, web_dir=WEB,
-                        duck={'label': '测试鸭'}, sensors=self.sensors)
+                        duck={'label': 'Robô de teste'}, sensors=self.sensors)
         self.server = uvicorn.Server(uvicorn.Config(app, host='127.0.0.1', port=0, ws='wsproto', http='h11',
                                                   lifespan='on', log_level='critical'))
         self.task = asyncio.create_task(self.server.serve())
@@ -108,13 +108,13 @@ class SensorHttp(unittest.IsolatedAsyncioTestCase):
     async def test_missing_optional_backend_has_clear_unavailable_response(self):
         from starlette.requests import Request
         self.auth.clear_password()
-        app = build_app(auth=self.auth, robotd=self.rd, log=self.log, web_dir=WEB, duck={'label':'测试鸭'})
+        app = build_app(auth=self.auth, robotd=self.rd, log=self.log, web_dir=WEB, duck={'label':'Robô de teste'})
         request = Request({'type':'http','method':'GET','path':'/api/tof','headers':[],
                            'client':('127.0.0.1',1),'server':('127.0.0.1',self.port)})
         endpoint = next(route.endpoint for route in app.app.routes if getattr(route,'path',None)=='/api/tof')
         result = await endpoint(request)
         self.assertEqual(result.status_code,503)
-        self.assertIn('未开启',result.body.decode())
+        self.assertIn('não está ativado',result.body.decode())
         self.assertEqual(result.headers['cache-control'],'no-store')
 
 

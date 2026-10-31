@@ -1,11 +1,11 @@
-"""电池估算挂进 Studio（battery-plan.md v2 §6 B2/B3）：一个 1 Hz 的循环喂估算器，summarize 只读结果，页面的 battery.op。
+"""Integra a estimativa da bateria ao Studio (battery-plan.md v2 §6 B2/B3): um ciclo de 1 Hz alimenta o estimador; summarize apenas lê o resultado, usado por battery.op na página.
 
-为什么单独一个循环（审查 B-R7）：summarize 每个页面每秒跑 10 次，在那里喂样本，开三个页面就是每秒 30 个重复值。
-这里一秒一拍，按 busStatus 的采样时间（Sample.at）去重；调舵机时（Studio 自己占着总线，robotd 按计划停着）
-从 servo.snapshot() 的每颗电压取，同一个寄存器，切换时不重新起步。
+Por que usar um ciclo separado (revisão B-R7): summarize é executado 10 vezes por segundo em cada página. Alimentar o estimador ali geraria 30 amostras repetidas por segundo com três páginas abertas.
+Aqui há uma atualização por segundo, deduplicada pelo horário da amostra de busStatus (Sample.at). Ao controlar as servos (o Studio ocupa o barramento e o robotd fica parado por projeto),
+as tensões vêm de cada servo em servo.snapshot(); o mesmo registrador é usado e a estimativa não reinicia ao alternar entre fontes.
 
-设置存 state_dir/battery-settings.json（studio/battery.py 读写、校验）；改了马上换掉估算器的设置，下一拍生效。
-只警告：这里不发任何命令给鸭子。
+As configurações ficam em state_dir/battery-settings.json (leitura, gravação e validação em studio/battery.py); alterações substituem imediatamente as configurações do estimador e valem no próximo ciclo.
+Apenas avisos: este módulo não envia comandos ao robô.
 """
 import asyncio
 import os
@@ -15,9 +15,9 @@ from . import battery as B
 from .state import JOINT_CN, MAX_AGE
 
 TICK_S = 1.0
-BUS_STALE_S = 3.0       # busStatus 这么久没更新：这一拍当没有新数据（10 秒以后估算器自己重新起步）
-# 开发用（端到端测试、截图）：估算器的时间按这个倍数快进（30 秒估算中、60 秒才亮在 20 倍下是 1.5 秒、3 秒）。
-# 快进时每一拍都把最新的那份读数当新样本喂（不按 busStatus 的采样时间去重）。鸭子上不要设
+BUS_STALE_S = 3.0       # Sem atualização de busStatus por esse período, o ciclo não recebe dados novos (após 10 s, o estimador reinicia sozinho).
+# Para desenvolvimento (testes de ponta a ponta e capturas de tela): acelera o relógio do estimador por esse fator (30 s para estimar e 60 s para avisar viram 1,5 s e 3 s com fator 20).
+# Durante a aceleração, cada ciclo usa a leitura mais recente como nova amostra (sem deduplicar pelo horário de busStatus). Não configure no robô.
 SPEED_ENV = "STUDIO_BATTERY_SPEED"
 
 
@@ -36,18 +36,18 @@ class BatteryService:
         self.speed = max(1.0, speed)
         self._t0 = time.monotonic()
         if self.speed != 1.0:
-            log.warn(f"开发用：电量估算按 {self.speed:g} 倍速快进", cat=B.LOG_CAT, raw=f"{SPEED_ENV}={self.speed:g}",
-                     hint="只给端到端测试、截图用；鸭子上不要设这个环境变量")
+            log.warn(f"Desenvolvimento: estimativa da bateria acelerada em {self.speed:g}x", cat=B.LOG_CAT, raw=f"{SPEED_ENV}={self.speed:g}",
+                     hint="Use apenas em testes de ponta a ponta e capturas de tela; não configure esta variável no robô")
 
     def clock(self, now=None):
-        """估算器用的时间（快进时按倍数放大）。"""
+        """Horário usado pelo estimador (ampliado pelo fator de aceleração)."""
         now = time.monotonic() if now is None else now
         return self._t0 + (now - self._t0) * self.speed
 
-    # ---- 一拍 ----
+    # ---- Um ciclo ----
 
     def sample(self, now):
-        """这一拍的输入：(电压, fresh, cls, key, source, 名字) 或 None（没有新数据）。"""
+        """Entrada deste ciclo: (tensão, atual, classe, chave, origem, nomes) ou None (sem dados novos)."""
         sv = self.servo
         if sv is not None and getattr(sv, "state", None) == "open":
             snap = sv.snapshot()
@@ -56,7 +56,7 @@ class BatteryService:
             if vs is None:
                 return None
             names = [r.get("cn") if isinstance(r, dict) else None for r in rows]
-            # 舵机表没有采样时间：按秒去重（估算器在没给 key 时也会按时间去重）
+            # A tabela das servos não tem horário de amostragem: deduplica por segundo (o estimador também deduplica pelo horário se não receber uma chave).
             return vs, fr, B.classify_servo_session(rows), ("servo", int(now)), "servo", names
         bus = self.rd.bus.value
         age = self.rd.bus.age(now)
@@ -71,8 +71,8 @@ class BatteryService:
         names = [JOINT_CN.get(j.get("name"), j.get("name")) if isinstance(j, dict) else None for j in joints]
         cls = B.classify_robotd(bus, st) if st is not None else None
         if cls is None and st is None and isinstance(bus.get("native"), dict):
-            # 状态流没在推（没人看页面时 robotd 不推 robot.state）：只看 busStatus。卸力就是卸力；
-            # 扭矩开着、策略没开 = 保持 HOME（不会走）；策略开着可能在走，算不知道
+            # Sem atualizações do fluxo de estado (o robotd não envia robot.state quando ninguém está vendo a página): usa apenas busStatus. Torque desligado significa repouso;
+            # torque ligado e estratégia desligada significa postura HOME (sem caminhar); com a estratégia ligada, pode estar em movimento, então o estado é desconhecido.
             torque = bus["native"].get("torque_state_confirmed")
             if torque is False:
                 cls = "rest"
@@ -94,7 +94,7 @@ class BatteryService:
         return events
 
     def view(self, now=None):
-        """summarize 用（每秒 10 次 × 每个页面）：只读内存，不算新样本。"""
+        """Usado por summarize (10 vezes por segundo em cada página): apenas lê a memória, sem contar uma nova amostra."""
         now = time.monotonic() if now is None else now
         h = self.rd.health
         health = h.value if h.age(now) is not None and h.age(now) <= MAX_AGE["health"] else None
@@ -109,15 +109,15 @@ class BatteryService:
                 self.tick()
             except Exception as e:  # noqa: BLE001
                 self.errors += 1
-                self.log.error("电量估算出错", cat=B.LOG_CAT, raw=f"{type(e).__name__}: {e}", exc=True,
-                               hint="这是 Studio 的问题，导出诊断包发出来；不影响站和走")
+                self.log.error("Erro ao estimar a bateria", cat=B.LOG_CAT, raw=f"{type(e).__name__}: {e}", exc=True,
+                               hint="Problema no Studio. Exporte e compartilhe o pacote de diagnóstico; isso não impede o robô de ficar em pé ou andar")
                 await asyncio.sleep(5.0)
 
-    # ---- 页面的 battery.op ----
+    # ---- battery.op da página ----
 
     async def handle(self, args, by="?"):
-        """{op:"get"} → 设置 + 说明；{op:"set", values:{…}} → 校验、存盘、马上生效；
-        {op:"calibrate", measured_v} → 算出读数校准（不存，页面确认后再 set）。不合法的抛 ValueError（原因给人看）。"""
+        """{op:"get"} → configurações e explicações; {op:"set", values:{…}} → valida, salva e aplica imediatamente;
+        {op:"calibrate", measured_v} → calcula a calibração da leitura (não salva; a página pede confirmação antes de chamar set). Valores inválidos geram ValueError com uma mensagem para o usuário."""
         op = (args or {}).get("op")
         if op == "get":
             return self._payload()
@@ -132,19 +132,19 @@ class BatteryService:
             try:
                 saved = await asyncio.to_thread(B.save_settings, self.state_dir, good)
             except B.SettingsError as e:
-                self.log.warn("电池设置没存进去", cat=B.LOG_CAT, raw=str(e), hint="state 目录满了或者没权限")
+                self.log.warn("Não foi possível salvar as configurações da bateria", cat=B.LOG_CAT, raw=str(e), hint="O diretório de estado pode estar cheio ou sem permissão de gravação")
                 raise ValueError(str(e)) from None
             self.settings = saved
             self.est.set_settings(saved)
-            self.log.info(f"电池设置改了：{B.settings_changes(old, saved)}", cat=B.LOG_CAT, raw=f"by={by}")
+            self.log.info(f"Configurações da bateria alteradas: {B.settings_changes(old, saved)}", cat=B.LOG_CAT, raw=f"by={by}")
             return self._payload()
         if op == "calibrate":
             mv = (args or {}).get("measured_v")
             r = self.est.calibrate(self.clock(), mv)
             if r["ok"]:
-                self.log.info(f"「我量了电池电压」：{r['reason']}（还没存，等确认）", cat=B.LOG_CAT, raw=f"by={by}")
+                self.log.info(f"“Medi a tensão da bateria”: {r['reason']} (ainda não foi salvo; aguardando confirmação)", cat=B.LOG_CAT, raw=f"by={by}")
             return dict(r, current=self.settings["cal_offset_v"])
-        raise ValueError(f"不认识的电池操作：{op}")
+        raise ValueError(f"Operação de bateria desconhecida: {op}")
 
     def _payload(self):
         return {"settings": dict(self.settings), "defaults": dict(B.DEFAULTS), "ranges": {k: list(v) for k, v in B.RANGES.items()},
