@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-"""飞特 STS/SMS 总线的最小实现：包格式、读写、同步读写、重启。
+"""Implementação mínima do barramento Feetech STS/SMS: formato de pacotes, leitura e gravação, operações síncronas e reinicialização.
 
-对照 docs/飞特资料/SCS通信协议-v1.0-2026-06-09.md 和 磁编码STS内存表手册-v1.1-2026-08-27.md 写的，
-不依赖飞特 SDK。字节序按磁编码系列：小端。
+Implementado com base nos documentos de protocolo Feetech SCS e no manual da tabela de memória STS com encoder magnético incluídos no repositório.
+não depende do SDK Feetech. A ordem de bytes segue a série com encoder magnético: little-endian.
 
-搬自同仓库 tools/servo-web/feetech.py（v0.15.4，我们自己的代码，在真机上用过）。Studio 里改了两处：
-- 逐颗通信统计（per_id）：问了几次、回了几次、丢了几次、连着丢几次、状态位报警几次。
-  servo-web 只有整条总线的累计数（用户 10-18 要「每颗回复有没有丢帧」）；口径照 robotd 的
+Adaptado de tools/servo-web/feetech.py (v0.15.4, código nosso já usado em hardware real). No Studio, foram feitas duas alterações:
+- Estatísticas de comunicação por servo (per_id): número de consultas, respostas, perdas, perdas consecutivas e alarmes de status.
+  servo-web só mantém totais do barramento (pedido do usuário em 18/10: “verificar perda de quadros nas respostas de cada servo”); segue os critérios de
   communication_stats（missing / timeout / consecutive）。
-- serial 用到时才导入：用模拟器（sim_bus）时不需要 pyserial。
+-Importa serial somente quando necessário: pyserial não é necessário ao usar o simulador (sim_bus).
 """
 import struct
 import threading
@@ -18,49 +18,49 @@ PING, READ, WRITE, REG_WRITE, ACTION = 0x01, 0x02, 0x03, 0x04, 0x05
 RECOVERY, REBOOT, BACKUP, RESET_TURNS, CALIBRATE = 0x06, 0x08, 0x09, 0x0A, 0x0B
 SYNC_READ, SYNC_WRITE = 0x82, 0x83
 INSTR_NAMES = {0x01: "PING", 0x02: "READ", 0x03: "WRITE", 0x04: "REG_WRITE", 0x05: "ACTION",
-               0x06: "参数恢复", 0x08: "REBOOT", 0x09: "参数备份", 0x0A: "清圈数", 0x0B: "位置校准",
+               0x06: "Restaurar parâmetros", 0x08: "REBOOT", 0x09: "Fazer backup dos parâmetros", 0x0A: "Limpar contagem de voltas", 0x0B: "Calibrar posição",
                0x82: "SYNC_READ", 0x83: "SYNC_WRITE"}
 BROADCAST = 0xFE
 
-# 内存表：地址 -> (名字, 字节数, 区)。给寄存器导出用。
+# Tabela de memória: endereço -> (nome, quantidade de bytes, área). Usada na exportação dos registradores.
 REGISTERS = {
-    0: ("固件主版本", 1, "只读"), 1: ("固件次版本", 1, "只读"), 2: ("END 字节序(0=小端)", 1, "只读"),
-    3: ("舵机主版本", 1, "只读"), 4: ("舵机次版本", 1, "只读"),
-    5: ("ID", 1, "EEPROM"), 6: ("波特率(0=1M)", 1, "EEPROM"), 7: ("预留地址（STS 无应答延时寄存器）", 1, "EEPROM"),
-    8: ("应答状态级别", 1, "EEPROM"), 9: ("最小角度限制", 2, "EEPROM"), 11: ("最大角度限制", 2, "EEPROM"),
-    13: ("最高温度上限", 1, "EEPROM"), 14: ("最高输入电压", 1, "EEPROM"), 15: ("最低输入电压", 1, "EEPROM"),
-    16: ("最大扭矩", 2, "EEPROM"), 18: ("相位", 1, "EEPROM"), 19: ("卸载条件", 1, "EEPROM"),
-    20: ("LED报警条件", 1, "EEPROM"), 21: ("位置环P", 1, "EEPROM"), 22: ("位置环D", 1, "EEPROM"),
-    23: ("位置环I", 1, "EEPROM"), 24: ("最小启动扭矩", 1, "EEPROM"), 25: ("积分限制值", 1, "EEPROM"),
-    26: ("正向不灵敏区", 1, "EEPROM"), 27: ("负向不灵敏区", 1, "EEPROM"), 28: ("保护电流", 2, "EEPROM"),
-    30: ("角度分辨率", 1, "EEPROM"), 31: ("位置偏移", 2, "EEPROM"), 33: ("运行模式", 1, "EEPROM"),
-    34: ("保持扭矩", 1, "EEPROM"), 35: ("保护时间", 1, "EEPROM"), 36: ("过载扭矩", 1, "EEPROM"),
-    37: ("速度环P", 1, "EEPROM"), 38: ("过流保护时间", 1, "EEPROM"), 39: ("速度环I", 1, "EEPROM"),
-    40: ("扭矩开关", 1, "SRAM"), 41: ("加速度", 1, "SRAM"), 42: ("目标位置", 2, "SRAM"),
-    44: ("PWM开环速度", 2, "SRAM"), 46: ("运行速度", 2, "SRAM"), 48: ("转矩限制", 2, "SRAM"),
-    # 50–52：STS 手册写「无定义」；HD-1910 这里是运行中的 P / D / I（RAM，上电从 21–23 拷过来）。
-    # 主程序上力就写这里（fork duck-control/src/hd1910.rs:77-79、149、257-267；hd1910_test.rs:44-47）
-    50: ("位置环P（运行中）", 1, "SRAM"), 51: ("位置环D（运行中）", 1, "SRAM"), 52: ("位置环I（运行中）", 1, "SRAM"),
-    55: ("锁标志", 1, "SRAM"),
-    56: ("当前位置", 2, "反馈"), 58: ("当前速度", 2, "反馈"), 60: ("当前负载", 2, "反馈"),
-    62: ("当前电压(0.1V)", 1, "反馈"), 63: ("当前温度(°C)", 1, "反馈"), 64: ("异步写标志", 1, "反馈"),
-    65: ("舵机状态位", 1, "反馈"), 66: ("移动标志", 1, "反馈"), 67: ("目标位置(回读)", 2, "反馈"),
-    69: ("当前电流(6.5mA)", 2, "反馈"),
-    80: ("移动速度阀值", 1, "出厂"), 81: ("DTs(ms)", 1, "出厂"), 82: ("速度单位系数", 1, "出厂"),
-    83: ("最小速度限制", 1, "出厂"), 84: ("最大速度限制", 1, "出厂"), 85: ("加速度限制", 1, "出厂"),
-    86: ("加速度倍数", 1, "出厂"),
+    0: ("Versão principal do firmware", 1, "Somente leitura"), 1: ("Versão secundária do firmware", 1, "Somente leitura"), 2: ("END (ordem de bytes; 0=little-endian)", 1, "Somente leitura"),
+    3: ("Versão principal do servo", 1, "Somente leitura"), 4: ("Versão secundária do servo", 1, "Somente leitura"),
+    5: ("ID", 1, "EEPROM"), 6: ("Taxa de transmissão (0=1M)", 1, "EEPROM"), 7: ("Endereço reservado (registrador de atraso de resposta do STS)", 1, "EEPROM"),
+    8: ("Nível de resposta de status", 1, "EEPROM"), 9: ("Limite mínimo de ângulo", 2, "EEPROM"), 11: ("Limite máximo de ângulo", 2, "EEPROM"),
+    13: ("Limite máximo de temperatura", 1, "EEPROM"), 14: ("Tensão de entrada máxima", 1, "EEPROM"), 15: ("Tensão de entrada mínima", 1, "EEPROM"),
+    16: ("Torque máximo", 2, "EEPROM"), 18: ("Fase", 1, "EEPROM"), 19: ("Condição para desativar torque", 1, "EEPROM"),
+    20: ("Condição de alerta do LED", 1, "EEPROM"), 21: ("P do controlador de posição", 1, "EEPROM"), 22: ("D do controlador de posição", 1, "EEPROM"),
+    23: ("I do controlador de posição", 1, "EEPROM"), 24: ("Torque mínimo de partida", 1, "EEPROM"), 25: ("Limite integral", 1, "EEPROM"),
+    26: ("Zona morta positiva", 1, "EEPROM"), 27: ("Zona morta negativa", 1, "EEPROM"), 28: ("Corrente de proteção", 2, "EEPROM"),
+    30: ("Resolução angular", 1, "EEPROM"), 31: ("Offset de posição", 2, "EEPROM"), 33: ("Modo de operação", 1, "EEPROM"),
+    34: ("Torque de retenção", 1, "EEPROM"), 35: ("Tempo de proteção", 1, "EEPROM"), 36: ("Torque de sobrecarga", 1, "EEPROM"),
+    37: ("P do controlador de velocidade", 1, "EEPROM"), 38: ("Tempo de proteção contra sobrecorrente", 1, "EEPROM"), 39: ("I do controlador de velocidade", 1, "EEPROM"),
+    40: ("Interruptor de torque", 1, "SRAM"), 41: ("Aceleração", 1, "SRAM"), 42: ("Posição desejada", 2, "SRAM"),
+    44: ("Velocidade PWM em malha aberta", 2, "SRAM"), 46: ("Velocidade de operação", 2, "SRAM"), 48: ("Limite de torque", 2, "SRAM"),
+    # 50–52: o manual STS indica “sem definição”; no HD-1910, estes endereços guardam P / D / I em operação (RAM, copiados de 21–23 ao ligar).
+    # O programa principal grava esses valores ao habilitar o torque（fork duck-control/src/hd1910.rs:77-79、149、257-267；hd1910_test.rs:44-47）
+    50: ("P do controlador de posição（em operação）", 1, "SRAM"), 51: ("D do controlador de posição（em operação）", 1, "SRAM"), 52: ("I do controlador de posição（em operação）", 1, "SRAM"),
+    55: ("Sinalizador de trava", 1, "SRAM"),
+    56: ("Posição atual", 2, "Retorno"), 58: ("Velocidade atual", 2, "Retorno"), 60: ("Carga atual", 2, "Retorno"),
+    62: ("Tensão atual(0.1V)", 1, "Retorno"), 63: ("Temperatura atual(°C)", 1, "Retorno"), 64: ("Sinalizador de gravação assíncrona", 1, "Retorno"),
+    65: ("Bits de status do servo", 1, "Retorno"), 66: ("Sinalizador de movimento", 1, "Retorno"), 67: ("Posição desejada (leitura de retorno)", 2, "Retorno"),
+    69: ("Corrente atual(6.5mA)", 2, "Retorno"),
+    80: ("Limite de velocidade de movimento", 1, "Fábrica"), 81: ("DTs(ms)", 1, "Fábrica"), 82: ("Fator da unidade de velocidade", 1, "Fábrica"),
+    83: ("Limite mínimo de velocidade", 1, "Fábrica"), 84: ("Limite máximo de velocidade", 1, "Fábrica"), 85: ("Limite de aceleração", 1, "Fábrica"),
+    86: ("Multiplicador de aceleração", 1, "Fábrica"),
 }
-STATUS_BITS = {0: "电压", 1: "磁编码", 2: "温度", 3: "电流", 5: "负载"}
-DUMP_END = max(REGISTERS) + 1   # 87：寄存器表最后一个地址 86
+STATUS_BITS = {0: "Tensão", 1: "Encoder magnético", 2: "Temperatura", 3: "Corrente", 5: "Carga"}
+DUMP_END = max(REGISTERS) + 1   # 87: endereço final da tabela de registradores: 86
 
 
 def sign15(v):
-    """BIT15 是方向位的 16 位量（位置、速度、电流）。"""
+    """BIT15 é o bit de sinal de valores de 16 bits (posição, velocidade e corrente)."""
     return -(v & 0x7FFF) if v & 0x8000 else v
 
 
 def sign10(v):
-    """BIT10 是方向位（负载）。"""
+    """BIT10 é o bit de sinal (carga)."""
     return -(v & 0x3FF) if v & 0x400 else v
 
 
@@ -69,7 +69,7 @@ class BusError(Exception):
 
 
 class BusTimeout(BusError):
-    """没应答或应答不完整。应答级别 0 时写指令本来就不回包，调用方自己决定算不算错。"""
+    """Sem resposta ou resposta incompleta. Com nível de resposta 0, comandos de gravação não respondem; cabe ao chamador decidir se isso é um erro."""
 
 
 def hexs(b):
@@ -78,21 +78,21 @@ def hexs(b):
 
 class FeetechBus:
     def __init__(self, port, baud=1_000_000, timeout=0.02, ser=None):
-        # ser 给模拟器用（sim_bus.SimSerial），真机走串口
+        # ser Usado pelo simulador (sim_bus.SimSerial); no hardware real, usa a porta serial
         if ser is None:
-            import serial   # noqa: PLC0415 —— 只有真串口才要 pyserial
+            import serial   # noqa: PLC0415 — pyserial só é necessário para a porta serial real
             ser = serial.Serial(port, baud, timeout=timeout, write_timeout=0.1)
         self.ser = ser
-        # 串口互斥锁。别叫 self.lock：会盖住下面的 lock(sid)「加 EEPROM 锁」方法（2026-09-20 真机踩到）
+        # Mutex da porta serial. Não use o nome self.lock: ele ocultaria o método lock(sid) abaixo, que ativa a trava EEPROM (problema observado em hardware real em 20/09/2026).
         self._io = threading.Lock()
-        # 原始收发记录：设一个 trace(文本) 回调就开始记。飞特不支持的操作照样回"成功"，
-        # 只有对着十六进制才分得清「真做了」和「装作做了」。10 Hz 的状态轮询不记，不然日志全是它
+        # Registro bruto de envio e recebimento: começa quando um callback trace(texto) é definido. Operações sem suporte da Feetech ainda retornam “sucesso”,
+        # e somente a inspeção hexadecimal permite distinguir entre “executado” e “simulado”. A consulta de status a 10 Hz não é registrada para evitar poluir o log.
         self.trace = None
         self.trace_skip = {SYNC_READ, SYNC_WRITE}
         self._last = (None, None)
         self.stats = {"tx": 0, "rx_ok": 0, "timeout": 0, "bad_checksum": 0, "bad_id": 0}
-        # 逐颗：{id: {"asked", "ok", "missed", "alarm", "streak", "max_streak"}}。
-        # 校验错的帧里 ID 不可信，只记在总线级 stats 里
+        # Por servo: {id: {"asked", "ok", "missed", "alarm", "streak", "max_streak"}}。
+        # O ID em um quadro com checksum inválido não é confiável; só é contabilizado nas estatísticas do barramento.
         self.per_id = {}
 
     def _note(self, sid, ok, err=0):
@@ -113,7 +113,7 @@ class FeetechBus:
     def close(self):
         self.ser.close()
 
-    # ---- 包 ----
+    # ---- Pacotes ----
     @staticmethod
     def _packet(sid, instr, params=b""):
         length = len(params) + 2
@@ -130,13 +130,13 @@ class FeetechBus:
             note = ""
             if instr in (READ, WRITE) and params:
                 reg = REGISTERS.get(params[0])
-                note = f"  地址{params[0]}" + (f"「{reg[0]}」" if reg else "") + (
-                    f" 写 {list(params[1:])}" if instr == WRITE else f" 读 {params[1]} 字节")
+                note = f"  Endereço{params[0]}" + (f"「{reg[0]}」" if reg else "") + (
+                    f"  gravação {list(params[1:])}" if instr == WRITE else f" leitura {params[1]} bytes")
             self.trace(f"→ #{sid} {INSTR_NAMES.get(instr, hex(instr))} {hexs(pkt)}{note}")
 
     def _read_status(self, expect_id=None):
-        """读一个应答帧，返回 (id, error, params)。"""
-        # 找 FF FF
+        """Lê um quadro de resposta e retorna (id, error, params)."""
+        # Procura FF FF
         hdr = b""
         deadline = time.monotonic() + self.ser.timeout * 3
         while time.monotonic() < deadline:
@@ -146,33 +146,33 @@ class FeetechBus:
             hdr = (hdr + b)[-2:]
             if hdr == b"\xff\xff":
                 break
-        who = f"id {expect_id}" if expect_id is not None else "舵机"
+        who = f"id {expect_id}" if expect_id is not None else "servo"
         if hdr != b"\xff\xff":
             self.stats["timeout"] += 1
-            raise BusTimeout(f"{who} 没应答（{self.ser.timeout * 3 * 1000:.0f} ms 内没收到帧头）")
+            raise BusTimeout(f"{who} sem resposta (cabeçalho não recebido em {self.ser.timeout * 3 * 1000:.0f} ms)")
         rest = self.ser.read(2)
         if len(rest) < 2:
             self.stats["timeout"] += 1
-            raise BusTimeout(f"{who} 应答断在 ID/长度（收到 ff ff {hexs(rest)}）")
+            raise BusTimeout(f"{who} resposta interrompida no ID/comprimento (recebido ff ff {hexs(rest)})")
         sid, length = rest[0], rest[1]
         body = self.ser.read(length)
         if len(body) < length:
             self.stats["timeout"] += 1
-            raise BusTimeout(f"{who} 应答不完整：长度 {length} 只收到 {len(body)}（ff ff {hexs(rest + body)}）")
+            raise BusTimeout(f"{who} resposta incompleta: comprimento {length}, recebidos apenas {len(body)} (ff ff {hexs(rest + body)})")
         err, params, chk = body[0], body[1:-1], body[-1]
         if ((~(sid + length + err + sum(params))) & 0xFF) != chk:
             self.stats["bad_checksum"] += 1
-            raise BusError(f"{who} 校验和不对（ff ff {hexs(rest + body)}）")
+            raise BusError(f"{who} checksum incorreto (ff ff {hexs(rest + body)})")
         if expect_id is not None and sid != expect_id:
             self.stats["bad_id"] += 1
-            raise BusError(f"等 id {expect_id} 的应答，来的是 id {sid}（ff ff {hexs(rest + body)}）")
+            raise BusError(f"esperava resposta do id {expect_id}, recebido id {sid} (ff ff {hexs(rest + body)})")
         self.stats["rx_ok"] += 1
         if self.trace and self._last[1] not in self.trace_skip:
-            self.trace(f"← #{sid} 状态0x{err:02X} {hexs(b'\xff\xff' + rest + body)}"
-                       + (f"  数据 {list(params)}" if params else ""))
+            self.trace(f"← #{sid} status 0x{err:02X} {hexs(b'\xff\xff' + rest + body)}"
+                       + (f"  dados {list(params)}" if params else ""))
         return sid, err, bytes(params)
 
-    # ---- 指令 ----
+    # ---- Comandos ----
     def ping(self, sid):
         with self._io:
             self._send(sid, PING)
@@ -192,7 +192,7 @@ class FeetechBus:
                 raise
             self._note(sid, True, err)
             if len(params) != n:
-                raise BusError(f"id {sid} 读地址 {addr} 起 {n} 字节，只回了 {len(params)} 字节")
+                raise BusError(f"id {sid} leu {n} bytes a partir do endereço {addr}, mas recebeu apenas {len(params)} bytes")
             return err, params
 
     def write(self, sid, addr, data, wait=True):
@@ -204,7 +204,7 @@ class FeetechBus:
                 _, err, _ = self._read_status(sid)
                 return err
             except BusTimeout:
-                # 应答级别 0 时写指令不回包，不算错；调用方拿到 None 自己判断
+                # Com nível de resposta 0, gravações não respondem e isso não conta como erro; o chamador recebe None e decide
                 return None
 
     def write_u8(self, sid, addr, v):
@@ -220,7 +220,7 @@ class FeetechBus:
         return struct.unpack("<H", self.read(sid, addr, 2)[1])[0]
 
     def sync_write(self, addr, length, id_values):
-        """id_values: [(id, bytes), ...]，每个 bytes 长度 = length。"""
+        """id_values: [(id, bytes), ...]; cada sequência de bytes tem comprimento igual a length."""
         params = bytes([addr, length])
         for sid, data in id_values:
             assert len(data) == length
@@ -229,7 +229,7 @@ class FeetechBus:
             self._send(BROADCAST, SYNC_WRITE, params)
 
     def sync_read(self, ids, addr, n):
-        """返回 {id: (err, params) 或 None}；按应答里的 ID 归档，缺包不连带丢后续包。"""
+        """Retorna {id: (err, params) ou None}; organiza pela ID da resposta, sem descartar respostas posteriores quando um pacote falta."""
         out = dict.fromkeys(ids)
         with self._io:
             self._send(BROADCAST, SYNC_READ, bytes([addr, n]) + bytes(ids))
@@ -249,14 +249,14 @@ class FeetechBus:
         return out
 
     def reboot(self, sid):
-        """0x08，无应答，约 800 ms 后回来。"""
+        """0x08, sem resposta; volta após cerca de 800 ms."""
         with self._io:
             self._send(sid, REBOOT)
 
     def calibrate_to(self, sid, value=None):
-        """0x0B 位置校准：把舵机「现在这个位置」的读数改成 value（不给就是中位 2048），偏移舵机自己算、自己存。
-        协议手册 4.9：STS ≥3.10、HLS ≥3.43 支持带参数。HD-1910（固件 3.46）不认扭矩开关写 128，只能走这个。
-        返回应答里的状态字节；没应答返回 None。"""
+        """Calibração de posição 0x0B: altera a leitura da posição atual do servo para value (padrão: posição central 2048); o próprio servo calcula e armazena o offset.
+        Manual de protocolo 4.9: STS ≥3.10 e HLS ≥3.43 aceitam parâmetros. O HD-1910 (firmware 3.46) não reconhece a gravação de 128 no interruptor de torque; use este comando.
+        Retorna o byte de status da resposta; retorna None se não houver resposta."""
         params = b"" if value is None else struct.pack("<H", value & 0xFFFF)
         with self._io:
             self._send(sid, CALIBRATE, params)
@@ -271,9 +271,9 @@ class FeetechBus:
     def lock(self, sid):
         return self.write_u8(sid, 55, 1)
 
-    # ---- 组合动作 ----
+    # ---- Ações combinadas ----
     def state(self, sid):
-        """56..70：位置 速度 负载 电压 温度 异步写 状态 移动 目标 电流 = 15 字节。"""
+        """56..70: posição, velocidade, carga, tensão, temperatura, gravação assíncrona, status, movimento, alvo e corrente = 15 bytes."""
         err, p = self.read(sid, 56, 15)
         return self._decode_state(err, p)
 
@@ -289,14 +289,14 @@ class FeetechBus:
         }
 
     def states(self, ids):
-        """一次 sync_read 拿全部，失败的 ID 值为 None。"""
+        """Obtém tudo com uma chamada sync_read; IDs sem resposta têm valor None."""
         raw = self.sync_read(ids, 56, 15)
         return {sid: (self._decode_state(*v) if v else None) for sid, v in raw.items()}
 
     def dump(self, sid):
-        """0–86 全读，按 REGISTERS 解码。"""
+        """Lê todos os endereços de 0 a 86 e decodifica usando REGISTERS."""
         raw = b""
-        for start in range(0, DUMP_END, 10):          # HD-1910 的表到 86 为止，读过头舵机只回剩下的字节
+        for start in range(0, DUMP_END, 10):          # A tabela do HD-1910 termina em 86; leituras além dela retornam apenas os bytes restantes
             n = min(10, DUMP_END - start)
             for attempt in range(4):
                 try:
@@ -304,7 +304,7 @@ class FeetechBus:
                     break
                 except BusError as e:
                     if attempt == 3:
-                        raise BusError(f"导出到地址 {start}：{e}")
+                        raise BusError(f"Erro ao exportar a partir do endereço {start}: {e}")
                     time.sleep(0.01)
         rows = []
         for addr in sorted(REGISTERS):
@@ -315,7 +315,7 @@ class FeetechBus:
 
     def set_id(self, old, new):
         self.unlock(old)
-        # 改 ID 这一包的应答可能用新 ID 回，也可能用旧 ID 回，不等它；下一包发之前会清接收缓冲
+        # A resposta ao pacote que altera a ID pode usar a ID nova ou antiga; não aguarda por ela. O buffer de recepção será limpo antes do próximo pacote.
         self.write(old, 5, [new & 0xFF], wait=False)
         time.sleep(0.02)
         self.lock(new)
