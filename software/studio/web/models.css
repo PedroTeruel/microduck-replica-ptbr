@@ -1,4 +1,4 @@
-/* 模型管理沿用 Studio 颜色。输入区域增加底色和边界，明确区分可编辑内容。 */
+/* A gestão de modelos segue as cores do Studio. Fundo e borda destacam as áreas editáveis. */
 .models-page { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .models-heading, .models-section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .models-heading h1 { margin: 0; font-size: 26px; line-height: 1.3; }

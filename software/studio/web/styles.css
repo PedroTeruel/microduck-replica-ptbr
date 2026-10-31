@@ -1,5 +1,5 @@
-/* Microduck Studio 的设计规范（design-brief-v3.1 §4、review-design-v3 第四节）。
-   改颜色、字号、圆角只改这里的变量。 */
+/* Diretrizes visuais do Microduck Studio (design-brief-v3.1 §4, revisão de design v3).
+   Altere cores, tamanhos de fonte e cantos somente nas variáveis deste arquivo. */
 :root {
   --page: #F2F2F7;
   --board: #FFFFFF;
@@ -18,7 +18,7 @@
   --radius-board: 16px;
   --font: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", -apple-system, sans-serif;
 
-  /* 舞台：三种背景（设置 › 舞台背景），默认中灰 */
+  /* Palco: três fundos (Configurações › Fundo do palco); cinza médio é o padrão. */
   --stage-bg: radial-gradient(circle farthest-corner at 62% 38%, #9A9EA6 0%, #74787F 55%, #5B5E64 100%);
   --stage-fg: #FFFFFF;
   --stage-fg-2: #EBEBF0;
@@ -53,7 +53,7 @@ button:disabled { cursor: default; }
 :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .num { font-variant-numeric: tabular-nums; }
 
-/* ---- 外壳：侧栏 + 内容 ---- */
+/* ---- Estrutura: barra lateral e conteúdo ---- */
 .shell { display: flex; flex-wrap: wrap; min-height: 100vh; }
 .nav { flex: 1 1 200px; max-width: 216px; padding: 18px 12px; display: flex; flex-direction: column; gap: 2px; }
 .nav-logo { display: flex; align-items: center; gap: 10px; padding: 0 10px 18px; font-size: 15px; font-weight: 600; }
@@ -63,13 +63,13 @@ button:disabled { cursor: default; }
 .nav .group { color: var(--text-2); margin-top: 6px; }
 .nav .spacer { flex: 1; min-height: 24px; }
 .main { flex: 999 1 600px; min-width: 0; padding: 0 24px 24px; display: flex; flex-direction: column; }
-/* 侧栏吸住、一屏高（用户 10-19：往下滑侧栏一直在；「设置」贴在屏幕底下）。窄过 840 侧栏会折到内容上面一行，那时不吸 */
+/* Barra lateral fixa na tela (usuário 10-19: permanece visível ao rolar; Configurações fica no rodapé). Abaixo de 840 px, ela passa para uma linha acima do conteúdo e deixa de ser fixa. */
 @media (min-width: 840px) {
   .nav { position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow-y: auto; }
 }
 
-/* ---- 顶部安全条 ---- */
-/* 吸顶（总览重排审查 O3）：总览成了往下刷的长页（下面就是遥控），卸力不能滑出屏幕。左右各伸出 .main 的内边距，底色盖住下面滚上来的内容 */
+/* ---- Barra superior fixa ---- */
+/* Revisão O3 da página inicial: a página longa continua rolando, mas o botão para desativar os comandos não sai da tela. A barra ultrapassa o preenchimento lateral de .main, e o fundo cobre o conteúdo que passa por trás. */
 .topbar { position: sticky; top: 0; z-index: 30; height: 56px; margin: 0 -24px; padding: 0 24px; background: var(--page);
   display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .duckid { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -83,15 +83,15 @@ button:disabled { cursor: default; }
 .estop-wrap { display: inline-flex; align-items: center; gap: 12px; }
 .estop-wrap .why { font-size: 13px; color: var(--text-2); }
 
-/* ---- 横幅 ---- */
+/* ---- Avisos ---- */
 .banner { min-height: 40px; margin-bottom: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 16px; border-radius: 12px; font-size: 14px; }
 .banner.bad { background: #FFF1F1; box-shadow: inset 0 0 0 1px rgba(215, 0, 21, 0.18); }
 .banner.warn { background: #FFF7EC; box-shadow: inset 0 0 0 1px #F5DDBF; }
 .banner .more { color: var(--text-2); }
 .banner a { margin-left: auto; }
-/* 舵机会话的提示条（每一页顶栏下面）和「交还主程序」两步按钮（用户 10-18：离开舵机页舵机照样保持）。
-   吸顶、贴在顶栏下面（所有宽度：审查 D6——手机上滚到手柄区也得看得到「调舵机中」）；底色是实的，盖住滚上来的内容 */
-/* 吸顶的是外面那层 .sticky-bar（app.js 量它多高写进 --bar-h，仪表带、手柄 3D 卡、舵机页左栏照着往下让）；没有提示条时它是空的、0 高 */
+/* Aviso da sessão dos servos (abaixo do cabeçalho de cada página) e confirmação em duas etapas para devolvê-los ao programa principal (usuário 10-18: os servos continuam ativos ao sair da página).
+   Fixo logo abaixo do cabeçalho em qualquer largura (revisão D6: no celular, “Ajustando servos” deve continuar visível ao rolar até o controle); fundo opaco cobre o conteúdo que passa por trás. */
+/* A camada externa .sticky-bar fica fixa (app.js mede sua altura e grava em --bar-h; a faixa de indicadores e os cartões 3D respeitam esse espaço). Sem aviso, ela fica vazia e com altura zero. */
 .sticky-bar { position: sticky; top: 56px; z-index: 29; }
 .servo-bar { margin: 0 0 12px; box-shadow: inset 0 0 0 1px #F5DDBF, 0 4px 12px rgba(0, 0, 0, 0.06); }
 .servo-bar.bad { box-shadow: inset 0 0 0 1px rgba(215, 0, 21, 0.18), 0 4px 12px rgba(0, 0, 0, 0.06); }
@@ -101,36 +101,36 @@ button:disabled { cursor: default; }
 .servo-bar .sb-more { flex-basis: 100%; font-size: 13px; }
 .sv-handback { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: 8px; }
 .sv-handback .btn-danger { height: auto; min-height: 32px; padding: 4px 14px; white-space: normal; text-align: left; }
-/* 确认框（confirm.js 的 ConfirmBox）：多行说明 + 先不 / 确定两个按钮；WiFi 切换用它。不另造颜色，沿用警告底色 */
+/* Caixa de confirmação (ConfirmBox de confirm.js): explicação em várias linhas e botões para cancelar ou confirmar; usada ao trocar o Wi-Fi. Reutiliza a cor de aviso. */
 .confirm-box { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #FFF7EC; box-shadow: inset 0 0 0 1px #F5DDBF; font-size: 14px; line-height: 1.6; }
 .confirm-box p { margin: 0; }
 .confirm-box .confirm-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .confirm-box .btn-danger, .confirm-box .btn-light { height: auto; min-height: 38px; padding: 6px 16px; white-space: normal; text-align: left; }
 @media (max-width: 700px) { .confirm-box .btn-danger, .confirm-box .btn-light { min-height: 44px; } }
 
-/* 两步确认（confirm.js，审查 D4）：确认按钮在原按钮旁边新出现，不在原地变 */
+/* Na confirmação em duas etapas (revisão D4), o botão de confirmação aparece ao lado do original, sem substituí-lo. */
 .two-step { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .two-step .two-step-ask { height: auto; min-height: 32px; padding: 4px 14px; white-space: normal; text-align: left; }
-/* 手机顶栏的「调舵机中」小徽章（手机上顶栏那行小字藏了：审查 D6） */
+/* Pequeno selo “Ajustando servos” no cabeçalho do celular (revisão D6: o texto do cabeçalho fica oculto). */
 .sv-badge { display: none; flex: none; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: #FFF1DC; color: var(--warn); }
 
-/* ---- 徽标：三种状态三种符号 ---- */
+/* ---- Selos: três estados, três símbolos ---- */
 .badge { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; color: #FFF; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
 .badge.warn { background: var(--warn); }
 .badge.bad { background: var(--danger); }
 
-/* ---- 白板 ---- */
+/* ---- Painel de dados ---- */
 .board { background: var(--board); border-radius: var(--radius-board); box-shadow: inset 0 0 0 1px var(--board-edge); }
 
-/* ---- 舞台 ---- */
+/* ---- Palco ---- */
 .stage { position: relative; border-radius: var(--radius-stage); overflow: hidden; background: var(--stage-bg); box-shadow: var(--stage-edge); color: var(--stage-fg); }
 .stage-ov { height: 416px; }
-/* 断线横幅盖在舞台上（审查 O10：插在舞台上面会把下面的手柄区块整体推下去，手指正要按的地方就换成了别的键） */
+/* O aviso de desconexão fica sobre o palco (revisão O10): inseri-lo no fluxo deslocaria os controles abaixo e mudaria o alvo sob o dedo. */
 .stage .stage-banner { position: absolute; z-index: 3; left: 16px; right: 16px; top: 12px; margin: 0; color: var(--text); }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-/* 总览舞台：单指留给页面滚动、两指转视角（审查 O2）。duck3d 也在行内设了；写在这里是兜底（代码审查 C6） */
+/* Palco da página inicial: um dedo rola a página; dois dedos giram a câmera (revisão O2). duck3d também define isso em linha; esta regra é uma proteção extra (revisão de código C6). */
 .stage-ov canvas { touch-action: pan-y; }
-.stage canvas.stage-stale { filter: grayscale(1); opacity: .5; }    /* 数据旧了：去色、半透明 */
+.stage canvas.stage-stale { filter: grayscale(1); opacity: .5; }    /* Dados desatualizados: em tons de cinza e semitransparentes. */
 .stage .copy { position: absolute; z-index: 1; left: 48px; top: 0; bottom: 0; width: 440px; max-width: calc(100% - 96px); display: flex; flex-direction: column; justify-content: center; pointer-events: none; }
 .stage .copy > * { pointer-events: auto; }
 .stage h1 { margin: 0; font-size: 40px; line-height: 48px; font-weight: 600; color: var(--stage-fg); }
@@ -144,8 +144,8 @@ button:disabled { cursor: default; }
   background: var(--stage-btn2-bg); color: var(--stage-btn2-fg); font-size: 13px; }
 .stage .age { position: absolute; right: 24px; bottom: 20px; padding: 4px 12px; border-radius: 999px; background: var(--stage-btn2-bg); color: var(--stage-btn2-fg); font-size: 13px; }
 
-/* ---- 仪表带、待办 ---- */
-/* 七格：宽屏一行，普通桌面4+3，手机两列、最后主板占满一行。 */
+/* ---- Faixa de indicadores e tarefas pendentes ---- */
+/* Sete cartões: uma linha em telas largas, 4+3 em desktops comuns, duas colunas no celular e placa-mãe ocupando a última linha. */
 .band { margin-top: 16px; min-height: 104px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .band > * { display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 12px 24px; color: var(--text); text-decoration: none; }
 .band > * + * { box-shadow: inset 1px 0 0 #E5E5EA; }
@@ -160,7 +160,7 @@ button:disabled { cursor: default; }
 .band .band-cpu .small { display: flex; align-items: center; gap: 6px; }
 .band .band-sensor[data-state="online"] .word { color: var(--ok); }
 .band .band-sensor[data-state="error"] .word { color: var(--warn); }
-/* 仪表带吸在顶栏（和舵机提示条）下面（用户 10-19：往下滑电池、舵机、IMU、手柄、主板一直看得到）。手机上它两三行高，不吸 */
+/* A faixa de indicadores fica abaixo do cabeçalho e do aviso dos servos (usuário 10-19: bateria, servos, IMU, controle e placa-mãe continuam visíveis ao rolar). No celular, ela ocupa duas ou três linhas e não fica fixa. */
 @media (min-width: 701px) {
   .overview > .band { position: sticky; top: calc(56px + var(--bar-h, 0px)); z-index: 28;
     box-shadow: inset 0 0 0 1px var(--board-edge), 0 4px 12px rgba(0, 0, 0, 0.06); }
@@ -171,7 +171,7 @@ button:disabled { cursor: default; }
   .band > :nth-child(n+5) { grid-column: span 4; box-shadow: inset 1px 0 0 #E5E5EA, inset 0 1px 0 #E5E5EA; }
   .band > :nth-child(5) { box-shadow: inset 0 1px 0 #E5E5EA; }
 }
-/* 待办给一个最小高度（两条的高度）：温度来回跨 80 °C、断线重连时它出现 / 消失，别把下面的手柄区块推上推下（审查 O10） */
+/* A lista de tarefas mantém a altura de duas linhas: mudanças de temperatura em torno de 80 °C ou reconexões não deslocam os controles abaixo (revisão O10). */
 .todo { margin-top: 16px; min-height: 84px; display: flex; align-items: center; gap: 12px; padding: 8px 24px; }
 .todo .quiet { flex: 1; font-size: 15px; color: var(--text-2); }
 .todo .when { font-size: 13px; color: var(--text-2); }
@@ -180,7 +180,7 @@ button:disabled { cursor: default; }
 .todo .msg { font-size: 15px; }
 .todo .hint { flex: 1; font-size: 13px; color: var(--text-2); }
 
-/* ---- 上手清单（总览重排 §1.3、§5 O14）：五行 + 卡片头「连上鸭子」；全部完成收成一行 ---- */
+/* ---- Lista de primeiros passos (reorganização §1.3 e §5 O14): cinco linhas e cartão “Conectar ao Duck”; quando tudo estiver concluído, vira uma linha. ---- */
 .onb { margin-top: 16px; padding: 12px 24px 8px; }
 .onb-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 30px; font-size: 15px; }
 .onb-h .quiet { font-size: 15px; color: var(--text-2); }
@@ -195,11 +195,11 @@ button:disabled { cursor: default; }
 .onb-mark.onb-todo { background: #FFF1DC; color: var(--warn); }
 .onb-mark.onb-no { background: #FFFFFF; color: var(--text-2); box-shadow: inset 0 0 0 1.5px #C7C7CC; }
 .onb-mark.onb-unk { background: #F2F2F7; color: var(--text-2); }
-/* 跳过了：灰色的 ↷，跟绿色的 ✓ 一眼分得开（用户 10-18：允许跳过） */
+/* Item ignorado: símbolo ↷ em cinza, distinto do ✓ verde (usuário 10-18: é permitido ignorar). */
 .onb-mark.onb-skip { background: #E5E5EA; color: var(--text-2); font-size: 13px; }
 .onb-row.onb-skip .onb-text { color: var(--text-2); }
 .onb-noskip { color: var(--warn); }
-.onb-acts .onb-skip-arm { background: #FFE5E5; color: var(--danger); font-weight: 600; }   /* 测急停的跳过：再点一次才算 */
+.onb-acts .onb-skip-arm { background: #FFE5E5; color: var(--danger); font-weight: 600; }   /* Ignorar o teste de parada de emergência exige um segundo clique. */
 .onb-acts .onb-redo { height: 28px; padding: 0 12px; font-size: 13px; }
 .onb-fold { display: inline-flex; align-items: center; gap: 10px; border: 0; background: none; padding: 0; font-size: 15px; color: var(--text); text-align: left; }
 .onb-fold .onb-more { font-size: 13px; color: var(--link); }
@@ -213,15 +213,15 @@ button:disabled { cursor: default; }
 .onb-row.onb-ok .onb-text { color: var(--text-2); }
 .onb-tip { font-size: 12px; line-height: 1.5; color: var(--text-2); }
 .onb-acts { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 46%; }
-/* 两步确认的确认按钮另起一行：这一行靠右对齐，确认按钮挤在同一行会把前面的「已完成」「去做」整体往左推，
-   双击「跳过」的第二下就落在「已完成」上（10-21 浏览器测试抓到）。另起一行，原来的按钮一个都不挪 */
+/* A confirmação em duas etapas ocupa uma nova linha, alinhada à direita. Se ficar na mesma linha, o botão desloca “Concluído” e “Ir para” para a esquerda;
+   no segundo clique em “Ignorar”, o usuário pode acabar clicando em “Concluído” (capturado no teste do navegador de 21/10). A nova linha mantém os botões originais no lugar. */
 .onb-acts .two-step { display: contents; }
 .onb-acts .two-step-ask { order: 99; flex-basis: 100%; }
 .onb-acts .btn-dark { height: 32px; padding: 0 16px; font-size: 14px; }
 .onb-frozen .onb-rows { opacity: .5; }
 .onb-done { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 24px; font-size: 15px; }
 
-/* ---- 第 3 步「写进主程序」（任务 11）：准备情况、预览、进度 ---- */
+/* ---- Etapa 3, “Gravar no programa principal” (tarefa 11): preparação, prévia e progresso ---- */
 .onb-commit { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding: 10px 12px; border-radius: 10px; background: #F7F7FA; }
 .onb-commit-desc { font-size: 13px; line-height: 1.55; color: var(--text-2); }
 .onb-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -249,7 +249,7 @@ button:disabled { cursor: default; }
 .onb-preview-toml summary { font-size: 12px; color: var(--link); cursor: pointer; }
 .onb-preview-toml pre { max-height: 240px; overflow: auto; margin: 6px 0 0; padding: 8px; border-radius: 8px; background: #FFFFFF; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-all; }
 
-/* ---- 登录 ---- */
+/* ---- Login ---- */
 .login { max-width: 400px; margin: 12vh auto 0; padding: 32px; display: flex; flex-direction: column; gap: 16px; }
 .login h1 { margin: 0; font-size: 28px; font-weight: 600; }
 .login label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--text-2); }
@@ -258,18 +258,18 @@ button:disabled { cursor: default; }
 .login button { height: 46px; border: 0; border-radius: 999px; background: var(--text); color: #FFF; font-size: 16px; font-weight: 600; }
 .login .err { color: var(--danger); font-size: 14px; }
 
-/* ---- 手机 ---- */
+/* ---- Celular ---- */
 @media (max-width: 700px) {
   .nav { display: none; }
   .main { padding: 0 12px 96px; }
   .topbar { gap: 8px; }
-  .duckid .meta, .estop-wrap .why, .estop .kbd { display: none; }   /* 手机上让出地方给卸力按钮；手机没有空格键 */
+  .duckid .meta, .estop-wrap .why, .estop .kbd { display: none; }   /* No celular, libere espaço para o botão de desativação; não há tecla Espaço. */
   .estop { padding: 0 18px; flex-shrink: 0; }
-  .stage-ov { height: 300px; }      /* 手机上舞台矮一点：第一屏露得出仪表带和清单（审查 O11） */
+  .stage-ov { height: 300px; }      /* No celular, reduza a altura do palco para mostrar a faixa de indicadores e a lista na primeira tela (revisão O11). */
   .stage .copy { left: 20px; right: 20px; width: auto; max-width: none; top: auto; bottom: 20px; justify-content: flex-end; }
   .stage h1 { font-size: 24px; line-height: 30px; }
   .stage::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 45%; pointer-events: none;
-    background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.42)); }   /* 字在鸭子脚边，垫一层暗底保证看得清 */
+    background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.42)); }   /* Texto perto dos pés do pato, com fundo escuro para melhorar a leitura. */
   .band { grid-template-columns: 1fr 1fr; }
   .band > * { padding: 14px 18px; }
   .band > * + * { box-shadow: none; }
@@ -280,10 +280,10 @@ button:disabled { cursor: default; }
   .band .band-bar { width: 64px !important; margin-left: 8px !important; }
   .band .big { font-size: 28px; line-height: 32px; }
   .todo.list { padding: 12px 18px; }
-  .todo .hint { flex-basis: 100%; padding-left: 30px; }   /* 手机上说明换到下一行 */
+  .todo .hint { flex-basis: 100%; padding-left: 30px; }   /* No celular, a descrição passa para a linha seguinte. */
   .topbar { margin: 0 -12px; padding: 0 12px; }
   .sv-badge { display: inline-block; }
-  .servo-bar { padding: 6px 12px; gap: 4px 8px; font-size: 13px; }       /* 吸顶的提示条在手机上矮一点 */
+  .servo-bar { padding: 6px 12px; gap: 4px 8px; font-size: 13px; }       /* No celular, reduza a altura do aviso fixo. */
   .servo-bar .sb-more { font-size: 12px; line-height: 1.4; }
   .onb { padding: 10px 16px 6px; }
   .onb-row { flex-wrap: wrap; }
@@ -294,7 +294,7 @@ button:disabled { cursor: default; }
 }
 @media (min-width: 701px) { .tabbar { display: none; } }
 
-/* ---- 舵机页 ---- */
+/* ---- Página dos servos ---- */
 .sv-page { display: flex; flex-direction: column; gap: 12px; padding-bottom: 24px; }
 .sv-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
 .sv-head h1 { margin: 0; font-size: 28px; font-weight: 600; }
@@ -357,7 +357,7 @@ button:disabled { cursor: default; }
 .sv-table tr.sel.H td:first-child { box-shadow: inset 3px 0 0 #F5B400; }
 .sv-stage canvas { cursor: pointer; }
 
-/* ---- 舵机页：每颗一行（滑块）+ 功能区 ---- */
+/* ---- Página dos servos: uma linha por servo (controle deslizante) e área de funções ---- */
 .sv-rows { padding: 4px 0 6px; }
 .sv-row { padding: 6px 14px 6px 12px; border-top: 1px solid #F0F0F2; cursor: pointer; }
 .sv-row:hover { background: #FAFAFB; }
@@ -414,7 +414,7 @@ button:disabled { cursor: default; }
 .sv-adv { margin-top: 10px; border-top: 1px solid #F0F0F2; padding-top: 8px; }
 .sv-adv summary { cursor: pointer; font-size: 13px; color: var(--text-2); }
 
-/* ======== 舵机页 v3 布局（用户 10-18：布局不好、没对齐）：所有行同一套列宽 ======== */
+/* ======== Layout v3 da página dos servos (usuário 10-18: corrigir layout e alinhamento): mesma largura de colunas em todas as linhas ======== */
 .sv-page { max-width: 1480px; gap: 14px; }
 .sv-head { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
 .sv-titles { flex: 1; min-width: 280px; }
@@ -427,7 +427,7 @@ button:disabled { cursor: default; }
 .sv-stats b small { font-size: 12px; font-weight: 500; color: var(--text-2); }
 .sv-stats span { font-size: 11px; color: var(--text-2); }
 .sv-main { display: grid; grid-template-columns: minmax(380px, 5fr) minmax(580px, 6fr); gap: 16px; align-items: start; }
-.sv-left { position: sticky; top: calc(68px + var(--bar-h, 0px)); display: flex; flex-direction: column; gap: 12px; }   /* 顶栏吸顶了（56 px）：贴在它下面 */
+.sv-left { position: sticky; top: calc(68px + var(--bar-h, 0px)); display: flex; flex-direction: column; gap: 12px; }   /* Cabeçalho fixo de 56 px: posicione logo abaixo dele. */
 .sv-stage { height: min(60vh, 600px); }
 .sv-stage .sv-poses { position: absolute; z-index: 2; left: 12px; top: 12px; background: rgba(255,255,255,.88); backdrop-filter: blur(6px); }
 .sv-card { padding: 14px 18px; }
@@ -441,7 +441,7 @@ button:disabled { cursor: default; }
 .sv-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text-2); }
 .sv-inline input[type=number] { width: 58px; }
 
-/* 15 颗：表头 + 三组，列宽固定 */
+/* 15 servos: cabeçalho e três grupos, com larguras de coluna fixas. */
 .sv-list { padding: 4px 0 8px; }
 .sv-list .sv-row { display: grid; grid-template-columns: 28px 78px minmax(120px, 1fr) 46px 60px 48px 54px 46px 12px;
   align-items: center; column-gap: 10px; padding: 7px 16px; border-top: 1px solid #F2F2F5; box-shadow: none; }
@@ -464,7 +464,7 @@ button:disabled { cursor: default; }
 .sv-more { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; padding: 8px 0 2px 38px; font-size: 12px; color: var(--text-2); }
 .sv-more b { color: var(--text); font-weight: 600; }
 
-/* 更多（折叠） */
+/* Mais opções (recolhidas) */
 .sv-more-area { padding: 12px 18px; }
 .sv-more-area > summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text-2); }
 .sv-more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 14px; }
@@ -475,7 +475,7 @@ button:disabled { cursor: default; }
   .sv-stage { height: 440px; }
 }
 .sv-pick { min-width: 150px; }
-/* 舵机页 v5：左 3D、右功能（照 servo-web） */
+/* Layout v5 da página dos servos: 3D à esquerda, funções à direita (como em servo-web). */
 .sv-main { grid-template-columns: minmax(360px, 4fr) minmax(620px, 6fr); }
 .sv-left .sv-stage { height: calc(100vh - 150px); min-height: 520px; max-height: 900px; }
 .sv-right { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -483,14 +483,14 @@ button:disabled { cursor: default; }
 .btn-ok { height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: #E3F6EA; color: #1E7B3A; font-weight: 600; font-size: 14px; }
 .btn-ok:disabled { opacity: .45; }
 .sv-calib .sv-form { grid-template-columns: 70px minmax(0, 1fr); }
-/* 窄屏（平板竖着、手机）：上下排。上面 v5 那条写在 1100px 规则后面把它盖掉了，手机上整页能左右滑 */
+/* Em telas estreitas (tablet em pé ou celular), empilhe as colunas. A regra v5 acima sobrescrevia a de 1100 px, permitindo rolagem horizontal no celular. */
 @media (max-width: 1100px) {
   .sv-main { grid-template-columns: minmax(0, 1fr); }
   .sv-left .sv-stage { height: 440px; min-height: 0; }
 }
 @media (max-width: 700px) {
   .sv-left .sv-stage { height: 340px; }
-  /* 手机：一行九列放不下（约 590 px）→ 两行：编号 名字 角度 扭矩 中位 灯 / 滑块 温度 读数 */
+  /* Nove colunas não cabem em uma linha no celular (cerca de 590 px): use duas linhas: número, nome, ângulo, torque, centro, luz / controle deslizante, temperatura e leitura. */
   .sv-list .sv-headrow { display: none !important; }
   .sv-list .sv-row { grid-template-columns: 28px minmax(0, 1fr) 56px 54px 46px 10px; row-gap: 6px; padding: 8px 12px; }
   .sv-list .sv-row > :nth-child(1) { grid-area: 1 / 1; }
@@ -505,7 +505,7 @@ button:disabled { cursor: default; }
   .sv-list .sv-row > .sv-more { grid-column: 1 / -1; }
 }
 .sv-left .sv-stage { height: calc(100vh - 230px); min-height: 480px; }
-/* 舵机页 v6 页头（用户画框）：左 标题 + 读取状态；右 操作按钮 + 交还主程序 */
+/* Cabeçalho v6 da página dos servos (conforme marcação do usuário): título e estado da leitura à esquerda; ações e devolução ao programa principal à direita. */
 .sv-head { align-items: flex-start; gap: 12px 24px; }
 .sv-titles { flex: 0 1 auto; min-width: 0; }
 .sv-titleline { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
