@@ -114,11 +114,11 @@ class TodoTest(unittest.TestCase):
     def test_starting_hint_names_the_step(self):
         rd = self.rd("starting")
         rd.startup.reset(rd.hello.at)
-        rd.startup.update(report("success", "waiting", details={2: "等全部关节的新鲜反馈；没发目标"}))
+        rd.startup.update(report("success", "waiting", details={2: "Aguardando dados atualizados de todas as juntas; nenhum alvo foi enviado"}))
         todo = summarize(rd, {})["todo"]
         it = next(i for i in todo if i["key"] == "starting")
-        self.assertIn("第 2/4 步（舵机总线和 IMU）：等全部关节的新鲜反馈", it["hint"])
-        self.assertIn("原文：torque readback", it["hint"])            # busStatus.error 接在后面
+        self.assertIn("Etapa 2/4 (Barramento dos servos e IMU): Aguardando dados atualizados de todas as juntas", it["hint"])
+        self.assertIn("Texto original: torque readback", it["hint"])            # busStatus.error 接在后面
 
     def test_old_track_from_previous_hello_is_ignored(self):
         rd = self.rd("starting")
@@ -139,10 +139,10 @@ class TodoTest(unittest.TestCase):
     def test_walk_slot_error_named(self):
         f = FakeRobotd(FIXTURE, posture="holding")
         f.policies = json.loads(json.dumps(f.policies))
-        f.policies["slots"][0]["error"] = "执行配置坏了"
+        f.policies["slots"][0]["error"] = "configuração de execução inválida"
         rd = StubRd(f, self.log)
         todo = summarize(rd, {})["todo"]
-        self.assertIn("走路槽加载失败：执行配置坏了", todo[0]["hint"])
+        self.assertIn("Falha ao carregar o slot de caminhada: configuração de execução inválida", todo[0]["hint"])
 
     def test_no_walk_unloaded_when_fine_paused_or_disabled(self):
         rd = self.rd("holding")
@@ -458,7 +458,7 @@ class StartupLoopTest(unittest.IsolatedAsyncioTestCase):
         self.fake.errors["robot.startupSubscribe"] = {"code": -32601, "message": "method not found"}
         self.rd.start()
         self.assertTrue(await self.until(lambda: self.rd.startup.unsupported is not None))
-        self.assertIn("不报启动步骤", self.rd.startup.unsupported)
+        self.assertIn("não informa as etapas de inicialização", self.rd.startup.unsupported)
 
     async def test_restart_starts_over(self):
         self.rd.start()
