@@ -1,138 +1,121 @@
-# 署名与来源 / Attribution
+# Créditos e atribuições / Attribution
 
-本仓库是 **Microduck 的第三方复刻研究**，与 Pollen Robotics 无隶属关系，未获其背书。
+Este repositório documenta uma **réplica independente do Microduck**. Não é afiliado nem endossado pela Pollen Robotics.
 
-## 上游来源
+## Fontes upstream
 
-| 来源 | 作者 | 许可证 |
+| Fonte | Autor | Licença |
 |---|---|---|
-| [pollen-robotics/microduck_rl](https://github.com/pollen-robotics/microduck_rl) | Pollen Robotics | 代码 Apache-2.0；**3D 模型 CC BY-NC-SA**（上游 README 写作 "BY-SA-NC"） |
+| [pollen-robotics/microduck_rl](https://github.com/pollen-robotics/microduck_rl) | Pollen Robotics | Código Apache-2.0; **modelos 3D CC BY-NC-SA** (o README upstream escreve “BY-SA-NC”) |
 | [pollen-robotics/microduck](https://github.com/pollen-robotics/microduck) | Pollen Robotics | Apache-2.0 |
-| [LuwuDynamics/xgoduck_rl](https://github.com/LuwuDynamics/xgoduck_rl) 的 1910 M6 参数与配套配置参考 | LuwuDynamics | Apache-2.0 |
-| [Rhoban/BAM](https://github.com/Rhoban/bam) 执行器模型与辨识库（训练依赖） | Rhoban | Apache-2.0 |
+| Parâmetros 1910 M6 e configurações de referência de [LuwuDynamics/xgoduck_rl](https://github.com/LuwuDynamics/xgoduck_rl) | LuwuDynamics | Apache-2.0 |
+| Modelos de atuadores e biblioteca de identificação de [Rhoban/BAM](https://github.com/Rhoban/bam) (dependência de treinamento) | Rhoban | Apache-2.0 |
 
-Microduck 是 Pollen Robotics 的商业产品，硬件**部分开源**：
+O Microduck é um produto comercial da Pollen Robotics e seu hardware é **parcialmente aberto**:
 
-- **RPI Robot HAT 板已由官方完整开源**（[`elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT)，Apache-2.0，含 KiCad 工程与生产文件）
-- **`imu_to_dxl` 板、机械件的可编辑 CAD、整机 BOM 与装配文档**均未公开
+- A placa **RPI Robot HAT foi publicada oficialmente** ([`elec_RPI_Robot_HAT`](https://github.com/pollen-robotics/elec_RPI_Robot_HAT), Apache-2.0, incluindo o projeto KiCad e arquivos de fabricação).
+- A placa `imu_to_dxl`, os arquivos CAD editáveis das peças mecânicas, a BOM completa e os documentos de montagem não foram publicados.
 
-本仓库中的一切几何信息，均来自上游 `microduck_rl` 仓库中公开发布的
-**MJCF 仿真模型和 STL 网格**；电控结论来自 `microduck` 仓库的源码、设备树与配置文件。
+Todas as informações geométricas deste repositório vêm dos **modelos de simulação MJCF e malhas STL** publicados no repositório upstream `microduck_rl`. As conclusões sobre a eletrônica foram obtidas do código-fonte, da árvore de dispositivos e dos arquivos de configuração do repositório `microduck`.
 
-> 勘误（2026-09-03）：本文件此前称「其硬件并未开源」，该表述有误 —— HAT 板是开源的。
+> Correção (2026-09-03): uma versão anterior deste documento dizia que o hardware não era aberto. Isso estava incorreto: a placa HAT é aberta.
 
-## 本仓库中的衍生内容
+## Conteúdo derivado neste repositório
 
-以下内容由本项目从上游公开发布的 MJCF + STL 生成或整理，属于 **CC BY-NC-SA 的衍生作品**，
-因此以相同许可证发布：
+O conteúdo abaixo foi gerado ou organizado neste projeto a partir do MJCF e STL publicados upstream. É considerado **trabalho derivado sob CC BY-NC-SA** e distribuído sob a mesma licença:
 
-| 路径 | 内容 | 与上游的关系 |
+| Caminho | Conteúdo | Relação com upstream |
 |---|---|---|
-| `assembly-drawings/` | 全部渲染图与爆炸图 | 由上游 MJCF + STL 渲染生成 |
-| `software/training/` 内的 3D 网格 | 训练使用的仿真几何 | 保留上游模型来源与许可，不作为实物打印文件 |
-| `tools/servo-web/model/` | 网页调试显示模型 | 从上游 MJCF / STL 转换，非最新实物 CAD |
-| `software/studio/web/model/` | Studio 网页里的 3D 鸭子 | 从上游仿真模型转换，只留外形，非最新实物 CAD |
-| `docs/hole_analysis.json` | 孔位几何分析数据 | 由上游 STL 计算得出 |
+| `assembly-drawings/` | Todas as imagens renderizadas e vistas explodidas | Renderizadas a partir do MJCF e STL upstream |
+| Malhas 3D em `software/training/` | Geometria de simulação usada no treinamento | Mantém a origem e licença do modelo upstream; não se destina à impressão de peças físicas |
+| `tools/servo-web/model/` | Modelo exibido na bancada web de depuração | Convertido do MJCF/STL upstream; não corresponde ao CAD físico mais recente |
+| `software/studio/web/model/` | Microduck 3D exibido no Studio | Convertido do modelo de simulação upstream, somente com o formato externo; não corresponde ao CAD físico mais recente |
+| `docs/hole_analysis.json` | Dados da análise geométrica dos furos | Calculados a partir de STL upstream |
 
-> **模型下载迁移（2026-09-28）**：`print/` 和 `cad/` 已改为指向 [CAD 仓库](https://github.com/fanhao375/microduck-replica-cad) 的入口说明，旧单件 STL、装配 STL 与对照表已从当前版本移除，避免误作最新打印件。Git 历史中的旧模型仍为上游 STL 的重命名、分类或装配变换衍生作品，继续遵循 CC BY-NC-SA；移除下载副本不改变历史文件的作者与许可。
+> **Migração dos downloads de modelos (2026-09-28):** `print/` e `cad/` agora direcionam para as instruções do [repositório CAD](https://github.com/fanhao375/microduck-replica-cad). Os STL individuais antigos, STL de montagem e tabelas de comparação foram removidos da versão atual para evitar que sejam confundidos com os arquivos de impressão mais recentes. Os modelos antigos no histórico Git continuam sendo trabalhos derivados dos STL upstream, renomeados, classificados ou transformados para montagem, e permanecem sob CC BY-NC-SA. A remoção das cópias para download não altera a autoria ou licença dos arquivos históricos.
 
-**本项目原创内容：**
+**Conteúdo original deste projeto:**
 
-| 路径 | 内容 | 许可证 |
+| Caminho | Conteúdo | Licença |
 |---|---|---|
-| `scripts/` | 渲染、导出、孔位分析等脚本 | **Apache-2.0** |
-| `tools/stl_viewer.html` | 零依赖 WebGL STL 查看器 | **Apache-2.0** |
-| `software/studio/` 的代码 | Microduck Studio 网页中控（不含 `web/vendor/`、`deps/`、`web/model/`） | **Apache-2.0** |
-| `software/image/` | 复刻镜像的构建脚本、首次开机和配网脚本 | **Apache-2.0** |
-| `software/updater/` | 签名组件包构建、原更新引擎适配、网页升级协调与首次引导工具 | **Apache-2.0**；原updaterd来自Pollen Robotics，来源1fa8438 |
-| `software/duck-echo/` 的代码 | 本地R3语音、录音和音乐互动；不包含构建机私钥或用户录音 | **Apache-2.0**；外置Vosk模型及ARM64依赖按各自许可，清单保留来源和hash |
-| `docs/*.md`、`*.md` | 全部文档与逆向分析文本 | **CC BY-NC-SA 4.0** |
-| `build-log/` 照片 | 实物构建照片 | **CC BY-NC-SA 4.0**，由本项目参与者拍摄并授权 |
-| `assets/` 中的项目原创素材 | 封面、交流群二维码与项目预览图；不含下列官方板卡图片 | 同上 |
+| `scripts/` | Scripts de renderização, exportação e análise de furos | **Apache-2.0** |
+| `tools/stl_viewer.html` | Visualizador STL WebGL sem dependências | **Apache-2.0** |
+| Código em `software/studio/` | Painel web Microduck Studio (exceto `web/vendor/`, `deps/` e `web/model/`) | **Apache-2.0** |
+| `software/image/` | Scripts de construção da imagem, primeira inicialização e configuração de rede | **Apache-2.0** |
+| `software/updater/` | Construção de pacotes assinados, adaptação do mecanismo de atualização original, coordenação da atualização web e ferramenta de primeira inicialização | **Apache-2.0**; updaterd original da Pollen Robotics, origem 1fa8438 |
+| Código em `software/duck-echo/` | Interação local por voz R3, gravação e música; não inclui chaves privadas da máquina de build nem gravações de usuários | **Apache-2.0**; modelos Vosk externos e dependências ARM64 seguem suas próprias licenças, com origem e hashes registrados |
+| `docs/*.md`, `*.md` | Documentação e análises de engenharia reversa | **CC BY-NC-SA 4.0** |
+| Fotos em `build-log/` | Fotos da construção física | **CC BY-NC-SA 4.0**, fotografadas e autorizadas por participantes do projeto |
+| Materiais originais do projeto em `assets/` | Capa, QR code do grupo e imagens de apresentação; exceto as fotos oficiais de placas indicadas abaixo | Mesma licença |
 
-## 官方板卡图片
+## Imagens oficiais de placas
 
-以下两张图片原样引用，保留各自的作者与原许可，不受本项目文档或原创素材的 CC BY-NC-SA 许可覆盖：
+As duas imagens abaixo são incluídas sem alterações, mantendo seus autores e licenças originais. Elas não estão cobertas pela licença CC BY-NC-SA dos documentos ou materiais originais deste projeto:
 
-| 路径 | 来源与作者 | 许可证 |
+| Caminho | Fonte e autor | Licença |
 |---|---|---|
-| `assets/hw/radxa-zero3w-official.webp` | [Radxa ZERO 3 官方文档](https://docs.radxa.com/en/zero/zero3)，Radxa Computer (Shenzhen) Co., Ltd. | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
-| `assets/hw/rpi-robot-hat-official.png` | [Pollen Robotics 官方 HAT 仓库](https://github.com/pollen-robotics/elec_RPI_Robot_HAT)，Pollen Robotics | [Apache-2.0](https://github.com/pollen-robotics/elec_RPI_Robot_HAT/blob/main/LICENSE) |
+| `assets/hw/radxa-zero3w-official.webp` | [Documentação oficial Radxa ZERO 3](https://docs.radxa.com/en/zero/zero3), Radxa Computer (Shenzhen) Co., Ltd. | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| `assets/hw/rpi-robot-hat-official.png` | [Repositório oficial da HAT da Pollen Robotics](https://github.com/pollen-robotics/elec_RPI_Robot_HAT), Pollen Robotics | [Apache-2.0](https://github.com/pollen-robotics/elec_RPI_Robot_HAT/blob/main/LICENSE) |
 
-原图地址、固定版本和校验值见[图片来源记录](assets/hw/official-board-images.md)。
+Os endereços das imagens, versões fixadas e hashes estão no [registro de fontes das imagens](assets/hw/official-board-images.md).
 
-## 内置训练工程
+## Projeto de treinamento incluído
 
-[`software/training/`](software/training/) 完整收录训练工程，让复刻者一次下载即可获得
-代码、参数和仿真模型。导入固定版本与变更范围见 [UPSTREAM.md](software/training/UPSTREAM.md)。
+[`software/training/`](software/training/) contém o projeto de treinamento completo para que quem reproduz o robô possa obter código, parâmetros e modelos de simulação em um único download. As versões upstream importadas e o escopo das alterações estão em [UPSTREAM.md](software/training/UPSTREAM.md).
 
-- Pollen Robotics 的训练代码、工具和原文档保留 **Apache-2.0**；本目录新增的 HD1910
-  任务、初始化适配、测试和说明也采用 Apache-2.0。许可证全文在
-  [`software/training/LICENSE`](software/training/LICENSE)。
-- 训练目录内的 **3D 模型和网格保留上游 CC BY-NC-SA 声明**，不受代码的 Apache 许可覆盖。
-- LuwuDynamics 的 `1910_m6.json` 原样保留，固定来源、校验值和许可证副本放在
-  [`software/training/src/mjlab_microduck/robot/hd1910/`](software/training/src/mjlab_microduck/robot/hd1910/)。
-  本项目没有自行辨识这份参数；以后用它训练策略，仍保留参数引用。
-- Rhoban/BAM 通过锁定版本的依赖安装，保留其来源与许可。
+- O código, as ferramentas e a documentação original da Pollen Robotics mantêm a licença **Apache-2.0**. As tarefas HD1910, adaptações de inicialização, testes e instruções adicionados neste diretório também usam Apache-2.0. O texto da licença está em [`software/training/LICENSE`](software/training/LICENSE).
+- Os **modelos e malhas 3D** no diretório de treinamento mantêm os avisos upstream CC BY-NC-SA e não são cobertos pela licença Apache do código.
+- `1910_m6.json` de LuwuDynamics é mantido sem alterações. A fonte fixada, o hash e uma cópia da licença estão em [`software/training/src/mjlab_microduck/robot/hd1910/`](software/training/src/mjlab_microduck/robot/hd1910/). Este projeto não identificou esses parâmetros de forma independente; referências à origem continuarão presentes se forem usados para treinar políticas.
+- Rhoban/BAM é instalado por dependência em versão fixada, mantendo a atribuição e a licença correspondentes.
 
-上表对本项目文档的 CC BY-NC-SA 许可不覆盖训练目录内的 Apache 文档。
+A licença CC BY-NC-SA dos documentos deste projeto não cobre a documentação Apache no diretório de treinamento.
 
-## 其他第三方软件
+## Outros softwares de terceiros
 
-**原样分发的第三方软件：**
+**Software de terceiros distribuído sem alterações:**
 
-| 路径 | 内容 | 来源 | 许可证 |
+| Caminho | Conteúdo | Fonte | Licença |
 |---|---|---|---|
-| `tools/飞特/` | 飞特 FD 调试软件 1.9.8.5 + CH340 驱动 | [gitee.com/ftservo/fddebug](https://gitee.com/ftservo/fddebug)，2026-09-11 复制 | **MIT**（FTServo 2024，LICENSE 同目录） |
-| `tools/rufus/` | Rufus 4.15 Windows x64 便携版与同版本源码 | [pbatard/rufus v4.15](https://github.com/pbatard/rufus/releases/tag/v4.15)，2026-10-25 原样下载 | **GPL-3.0-or-later**；许可、源码归档、校验值及来源记录在该目录 |
-| `software/studio/web/vendor/` | Studio 前端库：Preact、htm 3.1.1、three.js 0.160.0 | 各自官方发布 | Preact、three.js **MIT**，htm **Apache-2.0**（许可证在 `web/vendor/licenses/`） |
-| `software/studio/deps/` | Studio 的 Python 依赖（anyio、click、h11、idna、pyserial、sniffio、starlette、typing_extensions、uvicorn、wsproto） | pypi.org 原版 wheel，版本和校验值见 `deps/VERSIONS.txt` | MIT / BSD-3-Clause / PSF-2.0 等，各包许可证在各自的 `*.dist-info` 里 |
+| `tools/飞特/` | Software Feetech FD 1.9.8.5 para depuração + driver CH340 | [gitee.com/ftservo/fddebug](https://gitee.com/ftservo/fddebug), cópia de 2026-09-11 | **MIT** (FTServo 2024; LICENSE no mesmo diretório) |
+| `tools/rufus/` | Rufus 4.15 portátil para Windows x64 e código-fonte da mesma versão | [pbatard/rufus v4.15](https://github.com/pbatard/rufus/releases/tag/v4.15), download sem alterações em 2026-10-25 | **GPL-3.0-or-later**; licença, arquivo de código-fonte, hashes e registro de origem no diretório |
+| `software/studio/web/vendor/` | Bibliotecas frontend do Studio: Preact, htm 3.1.1 e three.js 0.160.0 | Versões oficiais de cada projeto | Preact e three.js **MIT**; htm **Apache-2.0** (licenças em `web/vendor/licenses/`) |
+| `software/studio/deps/` | Dependências Python do Studio (anyio, click, h11, idna, pyserial, sniffio, starlette, typing_extensions, uvicorn, wsproto) | Wheels originais do pypi.org; versões e hashes em `deps/VERSIONS.txt` | MIT / BSD-3-Clause / PSF-2.0 etc.; licenças em `*.dist-info` de cada pacote |
 
-> 文档中引用的上游源码片段（注释、常量、寄存器定义）来自 `pollen-robotics/microduck`，
-> 遵循其 **Apache-2.0** 许可证，引用处均已标注文件路径。
+> Trechos de código upstream citados nos documentos (comentários, constantes e definições de registradores) vêm de `pollen-robotics/microduck`, seguem a licença **Apache-2.0** e incluem o caminho do arquivo citado.
 
-## 配套仓库：SolidWorks 三维图纸
+## Repositório associado: projetos SolidWorks
 
-[**fanhao375/microduck-replica-cad**](https://github.com/fanhao375/microduck-replica-cad)
-统一维护可编辑的 SolidWorks / STEP、打印文件与 21 页装配安装说明书。飞特与 XL330 分版本提供，文件清单以该仓库对应发布为准；主仓不再维护一套独立的打印模型副本。
+[**fanhao375/microduck-replica-cad**](https://github.com/fanhao375/microduck-replica-cad) mantém os arquivos editáveis SolidWorks / STEP, os arquivos de impressão e o manual de montagem de 21 páginas. Há versões para Feetech e XL330; a lista de arquivos corresponde à publicação desse repositório. O repositório principal não mantém cópias independentes dos modelos de impressão.
 
-| 内容 | 作者 | 许可证 |
+| Conteúdo | Autor | Licença |
 |---|---|---|
-| SolidWorks 图纸、装配安装说明书、组件图 | **机械行者Robo**（小红书 270594280 / 抖音 1852366168） | **CC BY-NC-SA 4.0** |
+| Projetos SolidWorks, manual de montagem e desenhos de componentes | **机械行者Robo** (Xiaohongshu 270594280 / Douyin 1852366168) | **CC BY-NC-SA 4.0** |
 
-那套图纸是**依据上游公开的 STL 网格重建的可编辑参数模型**，属于 CC BY-NC-SA 的衍生作品，
-因此以相同许可证发布。**著作权归作者本人**，转载与二次分发请保留署名。
-图纸放在独立仓库而不并入本仓，是因为 SolidWorks 源文件解压后约 340 MB，
-并入会让本仓每次 clone 都背上这个体积。
+Esses projetos são **modelos paramétricos editáveis reconstruídos a partir das malhas STL upstream** e constituem trabalhos derivados sob CC BY-NC-SA, distribuídos sob a mesma licença. **Os direitos autorais pertencem ao autor**; mantenha a atribuição ao republicar ou redistribuir. Os arquivos ficam em repositório separado porque os arquivos SolidWorks ocupam cerca de 340 MB descompactados e aumentariam o tamanho de cada clone deste repositório.
 
-## 许可证名称说明
+## Nome da licença
 
-规范名称是 **CC BY-NC-SA 4.0**（署名 - 非商业性使用 - 相同方式共享）。
-上游 README 写作「BY-SA-NC」，本仓库沿用其写法时指的是同一个许可证。
+O nome padronizado é **CC BY-NC-SA 4.0** (Atribuição — Não Comercial — CompartilhaIgual). O README upstream usa “BY-SA-NC”; neste repositório, essa forma se refere à mesma licença.
 
-> 需要说明的是：上游 `microduck_rl` 仓库的 `LICENSE` 文件本身只有 Apache-2.0，
-> **CC 条款仅出现在其 README 的一行文字中**。本仓库对 3D 模型采用更严格的 CC BY-NC-SA
-> 是保守做法 —— 若上游澄清为纯 Apache-2.0，本仓库会相应放宽。
+> Observação: o arquivo `LICENSE` do repositório upstream `microduck_rl` contém somente Apache-2.0; **os termos CC aparecem em uma única linha do README**. A adoção de CC BY-NC-SA, mais restritiva, para os modelos 3D neste repositório é uma medida conservadora. Se o upstream confirmar que os modelos estão apenas sob Apache-2.0, a licença deste projeto será ajustada de acordo.
 
-## 合规声明
+## Declaração de conformidade
 
-本仓库中的一切结论均来自：
+Todas as conclusões deste repositório foram baseadas em:
 
-- Pollen Robotics 公开发布的**源码与设备树**（`pollen-robotics/microduck`，Apache-2.0）
-- 公开发布的**仿真模型与网格**（`pollen-robotics/microduck_rl`）
-- 公开发布的**KiCad 工程**（`pollen-robotics/elec_RPI_Robot_HAT`，Apache-2.0）
-- LuwuDynamics 公开发布的 **1910 M6 参数与配套配置**（`LuwuDynamics/xgoduck_rl`，Apache-2.0）
-- 厂商公开的器件手册与规格页
+- **Código-fonte e árvore de dispositivos** publicados pela Pollen Robotics (`pollen-robotics/microduck`, Apache-2.0).
+- **Modelos de simulação e malhas** publicados (`pollen-robotics/microduck_rl`).
+- **Projeto KiCad** publicado (`pollen-robotics/elec_RPI_Robot_HAT`, Apache-2.0).
+- **Parâmetros 1910 M6 e configurações associadas** publicados pela LuwuDynamics (`LuwuDynamics/xgoduck_rl`, Apache-2.0).
+- Manuais e fichas técnicas de componentes publicados pelos fabricantes.
 
-**未使用任何非公开资料，未拆解实物，未接触过任何未公开的设计文件。**
-`imu_to_dxl` 板的固件不在任何开源仓库中，本仓库只还原了它在总线侧的可观测行为。
+**Não foram usadas informações não públicas, nenhum produto físico foi desmontado e nenhum projeto não publicado foi acessado.** O firmware da placa `imu_to_dxl` não está em nenhum repositório aberto; este repositório apenas reproduz o comportamento observável dela no barramento.
 
-## 非商用声明
+## Uso não comercial
 
-上游 3D 模型采用 **CC BY-NC-SA**，其衍生作品**不得用于商业目的**。
-本仓库仅供学习、研究与个人复刻使用。
+Os modelos 3D upstream estão sob **CC BY-NC-SA**; trabalhos derivados **não podem ser usados para fins comerciais**. Este repositório destina-se somente a estudo, pesquisa e réplicas pessoais.
 
-## 如何署名
+## Atribuição
 
-> 基于 Pollen Robotics 的 Microduck 模型（CC BY-NC-SA）
+> Baseado no modelo Microduck da Pollen Robotics (CC BY-NC-SA)
 > https://github.com/pollen-robotics/microduck_rl
