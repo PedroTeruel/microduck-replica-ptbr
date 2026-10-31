@@ -1,11 +1,11 @@
-"""在鸭子上录 robotd 的真实回包，给假 robotd 和测试用（只读，不发任何会让鸭子动的命令）。
+"""Grava respostas reais do robotd no robô para uso no robotd falso e nos testes (somente leitura; não envia comandos que movam o robô).
 
     python3 -I dev/record_robotd.py --label limp --seconds 3 > limp.jsonl
 
-每行一个 JSON：{"kind": "reply", "method": ..., "params": ..., "reply": ...}，
-订阅的状态帧是 {"kind": "notify", "dt": 收到时距开始几秒, "msg": ...}。
-标签（软着 / 保持 / 策略中 / 坐着 / 调试模式……）写在第一行 {"kind": "meta"}。
-只用标准库，板上直接跑。
+Cada linha contém um JSON: {"kind": "reply", "method": ..., "params": ..., "reply": ...}.
+Quadros de estado assinados usam {"kind": "notify", "dt": segundos desde o início, "msg": ...}.
+Grave o rótulo (torque desligado, postura mantida, política ativa, sentado, modo de depuração etc.) na primeira linha, em {"kind": "meta"}.
+Usa apenas a biblioteca padrão e pode ser executado diretamente na placa.
 """
 import argparse
 import json

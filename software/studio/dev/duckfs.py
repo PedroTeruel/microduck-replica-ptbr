@@ -1,16 +1,15 @@
-"""造一棵假的鸭子文件树（调参方案 v2 T2、T3：调参卡读的那些文件），给测试和电脑上截图用。
+"""Cria uma árvore de arquivos falsa do robô (plano de ajuste v2 T2 e T3), usada pelos testes e capturas de tela.
 
-    py -3.13 -I dev/duckfs.py <目录>            # 造一棵跟二号鸭 10-18 一样的（没有舵机参数文件、嘴巴 0%）
-    run.py ... --robotd tcp:... --dev-duck-root <目录>
+    py -3.13 -I dev/duckfs.py <diretório>       # Replica o robô nº 2 de 18/10 (sem arquivo de parâmetros dos servos; bico em 0%)
+    run.py ... --robotd tcp:... --dev-duck-root <diretório>
 
-**内容是我们自己写的最小 JSON / TOML**，只放调参卡要读的字段，不拷原版板端文件（它们不是开源许可）。
-形状照二号鸭上读到的（scratchpad duck4.log、tuning-plan.md §2.1）：
-- etc/robot/feetech-ft5/robotd.toml 和 robotd.saved.toml：键带引号（原版板端工具的写法），[policy] 里
-  action_scale = 0.7、没有 head_lowpass / legs_lowpass、各槽是 /opt/robot/feetech-ft5-r5/models/<id>/policy.onnx；
-- 走路模型 1cbf8730… 的 deployment-execution.json：1.0 / 0.5 / 0.7；合同里 model.actuators[0].kp_fw = 5；
-- pad-settings.json：嘴巴 0%、头 2.5（.previous 是 6%）；padd 的回执 run/padd/input-settings.json；
-- 4 个滑轮模型目录；management-profile.json 的 builtin_models（名字是我们自己起的）。
-模型的 sha256 跟假 robotd 回放的夹具（tests/fixtures/now-20261018.jsonl 的 loaded_models）对得上。
+**Os arquivos JSON / TOML são mínimos e criados para este projeto**: contêm apenas os campos lidos pelo cartão de ajuste e não copiam arquivos do firmware original (que não têm licença de código aberto).
+A estrutura segue os dados lidos no robô nº 2 (scratchpad duck4.log, tuning-plan.md §2.1):
+- etc/robot/feetech-ft5/robotd.toml e robotd.saved.toml: chaves entre aspas, como na ferramenta original; em [policy], action_scale = 0.7, sem head_lowpass / legs_lowpass e caminhos dos slots em /opt/robot/feetech-ft5-r5/models/<id>/policy.onnx;
+- deployment-execution.json do modelo de caminhada 1cbf8730…: 1.0 / 0.5 / 0.7; no contrato, model.actuators[0].kp_fw = 5;
+- pad-settings.json: bico em 0% e cabeça em 2.5 (.previous contém 6%); resposta de padd em run/padd/input-settings.json;
+- quatro diretórios de modelos de rodas; builtin_models em management-profile.json (nomes definidos neste projeto).
+Os SHA256 dos modelos correspondem a loaded_models no registro de reprodução do robotd falso (tests/fixtures/now-20261018.jsonl).
 """
 import json
 import sys
@@ -20,23 +19,23 @@ BASE = "opt/robot/feetech-ft5-r5"
 ETC = "etc/robot/feetech-ft5"
 WALK = "1cbf8730eadd75a5704332c9f3c10f60"
 MODELS = {
-    WALK: {"slot": "walk", "task": "Mjlab-VelStand-Rough-Backlash-MicroDuck", "ckpt": 9599, "name": "走路＋倒地（联合）9600 轮",
+    WALK: {"slot": "walk", "task": "Mjlab-VelStand-Rough-Backlash-MicroDuck", "ckpt": 9599, "name": "Caminhada e recuperação de queda (conjunto), 9.600 iterações",
            "sha": "1cbf8730eadd75a5704332c9f3c10f60bfa9412135b907831c9dbd731ce1795f", "filter": False,
            "exec": {"action_scale": 1.0, "head_lowpass": 0.5, "legs_lowpass": 0.7}},
     "1c94934c6421ec72ed48079cea749668": {"slot": "sitstand", "task": "Mjlab-SitStand-Flat-MicroDuck",
                                          "ckpt": "logs/rsl_rl/sitstand/model_9999.pt", "name": None,
                                          "sha": "1c94934c6421ec72ed48079cea74966868a7a59f7d732e0207d0f7bdaeed3c50", "filter": None},
     "b14e3a8b56ddbb8d2d831e727774a168": {"slot": "ground_pick", "task": "Mjlab-GroundPick-Flat-Backlash-MicroDuck", "ckpt": 9999,
-                                         "name": "低头捡东西 10000 轮", "filter": True,
+                                         "name": "Abaixar a cabeça para pegar objetos, 10.000 iterações", "filter": True,
                                          "sha": "b14e3a8b56ddbb8d2d831e727774a168c8f5b00194e3e431ae7593a840498c69"},
     "59e15d7b04d0c40e9b11b8a70bdecae6": {"slot": "roulade", "task": "Mjlab-Roulade-Flat-MicroDuck", "ckpt": 9999,
-                                         "name": "前滚翻 10000 轮", "filter": True,
+                                         "name": "Cambalhota para a frente, 10.000 iterações", "filter": True,
                                          "sha": "59e15d7b04d0c40e9b11b8a70bdecae6da87a5e096efc204fb58eea304fcbbac"},
     "67ad09d82f4865d222a7ae06f250cf9f": {"slot": "kick_right", "task": "Mjlab-BallKick-Flat-MicroDuck", "ckpt": 9999,
-                                         "name": "右脚踢 10000 轮", "filter": True,
+                                         "name": "Chute com o pé direito, 10.000 iterações", "filter": True,
                                          "sha": "67ad09d82f4865d222a7ae06f250cf9f77f08c27e4f019ee3f7e431a764419fd"},
     "ee0376c927044cdece056ba1d3e6eac7": {"slot": "kick_left", "task": "Mjlab-BallKickLeft-Flat-Backlash-MicroDuck", "ckpt": 9999,
-                                         "name": "左脚踢 10000 轮", "filter": True,
+                                         "name": "Chute com o pé esquerdo, 10.000 iterações", "filter": True,
                                          "sha": "ee0376c927044cdece056ba1d3e6eac77b3e02ee3f701f1feb437c183ed39a6d"},
 }
 ROLLERS = {"swizzle": (9999, {"action_scale": 1.0, "head_lowpass": 1.0, "legs_lowpass": 1.0}, None),
@@ -75,8 +74,8 @@ def toml_text(action_scale=0.7, extra_policy=""):
 
 def build(root, servo=None, exec_walk=None, orig=False, saved_differs=False, mouth=0.0, pad_live=True,
           bad_servo=None, bad_exec=None, no_pad_file=False):
-    """造树。servo：舵机参数文件的内容（dict），None = 没有这个文件（V167 原版）。bad_servo / bad_exec：写一段坏文本。
-    orig：走路模型目录里放一份 .orig。saved_differs：robotd.saved.toml 跟主文件不一样。"""
+    """Cria a árvore. servo: conteúdo do arquivo de parâmetros dos servos (dict); None = arquivo ausente (firmware original V167). bad_servo / bad_exec: grava texto inválido.
+    orig: coloca uma cópia .orig no diretório do modelo de caminhada. saved_differs: robotd.saved.toml difere do arquivo principal."""
     root = Path(root)
     _w(root / ETC / "robotd.toml", toml_text())
     _w(root / ETC / "robotd.saved.toml", toml_text(0.8) if saved_differs else toml_text())
@@ -127,7 +126,7 @@ def build(root, servo=None, exec_walk=None, orig=False, saved_differs=False, mou
                 _w(o, {"schema": "microduck-runtime-execution/v1", "model_sha256": m["sha"], "mode": "uniform", **m["exec"]})
             elif o.exists():
                 o.unlink()
-        builtin.append({"id": ident, "slot": m["slot"], "name": m["name"] or "坐下 / 站起 10000 轮"})
+        builtin.append({"id": ident, "slot": m["slot"], "name": m["name"] or "Sentar / levantar, 10.000 iterações"})
     _w(root / BASE / "management-profile.json", {"builtin_models": builtin})
     for name, (ckpt, req, rt) in ROLLERS.items():
         d = root / BASE / "roller" / name
@@ -143,5 +142,5 @@ def build(root, servo=None, exec_walk=None, orig=False, saved_differs=False, mou
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        raise SystemExit("用法：py -3.13 -I dev/duckfs.py <目录>")
+        raise SystemExit("Uso: py -3.13 -I dev/duckfs.py <diretório>")
     print(build(sys.argv[1]))
