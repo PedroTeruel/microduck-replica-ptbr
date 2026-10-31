@@ -1,9 +1,9 @@
-// Microduck Studio 前端。不构建：Preact + htm（vendor/preact-htm.module.js）直接在浏览器里跑。
+// Interface do Microduck Studio. Não há etapa de compilação: Preact + htm (vendor/preact-htm.module.js) executam diretamente no navegador.
 //
-// 跟 Studio 后端只有两条路：
-// - HTTP：/api/session、/api/login、/api/logout、/api/password、/api/logs、/api/diag；
-// - WebSocket /ws：后端推 hello / state / log / result，前端发 hb（心跳，带页面是否可见）和 cmd（命令）。
-// 消息格式见 software/studio/README.md「前后端协议」。
+// A comunicação com o backend do Studio usa dois canais:
+// - HTTP: /api/session, /api/login, /api/logout, /api/password, /api/logs e /api/diag;
+// - WebSocket /ws: o backend envia hello / state / log / result, e a interface envia hb (sinal de vida, com visibilidade da página) e cmd (comando).
+// O formato das mensagens está em software/studio/README.md, na seção de protocolo entre interface e backend.
 import { html, render, Component, useState, useEffect, useRef, useCallback } from './vendor/preact-htm.module.js';
 import { Duck3D } from './duck3d.js';
 import { ServoPage, HandBackButton } from './servo.js';
@@ -19,10 +19,10 @@ import { TwoStep } from './confirm.js';
 import { ModelsPage } from './models.js';
 import { CameraPage, TofPage, SensorBandCells } from './sensors.js';
 
-const STALE_GRAY_MS = 1000;   // 超过 1 秒没新数据：数值变灰
-const STALE_ALARM_MS = 3000;  // 超过 3 秒：横幅；卸力按钮仍可按（只要跟 Studio 的连接在）
+const STALE_GRAY_MS = 1000;   // Sem dados novos por mais de 1 s: valores ficam acinzentados.
+const STALE_ALARM_MS = 3000;  // Sem dados novos por mais de 3 s: exibe um aviso; o botão de liberar servos continua disponível enquanto houver conexão com o Studio.
 
-// ---------------- 连接 ----------------
+// ---------------- Conexão ----------------
 
 class Link {
   constructor() {
@@ -58,11 +58,11 @@ class Link {
       this._hb = setInterval(() => this.heartbeat(), 1000);
     };
     ws.onmessage = (ev) => {
-      if (this.ws !== ws) return;            // 已经换掉的旧连接：它推的东西不要
+      if (this.ws !== ws) return;            // Ignore mensagens recebidas por uma conexão antiga.
       let m;
       try { m = JSON.parse(ev.data); } catch { return; }
       this.lastAt = performance.now();
-      // 后台标签页里 setInterval 一分钟才跑一次，收消息不受限：服务端的心跳来了就回一个，免得被当成断线
+      // Em uma aba em segundo plano, setInterval pode executar apenas uma vez por minuto. Responda aos sinais do servidor para evitar uma desconexão falsa.
       if (m.t === 'hb') this.heartbeat();
       if (m.t === 'result' && this.pending.has(m.id)) {
         this.pending.get(m.id)(m);
@@ -71,15 +71,15 @@ class Link {
       this.emit(m);
     };
     ws.onclose = async (ev) => {
-      if (this.ws !== ws) return;            // 旧连接（reconnect 换掉的）：别动新连接的心跳
+      if (this.ws !== ws) return;            // Não altere os sinais de vida da conexão nova.
       clearInterval(this._hb);
-      for (const done of this.pending.values()) done({ ok: false, error: '和 Studio 的连接断了' });
+      for (const done of this.pending.values()) done({ ok: false, error: 'A conexão com o Studio foi interrompida' });
       this.pending.clear();
-      if (ev.code === 4401) { this.setStatus('auth'); return; }   // 登录过期
+      if (ev.code === 4401) { this.setStatus('auth'); return; }   // Sessão expirada.
       if (!opened) {
-        // 握手就没成：可能是登录过期（老版本 Studio 在握手阶段就拒绝，浏览器只看到 1006）
-        try { if ((await api('/api/session', undefined, 2000)).status === 401) { this.setStatus('auth'); return; } } catch { /* Studio 不在 */ }
-        if (this.ws !== ws) return;          // 等的这会儿用户点了「重新连接」：交给新连接
+        // Se o handshake falhar, a sessão pode ter expirado. Versões antigas do Studio recusam a conexão nesta etapa, e o navegador mostra apenas 1006.
+        try { if ((await api('/api/session', undefined, 2000)).status === 401) { this.setStatus('auth'); return; } } catch { /* Studio indisponível. */ }
+        if (this.ws !== ws) return;          // O usuário pode ter reconectado durante a espera; deixe a conexão nova assumir.
       }
       this.setStatus('closed');
       this._retry = setTimeout(() => this.connect(), this.backoff);
@@ -87,45 +87,45 @@ class Link {
     };
   }
 
-  /** 等跟 Studio 的连接建好（刷新时页面先出来、连接后到：别在连上之前就发命令） */
+  /** Aguarda a conexão com o Studio, pois a página pode carregar antes dela após uma atualização. */
   whenOpen() {
     if (this.status === 'open') return Promise.resolve();
     return new Promise((resolve) => { const off = this.on((m) => { if (m.t === '_status' && m.status === 'open') { off(); resolve(); } }); });
   }
 
-  reconnect() { this.backoff = 1000; try { this.ws && this.ws.close(); } catch { /* 已经关了 */ } this.connect(); }
+  reconnect() { this.backoff = 1000; try { this.ws && this.ws.close(); } catch { /* Já está fechado. */ } this.connect(); }
 
   send(obj) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) { this.ws.send(JSON.stringify(obj)); return true; }
     return false;
   }
 
-  // pad_visible：手柄那一块现在在不在屏幕上（总览重排审查 O1）。后端只看它决定手柄快照 10 Hz 还是 1 Hz；
-  // #/pad 现在是总览上的锚点，地址是它不代表看得到（往上滑回舞台，地址栏还是 #/pad）
+  // pad_visible indica se a área do controle está na tela. O backend usa essa informação para escolher entre 10 Hz e 1 Hz para as amostras do controle.
+  // #/pad é uma âncora da visão geral; o endereço pode continuar nesse fragmento mesmo quando a área não está visível.
   heartbeat() {
     this.send({ t: 'hb', seq: ++this.seq, visible: document.visibilityState === 'visible', route: location.hash.replace(/^#/, '') || '/',
       pad_visible: padActivity.active || this.padCapture });
   }
 
-  // 模型改键只读旁路：请求快照，不改变 padActivity，也不接管网页遥控。
+  // O remapeamento de botões do controle apenas solicita uma amostra; não altera padActivity nem assume o controle remoto da página.
   setPadCapture(active) { this.padCapture = Boolean(active); this.heartbeat(); }
 
   cmd(name, args = {}, timeoutMs = 15000) {
     const id = `c${++this.seq}`;
     return new Promise((resolve) => {
-      if (!this.send({ t: 'cmd', id, name, args })) { resolve({ ok: false, error: '和 Studio 的连接断了' }); return; }
+      if (!this.send({ t: 'cmd', id, name, args })) { resolve({ ok: false, error: 'A conexão com o Studio foi interrompida' }); return; }
       this.pending.set(id, resolve);
       setTimeout(() => {
-        if (this.pending.has(id)) { this.pending.delete(id); resolve({ ok: false, error: '鸭子没回话（超时）' }); }
+        if (this.pending.has(id)) { this.pending.delete(id); resolve({ ok: false, error: 'O Microduck não respondeu (tempo esgotado)' }); }
       }, timeoutMs);
     });
   }
 }
 
 const link = new Link();
-padActivity.bind(link);                  // 手柄区进出的那一刻马上发一次心跳
+padActivity.bind(link);                  // Envia um sinal de vida assim que a área do controle entra ou sai da tela.
 
-let csrf = '';   // /api/session 给的；改动类 POST 要带上（X-CSRF），配合后端的 Origin 校验
+let csrf = '';   // Fornecido por /api/session; requisições POST que alteram dados devem enviá-lo em X-CSRF, junto à validação de Origin do backend.
 async function api(path, body, timeoutMs = 10000, signal) {
   const opt = body === undefined ? { credentials: 'same-origin' }
     : { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF': csrf }, body: JSON.stringify(body) };
@@ -133,7 +133,7 @@ async function api(path, body, timeoutMs = 10000, signal) {
   const abort = () => ctl.abort();
   if (signal?.aborted) ctl.abort();
   signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(() => ctl.abort(), timeoutMs);   // 手机 WiFi 抖的时候请求可能挂几十秒
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);   // Instabilidades no Wi-Fi do celular podem deixar uma solicitação pendurada por dezenas de segundos.
   let r;
   let data = {};
   try {
@@ -143,7 +143,7 @@ async function api(path, body, timeoutMs = 10000, signal) {
   return { status: r.status, ...data };
 }
 
-// ---------------- 小工具 ----------------
+// ---------------- Utilitários ----------------
 
 const fmt1 = (v) => (typeof v === 'number' && isFinite(v) ? v.toFixed(1) : '—');
 
@@ -157,28 +157,26 @@ function Badge({ kind }) {
   return html`<span class=${'badge ' + kind} aria-hidden="true">${kind === 'bad' ? '×' : '!'}</span>`;
 }
 
-// ---------------- 顶部安全条 ----------------
+// ---------------- Barra de segurança superior ----------------
 
-// 卸力按钮：状态全看 Studio 推来的 st.estop（由 busStatus 回读推出来，不看「按过没有」）。
-// 只要跟 Studio 的连接在，按钮就能按——状态旧了、读不到也能按（代码审查 #7：手机没有空格键，
-// 按钮一禁用就完全没法卸力）。只有连接断了才禁用。
-// 空格键：按下和松开都在捕获阶段拦住。只拦按下的话，松开时浏览器会顺手「点击」有焦点的按钮
-// （比如以后的「站起来」），刚卸力又站起来（review-impl-plan I6）。
-// 只有焦点在打字的地方时才不拦（代码审查 #8：复选框、单选框、下拉框上按空格照样卸力）。
+// O estado do botão para liberar os servos vem de st.estop, enviado pelo Studio e calculado a partir da leitura de busStatus; não depende de o botão ter sido pressionado.
+// Enquanto houver conexão com o Studio, o botão pode ser usado mesmo com dados antigos ou indisponíveis. Só é desativado quando a conexão cai.
+// Intercepta a tecla de espaço ao pressionar e soltar. Interceptar somente o pressionamento permitiria ao navegador clicar no botão em foco ao soltar a tecla.
+// A tecla não é interceptada quando o foco está em um campo de texto; nos demais controles, como caixas de seleção e listas, ela libera os servos.
 const TEXT_TYPES = ['text', 'password', 'search', 'email', 'number', 'tel', 'url'];
 const typing = (el) => !!el && (el.isContentEditable || el.tagName === 'TEXTAREA'
   || (el.tagName === 'INPUT' && TEXT_TYPES.includes((el.type || 'text').toLowerCase())));
-// Ctrl / Alt / Win + 空格是切输入法这类系统快捷键，不当成卸力
+// Ctrl, Alt ou Win + Espaço podem ser atalhos do sistema, como a troca do método de entrada; não os trate como comando para liberar os servos.
 const plainSpace = (e) => e.code === 'Space' && !e.ctrlKey && !e.altKey && !e.metaKey;
 
 function EStop({ st, live, open }) {
   const [sentAt, setSentAt] = useState(0);
   const [err, setErr] = useState(null);
   const fire = useCallback(async () => {
-    if (performance.now() - sentAt < 200) return;           // 按住空格自动重复：最多每秒 5 次
+    if (performance.now() - sentAt < 200) return;           // Limita a repetição da tecla de espaço a 5 comandos por segundo.
     setSentAt(performance.now()); setErr(null);
-    const r = await link.cmd('relax', {}, 7000);       // 后端最坏 3 + 0.1 + 3 秒
-    if (!r.ok) setErr(r.reason || r.error || '没发出去');
+    const r = await link.cmd('relax', {}, 7000);       // O backend pode levar até 3 + 0,1 + 3 s.
+    if (!r.ok) setErr(r.reason || r.error || 'Não foi possível enviar o comando');
   }, [sentAt]);
 
   useEffect(() => {
@@ -194,151 +192,150 @@ function EStop({ st, live, open }) {
   }, [fire]);
 
   const es = st?.estop || {};
-  // 确认卸力了，之前那句「没发出去 / 超时」就过时了
+  // A confirmação de que os servos foram liberados torna obsoleta a mensagem anterior de falha ou tempo esgotado.
   useEffect(() => { if (es.state === 'confirmed') setErr(null); }, [es.state]);
   const click = (e) => { e.currentTarget.blur(); fire(); };
   const note = (text) => (text ? html`<span class="why" role=${err ? 'alert' : undefined}>${text}</span>` : null);
-  const fallback = st?.mode === 'commissioning' ? '只能关电源' : '用手柄 − 或关电源';
+  const fallback = st?.mode === 'commissioning' ? 'Desligue a alimentação' : 'Use o botão − do controle ou desligue a alimentação';
   if (!open) {
-    // 跟 Studio 的连接断了：按了也发不出去
+    // Sem conexão com o Studio, o comando não pode ser enviado.
     return html`<span class="estop-wrap">${note(fallback)}
-      <button class="estop unavailable" disabled>卸力 · 不可用</button></span>`;
+      <button class="estop unavailable" disabled>Liberar servos · indisponível</button></span>`;
   }
   if (st?.servo_orphan) {
-    // 上次 Studio 退出时舵机会话开着、这次没接管上（审查 D1）：robotd 不在、总线没接管，这里按了也发不出去——带去舵机页接管
-    // （舵机页一进去就接管总线，接管以后卸力走总线）。空格照样发，后端回「先去舵机页接管」
-    return html`<span class="estop-wrap">${note(err || '可能还有舵机保持着')}
+    // Se a sessão dos servos continuou aberta após a saída do Studio, robotd e o barramento ainda não estão sob controle; encaminhe para a página Servos.
+    // Ao abrir essa página, o Studio assume o barramento. O comando de espaço também é enviado, e o backend orienta o usuário a assumir o controle.
+    return html`<span class="estop-wrap">${note(err || 'Ainda pode haver servos mantendo força')}
       <button class="estop unavailable" onClick=${(e) => { e.currentTarget.blur(); location.hash = '#/servos'; }}
-        title="上次 Studio 退出时舵机会话开着、这次没接管上：先去舵机页接管总线，才能在总线上卸力">卸力 · 先去舵机页接管</button></span>`;
+        title="A sessão dos servos continuou ativa após a última saída do Studio. Assuma o controle na página Servos para liberá-los.">Liberar servos · assumir na página Servos</button></span>`;
   }
   if (es.state === 'unavailable') {
     return html`<span class="estop-wrap">${note(err || es.why || fallback)}
-      <button class="estop unavailable" onClick=${click}>卸力 · 不一定有效</button></span>`;
+      <button class="estop unavailable" onClick=${click}>Liberar servos · resultado incerto</button></span>`;
   }
   if (live && es.state === 'confirmed') {
     return html`<span class="estop-wrap">${note(err)}
-      <button class="estop done" onClick=${click} title=${es.why}>已卸力 ✓</button></span>`;
+      <button class="estop done" onClick=${click} title=${es.why}>Servos liberados ✓</button></span>`;
   }
-  // 数据旧了（!live）也给红色按钮：按了照样发，Studio 那边的卸力专线可能是好的
-  return html`<span class="estop-wrap">${note(err || (!live ? '状态不明，仍可按' : ''))}
-    <button class="estop" onClick=${click} title="让 15 颗舵机全部卸力。鸭子会软下来，扶住。">
-      ${es.state === 'pending' ? '卸力中…' : '卸力'}<span class="kbd">空格</span></button></span>`;
+  // Mesmo com dados desatualizados (!live), mantenha o botão vermelho disponível: o canal de liberação dos servos do Studio ainda pode funcionar.
+  return html`<span class="estop-wrap">${note(err || (!live ? 'Estado desatualizado; ainda é possível tentar' : ''))}
+    <button class="estop" onClick=${click} title="Libera os 15 servos. O Microduck ficará solto; segure-o.">
+      ${es.state === 'pending' ? 'Liberando…' : 'Liberar servos'}<span class="kbd">Espaço</span></button></span>`;
 }
 
 function TopBar({ duck, st, live, age, open, hideEStop }) {
-  // 顶栏先说现在是什么模式（出厂标定模式 / 写完切运动模式），再带姿势；标定模式没有策略，别写成「调试中」。
-  // 连续报启动阶段超过 30 秒（Studio 从这次连上算）：写「一直报启动中」（10-20 真机：旧 fork 的标定模式永远报 configuring_bus）
-  const postureText = st ? ({ starting: st.starting_long ? '一直报启动中' : 'Iniciando', absent: '主程序没在跑', homing: '在站起来',
-    servo_session: 'Ajustando os servos' }[st.posture] || WAS[st.posture] || '状态不明') : null;
+  // A barra superior mostra o modo atual (calibração de fábrica ou movimento após a gravação) e a postura. O modo de calibração não usa uma política de movimento.
+  // Se o estado continuar em inicialização por mais de 30 s desde a conexão, informe isso; em alguns forks antigos a calibração permanece em configuring_bus.
+  const postureText = st ? ({ starting: st.starting_long ? 'Continua iniciando' : 'Iniciando', absent: 'Programa principal parado', homing: 'Levantando',
+    servo_session: 'Ajustando os servos' }[st.posture] || WAS[st.posture] || 'Estado desconhecido') : null;
   const modeText = !st ? 'Conectando'
-    : st.mode === 'commissioning' ? (st.posture === 'commissioning' ? 'Modo de calibração' : `标定模式 · ${postureText}`)
-    : st.mode === 'motion' && st.posture !== 'absent' && st.posture !== 'servo_session' ? `运动模式 · ${postureText}`
+    : st.mode === 'commissioning' ? (st.posture === 'commissioning' ? 'Modo de calibração' : `Calibração · ${postureText}`)
+    : st.mode === 'motion' && st.posture !== 'absent' && st.posture !== 'servo_session' ? `Movimento · ${postureText}`
     : postureText;
   const pct = st?.battery?.pct;
-  // 鼠标停在名字上看得到现在的 IP 和几个地址（「更多」页有能复制的那一块）
+  // Ao passar o mouse sobre o nome, exibe o IP atual e outros endereços, também disponíveis para cópia na página Mais.
   const net = st?.net;
   const addrTitle = net?.known ? [`IP ${net.ip_now || 'Desconhecido'}`, ...(net.urls || []).map((u) => u.url)].join('\n') : undefined;
   return html`<header class="topbar">
     <div class="duckid">
       <span class="dot" style=${{ background: duck?.color || '#0F7C80' }}></span>
-      <span class="name" title=${addrTitle}>${duck?.label || '鸭子'}</span>
+      <span class="name" title=${addrTitle}>${duck?.label || 'Microduck'}</span>
       ${st?.servo_session ? html`<span class="sv-badge">Ajustando os servos</span>` : null}
-      <span class="meta num">${live ? '' : `${Math.round(age / 1000)} 秒前 · `}${modeText}${typeof pct === 'number' ? ` · ${Math.round(pct)}%` : ''}</span>
+      <span class="meta num">${live ? '' : `há ${Math.round(age / 1000)} s · `}${modeText}${typeof pct === 'number' ? ` · ${Math.round(pct)}%` : ''}</span>
     </div>
     <span class=${hideEStop ? 'estop-hidden' : ''}><${EStop} st=${st} live=${live} open=${open} /></span>
   </header>`;
 }
 
-// ---------------- 舵机会话的提示条（每一页顶栏下面，舵机页自己的页头已经有了就不重复） ----------------
-// 用户 10-18：「舵机这个页面出去的时候应该保持住使能，不应该泄力」：有舵机保持着，离开舵机页不交还，会话一直开着——
-// 这时主程序停着，手柄、遥控、站走都不能用，所以每一页都要看得到、随时能回舵机页或交还。页面关了、断网重连：会话还在，照样显示
-// 吸顶（顶栏下面，所有宽度：审查 D6）——手机上滚到手柄区也看得到。舵机页自己的页头有会话那几个字，那一页不重复，
-// 但「主程序被手动起来了」「上次退出时没接管上」这两条红的哪一页都出
+// ---------------- Aviso da sessão dos servos (abaixo da barra superior; omitido na própria página Servos) ----------------
+// A sessão permanece aberta ao sair da página Servos, mantendo os servos energizados, até o controle ser devolvido.
+// Enquanto isso, o programa principal fica parado e o controle e os movimentos não funcionam. O aviso deve aparecer em todas as páginas e permitir voltar a Servos ou devolver o controle.
+// O aviso fica fixo abaixo da barra superior e permanece visível ao rolar no celular. Os alertas sobre inicialização manual do programa ou falha ao reassumir aparecem em todas as páginas.
 function ServoBar({ st, onServos }) {
   const ss = st?.servo_session;
   if (ss) {
     if (onServos) return null;
-    const unk = ss.unknown ? ` · ${ss.unknown} 颗读不到扭矩（可能也在保持）` : '';
+    const unk = ss.unknown ? ` · ${ss.unknown} sem leitura de torque (talvez também mantendo força)` : '';
     return html`<div class="banner warn servo-bar" role="status">
-      <b>调舵机中 · ${ss.holding ?? '?'} 颗保持着${unk} · 主程序停着（手柄、遥控、站走都不能用）</b>
+      <b>Ajustando servos · ${ss.holding ?? '?'} mantendo força${unk} · programa principal parado (controle e movimentos indisponíveis)</b>
       <span class="sb-acts"><a href="#/servos">Voltar à página Servos</a><${HandBackButton} link=${link} /></span>
-      <span class="more sb-more">${ss.restored ? 'Studio 重启过，接着上次的会话管着。' : ''}急停用顶上红按钮或空格（手柄 Select 这时不管用）；别手动起 robotd，先点「交还主程序」</span>
+      <span class="more sb-more">${ss.restored ? 'O Studio reiniciou e retomou a sessão anterior. ' : ''}Use o botão vermelho acima ou a barra de espaço para liberar os servos (Select do controle não funciona neste estado). Não inicie robotd manualmente; primeiro toque em “Devolver ao programa principal”.</span>
       ${st.servo_marker_error ? html`<span class="more sb-more">${st.servo_marker_error}</span>` : null}</div>`;
   }
-  // 会话期间主程序被手动起来了（审查 D9）：它起来就把舵机全部松开、还跟 Studio 抢串口；Studio 已经关了总线（没写舵机）
+  // Se o programa principal for iniciado manualmente durante a sessão, ele libera os servos e disputa a porta serial com o Studio. O Studio fecha o barramento sem enviar comandos.
   if (st?.servo_conflict_s != null) {
-    return html`<div class="banner bad servo-bar" role="alert"><b>主程序被手动起来了：它会把舵机全部松开、跟 Studio 抢串口</b>
-      <span class="more sb-more">Studio 已经关掉舵机总线（没写舵机）。下次别手动起 robotd：先在页面上点「交还主程序」</span></div>`;
+    return html`<div class="banner bad servo-bar" role="alert"><b>O programa principal foi iniciado manualmente: ele liberará todos os servos e disputará a porta serial com o Studio.</b>
+      <span class="more sb-more">O Studio já fechou o barramento dos servos (sem enviar comandos). Não inicie robotd manualmente novamente; toque em “Devolver ao programa principal” nesta página.</span></div>`;
   }
-  // 上次 Studio 退出时舵机会话开着、这次没接管上（审查 D1）
+  // O Studio saiu com uma sessão de servos ativa e não reassumiu o controle ao iniciar novamente.
   if (st?.servo_orphan) {
-    return html`<div class="banner bad servo-bar" role="alert"><b>上次退出时可能还有舵机保持着，去舵机页接管后才能卸力</b>
-      ${onServos ? null : html`<a href="#/servos">去舵机页接管</a>`}
-      <span class="more sb-more">Studio 重启时没接管上${st.servo_orphan.why ? `（${st.servo_orphan.why}）` : ''}；急的话关电源</span></div>`;
+    return html`<div class="banner bad servo-bar" role="alert"><b>Talvez ainda haja servos mantendo força desde a última sessão. Assuma o controle na página Servos para liberá-los.</b>
+      ${onServos ? null : html`<a href="#/servos">Assumir na página Servos</a>`}
+      <span class="more sb-more">O Studio não retomou o controle ao reiniciar${st.servo_orphan.why ? ` (${st.servo_orphan.why})` : ''}; se houver urgência, desligue a alimentação.</span></div>`;
   }
-  // 交还了、主程序还没连上：一直提示到主程序连上为止（后端连上后清掉，不再 10 分钟自己消失：审查 D12）
+  // Após devolver o controle, mantenha o aviso até o programa principal se conectar. O backend o remove quando a conexão é restabelecida.
   if (st?.servo_handback_s != null) {
     if (st.servo_giveback_error) {
-      return html`<div class="banner bad servo-bar" role="alert"><b>已交还，但主程序没起来</b>
+      return html`<div class="banner bad servo-bar" role="alert"><b>Controle devolvido, mas o programa principal não iniciou.</b>
         <span class="more sb-more">${st.servo_giveback_error}${st.servo_giveback_hint ? `：${st.servo_giveback_hint}` : ''}</span></div>`;
     }
-    return html`<div class="banner warn servo-bar" role="status"><b>已交还。</b>
-      ${st.servo_helper ? html`<span class="more">正在把主程序起回来…</span>`
-        : html`<span class="more">主程序连上以后这条就收起。一直没连上（主程序是手动停的）就在鸭子上起来：<code>sudo systemctl start robotd</code></span>`}
+    return html`<div class="banner warn servo-bar" role="status"><b>Controle devolvido.</b>
+      ${st.servo_helper ? html`<span class="more">Reiniciando o programa principal…</span>`
+        : html`<span class="more">Este aviso desaparecerá quando o programa principal se conectar. Se continuar desconectado (porque foi parado manualmente), inicie-o no Microduck: <code>sudo systemctl start robotd</code></span>`}
       ${st.servo_handback_note ? html`<span class="more sb-more">${st.servo_handback_note}</span>` : null}</div>`;
   }
   return null;
 }
 
-// ---------------- 总览 ----------------
+// ---------------- Visão geral ----------------
 
-// 舞台文案，按 review-impl-plan I2 的状态表。站、走、坐的按钮在下面的手柄区块（往下一刷就是遥控：总览重排 §1.2）；
-// 卸力在右上角（顶栏吸顶，任何时候都在屏幕上），遥控卡顶上也有一个。
-const WAS = { holding: 'Em pé', policy: 'Em pé', walking: 'Caminhando', limp: 'Frouxo', sitting: 'Sentado', homing: '在站起来' };
+// Textos do palco conforme a tabela de estados review-impl-plan I2. Os comandos para ficar em pé, caminhar e sentar estão na área do controle, logo abaixo.
+// O botão para liberar os servos fica no canto superior direito e permanece visível; há outro no cartão do controle remoto.
+const WAS = { holding: 'Em pé', policy: 'Em pé', walking: 'Caminhando', limp: 'Frouxo', sitting: 'Sentado', homing: 'Levantando' };
 function stageCopy(st, live, name, age) {
-  if (!st) return { h: `正在连接${name}…`, sub: 'Ligue o Microduck e conecte este dispositivo à mesma rede Wi-Fi.' };
+  if (!st) return { h: `Conectando a ${name}…`, sub: 'Ligue o Microduck e conecte este dispositivo à mesma rede Wi-Fi.' };
   if (!live && st.posture !== 'absent') {
     return { h: `${name} não responde há ${Math.round(age / 1000)} s`, sub: `Antes da desconexão, o estado era ${WAS[st.posture] || 'desconhecido'}. O software não consegue controlá-lo agora.`, stale: true };
   }
   switch (st.posture) {
     case 'absent': return { h: 'O programa principal do Microduck não está em execução', sub: 'Pode estar reiniciando (cerca de 2 s). Atenção: parar o programa principal não alivia os servos; eles podem continuar aplicando força.', stale: true };
     case 'starting':
-      // 连续报启动阶段超过 30 秒：不再说「通常 10 秒内完成」，给「去日志页」（10-20 真机：旧 fork 的标定模式永远报 configuring_bus）
+      // Após 30 s em inicialização, substitui a previsão de conclusão em 10 s por um atalho para os registros; forks antigos podem permanecer em configuring_bus durante a calibração.
       if (st.starting_long) {
         return { h: 'O programa principal continua indicando “Iniciando”', act: { href: '#/logs', label: 'Acessar Logs' },
           sub: st.start_error ? `Já se passaram ${st.starting_s} s; travou em: ${st.start_error}. Consulte em Logs a última mensagem do programa principal.`
-            : `已经 ${st.starting_s} 秒了。主程序可能其实起来了、只是状态没更新（旧版主程序的毛病），也可能卡在启动：去日志页看主程序最后说了什么。` };
+            : `Já se passaram ${st.starting_s} s. O programa principal pode ter iniciado sem atualizar o estado (um problema de versões antigas) ou pode estar travado. Consulte a última mensagem do programa principal em Logs.` };
       }
-      return { h: 'O programa principal está iniciando', sub: st.start_error ? `卡在：${st.start_error}` : 'Normalmente termina em até 10 s.' };
-    case 'commissioning': return { h: 'Modo de calibração', sub: '出厂第一次：先粗校 IMU、再一键中位，第 3 步写进主程序会自动切到运动模式。' };
-    case 'limp': return { h: `${name}软着`, sub: 'Segure o robô com as duas mãos, role até “Controle” e toque em “Levantar” (ou pressione + no controle).' };
+      return { h: 'O programa principal está iniciando', sub: st.start_error ? `Travado em: ${st.start_error}` : 'Normalmente termina em até 10 s.' };
+    case 'commissioning': return { h: 'Modo de calibração', sub: 'Na primeira configuração: faça a calibração inicial da IMU, centralize os servos com um toque e, na etapa 3, grave os dados no programa principal para mudar automaticamente ao modo de movimento.' };
+    case 'limp': return { h: `${name} está sem força nos servos`, sub: 'Segure o robô com as duas mãos, role até “Controle” e toque em “Levantar” (ou pressione + no controle).' };
     case 'homing': return { h: 'Levantando…', sub: 'Segure-o; não solte.' };
-    case 'holding': return { h: `${name}站好了`, sub: 'Role até “Controle”, toque em “Começar a andar” (ou pressione + no controle) e mova o joystick.' };
-    case 'policy': return { h: `${name}站着，准备好走了`, sub: 'Mova o joystick para caminhar (o controle virtual fica abaixo); toque em “Parar (ficar em pé)” ou pressione + para voltar à postura em pé.' };
-    case 'walking': return { h: '正在走', sub: '松开摇杆它会停下、继续站着。' };
-    case 'sitting': return { h: `${name}坐着`, sub: 'Toque em “Levantar” no controle ou pressione para baixo no direcional.' };
+    case 'holding': return { h: `${name} está em pé`, sub: 'Role até “Controle”, toque em “Começar a andar” (ou pressione + no controle) e mova o joystick.' };
+    case 'policy': return { h: `${name} está em pé e pronto para caminhar`, sub: 'Mova o joystick para caminhar (o controle virtual fica abaixo); toque em “Parar (ficar em pé)” ou pressione + para voltar à postura em pé.' };
+    case 'walking': return { h: 'Caminhando', sub: 'Solte o joystick para parar e permanecer em pé.' };
+    case 'sitting': return { h: `${name} está sentado`, sub: 'Toque em “Levantar” no controle ou pressione para baixo no direcional.' };
     case 'servo_session': return { h: 'Ajustando os servos', sub: 'O programa principal está parado (controle e movimentos ficam indisponíveis). Os servos continuam mantendo a posição ao sair da página; toque em “Devolver ao programa principal” para liberar o controle.' };
     default: return { h: name, sub: 'Não foi possível identificar a postura atual.' };
   }
 }
 
-// 舞台：滚轮、手机单指都留给页面（总览是要往下刷的首页：审查 O2）——Duck3D 的 pageScroll 关掉缩放、单指不转；
-// 桌面上鼠标拖着转，手机上两个手指转。手机上矮一点（300 px），第一屏露得出仪表带和清单（审查 O11）。
-// 断线横幅盖在舞台上，不插在上面把下面的控件推下去（审查 O10）
+// No palco, a rolagem com a roda e um dedo no celular continua sendo da página. Duck3D desativa o zoom e a rotação com um dedo.
+// No computador, arraste com o mouse; no celular, gire com dois dedos. O palco é mais baixo no celular para mostrar os indicadores e a lista inicial na primeira tela.
+// O aviso de desconexão sobrepõe o palco sem empurrar os controles para baixo.
 function Stage({ st, live, age, name }) {
   const canvasRef = useRef(null);
   const duckRef = useRef(null);
   const [msg, setMsg] = useState(null);
-  const [moved, setMoved] = useState(false);     // 用户转过视角：显示「回正」
+  const [moved, setMoved] = useState(false);     // Mostra o comando para centralizar a vista depois que o usuário a girar.
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const phone = window.innerWidth < 700;   // 手机：鸭子居中偏上、小一点，下面留给字
+    const phone = window.innerWidth < 700;   // No celular, centraliza o Microduck um pouco acima e reduz o tamanho para deixar espaço ao texto.
     const d = new Duck3D(canvasRef.current, phone ? { view: 'front34', centerX: 0.5, centerY: 0.34, fill: 0.6, pageScroll: true }
       : { view: 'front34', centerX: 0.61, pageScroll: true });
     duckRef.current = d;
     d.onUserMove = () => setMoved(true);
-    d.load('model/').then(() => setReady(true)).catch((e) => setMsg(`3D 模型没加载：${e.message}`));
+    d.load('model/').then(() => setReady(true)).catch((e) => setMsg(`Não foi possível carregar o modelo 3D: ${e.message}`));
     return () => d.dispose();
   }, []);
 
@@ -349,60 +346,60 @@ function Stage({ st, live, age, name }) {
   }, [st]);
 
   const c = stageCopy(st, live, name, age);
-  // 没有关节数据（null）也当旧的：不然全彩显示默认姿势，看着像实时
+  // Sem dados das articulações (null), trate o estado como desatualizado para não exibir a pose padrão como se fosse uma leitura atual.
   const jointsOld = st?.joints_age_ms == null || st.joints_age_ms > 1000;
-  return html`<section class="stage stage-ov" aria-label="鸭子现在">
-    ${/* 变灰用 class：给画布传 style 字符串会把 duck3d 设的 touch-action:pan-y 整个盖掉，手机两指就成了整页缩放（代码审查 C6） */ ''}
+  return html`<section class="stage stage-ov" aria-label="Estado atual do Microduck">
+    ${/* A classe controla o aspecto acinzentado. Passar style ao canvas sobrescreveria touch-action:pan-y de duck3d e faria o gesto de dois dedos ampliar a página inteira. */ ''}
     <canvas ref=${canvasRef} class=${c.stale || jointsOld ? 'stage-stale' : ''}></canvas>
     ${!live && st ? html`<div class="banner bad stage-banner" role="alert"><${Badge} kind="bad" />
-      <b>连不上${name} · ${isFinite(age) ? Math.round(age / 1000) + ' 秒' : ''}</b><span class="more">站着的鸭子会停下、继续站着。</span>
-      <a href="#" onClick=${(e) => { e.preventDefault(); link.reconnect(); }}>重新连接</a></div>` : null}
+      <b>Sem conexão com ${name} · ${isFinite(age) ? Math.round(age / 1000) + ' s' : ''}</b><span class="more">O Microduck que estiver em pé vai parar e permanecer em pé.</span>
+      <a href="#" onClick=${(e) => { e.preventDefault(); link.reconnect(); }}>Reconectar</a></div>` : null}
     <div class="copy">
       <h1>${c.h}</h1>
       <p class="sub">${c.sub}</p>
       ${c.act ? html`<div class="btns"><button class="btn2 stage-act" onClick=${(e) => { e.currentTarget.blur(); location.hash = c.act.href; }}>${c.act.label}</button></div>` : null}
       ${msg ? html`<span class="tip" role="alert">${msg}</span>` : c.tip ? html`<span class="tip">${c.tip}</span>` : null}
     </div>
-    ${c.stale && isFinite(age) ? html`<span class="age num">${Math.round(age / 1000)} 秒前</span>` : null}
-    ${!ready ? html`<span class="sv-loading">3D 模型加载中…</span>` : null}
-    ${moved ? html`<button class="reset-view" onClick=${(e) => { e.currentTarget.blur(); duckRef.current?.resetView(); setMoved(false); }}>回正</button>` : null}
+    ${c.stale && isFinite(age) ? html`<span class="age num">há ${Math.round(age / 1000)} s</span>` : null}
+    ${!ready ? html`<span class="sv-loading">Carregando modelo 3D…</span>` : null}
+    ${moved ? html`<button class="reset-view" onClick=${(e) => { e.currentTarget.blur(); duckRef.current?.resetView(); setMoved(false); }}>Centralizar vista</button>` : null}
   </section>`;
 }
 
-// 主板温度格（总览重排 §1.1、审查 O8）：字段见 studio/state.py cpu_view。降频红（写 x / y MHz），被限频（不是热的）照实写，
-// ≥ 80 °C 橙（带回差，77 °C 以下才收），读不到写「—」加原因。我们的 80 °C 是自己定的，所以只用橙色、不当成错误
+// Indicador de temperatura da placa principal. Os campos estão em studio/state.py, cpu_view. Frequência reduzida aparece em vermelho; uma limitação sem relação com temperatura é descrita como tal.
+// A partir de 80 °C, o indicador fica laranja e só volta ao normal abaixo de 77 °C. Se a leitura falhar, mostra “—” e o motivo; 80 °C é um limite informativo definido pelo projeto, não um erro.
 function boardCell(cpu) {
   const mhz = (k) => (typeof k === 'number' ? Math.round(k / 1000) : '?');
   if (typeof cpu?.c !== 'number') return { big: '—', small: cpu?.why || 'Indisponível', kind: null };
-  const studio = cpu.src === 'studio' ? ' · Studio 自己读的' : '';
-  if (cpu.throttled) return { big: Math.round(cpu.c), small: `降频了：${mhz(cpu.khz)} / ${mhz(cpu.max_khz)} MHz${studio}`, kind: 'bad' };
-  if (cpu.hot) return { big: Math.round(cpu.c), small: `有点热（80 °C 起提醒）${studio}`, kind: 'warn' };
-  if (cpu.limited) return { big: Math.round(cpu.c), small: `被限频到 ${mhz(cpu.khz)} MHz（不是热的）${studio}`, kind: null };
-  if (cpu.throttled == null) return { big: Math.round(cpu.c), small: `降频情况读不到${studio}`, kind: null };
-  return { big: Math.round(cpu.c), small: `正常${studio}`, kind: null };
+  const studio = cpu.src === 'studio' ? ' · leitura feita pelo Studio' : '';
+  if (cpu.throttled) return { big: Math.round(cpu.c), small: `Frequência reduzida: ${mhz(cpu.khz)} / ${mhz(cpu.max_khz)} MHz${studio}`, kind: 'bad' };
+  if (cpu.hot) return { big: Math.round(cpu.c), small: `Temperatura alta (alerta a partir de 80 °C)${studio}`, kind: 'warn' };
+  if (cpu.limited) return { big: Math.round(cpu.c), small: `Frequência limitada a ${mhz(cpu.khz)} MHz (sem relação com temperatura)${studio}`, kind: null };
+  if (cpu.throttled == null) return { big: Math.round(cpu.c), small: `Não foi possível ler a frequência${studio}`, kind: null };
+  return { big: Math.round(cpu.c), small: `Normal${studio}`, kind: null };
 }
 
-// 手柄格：用手柄快照的 status / estop（跟下面手柄区块的页头、上手清单第 3、4 步同一份：审查 O7）；
-// 没有手柄后端（台架模式）才用 state.pad。写「手柄急停」，跟顶栏的「卸力」分开
+// O indicador do controle usa status/estop da amostra do controle, a mesma fonte do cabeçalho do controle e das etapas 3 e 4 da lista inicial.
+// Só usa state.pad quando o backend do controle não está disponível, como no modo de bancada. A parada de emergência do controle é distinta do comando superior para liberar servos.
 function padCell(st, pd) {
   if (!pd) {
     const p = st?.pad || {};
     return { word: !p.known ? 'Desconhecido' : p.connected ? 'Conectado' : 'Desconectado',
-      small: !p.known ? 'Não foi possível ler o estado do controle' : p.connected ? `${p.name || 'Controle'}${p.estop_ok ? ' · 手柄急停有效' : ''}` : 'Emparelhar' };
+      small: !p.known ? 'Não foi possível ler o estado do controle' : p.connected ? `${p.name || 'Controle'}${p.estop_ok ? ' · parada de emergência do controle ativa' : ''}` : 'Emparelhar' };
   }
   const s = pd.status || {}, lv = pd.live || {}, es = pd.estop || {};
   const attached = lv.state === 'attached';
   const known = !!s.known || attached;
   const connected = !!s.active || attached;
   const name = s.active?.name || (attached ? lv.device?.name : null) || 'Controle';
-  const esw = { ok: '手柄急停有效 ✓', unknown: 'Verificação da parada de emergência do controle incompleta', bad: 'Parada de emergência do controle inativa' }[es.state] || '';
-  if (!known) return { word: 'Desconhecido', small: '读不到手柄状态（configd）' };
+  const esw = { ok: 'Parada de emergência do controle ativa ✓', unknown: 'Verificação da parada de emergência do controle incompleta', bad: 'Parada de emergência do controle inativa' }[es.state] || '';
+  if (!known) return { word: 'Desconhecido', small: 'Não foi possível ler o estado do controle (configd)' };
   if (connected) return { word: 'Conectado', small: `${name}${esw ? ` · ${esw}` : ''}` };
-  return { word: 'Desconectado', small: (s.pads || []).length ? '配过：打开手柄就会自己连上' : 'Emparelhar' };
+  return { word: 'Desconectado', small: (s.pads || []).length ? 'Já emparelhado: ligue o controle para conectar automaticamente' : 'Emparelhar' };
 }
 
-// 吸顶的那几层（用户 10-19：往下滑，侧栏和仪表带一直在）量出自己多高，写到根上的 CSS 变量（--bar-h 舵机提示条、--band-h 仪表带）：
-// 下面吸顶的手柄 3D 卡、舵机页左栏、滚到手柄区的停靠位置都往下让。不吸顶（手机上的仪表带）或藏起来（别的页）记 0
+// Mede a altura dos elementos fixos e grava os valores nas variáveis CSS da raiz: --bar-h para o aviso dos servos e --band-h para a faixa de indicadores.
+// O cartão 3D do controle, a coluna da página Servos e a posição de rolagem da área do controle respeitam essas alturas. Elementos não fixos ou ocultos contam como 0.
 function useStickyHeight(name) {
   const ro = useRef(null);
   return useCallback((el) => {
@@ -426,17 +423,17 @@ function Band({ st, pd, gray, onSame, sensorsActive }) {
   const pct = typeof b.pct === 'number' ? Math.round(b.pct) : null;
   const cpu = boardCell(st?.cpu);
   const pad = padCell(st, pd);
-  return html`<section class=${'band board' + (gray ? ' stale' : '')} aria-label="状态" ref=${bandRef}>
+  return html`<section class=${'band board' + (gray ? ' stale' : '')} aria-label="Estado" ref=${bandRef}>
     <${BatteryCell} b=${b} />
     <div>
       <span class="label">Servos</span>
       <span class="num" style="display:flex;align-items:baseline;gap:4px"><span class="big">${s.online ?? '—'}</span><span class="unit">/ ${s.total ?? 15}</span></span>
-      <span class="small">${s.hottest ? `最热 ${Math.round(s.hottest.c)} °C · ${s.hottest.name}` : '—'}</span>
+      <span class="small">${s.hottest ? `Mais quente: ${Math.round(s.hottest.c)} °C · ${s.hottest.name}` : '—'}</span>
     </div>
     <a href="#/imu">
       <span class="label">IMU</span>
       <span class="word">${imuKind ? html`<${Badge} kind=${imuKind} />` : null}${imuWord}</span>
-      <span class="small">${{ unverified: '先只站着', ok: '方向已确认' }[imu.status] || 'Calibrar'}</span>
+      <span class="small">${{ unverified: 'Fique apenas em pé por enquanto', ok: 'Orientação confirmada' }[imu.status] || 'Calibrar'}</span>
     </a>
     <${SensorBandCells} api=${api} active=${sensorsActive} />
     <a href="#/pad" onClick=${(e) => onSame(e, '#/pad')}>
@@ -445,79 +442,77 @@ function Band({ st, pd, gray, onSame, sensorsActive }) {
       <span class="small">${pad.small}</span>
     </a>
     <div class=${'band-cpu' + (cpu.kind ? ` ${cpu.kind}` : '')}>
-      <span class="label">主板</span>
+      <span class="label">Placa principal</span>
       <span class="num" style="display:flex;align-items:baseline;gap:4px"><span class="big">${cpu.big}</span>${cpu.big !== '—' ? html`<span class="unit">°C</span>` : null}</span>
       <span class="small">${cpu.kind ? html`<${Badge} kind=${cpu.kind} /> ` : null}${cpu.small}</span>
     </div>
   </section>`;
 }
 
-// ---------------- 上手清单（总览重排 §1.3、§5 O14：6 行 + 卡片头的「连上鸭子」；任务 11 加了「写进主程序」） ----------------
-// 判法都在后端（studio/onboard.py，0.5 秒判一次），这里只画。五种状态：✓ 完成 · ↷ 跳过了 · ● 该做 / 要重做 · ○ 没做 · ? 读不到。
-// 「现在该做」= 第一个 ● / ○ 的步（ob.next），它的第一个按钮是深色的「去做」；后面的不锁，照样能点。
-// 每一行任何时候都有三个按钮：「去做」「已完成」「跳过」（用户 10-20：「去做、已完成、跳过，有三个也行」；以前锁着的情况也能点）。
-// 有后果的（主程序明说没做完、读不到、测出了问题、测急停、调舵机时）点两次：第二下按钮上写后果（后端给的 mark.*.ask），
-// 页面第二下才带 confirmed，后端没收到也拒。✓ 的行有「重新做」（就是那一步的去做）；用户标的 ✓ / ↷ 还有「取消」/「取消跳过」。
-// 全部完成收成一行，能点开看 6 行（每行能重新做），开没开记在 localStorage
+// ---------------- Lista inicial (seis etapas, conexão com o Microduck no cabeçalho e gravação no programa principal) ----------------
+// O backend avalia as etapas em studio/onboard.py a cada 0,5 s; aqui apenas exibimos os dados. Estados: concluído, ignorado, pendente/refazer, não feito ou indisponível.
+// A próxima etapa é o primeiro item pendente ou não feito (ob.next). Seu primeiro botão ganha destaque; as etapas seguintes continuam acessíveis.
+// Cada linha oferece Fazer, Concluído e Pular. A confirmação em duas etapas é usada quando uma ação pode ter consequências, conforme mark.*.ask do backend.
+// A segunda confirmação envia confirmed. Itens concluídos podem ser refeitos; itens marcados pelo usuário podem ser desfeitos. A lista concluída pode ser expandida; o estado fica em localStorage.
 
 const ONB_MARK = { ok: '✓', skip: '↷', todo: '●', no: '○', unk: '?' };
-const ONB_WORD = { ok: '完成', skip: '跳过了', todo: 'Pendente', no: 'Não feito', unk: 'Indisponível' };
+const ONB_WORD = { ok: 'Concluído', skip: 'Ignorado', todo: 'Pendente', no: 'Não feito', unk: 'Indisponível' };
 const ONB_OPEN_KEY = 'studio.onb.open';
-const ONB_FROZEN = '在调舵机：清单停在调之前的样子；这时标的「已完成」「跳过」要等交还主程序以后才显示';
+const ONB_FROZEN = 'Durante o ajuste dos servos, a lista permanece congelada. As marcações de conclusão e de etapa ignorada só aparecem depois de devolver o controle ao programa principal.';
 function fmtWhen(w) {
   if (w == null || w === '') return null;
   let d = null;
   if (typeof w === 'number') d = new Date(w * 1000);
   else if (typeof w === 'string') { const m = /^(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)/.exec(w); if (m) d = new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]); }
   if (!d || isNaN(d.getTime())) return String(w);
-  if (d.getFullYear() < 2024) return '时间不准（鸭子没联网）';    // 鸭子开机没联网时墙钟停在 1970（审查 O6）
+  if (d.getFullYear() < 2024) return 'Relógio incorreto (o Microduck está sem conexão)';
   const p = (n) => String(n).padStart(2, '0');
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function loadOnbOpen() { try { return localStorage.getItem(ONB_OPEN_KEY) === '1'; } catch { return false; } }
-function saveOnbOpen(v) { try { localStorage.setItem(ONB_OPEN_KEY, v ? '1' : '0'); } catch { /* 隐私模式 */ } }
+function saveOnbOpen(v) { try { localStorage.setItem(ONB_OPEN_KEY, v ? '1' : '0'); } catch { /* Modo privado. */ } }
 
 function Onboard({ st, live }) {
   const ob = st?.onboarding;
   const [msg, setMsg] = useState(null);
   const [open, setOpen] = useState(loadOnbOpen);
-  const [cprev, setCprev] = useState(null);       // 「先看看要写什么」的结果（每颗的方向、限位、IMU 方向、TOML）
-  const [cmsg, setCmsg] = useState(null);         // 预览 / 写入按钮这一下的话
+  const [cprev, setCprev] = useState(null);       // Resultado da prévia: direção e limites de cada servo, orientação da IMU e TOML.
+  const [cmsg, setCmsg] = useState(null);         // Mensagem da ação de prévia ou gravação.
   const [cbusy, setCbusy] = useState(false);
-  const [copen, setCopen] = useState(false);      // 「写进主程序」那张卡片：做过 / 判不出时收着，点「去看看」「重新做」才展开
-  const job = st?.commit?.job;                   // 写入进度 / 结果（Studio 推过来；st.commit 只在第 3 步用）
-  // 进度卡一出现，本地「开始写了」的临时回执就让位：失败原因只由 job 显示，成功 2 分钟后卡片能自己收起。
+  const [copen, setCopen] = useState(false);      // Recolhe o cartão de gravação quando a etapa já foi feita ou não pode ser avaliada.
+  const job = st?.commit?.job;                   // Progresso/resultado da gravação enviado pelo Studio; usado somente na etapa 3.
+  // Quando o cartão de progresso aparece, ele substitui a confirmação temporária. O cartão de sucesso fecha após 2 minutos.
   useEffect(() => {
     if (job) setCmsg(null);
   }, [job?.phase, job?.ok, job?.finished]);
-  // 写入要重启主程序，这段时间页面算「没连着」。第 3 步的进度 / 失败原因不能被「断线时不检查」盖掉：
-  // 有 job 就单独显示一张卡（成功的那份 2 分钟后后端不再推，卡片自然收起）。
+  // A gravação reinicia o programa principal e interrompe a conexão. Mostre o progresso e os erros da etapa 3 mesmo sem conexão.
+  // O backend deixa de enviar o resultado de sucesso após 2 minutos, e o cartão desaparece.
   if (!live && job) {
-    const title = job.phase === 'running' ? '写进主程序' : (job.ok ? '写进主程序：好了' : '写进主程序：没成');
-    return html`<section class="onb board" data-step="commit" aria-label="写进主程序进度">
-      <div class="onb-h"><b>${title}</b><span class="quiet">主程序在重启，页面暂时没连着</span></div>
+    const title = job.phase === 'running' ? 'Gravar no programa principal' : (job.ok ? 'Gravação concluída' : 'Falha na gravação');
+    return html`<section class="onb board" data-step="commit" aria-label="Progresso da gravação no programa principal">
+      <div class="onb-h"><b>${title}</b><span class="quiet">O programa principal está reiniciando; a página está desconectada por enquanto.</span></div>
       <div class="onb-commit">
         ${job.phase === 'running'
-          ? html`<div class="onb-commit-job" role="status"><span class="onb-spin">⋯</span>${job.msg || '在写…'}</div>`
+          ? html`<div class="onb-commit-job" role="status"><span class="onb-spin">⋯</span>${job.msg || 'Gravando…'}</div>`
           : html`<div class=${'onb-commit-msg ' + (job.ok ? 'ok' : 'bad')}>${job.reason || job.msg || ''}</div>`}
         ${job.phase !== 'running' && !job.ok ? html`<p class="onb-tip">O assistente restaurará o arquivo de calibração e o modo anteriores; aguarde o retorno do programa principal para conferir a etapa 3.</p>` : null}
       </div>
     </section>`;
   }
-  if (!live) return html`<section class="onb board"><div class="onb-h"><b>Lista de primeiros passos</b><span class="quiet">断线时不检查</span></div></section>`;
-  if (!ob) return html`<section class="onb board"><div class="onb-h"><b>Lista de primeiros passos</b><span class="quiet">还在判…</span></div></section>`;
+  if (!live) return html`<section class="onb board"><div class="onb-h"><b>Lista de primeiros passos</b><span class="quiet">Verificação indisponível sem conexão</span></div></section>`;
+  if (!ob) return html`<section class="onb board"><div class="onb-h"><b>Lista de primeiros passos</b><span class="quiet">Verificando…</span></div></section>`;
   const head = ob.header || {};
   if (head.kind === 'bench') return html`<section class="onb board"><div class="onb-h"><b>Lista de primeiros passos</b><span class="quiet">${head.text}</span></div></section>`;
   const done = ob.all_done && head.ok;
   const n = ob.skipped_n || 0;
   const m = ob.marked_n || 0;
-  const counts = [n ? `跳过 ${n} 步` : '', m ? `标了已完成 ${m} 步` : ''].filter(Boolean).join('、');
-  const doneText = `上手 6 步都完成了${counts ? `（${counts}）` : ''}`;
+  const counts = [n ? `ignoradas: ${n}` : '', m ? `marcadas como concluídas: ${m}` : ''].filter(Boolean).join('; ');
+  const doneText = `As 6 etapas iniciais foram concluídas${counts ? ` (${counts})` : ''}`;
   const toggle = () => { const v = !open; setOpen(v); saveOnbOpen(v); };
   if (done && !open) {
-    return html`<section class="onb board onb-done" aria-label="上手清单">
+    return html`<section class="onb board onb-done" aria-label="Lista de primeiros passos">
       <button class="onb-fold" aria-expanded="false" onClick=${toggle}><span class="onb-mark onb-ok">✓</span><b>${doneText}</b>
-        <span class="onb-more">展开</span></button></section>`;
+        <span class="onb-more">Expandir</span></button></section>`;
   }
   const op = async (args, okText) => {
     const r = await link.cmd('onboard.op', args, 8000);
@@ -535,9 +530,9 @@ function Onboard({ st, live }) {
     else if (a.do === 'pad_known') padGo('known');
     else if (a.do === 'estop') padGo('estop');
     else if (a.do === 'remote') padGo('remote');
-    else if (a.do === 'robotd' || a.do === 'logs') location.hash = '#/logs';   // 第 3 步「主程序模式」那一项的「去看日志页」
+    else if (a.do === 'robotd' || a.do === 'logs') location.hash = '#/logs';   // Abre os registros para conferir a etapa do modo do programa principal.
   };
-  // 第 3 步：预览（小助手 dry_run / 电脑上 Studio 直接算）与真正写入。写入回到 ack 就开始，进度看 st.commit.job。
+  // Etapa 3: calcula uma prévia (dry_run do assistente ou cálculo direto no Studio do computador) e, depois, grava. A gravação começa após o ack; o progresso fica em st.commit.job.
   const commitPreview = async () => {
     if (cprev) { setCprev(null); return; }
     setCmsg(null);
@@ -550,16 +545,16 @@ function Onboard({ st, live }) {
     setCbusy(true);
     try {
       const r = await link.cmd('calib.op', { op: 'commit' }, 20000);
-      if (!r.ok) setCmsg({ ok: false, text: r.reason || r.error || '没开始写' });
-      else setCmsg({ ok: true, text: '开始写了：主程序会重启，等它回来' });
+      if (!r.ok) setCmsg({ ok: false, text: r.reason || r.error || 'Não foi possível iniciar a gravação' });
+      else setCmsg({ ok: true, text: 'Gravação iniciada. O programa principal será reiniciado; aguarde.' });
     } finally {
       setCbusy(false);
     }
   };
   const btn = (a, row, dark) => html`<button class=${dark ? 'btn-dark' : 'btn-light'} onClick=${() => go(a, row)}>${a.label}</button>`;
-  const frozen = !!ob.frozen;               // 调舵机时清单冻着：标、取消都要点两次（标了要交还以后才显示）
+  const frozen = !!ob.frozen;               // Durante o ajuste dos servos, a lista fica congelada; marcar ou desfazer exige dois cliques e só aparece após devolver o controle.
   const fa = ob.frozen_ask || {};
-  // 「已完成」（done）/「跳过」（skip）：后端说要点两次（mark.*.ask）或者冻着，用 TwoStep，第二下才带 confirmed
+  // Use TwoStep para Concluído/done ou Pular/skip quando o backend exigir duas confirmações (mark.*.ask) ou quando a lista estiver congelada; só a segunda envia confirmed.
   const markBtn = (row, kind, label, cls) => {
     const ask = (row.mark || {})[kind]?.ask || (frozen ? fa[kind] : null);
     const args = { op: kind, step: row.key };
@@ -569,74 +564,74 @@ function Onboard({ st, live }) {
   };
   const undoBtn = (row) => {
     const args = { op: row.marked === 'skip' ? 'unskip' : 'undone', step: row.key };
-    const label = row.marked === 'skip' ? 'Desfazer ação de pular' : 'Cancelar';
-    return frozen ? html`<${TwoStep} label=${label} ask=${fa.undo || '确定取消？'} cls="btn-light onb-unskip" askCls="btn-light onb-skip-arm"
+    const label = row.marked === 'skip' ? 'Desfazer etapa ignorada' : 'Cancelar';
+    return frozen ? html`<${TwoStep} label=${label} ask=${fa.undo || 'Tem certeza de que deseja cancelar?'} cls="btn-light onb-unskip" askCls="btn-light onb-skip-arm"
         onConfirm=${() => op({ ...args, confirmed: true })} />`
       : html`<button class="btn-light onb-unskip" onClick=${() => op(args)}>${label}</button>`;
   };
-  return html`<section class=${'onb board' + (ob.frozen ? ' onb-frozen' : '')} aria-label="上手清单">
+  return html`<section class=${'onb board' + (ob.frozen ? ' onb-frozen' : '')} aria-label="Lista de primeiros passos">
     <div class="onb-h">
       <b>Lista de primeiros passos</b>
       ${done ? html`<button class="onb-fold onb-fold-h" aria-expanded="true" onClick=${toggle}><span class="onb-mark onb-ok">✓</span>${doneText}
-        <span class="onb-more">收起</span></button>`
-        : head.ok ? html`<span class="onb-conn"><span class="onb-mark onb-ok">✓</span>连上鸭子</span>`
+        <span class="onb-more">Recolher</span></button>`
+        : head.ok ? html`<span class="onb-conn"><span class="onb-mark onb-ok">✓</span>Microduck conectado</span>`
         : html`<span class="onb-conn onb-conn-bad"><${Badge} kind=${head.kind === 'servo' || head.kind === 'connecting' || head.kind === 'bench' ? 'warn' : 'bad'} />
-          ${head.text}${head.raw ? html`<small>原文：${head.raw}</small>` : null}</span>`}
+          ${head.text}${head.raw ? html`<small>Texto original: ${head.raw}</small>` : null}</span>`}
       ${ob.frozen ? html`<span class="onb-tip onb-noskip">${ONB_FROZEN}</span>` : null}
     </div>
     ${msg ? html`<div class=${'banner ' + (msg.ok ? 'warn' : 'bad')} role="status"><span>${msg.text}</span>
-      <a href="#" onClick=${(e) => { e.preventDefault(); setMsg(null); }}>知道了</a></div>` : null}
+      <a href="#" onClick=${(e) => { e.preventDefault(); setMsg(null); }}>Entendi</a></div>` : null}
     <ol class="onb-rows">
       ${(ob.rows || []).map((r) => {
         const now = ob.next === r.key;
         const when = fmtWhen(r.when);
-        const goA = { do: r.go, label: '去做' };
-        // 第 3 步那张卡片只在「写进主程序」这一行里展开：还没做（● / ○）、正在写 / 刚写完、或者点了「去看看」「重新做」；
-        // 做完了（✓）、跳过了、判不出（?）时收着
+        const goA = { do: r.go, label: 'Fazer' };
+        // Expande o cartão da etapa 3 somente na linha de gravação quando ela estiver pendente, em andamento, recém-concluída ou aberta para consulta/refação.
+        // Recolhe o cartão quando a etapa estiver concluída, ignorada ou indisponível.
         const isCommit = r.key === 'commit' && (r.state === 'todo' || r.state === 'no' || copen || !!job || !!cmsg || !!cprev);
         let acts;
         if (r.marked) {
-          // 用户自己标的 ✓ / ↷：「重新做」（就是那一步的去做）+「取消」/「取消跳过」（审查 D12）
-          acts = html`<button class="btn-light onb-redo" onClick=${() => go(goA, r)}>重新做</button>${undoBtn(r)}`;
-        } else if (r.state === 'ok') acts = html`<button class="btn-light onb-redo" onClick=${() => go(goA, r)}>重新做</button>`;
+          // Para marcações feitas pelo usuário, oferece Refazer e Cancelar/Desfazer etapa ignorada.
+          acts = html`<button class="btn-light onb-redo" onClick=${() => go(goA, r)}>Refazer</button>${undoBtn(r)}`;
+        } else if (r.state === 'ok') acts = html`<button class="btn-light onb-redo" onClick=${() => go(goA, r)}>Refazer</button>`;
         else {
-          // 三个按钮：去做（这一行自己的动作，没有就去 GO 那一页）、已完成、跳过。测出了问题的行（found：审查 D5）第一个写「重新做」
+          // Três ações: Fazer (ou abrir a página de destino), Concluído e Pular. Se a etapa apontou um problema, a primeira ação vira Refazer.
           const first = (r.actions || []).length ? r.actions : [goA];
-          acts = html`${first.map((a, i) => btn(r.found && i === 0 ? { ...a, label: '重新做' }
-            : now && i === 0 ? { ...a, label: '去做' } : a, r, now && i === 0))}${markBtn(r, 'done', 'Concluído', 'onb-donebtn')}${markBtn(r, 'skip', 'Pular', 'onb-skip')}`;
+          acts = html`${first.map((a, i) => btn(r.found && i === 0 ? { ...a, label: 'Refazer' }
+            : now && i === 0 ? { ...a, label: 'Fazer' } : a, r, now && i === 0))}${markBtn(r, 'done', 'Concluído', 'onb-donebtn')}${markBtn(r, 'skip', 'Pular', 'onb-skip')}`;
         }
         return html`<li class=${'onb-row onb-' + r.state + (now ? ' onb-now' : '')} key=${r.key} data-step=${r.key}>
           <span class=${'onb-mark onb-' + r.state} aria-label=${ONB_WORD[r.state] || 'Indisponível'}>${ONB_MARK[r.state] || '?'}</span>
           <span class="onb-body">
-            <span class="onb-title"><b>${r.n} ${r.title}</b>${now ? html`<span class="onb-tag">现在该做</span>` : null}${when && !r.marked ? html`<span class="onb-when num">${when}</span>` : null}</span>
-            <span class="onb-text">${r.text}${r.marked ? `（${when || '时间不知道'}）` : ''}</span>
-            ${r.note ? html`<span class="onb-tip">${r.marked ? `现在：${r.note}` : r.note}</span>` : null}
-            ${r.tip && r.state !== 'ok' && r.state !== 'skip' ? html`<span class="onb-tip">坑：${r.tip}</span>` : null}
+            <span class="onb-title"><b>${r.n} ${r.title}</b>${now ? html`<span class="onb-tag">Próxima etapa</span>` : null}${when && !r.marked ? html`<span class="onb-when num">${when}</span>` : null}</span>
+            <span class="onb-text">${r.text}${r.marked ? ` (${when || 'horário desconhecido'})` : ''}</span>
+            ${r.note ? html`<span class="onb-tip">${r.marked ? `Agora: ${r.note}` : r.note}</span>` : null}
+            ${r.tip && r.state !== 'ok' && r.state !== 'skip' ? html`<span class="onb-tip">Dica: ${r.tip}</span>` : null}
             ${isCommit ? html`<div class="onb-commit">
               <div class="onb-commit-desc">${r.desc || ''}</div>
               ${(r.commit?.items || []).length ? html`<ul class="onb-checks">
                 ${r.commit.items.map((it) => html`<li class=${it.ok ? 'ok' : 'bad'}>
                   <span class="onb-check-mark" aria-label=${it.ok ? 'Pronto' : 'Ainda não funciona'}>${it.ok ? '✓' : '×'}</span>
                   <span class="onb-check-body"><b>${it.label}</b><span>${it.text}</span></span>
-                  ${!it.ok && it.action ? html`<button class="btn-light onb-check-go" onClick=${() => go(it.action, r)}>${it.action.label || '去做'}</button>` : null}
+                  ${!it.ok && it.action ? html`<button class="btn-light onb-check-go" onClick=${() => go(it.action, r)}>${it.action.label || 'Fazer'}</button>` : null}
                 </li>`)}
               </ul>` : null}
               <div class="onb-commit-acts">
-                <button class="btn-light" disabled=${cbusy} onClick=${commitPreview}>${cprev ? '收起要写的内容' : '先看看要写什么'}</button>
-                ${/* 第 2 步标了、IMU 按默认装法写（任务 17）：第二下写清楚 */ ''}
-                <${TwoStep} label="写进主程序" ask=${r.commit?.imu_default ? '确定？IMU 按默认装法写' : '会重启主程序，鸭子会先卸力，扶好鸭子'}
+                <button class="btn-light" disabled=${cbusy} onClick=${commitPreview}>${cprev ? 'Ocultar prévia' : 'Ver prévia da gravação'}</button>
+                ${/* Se a etapa 2 foi marcada, a segunda confirmação esclarece que a IMU será gravada com a orientação padrão. */ ''}
+                <${TwoStep} label="Gravar no programa principal" ask=${r.commit?.imu_default ? 'Confirmar gravação da IMU com a orientação padrão?' : 'O programa principal será reiniciado e os servos serão liberados. Segure o Microduck.'}
                   cls="btn-dark" disabled=${!r.commit?.ready || cbusy}
-                  title=${!r.commit?.ready ? '准备情况还没全绿：照上面的清单补齐' : ''} onConfirm=${commitRun} />
+                  title=${!r.commit?.ready ? 'Ainda há itens pendentes na lista acima.' : ''} onConfirm=${commitRun} />
               </div>
               ${cmsg ? html`<div class=${'onb-commit-msg ' + (cmsg.ok ? 'ok' : 'bad')}>${cmsg.text}</div>` : null}
-              ${job && job.phase === 'running' ? html`<div class="onb-commit-job" role="status"><span class="onb-spin">⋯</span>${job.msg || '在写…'}</div>` : null}
+              ${job && job.phase === 'running' ? html`<div class="onb-commit-job" role="status"><span class="onb-spin">⋯</span>${job.msg || 'Gravando…'}</div>` : null}
               ${job && job.phase !== 'running' && job.reason ? html`<div class=${'onb-commit-msg ' + (job.ok ? 'ok' : 'bad')}>${job.reason}</div>` : null}
               ${cprev ? html`<div class="onb-preview">
-                <div class="onb-preview-imu"><b>IMU</b> ${cprev.imu?.label || ''} · ${cprev.imu?.text || ''}${cprev.imu?.default ? `（按默认装法写：${cprev.imu.default}）` : ''}</div>
-                <table class="onb-preview-table"><thead><tr><th>关节</th><th>方向</th><th>限位</th></tr></thead><tbody>
+                <div class="onb-preview-imu"><b>IMU</b> ${cprev.imu?.label || ''} · ${cprev.imu?.text || ''}${cprev.imu?.default ? ` (orientação padrão: ${cprev.imu.default})` : ''}</div>
+                <table class="onb-preview-table"><thead><tr><th>Articulação</th><th>Direção</th><th>Limites</th></tr></thead><tbody>
                   ${(cprev.joints || []).map((j) => html`<tr><td>${j.cn || j.name}</td><td>${j.direction > 0 ? '+1' : '−1'}</td><td class="num">${j.min_deg}° ~ ${j.max_deg}°</td></tr>`)}
                 </tbody></table>
-                <details class="onb-preview-toml"><summary>要写的文件</summary><pre>${cprev.toml || ''}</pre></details>
+                <details class="onb-preview-toml"><summary>Arquivo que será gravado</summary><pre>${cprev.toml || ''}</pre></details>
               </div>` : null}
             </div>` : null}
           </span>
@@ -647,8 +642,8 @@ function Onboard({ st, live }) {
   </section>`;
 }
 
-// 待办：上手清单已经把同一件事说清楚了，待办里才不重复（审查 O15）。清单那一行 / 卡片头真的在说这件事才去重：
-// 清单写「?」（读不到）的时候待办照样留着（代码审查 C4）
+// Evita repetir tarefas já explicadas na lista inicial, mas só quando a linha ou o cabeçalho realmente descrevem o mesmo problema.
+// Se a lista indicar indisponibilidade, mantenha a tarefa pendente.
 const TODO_IN_ONB = {
   starting: (ob) => ['starting', 'stuck_calib'].includes(ob.header?.kind),
   absent: (ob) => ob.header?.kind === 'absent',
@@ -660,10 +655,10 @@ function Todo({ st, live }) {
   const all = (st?.todo || []).filter((it) => !(ob && TODO_IN_ONB[it.key] && TODO_IN_ONB[it.key](ob)));
   const items = all.slice(0, 2);
   const more = all.length - items.length;
-  if (!live) return html`<section class="todo board"><span class="quiet">断线时不检查</span></section>`;
+  if (!live) return html`<section class="todo board"><span class="quiet">Verificação indisponível sem conexão</span></section>`;
   if (!items.length) {
-    return html`<section class="todo board"><span class="quiet">没有要处理的事</span>
-      <span class="when num">${st?.health_age_ms != null ? `${Math.round(st.health_age_ms / 1000)} 秒前查过` : ''}</span></section>`;
+    return html`<section class="todo board"><span class="quiet">Nenhuma tarefa pendente</span>
+      <span class="when num">${st?.health_age_ms != null ? `verificado há ${Math.round(st.health_age_ms / 1000)} s` : ''}</span></section>`;
   }
   return html`<section class="todo board list">
     ${items.map((it) => html`<div class="item">
@@ -671,14 +666,14 @@ function Todo({ st, live }) {
       <span class="msg">${it.msg}</span>
       <span class="hint">${it.hint || ''}</span>
     </div>`)}
-    ${more > 0 ? html`<a href="#/logs" style="font-size:13px">还有 ${more} 条 ›</a>` : null}
+    ${more > 0 ? html`<a href="#/logs" style="font-size:13px">Ver mais ${more} ›</a>` : null}
   </section>`;
 }
 
-// 总览：（开着热点时最上面是「连 WiFi」）→ 舞台 → 仪表带（5 格）→ 上手清单 → 待办 → 往下一刷就是手柄（总览重排 §1）
+// Visão geral: cartão de Wi-Fi quando o ponto de acesso está ativo, palco, indicadores, lista inicial, tarefas pendentes e área do controle abaixo.
 function Overview({ st, live, age, duck, pd, onSame, tune, sensorsActive }) {
-  // 主机名这类英文名后面空一格再接中文：「duck-c51b 站好了」
-  const short = duck?.short || '鸭子';
+  // Acrescenta um espaço após nomes de host em inglês antes do texto seguinte.
+  const short = duck?.short || 'Microduck';
   const name = /[A-Za-z0-9]$/.test(short) ? short + ' ' : short;
   return html`<div class="overview">
     ${st?.net?.known && st.net.mode === 'hotspot'
@@ -692,7 +687,7 @@ function Overview({ st, live, age, duck, pd, onSame, tune, sensorsActive }) {
   </div>`;
 }
 
-// ---------------- 日志 ----------------
+// ---------------- Registros ----------------
 
 function Logs() {
   const [items, setItems] = useState([]);
@@ -705,37 +700,37 @@ function Logs() {
   const shown = items.filter((e) => (!onlyBad || e.level !== 'info') && (!cat || e.cat === cat));
   const cats = [...new Set(items.map((e) => e.cat))];
   const copy = () => navigator.clipboard && navigator.clipboard.writeText(shown.map((e) =>
-    `${e.t} [${e.cat}]${e.level === 'info' ? '' : `[${e.level}]`} ${e.msg}${e.step ? ` · ${e.level === 'info' ? '步骤' : '卡在'}：${e.step}` : ''}${e.raw ? ` · 原文：${e.raw}` : ''}${e.hint ? ` · 建议：${e.hint}` : ''}`).join('\n'));
+    `${e.t} [${e.cat}]${e.level === 'info' ? '' : `[${e.level}]`} ${e.msg}${e.step ? ` · ${e.level === 'info' ? 'Etapa' : 'Travado em'}: ${e.step}` : ''}${e.raw ? ` · Texto original: ${e.raw}` : ''}${e.hint ? ` · Sugestão: ${e.hint}` : ''}`).join('\n'));
   return html`<div style="display:flex;flex-direction:column;gap:12px">
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
       <h1 style="margin:0;font-size:28px;font-weight:600;flex:1">Logs</h1>
-      <select value=${cat} onChange=${(e) => setCat(e.target.value)} aria-label="按分类看">
-        <option value="">全部分类</option>${cats.map((c) => html`<option value=${c}>${c}</option>`)}
+      <select value=${cat} onChange=${(e) => setCat(e.target.value)} aria-label="Filtrar por categoria">
+        <option value="">Todas as categorias</option>${cats.map((c) => html`<option value=${c}>${c}</option>`)}
       </select>
-      <label style="font-size:14px"><input type="checkbox" checked=${onlyBad} onChange=${(e) => setOnlyBad(e.target.checked)} /> 只看警告和错误</label>
-      <button onClick=${copy} style="height:34px;padding:0 14px;border:0;border-radius:999px;background:#E5E5EA">复制</button>
-      <a class="logs-export" href="/api/diag" style="font-size:14px" title="含鸭子的序列号和局域网 IP">导出诊断包（发群里求助用）</a>
+      <label style="font-size:14px"><input type="checkbox" checked=${onlyBad} onChange=${(e) => setOnlyBad(e.target.checked)} /> Mostrar somente avisos e erros</label>
+      <button onClick=${copy} style="height:34px;padding:0 14px;border:0;border-radius:999px;background:#E5E5EA">Copiar</button>
+      <a class="logs-export" href="/api/diag" style="font-size:14px" title="Inclui o número de série do Microduck e o IP da rede local">Exportar pacote de diagnóstico (para pedir ajuda)</a>
     </div>
     <div class="board" style="padding:8px 16px;font-size:14px;line-height:1.7">
       ${shown.length ? shown.slice().reverse().map((e) => html`<div key=${e.n} style="padding:4px 0;border-top:1px solid var(--line)">
         <span class="num" style="color:var(--text-2)">${e.t}</span> <span style="color:var(--text-2)">[${e.cat}]</span>
         ${e.level === 'warn' ? html` <${Badge} kind="warn" />` : e.level === 'error' ? html` <${Badge} kind="bad" />` : ''} ${e.msg}
         ${e.step || e.raw || e.hint ? html`<div style="font-size:13px;color:var(--text-2)">
-          ${e.step ? html`${e.level === 'info' ? '步骤' : '卡在'}：${e.step}　` : ''}${e.raw ? html`原文：${e.raw}　` : ''}${e.hint ? html`建议：${e.hint}` : ''}</div>` : null}
-      </div>`) : html`<div style="color:var(--text-2)">还没有日志。</div>`}
+          ${e.step ? html`${e.level === 'info' ? 'Etapa' : 'Travado em'}: ${e.step}　` : ''}${e.raw ? html`Texto original: ${e.raw}　` : ''}${e.hint ? html`Sugestão: ${e.hint}` : ''}</div>` : null}
+      </div>`) : html`<div style="color:var(--text-2)">Ainda não há registros.</div>`}
     </div>
   </div>`;
 }
 
-// 页面每秒收 10 次状态，Main 会跟着重绘；日志页跟状态无关，别跟着把 500 行重画一遍（代码审查 #20）
+// A página recebe dez atualizações de estado por segundo, e Main é redesenhado. Os registros não dependem desse estado; evite redesenhar as 500 linhas a cada atualização.
 class LogsPage extends Component {
   shouldComponentUpdate() { return false; }
   render() { return html`<${Logs} />`; }
 }
 
-// ---------------- 设置（第一片只有舞台背景） ----------------
+// ---------------- Configurações ----------------
 
-const STAGES = [['mid', '中灰（推荐）'], ['graphite', '石墨'], ['light', '浅灰']];
+const STAGES = [['mid', 'Cinza médio (recomendado)'], ['graphite', 'Grafite'], ['light', 'Cinza claro']];
 function applyStage(v) {
   if (v === 'mid') document.documentElement.removeAttribute('data-stage');
   else document.documentElement.setAttribute('data-stage', v);
@@ -751,35 +746,35 @@ function PasswordSettings({ hasPassword }) {
   const submit = async (e) => {
     e.preventDefault();
     setErr(null); setMsg(null);
-    if (pw.length < 6) { setErr('密码至少 6 位'); return; }
-    if (pw !== again) { setErr('两次输入不一样'); return; }
+    if (pw.length < 6) { setErr('A senha deve ter pelo menos 6 caracteres'); return; }
+    if (pw !== again) { setErr('As senhas não coincidem'); return; }
     setBusy(true);
     let r;
     try { r = await api('/api/password', { action: 'set', password: pw, confirm: again }); }
-    catch { r = { error: '连不上鸭子，检查网络后再试' }; }
+    catch { r = { error: 'Não foi possível conectar ao Microduck. Verifique a rede e tente novamente.' }; }
     setBusy(false);
-    if (!r.ok) { setErr(r.status === 401 ? '登录过期了，刷新页面重新登录' : (r.error || '没改成')); return; }
-    setPw(''); setAgain(''); setMsg('登录密码已保存，这台浏览器还登录着。');
+    if (!r.ok) { setErr(r.status === 401 ? 'Sua sessão expirou. Atualize a página e entre novamente.' : (r.error || 'Não foi possível alterar a senha')); return; }
+    setPw(''); setAgain(''); setMsg('Senha de acesso salva. Esta sessão do navegador continua ativa.');
   };
   const clear = async () => {
     setErr(null); setMsg(null);
     let r;
     try { r = await api('/api/password', { action: 'clear' }); }
-    catch { r = { error: '连不上鸭子，检查网络后再试' }; }
-    if (!r.ok) { setErr(r.status === 401 ? '登录过期了，刷新页面重新登录' : (r.error || '没清掉')); return; }
+    catch { r = { error: 'Não foi possível conectar ao Microduck. Verifique a rede e tente novamente.' }; }
+    if (!r.ok) { setErr(r.status === 401 ? 'Sua sessão expirou. Atualize a página e entre novamente.' : (r.error || 'Não foi possível remover a senha')); return; }
     location.reload();
   };
   if (hasPassword == null) {
     return html`<div class="board password-settings" style="padding:16px 20px">
       <div style="font-size:15px;font-weight:600">Senha de acesso</div>
-      <div style="font-size:13px;color:var(--text-2)">正在读取登录状态…</div></div>`;
+      <div style="font-size:13px;color:var(--text-2)">Carregando o estado da sessão…</div></div>`;
   }
   return html`<form class="board password-settings" style="padding:16px 20px;display:flex;flex-direction:column;gap:10px"
     onSubmit=${submit}>
-    <div style="font-size:15px;font-weight:600">${hasPassword ? 'Senha de acesso' : '设一个登录密码'}</div>
+    <div style="font-size:15px;font-weight:600">${hasPassword ? 'Senha de acesso' : 'Defina uma senha de acesso'}</div>
     <div style="font-size:13px;line-height:1.6;color:var(--text-2)">
-      热点密码大家都知道；设了登录密码以后，连上热点的人也要先登录才能控制鸭子。至少 6 位。
-      ${hasPassword ? '修改后，其他浏览器上的登录会作废，这台还保持登录。' : ''}
+      A senha do ponto de acesso é compartilhada. Depois de definir uma senha de acesso, quem se conectar ao ponto também precisará entrar para controlar o Microduck. Use pelo menos 6 caracteres.
+      ${hasPassword ? 'A alteração encerra as sessões nos outros navegadores; esta sessão continuará ativa.' : ''}
     </div>
     <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text-2)">
       ${hasPassword ? 'Nova senha' : 'Senha'}
@@ -787,7 +782,7 @@ function PasswordSettings({ hasPassword }) {
         onInput=${(e) => setPw(e.target.value)} style="height:40px;padding:0 10px;border:1px solid var(--line);border-radius:8px" />
     </label>
     <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text-2)">
-      再输一遍
+      Digite novamente
       <input type="password" name="confirm" autocomplete="new-password" value=${again} required minLength="6"
         onInput=${(e) => setAgain(e.target.value)} style="height:40px;padding:0 10px;border:1px solid var(--line);border-radius:8px" />
     </label>
@@ -796,14 +791,14 @@ function PasswordSettings({ hasPassword }) {
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
       <button type="submit" disabled=${busy || !pw || !again}
         style="height:40px;padding:0 18px;border:0;border-radius:999px;background:var(--blue);color:#FFF;font-weight:600">
-        ${busy ? 'Salvando…' : (hasPassword ? '修改登录密码' : '设好登录密码')}</button>
-      ${hasPassword ? html`<${TwoStep} label="清掉登录密码" ask="真的清掉？" onConfirm=${clear} />` : null}
+        ${busy ? 'Salvando…' : (hasPassword ? 'Alterar senha de acesso' : 'Definir senha de acesso')}</button>
+      ${hasPassword ? html`<${TwoStep} label="Remover senha de acesso" ask="Tem certeza de que deseja removê-la?" onConfirm=${clear} />` : null}
     </div>
   </form>`;
 }
 
-// 「更多」页的 SSH 开关（用户 10-21：「出了问题他们 SSH 自己修，不用重新烧卡」）。镜像出厂只认钥匙、不带任何人的钥匙，
-// 也没有默认密码：在这里自己定一个密码再打开。要先设网页登录密码（后端也挡）。
+// O acesso SSH permite corrigir problemas sem regravar o cartão. A imagem de fábrica aceita somente chaves e não inclui chaves de terceiros nem senha padrão.
+// Defina uma senha nesta página antes de ativar o acesso; o backend também exige essa proteção.
 function SshSettings({ hasPassword }) {
   const [ssh, setSsh] = useState(null);
   const [loadErr, setLoadErr] = useState(null);
@@ -815,8 +810,8 @@ function SshSettings({ hasPassword }) {
   const [err, setErr] = useState(null);
   const load = async () => {
     let r;
-    try { r = await api('/api/ssh', { action: 'status' }, 15000); } catch { r = { error: '连不上鸭子' }; }
-    if (r.ok) { setSsh(r.ssh); setLoadErr(null); } else setLoadErr(r.error || '读不到 SSH 的状态');
+    try { r = await api('/api/ssh', { action: 'status' }, 15000); } catch { r = { error: 'Não foi possível conectar ao Microduck' }; }
+    if (r.ok) { setSsh(r.ssh); setLoadErr(null); } else setLoadErr(r.error || 'Não foi possível ler o estado do SSH');
   };
   useEffect(() => { load(); }, []);
   const on = ssh?.password_login === true;
@@ -825,9 +820,9 @@ function SshSettings({ hasPassword }) {
   const call = async (body, okText) => {
     setErr(null); setMsg(null); setBusy(true);
     let r;
-    try { r = await api('/api/ssh', body, 60000); } catch { r = { error: '连不上鸭子，检查网络后再试' }; }
+    try { r = await api('/api/ssh', body, 60000); } catch { r = { error: 'Não foi possível conectar ao Microduck. Verifique a rede e tente novamente.' }; }
     setBusy(false);
-    if (!r.ok) { setErr(r.status === 401 ? '登录过期了，刷新页面重新登录' : (r.error || '没成')); return null; }
+    if (!r.ok) { setErr(r.status === 401 ? 'Sua sessão expirou. Atualize a página e entre novamente.' : (r.error || 'Não foi possível concluir a operação')); return null; }
     if (r.ssh) setSsh(r.ssh);
     setMsg(typeof okText === 'function' ? okText(r) : okText);
     return r;
@@ -835,76 +830,76 @@ function SshSettings({ hasPassword }) {
   const submitPw = async (e) => {
     e.preventDefault();
     setErr(null); setMsg(null);
-    if (pw.length < 8) { setErr('SSH 密码至少 8 位'); return; }
-    if (pw !== again) { setErr('两次输入不一样'); return; }
+    if (pw.length < 8) { setErr('A senha do SSH deve ter pelo menos 8 caracteres'); return; }
+    if (pw !== again) { setErr('As senhas não coincidem'); return; }
     const r = await call({ action: 'on', password: pw, confirm: again },
-      on ? 'SSH 密码改好了。' : 'SSH 密码登录打开了：在电脑上运行上面那行，输刚设的密码。');
+      on ? 'Senha do SSH alterada.' : 'Acesso por senha SSH ativado. Execute o comando acima no computador e informe a senha definida.');
     if (r) { setPw(''); setAgain(''); }
   };
   const submitKey = async (e) => {
     e.preventDefault();
     const r = await call({ action: 'add_key', key },
-      (x) => (x.added ? '钥匙登记好了：用这台电脑运行上面那行，不用输密码。' : '这把钥匙本来就登记过了。'));
+      (x) => (x.added ? 'Chave cadastrada. Execute o comando acima neste computador; não será necessário informar uma senha.' : 'Esta chave já estava cadastrada.'));
     if (r) setKey('');
   };
-  const removeKey = (fp) => call({ action: 'remove_key', fp }, '这把钥匙删掉了。');
-  const off = () => call({ action: 'off' }, 'SSH 密码登录关掉了，只认钥匙。');
-  const copy = () => { try { navigator.clipboard.writeText(cmd); setMsg('登录命令复制好了。'); } catch { /* 不让复制就手抄 */ } };
+  const removeKey = (fp) => call({ action: 'remove_key', fp }, 'Chave removida.');
+  const off = () => call({ action: 'off' }, 'Acesso SSH por senha desativado; somente chaves serão aceitas.');
+  const copy = () => { try { navigator.clipboard.writeText(cmd); setMsg('Comando de acesso copiado.'); } catch { /* Se não for possível copiar, transcreva o comando. */ } };
   const input = 'height:40px;padding:0 10px;border:1px solid var(--line);border-radius:8px';
   const small = 'font-size:13px;line-height:1.6;color:var(--text-2)';
   const blue = 'height:40px;padding:0 18px;border:0;border-radius:999px;background:var(--blue);color:#FFF;font-weight:600';
-  const pwState = ssh == null ? null : ssh.password_login === true ? '密码登录开着'
-    : ssh.password_login === false ? '只认钥匙（密码登录关着）' : '密码登录开没开读不到';
+  const pwState = ssh == null ? null : ssh.password_login === true ? 'Acesso por senha ativado'
+    : ssh.password_login === false ? 'Somente por chave (acesso por senha desativado)' : 'Não foi possível verificar o acesso por senha';
   return html`<div class="board ssh-settings" style="padding:16px 20px;display:flex;flex-direction:column;gap:10px">
-    <div style="font-size:15px;font-weight:600">SSH 远程登录</div>
+    <div style="font-size:15px;font-weight:600">Acesso remoto SSH</div>
     <div style=${small}>
-      用电脑的终端登进鸭子：改程序、看日志、换文件，不用重烧卡。出厂只认钥匙、不认密码，也没有默认密码；
-      两种办法二选一：自己定一个 SSH 密码打开，或者把自己电脑的公钥登记进来。</div>
-    <div class="ssh-now" style="font-size:14px">现在：${ssh == null ? (loadErr || '正在读…')
-      : html`<b>${pwState}</b>，${keys.length ? `登记了 ${keys.length} 把钥匙` : '一把钥匙都没登记'}${ssh.ssh_active === false ? '；ssh 服务没在跑' : ''}`}</div>
+      Acesse o Microduck pelo terminal do computador para alterar programas, consultar registros e trocar arquivos sem regravar o cartão. Por padrão, somente chaves são aceitas; não há senha padrão.
+      Escolha uma opção: defina uma senha SSH ou cadastre a chave pública do computador.</div>
+    <div class="ssh-now" style="font-size:14px">Estado: ${ssh == null ? (loadErr || 'Carregando…')
+      : html`<b>${pwState}</b>, ${keys.length ? `chaves cadastradas: ${keys.length}` : 'nenhuma chave cadastrada'}${ssh.ssh_active === false ? '; serviço SSH não está em execução' : ''}`}</div>
     ${on || keys.length ? html`<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
       <code class="num ssh-cmd" style="padding:6px 10px;background:#F2F2F7;border-radius:8px">${cmd}</code>
-      <button type="button" onClick=${copy} style="height:34px;padding:0 14px;border:0;border-radius:999px;background:#E5E5EA">复制</button></div>
-      <div style=${small}>Windows 打开 PowerShell、Mac 打开终端，运行上面这行；第一次会问 yes/no，输 yes。</div>` : null}
+      <button type="button" onClick=${copy} style="height:34px;padding:0 14px;border:0;border-radius:999px;background:#E5E5EA">Copiar</button></div>
+      <div style=${small}>No Windows, abra o PowerShell; no Mac, abra o Terminal. Execute o comando acima. Na primeira conexão, confirme digitando yes.</div>` : null}
     ${!hasPassword ? html`<div class="ssh-need-web-pw" role="note" style="font-size:13px;color:var(--warn, #B25000)">
-      先在上面设网页登录密码，才能打开 SSH、登记钥匙：不然连上热点的人都能打开这个网页、顺手把 SSH 打开。</div>` : null}
+      Defina uma senha de acesso acima antes de ativar o SSH ou cadastrar chaves. Sem ela, qualquer pessoa conectada ao ponto de acesso poderia abrir esta página e ativar o SSH.</div>` : null}
     ${err ? html`<div role="alert" style="font-size:13px;color:var(--danger)">${err}</div>` : null}
     ${msg ? html`<div class="ssh-msg" style="font-size:13px;color:var(--text-2)">${msg}</div>` : null}
 
     <form class="ssh-pw" onSubmit=${submitPw} style="display:flex;flex-direction:column;gap:10px;padding-top:8px;border-top:1px solid var(--line)">
-      <div style="font-size:14px;font-weight:600">办法一：密码登录</div>
-      <div style=${small}>至少 8 位，不能是 microduck。这个密码也是鸭子上 sudo 用的密码。</div>
+      <div style="font-size:14px;font-weight:600">Opção 1: acesso por senha</div>
+      <div style=${small}>Use pelo menos 8 caracteres e não use “microduck”. Esta senha também será usada pelo comando sudo no Microduck.</div>
       ${hasPassword ? html`
       <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text-2)">
-        ${on ? '新的 SSH 密码' : 'SSH 密码'}
+        ${on ? 'Nova senha SSH' : 'Senha SSH'}
         <input type="password" name="ssh-password" autocomplete="new-password" value=${pw} minLength="8" maxLength="64"
           onInput=${(e) => setPw(e.target.value)} style=${input} /></label>
       <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text-2)">
-        再输一遍
+        Digite novamente
         <input type="password" name="ssh-confirm" autocomplete="new-password" value=${again} minLength="8" maxLength="64"
           onInput=${(e) => setAgain(e.target.value)} style=${input} /></label>` : null}
       <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
         <button type="submit" class="ssh-on" disabled=${busy || !hasPassword || ssh == null || !pw || !again} style=${blue}>
-          ${busy ? '正在设…' : (on ? '改 SSH 密码' : '打开 SSH 密码登录')}</button>
-        ${on ? html`<${TwoStep} label="关掉 SSH 密码登录" ask="真的关掉？" onConfirm=${off} />` : null}
+          ${busy ? 'Salvando…' : (on ? 'Alterar senha SSH' : 'Ativar acesso SSH por senha')}</button>
+        ${on ? html`<${TwoStep} label="Desativar acesso SSH por senha" ask="Tem certeza de que deseja desativá-lo?" onConfirm=${off} />` : null}
       </div>
     </form>
 
     <form class="ssh-key" onSubmit=${submitKey} style="display:flex;flex-direction:column;gap:10px;padding-top:8px;border-top:1px solid var(--line)">
-      <div style="font-size:14px;font-weight:600">办法二：登记钥匙（不用密码，更安全）</div>
+      <div style="font-size:14px;font-weight:600">Opção 2: cadastrar uma chave (mais seguro e sem senha)</div>
       <div style=${small}>
-        还没有钥匙的话：Windows 在 PowerShell 里运行 <code>ssh-keygen -t ed25519</code>，一路回车；
-        再运行 <code>type $env:USERPROFILE\\.ssh\\id_ed25519.pub</code>（Mac：<code>cat ~/.ssh/id_ed25519.pub</code>），
-        把打出来的那一整行贴到下面。<b>只贴 .pub 那个</b>，另一个是私钥，别给任何人。</div>
+        Se ainda não tiver uma chave, no Windows execute no PowerShell <code>ssh-keygen -t ed25519</code> e pressione Enter em todas as perguntas;
+        Depois execute <code>type $env:USERPROFILE\\.ssh\\id_ed25519.pub</code> (no Mac: <code>cat ~/.ssh/id_ed25519.pub</code>),
+        e cole abaixo a linha gerada. <b>Cole somente o arquivo .pub</b>; o outro arquivo contém a chave privada e não deve ser compartilhado.</div>
       ${keys.length ? html`<ul class="ssh-keys" style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px">
         ${keys.map((k) => html`<li key=${k.fp} style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px">
-          <span>${k.comment || '（没注释）'}</span><code class="num" style="color:var(--text-2)">${k.type} ${k.fp.slice(0, 19)}…</code>
-          ${hasPassword ? html`<${TwoStep} label="删掉" ask="真的删掉这把？" onConfirm=${() => removeKey(k.fp)} />` : null}</li>`)}
+          <span>${k.comment || '(sem comentário)'}</span><code class="num" style="color:var(--text-2)">${k.type} ${k.fp.slice(0, 19)}…</code>
+          ${hasPassword ? html`<${TwoStep} label="Remover" ask="Tem certeza de que deseja remover esta chave?" onConfirm=${() => removeKey(k.fp)} />` : null}</li>`)}
       </ul>` : null}
       ${hasPassword ? html`<textarea name="ssh-key" rows="3" value=${key} onInput=${(e) => setKey(e.target.value)}
-        placeholder="ssh-ed25519 AAAA… 你的电脑名" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:13px/1.5 ui-monospace,monospace;resize:vertical"></textarea>` : null}
+        placeholder="ssh-ed25519 AAAA… nome do computador" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:13px/1.5 ui-monospace,monospace;resize:vertical"></textarea>` : null}
       <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-        <button type="submit" class="ssh-addkey" disabled=${busy || !hasPassword || !key.trim()} style=${blue}>登记这把钥匙</button>
+        <button type="submit" class="ssh-addkey" disabled=${busy || !hasPassword || !key.trim()} style=${blue}>Cadastrar esta chave</button>
       </div>
     </form>
   </div>`;
@@ -912,15 +907,15 @@ function SshSettings({ hasPassword }) {
 
 function Settings({ st, tune }) {
   const [v, setV] = useState(loadStage());
-  const pick = (x) => { setV(x); applyStage(x); try { localStorage.setItem('studio.stage', x); } catch { /* 隐私模式 */ } };
+  const pick = (x) => { setV(x); applyStage(x); try { localStorage.setItem('studio.stage', x); } catch { /* Modo privado. */ } };
   return html`<div style="display:flex;flex-direction:column;gap:16px;max-width:640px">
     <h1 style="margin:0;font-size:28px;font-weight:600">Configurações</h1>
     <${UpdateSettings} api=${api} csrf=${csrf} />
     <${AiSettings} api=${api} />
     <div class="board" style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center">
-      <span style="font-size:15px;font-weight:600;flex:1">日志和诊断</span>
+      <span style="font-size:15px;font-weight:600;flex:1">Registros e diagnóstico</span>
       <a class="settings-logs" href="#/logs" style="font-size:15px">Logs</a>
-      <a class="settings-diag" href="/api/diag" style="font-size:15px" title="含鸭子的序列号和局域网 IP">导出诊断包</a>
+      <a class="settings-diag" href="/api/diag" style="font-size:15px" title="Inclui o número de série do Microduck e o IP da rede local">Exportar pacote de diagnóstico</a>
     </div>
     <${DuckAddresses} net=${st?.net} />
     <${WifiSettings} net=${st?.net} link=${link} />
@@ -929,25 +924,25 @@ function Settings({ st, tune }) {
     <${BatterySettings} link=${link} st=${st} />
     <${ModelSettings} tune=${tune} link=${link} />
     <div class="board" style="padding:16px 20px">
-      <div style="font-size:15px;font-weight:600;margin-bottom:10px">舞台背景</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:10px">Plano de fundo do palco</div>
       ${STAGES.map(([k, label]) => html`<label style="display:flex;align-items:center;gap:10px;height:40px">
         <input type="radio" name="stage" checked=${v === k} onChange=${() => pick(k)} /> ${label}</label>`)}
-      <div style="font-size:13px;color:var(--text-2)">只影响这台电脑或手机上的显示。</div>
+      <div style="font-size:13px;color:var(--text-2)">Afeta somente a exibição neste computador ou celular.</div>
     </div>
     <button onClick=${async () => { await api('/api/logout', {}); location.reload(); }}
-      style="align-self:flex-start;height:40px;padding:0 18px;border:0;border-radius:999px;background:#E5E5EA">退出登录</button>
+      style="align-self:flex-start;height:40px;padding:0 18px;border:0;border-radius:999px;background:#E5E5EA">Sair</button>
   </div>`;
 }
 
 function Later({ what }) {
   return html`<div class="board" style="padding:24px"><h1 style="margin:0 0 8px;font-size:28px;font-weight:600">${what}</h1>
-    <p style="margin:0;color:var(--text-2)">这一页在后面的切片里做。</p></div>`;
+    <p style="margin:0;color:var(--text-2)">Esta página será implementada em uma etapa futura.</p></div>`;
 }
 
-// ---------------- 外壳 ----------------
+// ---------------- Estrutura da página ----------------
 
-// #/ 和 #/pad 是同一页（总览）：「手柄」是总览上的锚点（审查 O13）。高亮：手柄那一块在屏幕上亮「手柄」，否则亮「总览」。
-// 地址没变时（再点一次同一个）不会有 hashchange，onSame 自己滚
+// #/ e #/pad mostram a mesma página (visão geral); #/pad aponta para a área do controle. Destaque Controle quando essa área estiver visível; caso contrário, destaque Visão geral.
+// Ao clicar novamente no endereço atual, não ocorre hashchange; onSame faz a rolagem.
 const OVERVIEW = (r) => r === '/' || r === '/pad';
 function navCur(route, padInView) {
   return (r) => {
@@ -960,7 +955,7 @@ function navCur(route, padInView) {
 function Nav({ route, padInView, onSame }) {
   const cur = navCur(route, padInView);
   const a = (href, r, text) => html`<a href=${href} aria-current=${cur(r)} onClick=${(e) => onSame(e, href)}>${text}</a>`;
-  return html`<nav class="nav" aria-label="页面">
+  return html`<nav class="nav" aria-label="Navegação">
     <div class="nav-logo"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="7" fill="#1D1D1F"></rect><path d="M6 14.5a7 6 0 0 1 14 0z" fill="#FFFFFF"></path><rect x="6" y="14.5" width="14" height="2.6" rx="1.3" fill="#F5B400"></rect><circle cx="16.2" cy="11.4" r="1.3" fill="#1D1D1F"></circle></svg>Studio</div>
     ${a('#/', '/', 'Visão geral')}
     ${a('#/pad', '/pad', 'Controle')}
@@ -975,16 +970,16 @@ function Nav({ route, padInView, onSame }) {
   </nav>`;
 }
 
-// 模型管理在手机底栏也能直接打开；顺序跟侧栏一致。
+// O gerenciamento de modelos também fica acessível pela barra inferior do celular, na mesma ordem da barra lateral.
 function TabBar({ route, padInView, onSame }) {
   const cur = navCur(route, padInView);
   const a = (href, r, text) => html`<a href=${href} aria-current=${cur(r)} onClick=${(e) => onSame(e, href)}>${text}</a>`;
-  return html`<nav class="tabbar" aria-label="主导航">
+  return html`<nav class="tabbar" aria-label="Navegação principal">
     ${a('#/', '/', 'Visão geral')}${a('#/pad', '/pad', 'Controle')}${a('#/camera', '/camera', 'Câmera')}${a('#/tof', '/tof', 'ToF')}${a('#/servos', '/servos', 'Servos')}${a('#/imu', '/imu', 'IMU')}${a('#/models', '/models', 'Modelos')}${a('#/settings', '/settings', 'Mais')}
   </nav>`;
 }
 
-// 离开某一页之前问一句（舵机页：有舵机在保持时，离开会交还主程序、舵机会全部松开）
+// Executa uma verificação antes de sair de uma página. Na página Servos, sair devolve o controle ao programa principal e libera todos os servos.
 export const leaveGuards = {};
 function useRoute() {
   const get = () => (location.hash.replace(/^#/, '') || '/');
@@ -996,10 +991,10 @@ function useRoute() {
       const guard = leaveGuards[cur.current];
       if (next !== cur.current && guard && !guard()) { history.replaceState(null, '', '#' + cur.current); return; }
       cur.current = next;
-      // 先同步算「在不在手柄区」（审查 O1）：切到别的页的这一刻就全部松开、发 drive off，不等重绘、不等 IntersectionObserver
+      // Atualiza imediatamente se a área do controle está ativa. Ao mudar de página, envia drive off sem esperar a renderização ou o IntersectionObserver.
       padActivity.setRoute(next);
       setR(next);
-      link.heartbeat();                   // 马上告诉 Studio 换页了（交还 / 接管不用等下一次心跳）
+      link.heartbeat();                   // Informa a mudança de página ao Studio imediatamente, sem esperar o próximo sinal de vida.
     };
     window.addEventListener('hashchange', f);
     return () => window.removeEventListener('hashchange', f);
@@ -1007,7 +1002,7 @@ function useRoute() {
   return r;
 }
 
-// 换页、点导航时滚到哪：#/pad 滚到手柄那一块（scroll-margin-top 扣掉吸顶的顶栏），别的都回到顶上
+// Ao navegar, #/pad rola até a área do controle, respeitando a barra fixa; as demais páginas voltam ao início.
 function scrollFor(route) {
   if (route === '/pad') {
     const el = document.getElementById('pad-block');
@@ -1029,7 +1024,7 @@ function Main({ duck }) {
   const [status, setStatus] = useState(link.status);
   const [padInView, setPadInView] = useState(padActivity.inView);
   const [navTick, setNavTick] = useState(0);
-  const firstScroll = useRef(route === '/pad');       // 打开 #/pad：第一份 state 和 pad 都到了再滚一次（上面的高度还会变）
+  const firstScroll = useRef(route === '/pad');       // Em #/pad, rola novamente quando chegarem o primeiro state e os dados do controle, pois a altura superior ainda pode mudar.
   const now = useNow(250);
   const barRef = useStickyHeight('--bar-h');
 
@@ -1037,7 +1032,7 @@ function Main({ duck }) {
     const off = link.on((m) => {
       if (m.t === '_status') setStatus(m.status);
       else if (m.t === 'state') {
-        // 上手清单没变时后端不每帧带（onboarding_same，代码审查 C5）：沿用上一份
+        // Quando a lista inicial não muda, o backend omite os dados dos estados seguintes (onboarding_same); reutilize o valor anterior.
         setSt((prev) => (m.onboarding_same && prev ? { ...m, onboarding: prev.onboarding } : m));
         setStAt(performance.now());
       }
@@ -1045,7 +1040,7 @@ function Main({ duck }) {
       else if (m.t === 'imu') setImu(m);
       else if (m.t === 'tune') setTune(m);
       else if (m.t === 'pad') {
-        // 长列表（动作、组合动作、技能、声音）没变时后端不再每帧推（审查 O12）：缺了就沿用上一份
+        // Quando listas extensas (ações, combinações, habilidades e sons) não mudam, o backend deixa de enviá-las em cada estado; reutilize os valores anteriores.
         setPd((prev) => {
           if (!m.lists_same || !prev?.motion) return m;
           const keep = Object.fromEntries(PAD_HEAVY.filter((k) => k in prev.motion).map((k) => [k, prev.motion[k]]));
@@ -1054,7 +1049,7 @@ function Main({ duck }) {
       }
     });
     const offAct = padActivity.subscribe(({ inView }) => setPadInView(inView));
-    // 用户自己动了（滚轮、手指、键盘）：第一份数据到了也别再替他滚
+    // Se o usuário interagir com roda, toque ou teclado, não mova a página quando os primeiros dados chegarem.
     const stop = () => { firstScroll.current = false; };
     window.addEventListener('wheel', stop, { passive: true, once: true });
     window.addEventListener('touchstart', stop, { passive: true, once: true });
@@ -1063,7 +1058,7 @@ function Main({ duck }) {
     return () => { off(); offAct(); };
   }, []);
 
-  // 换页、或者点了正在看的那一项（navTick）：滚到该去的地方
+  // Ao mudar de página ou clicar novamente no item atual (navTick), role até o destino correspondente.
   useEffect(() => { scrollFor(route); }, [route, navTick]);
   useEffect(() => {
     if (firstScroll.current && st && pd && route === '/pad') {
@@ -1071,18 +1066,17 @@ function Main({ duck }) {
       requestAnimationFrame(() => scrollFor('/pad'));
     }
   }, [!!st, !!pd]);
-  // 再点一次同一个地址：浏览器不发 hashchange，自己滚（审查 O13）
+  // Um segundo clique no endereço atual não dispara hashchange; faça a rolagem manualmente.
   const onSame = (e, href) => {
     if ((location.hash || '#/') === href) { e.preventDefault(); setNavTick((n) => n + 1); }
   };
 
   if (status === 'auth') { location.reload(); return null; }
-  // 新鲜度 = 浏览器多久没收到状态，加上 Studio 自己多久没从 robotd 拿到数据
+  // O atraso combina o tempo desde o último estado recebido pelo navegador e desde a última leitura do robotd pelo Studio.
   const age = st ? (now - stAt) + (st.robotd_age_ms || 0) : Infinity;
   const live = status === 'open' && age < STALE_ALARM_MS && st?.robotd_ok !== false;
-  // 总览一直挂着、只是藏起来：3D 鸭子不随切页面销毁重建（three.js 每建一次留一份内部对象，
-  // 浏览器能同时开的 WebGL 上下文也有限）。手柄那一块也在总览里（#/pad 是它的锚点），一直挂着：
-  // 「在不在手柄区」看 padActivity，不看挂没挂上（审查 O1）
+  // Mantenha a visão geral montada mesmo quando estiver oculta para não recriar o modelo 3D a cada navegação; o three.js conserva objetos internos e o navegador limita contextos WebGL simultâneos.
+  // A área do controle também permanece montada dentro da visão geral. padActivity determina se ela está ativa, não o fato de continuar montada.
   const overview = html`<div hidden=${!OVERVIEW(route)}><${Overview} st=${st} live=${live} age=${age} duck=${duck} pd=${pd} onSame=${onSame} tune=${tune} sensorsActive=${OVERVIEW(route)} /></div>`;
   let page = null;
   if (OVERVIEW(route)) page = null;
@@ -1093,9 +1087,9 @@ function Main({ duck }) {
   else if (route === '/settings') page = html`<${Settings} st=${st} tune=${tune} />`;
   else if (route === '/models') page = html`<${ModelsPage} api=${api} csrf=${csrf} link=${link} live=${live} />`;
   else if (route === '/imu') page = html`<${ImuPage} st=${st} imu=${imu} link=${link} live=${live} age=${age} pd=${pd} />`;
-  else page = html`<${Later} what="这一页" />`;
+  else page = html`<${Later} what="Esta página" />`;
 
-  document.title = `${duck?.label || '鸭子'} · Microduck Studio`;
+  document.title = `${duck?.label || 'Microduck'} · Microduck Studio`;
   return html`<div class="shell">
     <${Nav} route=${route} padInView=${padInView} onSame=${onSame} />
     <main class="main">
@@ -1117,7 +1111,7 @@ function Login({ onDone, duck, noPassword }) {
     e.preventDefault();
     setBusy(true); setErr(null);
     let r;
-    try { r = await api('/api/login', { password: pw, remember }); } catch { r = { error: '连不上鸭子，检查网络后再试' }; }
+    try { r = await api('/api/login', { password: pw, remember }); } catch { r = { error: 'Não foi possível conectar ao Microduck. Verifique a rede e tente novamente.' }; }
     setBusy(false);
     if (r.ok) onDone(); else setErr(r.error || 'Falha ao entrar');
   };
@@ -1127,10 +1121,10 @@ function Login({ onDone, duck, noPassword }) {
     <label>Senha de administrador
       <input type="password" name="password" autocomplete="current-password" value=${pw} onInput=${(e) => setPw(e.target.value)} required autoFocus />
     </label>
-    <label class="row"><input type="checkbox" checked=${remember} onChange=${(e) => setRemember(e.target.checked)} /> 记住我（30 天）</label>
-    ${noPassword ? html`<div class="err">还没设Senha de administrador。在鸭子上运行：<code>python3 -I run.py set-password</code></div>` : null}
+    <label class="row"><input type="checkbox" checked=${remember} onChange=${(e) => setRemember(e.target.checked)} /> Manter conectado (30 dias)</label>
+    ${noPassword ? html`<div class="err">A senha de administrador ainda não foi definida. No Microduck, execute: <code>python3 -I run.py set-password</code></div>` : null}
     ${err ? html`<div class="err" role="alert">${err}</div>` : null}
-    <button type="submit" disabled=${busy || !pw}>登录</button>
+    <button type="submit" disabled=${busy || !pw}>Entrar</button>
   </form>`;
 }
 
@@ -1140,10 +1134,10 @@ function App() {
   const [down, setDown] = useState(false);
   const load = () => api('/api/session')
     .then((r) => { setDown(false); csrf = r.csrf || ''; setNoPw(r.has_password === false); setSess(r.status === 200 ? r : null); })
-    .catch(() => { setDown(true); setTimeout(load, 2000); });   // Studio 正在重启：2 秒后再问
+    .catch(() => { setDown(true); setTimeout(load, 2000); });   // Se o Studio estiver reiniciando, tente novamente em 2 s.
   useEffect(() => { applyStage(loadStage()); load(); }, []);
   if (sess === undefined) {
-    return down ? html`<div class="login board"><h1>Microduck Studio</h1><p>连不上鸭子上的 Studio，正在重试…</p></div>` : null;
+    return down ? html`<div class="login board"><h1>Microduck Studio</h1><p>Não foi possível conectar ao Studio do Microduck. Tentando novamente…</p></div>` : null;
   }
   if (!sess) return html`<${Login} onDone=${load} duck=${null} noPassword=${noPw} />`;
   return html`<${Main} duck=${sess.duck} />`;
