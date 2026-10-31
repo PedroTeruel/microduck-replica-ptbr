@@ -42,7 +42,7 @@ TICK_ADDRESS = 0x20000A34
 SNAPSHOT_SIZE = 60
 SENSOR_STALE_MS = 100
 HOST_STALE_MS = 350
-SWD_FREQUENCY_HZ = 100_000  # 与 J-Link 路径相同：首板 4 MHz 下载出过传输失败
+SWD_FREQUENCY_HZ = 100_000  # Igual ao caminho J-Link: a gravação da primeira placa falhou em 4 MHz.
 
 
 class BridgeError(RuntimeError):
@@ -52,12 +52,12 @@ class BridgeError(RuntimeError):
 def validate_probe_settings(dll_path: Path | None, serial: int | None) -> tuple[Path, int]:
     """Require an explicit probe identity and installed DLL before hardware access."""
     if isinstance(serial, bool) or not isinstance(serial, int) or not 1 <= serial <= 0xFFFFFFFF:
-        raise BridgeError("真板模式必须填写有效的 --probe-serial / probe_serial（J-Link 正整数序列号，不能为 0）。")
+        raise BridgeError("No modo de hardware real, informe um --probe-serial / probe_serial válido (número de série J-Link inteiro positivo, diferente de zero).")
     if dll_path is None:
-        raise BridgeError("真板模式必须填写 --dll / dll，指向本机安装的 JLink_x64.dll。")
+        raise BridgeError("No modo de hardware real, informe --dll / dll com o caminho local da JLink_x64.dll instalada.")
     path = Path(dll_path).expanduser().resolve()
     if not path.is_file():
-        raise BridgeError(f"J-Link DLL 文件不存在：{path}；请填写实际安装路径。")
+        raise BridgeError(f"Arquivo DLL do J-Link não encontrado: {path}; informe o caminho real da instalação.")
     return path, serial
 
 
@@ -115,7 +115,7 @@ def read_firmware_image(firmware: Path) -> bytes:
             raise ValueError("missing EOF or non-contiguous flash image")
         return bytes(cells[address] for address in range(0x08000000, max(cells) + 1))
     except (ValueError, UnicodeError) as exc:
-        raise BridgeError(f"固件 HEX 无效：{exc}") from exc
+        raise BridgeError(f"Arquivo HEX do firmware inválido: {exc}") from exc
 
 
 def validate_firmware_layout(binary: Path, map_file: Path | None = None) -> FirmwareLayout:
@@ -123,7 +123,7 @@ def validate_firmware_layout(binary: Path, map_file: Path | None = None) -> Firm
     image = read_firmware_image(binary)
     digest = hashlib.sha256(image).hexdigest()
     if digest != VALIDATED_SHA256:
-        raise BridgeError("固件文件与已验证版本不同：需先核对 RAM 结构及地址，禁止猜测读取。")
+        raise BridgeError("O arquivo de firmware difere da versão validada. Confira o layout e os endereços da RAM antes de ler; não tente adivinhar os dados.")
     if map_file is None:
         return FirmwareLayout(image, digest, SAMPLE_ADDRESS, TICK_ADDRESS)
     text = map_file.read_text(encoding="utf-8", errors="replace")
@@ -134,13 +134,13 @@ def validate_firmware_layout(binary: Path, map_file: Path | None = None) -> Firm
             text, re.MULTILINE,
         )
         if len(matches) != 1:
-            raise BridgeError(f"链接映射中的 {name} 缺失或不唯一。")
+            raise BridgeError(f"O símbolo {name} está ausente ou não é único no mapa de linkedição.")
         found, found_size, owner = matches[0]
         value = int(found, 16)
         if int(found_size) != size or value != address or not owner.startswith(object_name + "("):
-            raise BridgeError(f"{name} 的地址、大小或所属模块与已验证固件不匹配。")
+            raise BridgeError(f"O endereço, tamanho ou módulo de {name} não corresponde ao firmware validado.")
         if not 0x20000000 <= value < value + size <= 0x20002000:
-            raise BridgeError(f"{name} 超出 STM32G031 的 SRAM 范围。")
+            raise BridgeError(f"{name} está fora da faixa de SRAM do STM32G031.")
         return value
 
     sample = symbol("sample", SNAPSHOT_SIZE, SAMPLE_ADDRESS, "imu.o")
@@ -155,13 +155,13 @@ def decode_quaternion(packed: tuple[int, int, int]) -> list[float]:
     (IEEE negative zero) is a valid identity rotation, not the marker.
     """
     if not any(packed):
-        raise BridgeError("四元数为未就绪标记。")
+        raise BridgeError("O quaternion indica que a IMU ainda não está pronta.")
     xyz = struct.unpack("<3e", struct.pack("<3H", *packed))
     if not all(math.isfinite(value) for value in xyz):
-        raise BridgeError("四元数包含 NaN 或无穷值。")
+        raise BridgeError("O quaternion contém NaN ou valor infinito.")
     squared = sum(value * value for value in xyz)
     if squared > 1.02:
-        raise BridgeError("四元数超出 SFLP 有效范围。")
+        raise BridgeError("O quaternion está fora da faixa válida do SFLP.")
     values = [*xyz, math.sqrt(max(0.0, 1.0 - squared))]
     norm = math.sqrt(sum(value * value for value in values))
     return [value / norm for value in values]
@@ -184,7 +184,7 @@ def empty_frame(mode: str, status: str, message: str) -> dict[str, Any]:
 def decode_snapshot(raw: bytes, tick_ms: int, *, voltage_mv: int | None = None,
                     coherence: str = "best_effort") -> dict[str, Any]:
     if len(raw) != SNAPSHOT_SIZE:
-        raise BridgeError(f"快照长度错误：{len(raw)}，预期 {SNAPSHOT_SIZE}。")
+        raise BridgeError(f"Tamanho de snapshot inválido: {len(raw)}; esperado {SNAPSHOT_SIZE}.")
     ready, who_am_i, configured, error = raw[:4]
     gyro = struct.unpack_from("<3h", raw, 4)
     accel = struct.unpack_from("<3h", raw, 10)
@@ -197,7 +197,7 @@ def decode_snapshot(raw: bytes, tick_ms: int, *, voltage_mv: int | None = None,
     # Normal timer wrap (e.g. last=0xfffffff8, tick=3) still yields +11 ms.
     inconsistent_time = gyro_age >= 0x80000000 or quat_age >= 0x80000000
     age = None if inconsistent_time else max(gyro_age, quat_age)
-    frame = empty_frame("live", "stale", "等待 IMU 有效采样。")
+    frame = empty_frame("live", "stale", "Aguardando amostra válida da IMU.")
     frame.update({
         "connected": True, "ready": ready, "who_am_i": who_am_i,
         "configured": configured, "error": error,
@@ -208,15 +208,15 @@ def decode_snapshot(raw: bytes, tick_ms: int, *, voltage_mv: int | None = None,
         "raw_accel": list(accel), "raw_gyro": list(gyro), "quat_fp16": list(packed),
     })
     if inconsistent_time:
-        frame.update(coherence="inconsistent", message="快照时间戳不一致，暂停姿态并等待重新读取。")
+        frame.update(coherence="inconsistent", message="Os timestamps do snapshot são inconsistentes; orientação pausada até uma nova leitura.")
     elif who_am_i != 0x70 or ready not in (0, 1) or configured not in (0, 1):
-        frame.update(status="error", message="IMU 标识或状态异常，停止显示姿态。")
+        frame.update(status="error", message="Identificador ou estado da IMU inválido; exibição da orientação interrompida.")
     elif error:
-        frame.update(status="error", message=f"IMU 报告错误码 {error}。")
+        frame.update(status="error", message=f"A IMU informou o código de erro {error}.")
     elif not ready or not configured or not sample_count:
-        frame["message"] = "IMU 尚未就绪，等待初始化和有效采样。"
+        frame["message"] = "A IMU ainda não está pronta; aguardando inicialização e amostras válidas."
     elif age >= SENSOR_STALE_MS:
-        frame["message"] = f"传感器采样已过期（{age} ms），姿态已暂停。"
+        frame["message"] = f"A amostra do sensor expirou ({age} ms); orientação pausada."
     else:
         try:
             quaternion = decode_quaternion(packed)
@@ -227,7 +227,7 @@ def decode_snapshot(raw: bytes, tick_ms: int, *, voltage_mv: int | None = None,
                 status="live", live=True, quaternion_xyzw=quaternion,
                 accel_g=[value * 0.000122 for value in accel],
                 gyro_dps=[value * 0.0175 for value in gyro],
-                message="正在读取真实板卡；姿态可跟随板子运动。",
+                message="Lendo a placa real; a orientação acompanhará seus movimentos.",
             )
     return frame
 
@@ -244,7 +244,7 @@ class FreshnessTracker:
             self.changed_at = now
         elif self.changed_at is not None and (now - self.changed_at) * 1000 >= HOST_STALE_MS:
             frame.update(status="stale", live=False, quaternion_xyzw=None, accel_g=None,
-                         gyro_dps=None, message="采样计数停止增长，姿态已暂停。")
+                         gyro_dps=None, message="O contador de amostras parou de avançar; orientação pausada.")
         return frame
 
 
@@ -266,12 +266,12 @@ class JLinkReader:
         error = ct.create_string_buffer(1024)
         rc = self.lib.JLINKARM_ExecCommand(command.encode("ascii"), error, len(error))
         if rc < 0 or error.value:
-            raise BridgeError(f"J-Link 设置失败 {command}: {rc} {error.value.decode(errors='replace')}")
+            raise BridgeError(f"Falha ao configurar o J-Link com {command}: {rc} {error.value.decode(errors='replace')}")
 
     def connect(self) -> None:
         self.dll_path, self.serial = validate_probe_settings(self.dll_path, self.serial)
         if os.name != "nt" or ct.sizeof(ct.c_void_p) != 8:
-            raise BridgeError("实时模式需要 Windows 64 位 Python 和本机 J-Link 驱动。")
+            raise BridgeError("O modo em tempo real requer Python de 64 bits no Windows e o driver local do J-Link.")
         self.dll_directory = os.add_dll_directory(str(self.dll_path.parent))
         self.lib = ct.CDLL(str(self.dll_path))
         callback_type = ct.CFUNCTYPE(None, ct.c_char_p)
@@ -293,10 +293,10 @@ class JLinkReader:
                         "SetRestartOnClose = 0"):
             self.command(command)
         if self.lib.JLINKARM_EMU_SelectByUSBSN(self.serial) < 0:
-            raise BridgeError("未找到指定 J-Link；检查 USB，并让 Keil 退出调试。")
+            raise BridgeError("J-Link especificado não encontrado; confira o USB e feche a sessão de depuração do Keil.")
         error = self.lib.JLINKARM_OpenEx(self.callback, self.callback)
         if error:
-            raise BridgeError("J-Link 打开失败；请让 Keil 退出调试、关闭其他探针工具。" + error.decode(errors="replace"))
+            raise BridgeError("Falha ao abrir o J-Link; feche a sessão de depuração do Keil e outros utilitários de sonda. " + error.decode(errors="replace"))
         self.opened = True
         # SDK Close defaults to a Go-equivalent resume. Configure before Open
         # (so unsupported options fail before acquiring a probe) and repeat
@@ -308,7 +308,7 @@ class JLinkReader:
         for command in ("DisableFlashDL", "DisableFlashBPs", "InhibitConnectRetries = 1"):
             self.command(command)
         if self.lib.JLINKARM_TIF_Select(1) != 0:
-            raise BridgeError("无法选择 SWD 接口。")
+            raise BridgeError("Não foi possível selecionar a interface SWD.")
         self.lib.JLINKARM_SetSpeed(100)
         self.command("Device = STM32G031F8")
         # Apply after device selection, before target connect. Firmware
@@ -319,38 +319,38 @@ class JLinkReader:
         self.command("SetRestartOnClose = 0")
         connected = self.lib.JLINKARM_IsConnected()
         if connected < 0:
-            raise BridgeError("无法读取目标连接状态。")
+            raise BridgeError("Não foi possível ler o estado da conexão com o alvo.")
         if connected == 0 and self.lib.JLINKARM_Connect() < 0:
-            raise BridgeError("SWD 连接失败，检查 SWDIO、SWCLK、GND、VTref 接线。")
+            raise BridgeError("Falha na conexão SWD; confira os fios SWDIO, SWCLK, GND e VTref.")
         if self.lib.JLINKARM_IsConnected() != 1:
-            raise BridgeError("J-Link 未连接到目标芯片。")
+            raise BridgeError("O J-Link não está conectado ao chip alvo.")
         # Read from the actual target; this never programs the supplied image.
         self.command("InvalidateCache")
         actual = self.read(0x08000000, len(self.layout.image))
         if actual != self.layout.image:
-            raise BridgeError("板上固件与已验证文件不一致，拒绝继续读取 RAM 或恢复执行。")
+            raise BridgeError("O firmware da placa não corresponde ao arquivo validado; a leitura da RAM e a retomada da execução foram interrompidas.")
         halted = self.lib.JLINKARM_IsHalted()
         if halted not in (0, 1):
-            raise BridgeError("无法读取 CPU 运行状态，未尝试恢复执行。")
+            raise BridgeError("Não foi possível ler o estado de execução da CPU; nenhuma tentativa de retomada foi feita.")
         if halted == 1:
             if not self.resume:
-                raise BridgeError("目标 CPU 已暂停。固件已验证；如需恢复运行，在 IMU 配置中设置 resume: true 后重启服务。")
+                raise BridgeError("A CPU alvo está pausada. O firmware foi validado; para retomar a execução, defina resume: true na configuração da IMU e reinicie o serviço.")
             self.lib.JLINKARM_Go()
             if self.lib.JLINKARM_IsHalted() != 0:
-                raise BridgeError("恢复运行失败；检查 Keil 残留断点。")
+                raise BridgeError("Falha ao retomar a execução; confira se o Keil deixou algum breakpoint ativo.")
 
     def read_voltage(self) -> int:
         status = HardwareStatus()
         if self.lib.JLINKARM_GetHWStatus(ct.byref(status)) != 0:
-            raise BridgeError("无法读取探针参考电压，连接可能已断开。")
+            raise BridgeError("Não foi possível ler a tensão de referência da sonda; a conexão pode ter sido interrompida.")
         self.voltage_mv = int(status.VTarget)
         if not 3000 <= self.voltage_mv <= 3500:
-            raise BridgeError(f"目标参考电压为 {self.voltage_mv} mV，不在已验证的 3.3 V 范围内。")
+            raise BridgeError(f"A tensão de referência do alvo é {self.voltage_mv} mV, fora da faixa validada de 3,3 V.")
         return self.voltage_mv
 
     def read(self, address: int, size: int) -> bytes:
         if address < 0 or size <= 0 or address + size > 0x100000000:
-            raise BridgeError("读取地址或长度超出有效范围。")
+            raise BridgeError("Endereço ou tamanho da leitura fora da faixa válida.")
         # SEGGER UM08002, JLINKARM_ReadMemEx: AccessWidth=4 forces U32
         # accesses, 1 forces U8; NumBytes remains a byte count. Use aligned
         # words so an updating 32-bit tick/counter is not assembled from four
@@ -359,12 +359,12 @@ class JLinkReader:
         buf = (ct.c_uint32 * (size // 4))() if width == 4 else (ct.c_uint8 * size)()
         count = self.lib.JLINKARM_ReadMemEx(address, size, buf, width)
         if count != size:
-            raise BridgeError(f"读取失败 0x{address:08X}：{count}/{size} 字节。请检查接线并重新启动连接。")
+            raise BridgeError(f"Falha na leitura de 0x{address:08X}: {count}/{size} bytes. Confira os fios e reinicie a conexão.")
         return bytes(buf)
 
     def snapshot(self) -> dict[str, Any]:
         if self.lib.JLINKARM_IsHalted() != 0:
-            raise BridgeError("目标 CPU 已暂停；未自动恢复，姿态显示已停止。")
+            raise BridgeError("A CPU alvo está pausada; não foi retomada automaticamente e a exibição da orientação foi interrompida.")
         # No explicit halt per frame. Equal bracketing counters improve detection
         # of torn reads, but are not a seqlock: telemetry explicitly says so.
         return bracketed_snapshot(self.read, self.layout, self.voltage_mv)
@@ -379,7 +379,8 @@ class JLinkReader:
 
 
 def bracketed_snapshot(read, layout: FirmwareLayout, voltage_mv: int | None) -> dict[str, Any]:
-    """与 JLinkReader.snapshot 同一套读法：快照前后各读一次采样计数，相等才算没撕裂。"""
+    """Usa a mesma leitura de JLinkReader.snapshot: consulta o contador de amostras antes
+    e depois do snapshot; valores iguais indicam que a leitura não foi interrompida."""
     address = layout.sample_address
     for attempt in range(2):
         before = struct.unpack("<I", read(address + 24, 4))[0]
@@ -396,19 +397,25 @@ def bracketed_snapshot(read, layout: FirmwareLayout, voltage_mv: int | None) -> 
 
 
 class SwdReader:
-    """pyOCD 观察：ST-Link / CMSIS-DAP(DAPLink)。J-Link 不走这里，用 --imu-jlink。
+    """Observação via pyOCD para sondas ST-Link / CMSIS-DAP (DAPLink). J-Link deve
+    usar --imu-jlink.
 
-    不烧写、不写 RAM、不复位、不暂停：connect_mode=attach，resume_on_disconnect=False
-    （断开时不隐式 Go），no_config=True（不加载当前目录的 pyocd.yaml / 用户脚本）。
-    target_override=cortex_m：按通用 Cortex-M 连，只读内存，不需要芯片包和 Flash 算法。
-    跟 JLinkReader 一样先逐字节比对板上 Flash 与 HEX，不一致就不读 RAM。
+    Não grava firmware nem RAM, não reinicia nem pausa a CPU: connect_mode=attach,
+    resume_on_disconnect=False (sem retomada implícita ao desconectar) e no_config=True
+    (não carrega pyocd.yaml nem scripts do diretório atual). target_override=cortex_m
+    conecta usando o Cortex-M genérico e lê apenas a memória, sem pacote de chip nem
+    algoritmo de Flash. Como em JLinkReader, compara byte a byte a Flash com o HEX antes
+    de ler a RAM.
 
-    这不等于对目标零影响：attach 仍会写调试寄存器（DHCSR.C_DEBUGEN、DEMCR.TRCENA、
-    FPB/DWT 使能），断开后 C_DEBUGEN 保持置位 —— 这期间固件里的 BKPT 会停住 CPU 而不是进 HardFault。
-    实测（ST-LINK/V2，100 kHz）连续连接不会让板子重启。
+    Isso não significa impacto nulo no alvo: attach ainda grava registradores de
+    depuração (DHCSR.C_DEBUGEN, DEMCR.TRCENA e ativações FPB/DWT). C_DEBUGEN permanece
+    ativo após desconectar; nesse intervalo, uma instrução BKPT do firmware pausa a CPU
+    em vez de gerar HardFault. Testes com ST-LINK/V2 a 100 kHz não reiniciaram a placa
+    durante conexões contínuas.
 
-    J-Link 经 pyOCD 会默认从 19 脚供 5 V（jlink.power）、可能静默升级探针固件、
-    关闭时不保证不 Go，绕开了 JLinkReader 的保护，所以这里直接拒绝。
+    O pyOCD pode alimentar J-Link com 5 V pelo pino 19 (jlink.power), atualizar o
+    firmware da sonda sem aviso e executar Go ao fechar. Como isso contorna as proteções
+    de JLinkReader, sondas J-Link são recusadas aqui.
     """
 
     def __init__(self, layout: FirmwareLayout, probe_id: str | None = None, resume: bool = False) -> None:
@@ -428,23 +435,23 @@ class SwdReader:
     def choose_probe(self, probes: list[Any]) -> Any:
         def is_jlink(p: Any) -> bool:
             return type(p).__name__ == "JLinkProbe"
-        found = "；".join(f"{p.description} {p.unique_id}" for p in probes)
-        jlink_hint = "J-Link 请改用 --imu-jlink（走 SEGGER 官方 DLL，带不供电、不升级固件、不隐式恢复运行的保护）。"
+        found = "; ".join(f"{p.description} {p.unique_id}" for p in probes)
+        jlink_hint = "Para J-Link, use --imu-jlink (DLL oficial SEGGER com proteções contra alimentação, atualização de firmware e retomada implícita da execução)."
         if not probes:
-            raise BridgeError("没找到调试器（ST-Link / DAPLink）；检查 USB 和驱动，"
-                              "并关掉 Keil 调试、CubeProgrammer 等占用调试器的程序。")
+            raise BridgeError("Nenhuma sonda encontrada (ST-Link / DAPLink); confira USB e drivers, "
+                              "e feche programas que ocupem a sonda, como Keil ou CubeProgrammer.")
         if self.probe_id is None or self.probe_id == "auto":
             usable = [p for p in probes if not is_jlink(p)]
             if not usable:
-                raise BridgeError("只找到 J-Link。" + jlink_hint)
+                raise BridgeError("Somente um J-Link foi encontrado. " + jlink_hint)
             if len(usable) > 1:
-                raise BridgeError(f"插了 {len(usable)} 个调试器，用 --imu-swd <UID> 指定一个：{found}")
+                raise BridgeError(f"Há {len(usable)} sondas conectadas; selecione uma com --imu-swd <UID>: {found}")
             return usable[0]
         matches = [p for p in probes if p.unique_id == self.probe_id]
         if not matches:
-            raise BridgeError(f"没找到 UID 为 {self.probe_id} 的调试器；现在插着的：{found}")
+            raise BridgeError(f"Sonda com UID {self.probe_id} não encontrada; sondas conectadas: {found}")
         if is_jlink(matches[0]):
-            raise BridgeError("指定的是 J-Link。" + jlink_hint)
+            raise BridgeError("A sonda selecionada é um J-Link. " + jlink_hint)
         return matches[0]
 
     def connect(self) -> None:
@@ -453,50 +460,51 @@ class SwdReader:
             from pyocd.core.session import Session
             from pyocd.core.target import Target
         except ImportError as exc:
-            raise BridgeError("SWD 模式需要 pyOCD：pip install pyocd") from exc
+            raise BridgeError("O modo SWD requer pyOCD: pip install pyocd") from exc
         self.halted_state = Target.State.HALTED
         chosen = self.choose_probe(list(ConnectHelper.get_all_connected_probes(blocking=False)))
         self.probe_name, self.probe_uid = chosen.description, chosen.unique_id
-        LOGGER.info("SWD 探针：%s %s（%s）", self.probe_name, self.probe_uid, type(chosen).__name__)
+        LOGGER.info("Sonda SWD: %s %s (%s)", self.probe_name, self.probe_uid, type(chosen).__name__)
 
-        # 第 1 步：只打开调试器、不碰芯片，先看目标电压（JLinkReader 也是连芯片前查电压）。
+        # Etapa 1: abre somente a sonda, sem interagir com o chip, e verifica a tensão do alvo.
         probe_only = Session(chosen, options=self.options())
         try:
             probe_only.open(init_board=False)
         except Exception as exc:
             self.close_session(probe_only)
-            raise BridgeError(f"打开调试器失败（{type(exc).__name__}: {exc}）：可能被 Keil 调试、"
-                              "CubeProgrammer 占用，或 ST-Link 固件太旧（用 CubeProgrammer 升级）。") from exc
+            raise BridgeError(f"Falha ao abrir a sonda ({type(exc).__name__}: {exc}): talvez esteja ocupada pelo Keil ou "
+                              "CubeProgrammer, ou o firmware do ST-Link esteja antigo (atualize pelo CubeProgrammer).") from exc
         try:
             self.check_voltage(probe_only.probe)
         finally:
             self.close_session(probe_only)
 
-        # 第 2 步：attach 到芯片。
+        # Etapa 2: conecta ao chip em modo attach.
         self.session = Session(chosen, options=self.options())
         try:
             self.session.open()
         except Exception as exc:
-            raise BridgeError(f"SWD 连接芯片失败（{type(exc).__name__}: {exc}）："
-                              "检查 SWDIO、SWCLK、GND、VTref 接线和板子供电。") from exc
+            raise BridgeError(f"Falha ao conectar ao chip via SWD ({type(exc).__name__}: {exc}): "
+                              "confira os fios SWDIO, SWCLK, GND e VTref e a alimentação da placa.") from exc
         self.target = self.session.target
-        # 第 3 步：只读板上 Flash 做比对，从不烧写。
+        # Etapa 3: lê a Flash da placa para comparação; nunca grava nela.
         actual = self.read(0x08000000, len(self.layout.image))
         if actual != self.layout.image:
-            raise BridgeError("板上固件与已验证文件不一致，拒绝继续读取 RAM 或恢复执行。")
+            raise BridgeError("O firmware da placa não corresponde ao arquivo validado; a leitura da RAM e a retomada foram interrompidas.")
         if self.is_halted():
             if not self.resume:
-                raise BridgeError("目标 CPU 已暂停。固件已验证；如需恢复运行，退出 Keil 调试后重新上电。")
+                raise BridgeError("A CPU alvo está pausada. O firmware foi validado; para retomar, encerre a depuração do Keil e reinicie a alimentação.")
             try:
                 self.target.resume()
             except Exception as exc:
-                raise BridgeError(f"恢复运行失败（{type(exc).__name__}: {exc}）。") from exc
+                raise BridgeError(f"Falha ao retomar a execução ({type(exc).__name__}: {exc}).") from exc
             if self.is_halted():
-                raise BridgeError("恢复运行失败；检查 Keil 残留断点。")
+                raise BridgeError("Falha ao retomar a execução; confira se o Keil deixou algum breakpoint ativo.")
 
     def check_voltage(self, probe: Any) -> int | None:
-        # pyOCD 里只有 ST-Link 能测目标电压（私有接口 _link）。没有这个接口（DAPLink）就不显示、不拦；
-        # 有接口但读失败或读不到，按连接异常处理，不悄悄放过。
+        # No pyOCD, somente ST-Link mede a tensão do alvo (interface privada _link).
+        # Sem essa interface (DAPLink), não exibe a tensão nem bloqueia. Se a interface
+        # existir mas falhar, trata como erro de conexão.
         link = getattr(probe, "_link", None)
         getter = getattr(link, "get_target_voltage", None)
         if getter is None:
@@ -506,14 +514,14 @@ class SwdReader:
             getter()
             volts = link.target_voltage
         except Exception as exc:
-            raise BridgeError(f"读目标电压失败（{type(exc).__name__}: {exc}），调试器可能已断开。") from exc
+            raise BridgeError(f"Falha ao ler a tensão do alvo ({type(exc).__name__}: {exc}); a sonda pode ter desconectado.") from exc
         if not isinstance(volts, (int, float)) or not math.isfinite(volts):
-            raise BridgeError("读不到目标电压：检查 J3.6 是否接到调试器的 VTref/TVCC。")
+            raise BridgeError("Não foi possível ler a tensão do alvo; confira se J3.6 está conectado ao VTref/TVCC da sonda.")
         self.voltage_mv = int(round(volts * 1000))
         if self.voltage_mv < 500:
-            raise BridgeError(f"目标电压只有 {self.voltage_mv} mV：J3.6 没接到 VTref/TVCC，或者板子没上电。")
+            raise BridgeError(f"A tensão do alvo é de apenas {self.voltage_mv} mV: J3.6 pode não estar ligado ao VTref/TVCC ou a placa pode estar desligada.")
         if not 3000 <= self.voltage_mv <= 3500:
-            raise BridgeError(f"目标参考电压为 {self.voltage_mv} mV，不在已验证的 3.3 V 范围内。")
+            raise BridgeError(f"A tensão de referência do alvo é {self.voltage_mv} mV, fora da faixa validada de 3,3 V.")
         return self.voltage_mv
 
     def read_voltage(self) -> int | None:
@@ -523,29 +531,30 @@ class SwdReader:
         try:
             return self.target.get_state() == self.halted_state
         except Exception as exc:
-            raise BridgeError(f"读 CPU 运行状态失败（{type(exc).__name__}: {exc}）："
-                              "板子可能掉电了，或 SWD 线松了。") from exc
+            raise BridgeError(f"Falha ao ler o estado de execução da CPU ({type(exc).__name__}: {exc}): "
+                              "a placa pode estar sem alimentação ou os fios SWD podem estar soltos.") from exc
 
     def read(self, address: int, size: int) -> bytes:
         if address < 0 or size <= 0 or address + size > 0x100000000:
-            raise BridgeError("读取地址或长度超出有效范围。")
+            raise BridgeError("Endereço ou tamanho da leitura fora da faixa válida.")
         try:
-            # 对齐时按 32 位字读，免得正在更新的计数被拆成 4 次字节读拼出来。
+            # Lê palavras de 32 bits alinhadas para não reconstruir um contador em
+            # atualização a partir de quatro leituras separadas de bytes.
             if address % 4 == 0 and size % 4 == 0:
                 words = self.target.read_memory_block32(address, size // 4)
                 data = struct.pack(f"<{len(words)}I", *words)
             else:
                 data = bytes(self.target.read_memory_block8(address, size))
         except Exception as exc:
-            raise BridgeError(f"读取失败 0x{address:08X}（{type(exc).__name__}: {exc}）。"
-                              "请检查接线并重新启动连接。") from exc
+            raise BridgeError(f"Falha na leitura de 0x{address:08X} ({type(exc).__name__}: {exc}). "
+                              "Confira os fios e reinicie a conexão.") from exc
         if len(data) != size:
-            raise BridgeError(f"读取失败 0x{address:08X}：{len(data)}/{size} 字节。")
+            raise BridgeError(f"Falha na leitura de 0x{address:08X}: {len(data)}/{size} bytes.")
         return data
 
     def snapshot(self) -> dict[str, Any]:
         if self.is_halted():
-            raise BridgeError("目标 CPU 已暂停；未自动恢复，姿态显示已停止。")
+            raise BridgeError("A CPU alvo está pausada; não foi retomada automaticamente e a exibição da orientação foi interrompida.")
         return bracketed_snapshot(self.read, self.layout, self.voltage_mv)
 
     @staticmethod
@@ -553,14 +562,15 @@ class SwdReader:
         try:
             session.close()
         except Exception as exc:
-            LOGGER.warning("关闭调试器连接出错：%s: %s", type(exc).__name__, exc)
-        # 打开到一半失败时 session.close() 可能认为探针没开，USB 却已被占住，这里再兜底关一次。
+            LOGGER.warning("Erro ao fechar a conexão da sonda: %s: %s", type(exc).__name__, exc)
+        # Se a abertura falhar parcialmente, session.close() pode considerar que a
+        # sonda não foi aberta, embora o USB esteja ocupado; tenta fechá-la novamente.
         probe = getattr(session, "probe", None)
         if probe is not None and getattr(probe, "is_open", False):
             try:
                 probe.close()
             except Exception as exc:
-                LOGGER.warning("关闭调试器 USB 出错：%s: %s", type(exc).__name__, exc)
+                LOGGER.warning("Erro ao fechar o USB da sonda: %s: %s", type(exc).__name__, exc)
 
     def close(self) -> None:
         session, self.session, self.target = self.session, None, None
@@ -575,7 +585,7 @@ class BridgeService:
                  hz: float = 20.0, connect_attempts: int = 3,
                  backend: str = "jlink", probe_id: str | None = None) -> None:
         if backend not in ("jlink", "swd"):
-            raise BridgeError(f"未知探针后端：{backend}")
+            raise BridgeError(f"Backend de sonda desconhecido: {backend}")
         if not demo and backend == "jlink":
             dll_path, serial = validate_probe_settings(dll_path, serial)
         self.demo, self.resume, self.backend, self.probe_id = demo, resume, backend, probe_id
@@ -586,12 +596,12 @@ class BridgeService:
         self.stop_event = threading.Event()
         self.thread: threading.Thread | None = None
         self.last_publish = time.monotonic()
-        connecting = "正在连接 J-Link 并校验固件。" if backend == "jlink" else "正在连接调试器（pyOCD）并校验固件。"
-        self.frame = empty_frame("demo" if demo else "live", "disconnected", "正在启动演示。" if demo else connecting)
+        connecting = "Conectando ao J-Link e verificando o firmware." if backend == "jlink" else "Conectando à sonda (pyOCD) e verificando o firmware."
+        self.frame = empty_frame("demo" if demo else "live", "disconnected", "Iniciando demonstração." if demo else connecting)
 
     def publish(self, frame: dict[str, Any]) -> None:
         frame["timestamp_ms"] = int(time.time() * 1000)
-        frame.setdefault("backend", self.backend)  # 连接中的帧也带上，网页标签不会先显示成 J-Link
+        frame.setdefault("backend", self.backend)  # Inclui o backend também durante a conexão para que a página não exiba J-Link incorretamente.
         with self.lock:
             self.frame = frame
             self.last_publish = time.monotonic()
@@ -602,13 +612,13 @@ class BridgeService:
             elapsed_ms = (time.monotonic() - self.last_publish) * 1000
         if result["live"] and elapsed_ms >= HOST_STALE_MS:
             result.update(status="stale", live=False, quaternion_xyzw=None, accel_g=None,
-                          gyro_dps=None, hz=0.0, message="数据流已超时，姿态显示暂停。")
+                          gyro_dps=None, hz=0.0, message="O fluxo de dados expirou; orientação pausada.")
         return result
 
     def start(self) -> None:
         with self.lifecycle_lock:
             if self.thread is not None and self.thread.is_alive():
-                raise BridgeError("一个服务只允许一个探针读取线程。")
+                raise BridgeError("Cada serviço permite somente uma thread de leitura da sonda.")
             self.stop_event.clear()
             self.thread = threading.Thread(target=self._run, name="imu-probe-owner", daemon=True)
             self.thread.start()
@@ -622,17 +632,17 @@ class BridgeService:
         if self.thread is not None:
             self.thread.join(timeout=10)
             if self.thread.is_alive():
-                raise BridgeError("探针调用仍在退出，禁止启动第二个连接；请稍后重试。")
+                raise BridgeError("A chamada da sonda ainda está sendo encerrada; não é possível iniciar uma segunda conexão. Tente novamente mais tarde.")
 
     def disconnect(self) -> None:
         self.stop()
-        self.publish(empty_frame("demo" if self.demo else "live", "disconnected", "连接已释放；可以返回 Keil 调试，或重新启动服务连接。"))
+        self.publish(empty_frame("demo" if self.demo else "live", "disconnected", "Conexão liberada; você pode voltar à depuração no Keil ou reiniciar o serviço para conectar novamente."))
 
     def reconnect(self) -> None:
         with self.lifecycle_lock:
             self._stop_locked()
             self.stop_event.clear()
-            self.publish(empty_frame("demo" if self.demo else "live", "disconnected", "正在重新连接。"))
+            self.publish(empty_frame("demo" if self.demo else "live", "disconnected", "Reconectando."))
             self.thread = threading.Thread(target=self._run, name="imu-probe-owner", daemon=True)
             self.thread.start()
 
@@ -641,7 +651,7 @@ class BridgeService:
         while not self.stop_event.is_set():
             elapsed = time.monotonic() - started
             x, y, z = (math.sin(elapsed * factor) * amplitude for factor, amplitude in ((0.7, 0.23), (0.9, 0.3), (0.4, 0.25)))
-            frame = empty_frame("demo", "live", "演示数据：没有连接或读取真实板卡。")
+            frame = empty_frame("demo", "live", "Dados de demonstração: nenhuma placa real conectada ou consultada.")
             frame.update(connected=False, live=True, ready=1, configured=1, error=0,
                          quaternion_xyzw=[x, y, z, math.sqrt(1 - x*x - y*y - z*z)],
                          accel_g=[0.0, 0.0, 1.0], gyro_dps=[0.0, 0.0, 0.0],
@@ -668,7 +678,7 @@ class BridgeService:
                     reader.close()
                     if attempt + 1 >= self.connect_attempts:
                         raise
-                    frame = empty_frame("live", "disconnected", f"连接尝试 {attempt + 1}/{self.connect_attempts}：{exc}")
+                    frame = empty_frame("live", "disconnected", f"Tentativa de conexão {attempt + 1}/{self.connect_attempts}: {exc}")
                     self.publish(frame)
                     if self.stop_event.wait(3):
                         return
@@ -697,7 +707,7 @@ class BridgeService:
                 self.stop_event.wait(max(0.0, 1 / self.hz - (time.monotonic() - started)))
         except Exception as exc:
             LOGGER.exception("IMU connection stopped")
-            frame = empty_frame("live", "error", str(exc) + " 确认接线和 Keil 已退出调试后，重新启动本工具。")
+            frame = empty_frame("live", "error", str(exc) + " Confira os fios e feche a sessão de depuração do Keil antes de reiniciar esta ferramenta.")
             self.publish(frame)
         finally:
             if reader is not None:
