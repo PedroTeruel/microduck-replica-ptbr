@@ -1,25 +1,25 @@
 #!/bin/sh
-# 在二号鸭上以 root 运行，只读源文件；输出一个可核验的 payload tgz。
+# Execute as root on the source Microduck. Reads source files only and creates a verifiable payload archive.
 set -eu
 LC_ALL=C
 export LC_ALL
 
-STEP=初始化
+STEP=Inicialização
 ERROR_PRINTED=0
 TMP=
 OUT=
 PYTHON=
 
 usage() {
-    echo "用法：sudo sh capture-payload.sh /tmp/microduck-payload.tgz" >&2
-    echo "      sh capture-payload.sh --clean-toml IN.toml OUT.toml   （在电脑上单独测清理函数）" >&2
+    echo "Uso: sudo sh capture-payload.sh /tmp/microduck-payload.tgz" >&2
+    echo "     sh capture-payload.sh --clean-toml IN.toml OUT.toml   (testa a função de limpeza separadamente no computador)" >&2
 }
 
 fail() {
     ERROR_PRINTED=1
-    echo "错误：卡在「$STEP」：$1" >&2
+    echo "Erro: falha em '$STEP': $1" >&2
     if [ "$#" -ge 2 ]; then
-        echo "怎么办：$2" >&2
+        echo "Como corrigir: $2" >&2
     fi
     exit 1
 }
@@ -28,8 +28,8 @@ on_exit() {
     rc=$?
     trap '' 0
     if [ "$rc" -ne 0 ] && [ "$ERROR_PRINTED" -eq 0 ]; then
-        echo "错误：脚本在「$STEP」这一步意外停止（退出码 $rc）。" >&2
-        echo "怎么办：看上面的报错；源文件没有被改动，修好后重跑即可。" >&2
+        echo "Erro: o script parou inesperadamente em '$STEP' (código de saída $rc)." >&2
+        echo "Como corrigir: consulte o erro acima; os arquivos de origem não foram alterados. Corrija o problema e execute novamente." >&2
     fi
     if [ -n "$TMP" ] && [ -d "$TMP" ]; then
         rm -rf "$TMP" || true
@@ -65,8 +65,8 @@ find_python() {
 
 validate_toml() {
     file=$1
-    [ -n "$PYTHON" ] || fail "找不到带 tomllib 的 python3（需要 3.11+）" "安装 python3 后重试，或换一台机器校验。"
-    "$PYTHON" - "$file" <<'PY' || fail "清理后的 TOML 读不了：$file" "保留现场，检查被删除的键是否跨行写坏了。"
+    [ -n "$PYTHON" ] || fail "Não foi encontrado python3 com tomllib (é necessário 3.11 ou superior)" "Instale python3 e tente novamente, ou valide em outra máquina."
+    "$PYTHON" - "$file" <<'PY' || fail "Não foi possível ler o TOML após a limpeza: $file" "Preserve o arquivo e verifique se alguma chave removida estava escrita em várias linhas."
 import sys
 import tomllib
 with open(sys.argv[1], 'rb') as fh:
@@ -74,9 +74,9 @@ with open(sys.argv[1], 'rb') as fh:
 PY
 }
 
-# 独立的 TOML 清理函数：只删已经能确定的标定 / IMU 安装键。
-# 对含义不确定、但名字看起来相关的键只记录，不删除。
-# 段名可能带引号（["bus"]），比较前先去引号；跨行的值（数组、内联表）连续行一起处理。
+# Standalone TOML cleanup: remove only calibration/IMU mounting keys that are unambiguously identified.
+# Record keys whose names look related but whose meaning is unclear; do not remove them.
+# Section names may be quoted (["bus"]); remove quotes before comparison. Process multiline values (arrays and inline tables) together.
 sanitize_robotd_toml() {
     src=$1
     dst=$2
@@ -152,7 +152,7 @@ sanitize_robotd_toml() {
 
             if (cont > 0) {
                 if (delcont) {
-                    print "第 " FNR " 行，删除键 " delkey " 的续行：" raw >> report
+                    print "Linha " FNR ": continuação removida da chave " delkey ": " raw >> report
                     cont += bracket_delta(raw)
                     if (cont <= 0) { cont = 0; delcont = 0 }
                     next
@@ -172,7 +172,7 @@ sanitize_robotd_toml() {
                 gsub(/[ \t]/, "", name)
                 if (name == "trunk_imu") {
                     drop = 1
-                    print "第 " FNR " 行，整段删除 [" name "]：" raw >> report
+                    print "Linha " FNR ": seção inteira removida [" name "]: " raw >> report
                     next
                 }
                 drop = 0
@@ -181,7 +181,7 @@ sanitize_robotd_toml() {
                 next
             }
             if (drop) {
-                print "第 " FNR " 行，trunk_imu 段内删除：" raw >> report
+                print "Linha " FNR ": removida da seção trunk_imu: " raw >> report
                 next
             }
 
@@ -199,7 +199,7 @@ sanitize_robotd_toml() {
             rest = substr(line, eq + 1)
 
             if (section == "audio" && key == "bank") {
-                print "第 " FNR " 行，audio.bank 改成官方声音包：" raw >> report
+                print "Linha " FNR ": audio.bank substituída pelo pacote oficial de sons: " raw >> report
                 print "\"bank\" = \"/var/lib/robot/sounds\""
                 keep = bracket_delta(rest)
                 if (keep > 0) { cont = keep; delcont = 1; delkey = key }
@@ -207,13 +207,13 @@ sanitize_robotd_toml() {
             }
 
             if (is_certain_key(key, section)) {
-                print "第 " FNR " 行，删除键 " key "：" raw >> report
+                print "Linha " FNR ": chave removida " key ": " raw >> report
                 d = bracket_delta(rest)
                 if (d > 0) { cont = d; delcont = 1; delkey = key }
                 next
             }
             if (looks_calibration_related(key)) {
-                print "第 " FNR " 行，保留键 " key "（拿不准）：" raw >> report
+                print "Linha " FNR ": chave mantida " key " (significado incerto): " raw >> report
             }
             print raw
             d = bracket_delta(rest)
@@ -224,9 +224,9 @@ sanitize_robotd_toml() {
 
 if [ "${1:-}" = "--clean-toml" ]; then
     [ "$#" -eq 3 ] || { usage; exit 2; }
-    [ -f "$2" ] || fail "输入 TOML 不存在：$2" "检查路径。"
+    [ -f "$2" ] || fail "O arquivo TOML de entrada não existe: $2" "Verifique o caminho."
     PYTHON=$(find_python) || PYTHON=
-    TMP=$(mktemp -d "${TMPDIR:-/tmp}/microduck-clean.XXXXXX") || fail "无法创建临时目录" "检查 /tmp。"
+    TMP=$(mktemp -d "${TMPDIR:-/tmp}/microduck-clean.XXXXXX") || fail "Não foi possível criar o diretório temporário" "Verifique /tmp."
     REPORT=$TMP/report.txt
     : > "$REPORT"
     sanitize_robotd_toml "$2" "$3" "$REPORT"
@@ -234,25 +234,25 @@ if [ "${1:-}" = "--clean-toml" ]; then
         sed 's/^/  /' "$REPORT"
     fi
     validate_toml "$3"
-    echo "清理完成：$3"
+    echo "Limpeza concluída: $3"
     exit 0
 fi
 
 [ "$#" -eq 1 ] || { usage; exit 2; }
-[ "$(id -u)" -eq 0 ] || fail "需要 root 才能读取完整文件" "请用：sudo sh capture-payload.sh /tmp/microduck-payload.tgz"
+[ "$(id -u)" -eq 0 ] || fail "É necessário ter privilégios de root para ler todos os arquivos" "Execute: sudo sh capture-payload.sh /tmp/microduck-payload.tgz"
 
 OUT_ARG=$1
 OUT_PARENT=$(dirname "$OUT_ARG")
-[ -d "$OUT_PARENT" ] || fail "输出目录不存在：$OUT_PARENT" "先建目录，或换一个存在的输出路径。"
+[ -d "$OUT_PARENT" ] || fail "O diretório de saída não existe: $OUT_PARENT" "Crie o diretório ou escolha um caminho existente."
 OUT=$(cd "$OUT_PARENT" && pwd -P)/$(basename "$OUT_ARG")
-[ -d "$OUT" ] && fail "输出路径是目录：$OUT" "请给一个 .tgz 文件名。"
+[ -d "$OUT" ] && fail "O caminho de saída é um diretório: $OUT" "Informe o nome de um arquivo .tgz."
 
-STEP="检查工具和源文件"
-echo "==> [1/6] 检查工具和源文件"
+STEP="Verificação das ferramentas e dos arquivos de origem"
+echo "==> [1/6] Verificação das ferramentas e dos arquivos de origem"
 for tool in tar sha256sum awk sed find cp mkdir date uname mktemp rm sort tr wc basename dirname id; do
-    command -v "$tool" >/dev/null 2>&1 || fail "缺少命令 $tool" "在二号鸭上安装 coreutils / tar 后重试。"
+    command -v "$tool" >/dev/null 2>&1 || fail "Comando ausente: $tool" "Instale coreutils / tar no Microduck de origem e tente novamente."
 done
-PYTHON=$(find_python) || fail "找不到带 tomllib 的 python3（需要 3.11+）" "确认二号鸭上有 python3 >= 3.11。"
+PYTHON=$(find_python) || fail "Não foi encontrado python3 com tomllib (é necessário 3.11 ou superior)" "Confirme se o Microduck de origem tem python3 >= 3.11."
 
 PREFIX=/opt/robot/feetech-ft5-r5
 ROBOTD_TOML=/etc/robot/feetech-ft5/robotd.toml
@@ -273,18 +273,18 @@ do
   $p"
     fi
 done
-[ -z "$MISSING" ] || fail "缺少这些必需路径：$MISSING" "确认这是二号鸭，且 feetech-ft5-r5 已安装；不要用镜像里的半成品目录。"
+[ -z "$MISSING" ] || fail "Estes caminhos obrigatórios estão ausentes:$MISSING" "Confirme que este é o Microduck de origem e que feetech-ft5-r5 está instalado; não use diretórios incompletos de uma imagem."
 
-STEP="建立临时目录并复制白名单文件"
-echo "==> [2/6] 建立临时目录并复制白名单文件"
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/microduck-payload.XXXXXX") || fail "无法创建临时目录" "检查 /tmp 是否可写、磁盘是否已满。"
+STEP="Criação do diretório temporário e cópia dos arquivos permitidos"
+echo "==> [2/6] Criação do diretório temporário e cópia dos arquivos permitidos"
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/microduck-payload.XXXXXX") || fail "Não foi possível criar o diretório temporário" "Verifique se /tmp permite gravação e se há espaço em disco."
 mkdir -p "$TMP/stage"
 
 copy_file() {
     src=$1
     rel=$2
     mkdir -p "$TMP/stage/$(dirname "$rel")"
-    cp -pL "$src" "$TMP/stage/$rel" || fail "复制失败：$src" "检查权限和磁盘空间；源文件不会被修改。"
+    cp -pL "$src" "$TMP/stage/$rel" || fail "Falha ao copiar: $src" "Verifique as permissões e o espaço em disco; o arquivo de origem não será alterado."
 }
 
 copy_models() {
@@ -299,21 +299,21 @@ copy_models() {
                -o -name '*.pt' -o -name '*.ckpt' -o -name '使用说明.md' \) -prune -print
     ) > "$TMP/skipped.txt" || true
     if [ -s "$TMP/skipped.txt" ]; then
-        echo "    跳过训练产物（不进镜像）："
+        echo "    Artefatos de treinamento ignorados (não serão incluídos na imagem):"
         sed "s|^\./|      - $rel/|" "$TMP/skipped.txt"
     fi
     tar -C "$src" --numeric-owner \
         --exclude='export-data.zip' --exclude='training-*.json' --exclude='upstream-params' \
         --exclude='*.pt' --exclude='*.ckpt' --exclude='使用说明.md' \
         -cf - . | tar -C "$dest" --numeric-owner -xf - \
-        || fail "复制模型目录失败：$src" "检查权限和磁盘空间；源文件不会被修改。"
+        || fail "Falha ao copiar o diretório de modelos: $src" "Verifique as permissões e o espaço em disco; os arquivos de origem não serão alterados."
 }
 
 copy_models "$PREFIX/models" opt/robot/feetech-ft5-r5/models
 copy_models "$PREFIX/roller" opt/robot/feetech-ft5-r5/roller
 mkdir -p "$TMP/stage/opt/robot/feetech-ft5-r5/onnxruntime"
 tar -C "$PREFIX/onnxruntime" --numeric-owner -cf - . | tar -C "$TMP/stage/opt/robot/feetech-ft5-r5/onnxruntime" --numeric-owner -xf - \
-    || fail "复制 onnxruntime 失败" "检查权限和磁盘空间。"
+    || fail "Falha ao copiar onnxruntime" "Verifique as permissões e o espaço em disco."
 
 for f in robotd padd mediad padd.service padd-sysusers.conf LICENSE; do
     copy_file "$PREFIX/$f" "opt/robot/feetech-ft5-r5/$f"
@@ -322,39 +322,39 @@ copy_file "$DROPIN" etc/systemd/system/robotd.service.d/zzzz-r17-0151.conf
 if [ -f "$NETPAD" ]; then
     copy_file "$NETPAD" etc/systemd/system/padd.service.d/zzzz-replica-netpad.conf
 else
-    echo "    警告：二号鸭上没有 $NETPAD；镜像里的 UDP 手柄可能缺少网络权限，请人工确认。"
+    echo "    Aviso: $NETPAD não existe no Microduck de origem; o controle UDP na imagem pode ficar sem permissões de rede. Verifique manualmente."
 fi
 if [ -d "$MARKER" ]; then
     mkdir -p "$TMP/stage/var/lib/robot/weird-ble"
     tar -C "$MARKER" --numeric-owner -cf - . | tar -C "$TMP/stage/var/lib/robot/weird-ble" --numeric-owner -xf - \
-        || fail "复制 $MARKER 失败" "检查权限。"
+        || fail "Falha ao copiar $MARKER" "Verifique as permissões."
 else
     copy_file "$MARKER" var/lib/robot/weird-ble
 fi
 
-STEP="清理 robotd.toml 中的标定和 IMU 安装信息"
-echo "==> [3/6] 清理 robotd.toml 中的标定和 IMU 安装信息"
+STEP="Limpeza dos dados de calibração e de montagem da IMU em robotd.toml"
+echo "==> [3/6] Limpeza dos dados de calibração e de montagem da IMU em robotd.toml"
 mkdir -p "$TMP/stage/etc/robot/feetech-ft5"
 REPORT=$TMP/robotd-clean-report.txt
 : > "$REPORT"
 sanitize_robotd_toml "$ROBOTD_TOML" "$TMP/stage/etc/robot/feetech-ft5/robotd.toml" "$REPORT"
 if [ -s "$REPORT" ]; then
-    echo "    robotd.toml 清理记录："
+    echo "    Registro da limpeza de robotd.toml:"
     sed 's/^/      /' "$REPORT"
 else
-    echo "    robotd.toml 没有可确定的标定键；没有删除。"
+    echo "    robotd.toml não contém chaves de calibração identificáveis com certeza; nada foi removido."
 fi
 validate_toml "$TMP/stage/etc/robot/feetech-ft5/robotd.toml"
 cp -f "$TMP/stage/etc/robot/feetech-ft5/robotd.toml" "$TMP/stage/etc/robot/feetech-ft5/robotd.saved.toml"
-echo "    同时生成 robotd.saved.toml（内容与清理后的 robotd.toml 相同）。"
+echo "    Também foi criado robotd.saved.toml (com o mesmo conteúdo de robotd.toml após a limpeza)."
 
-STEP="生成 payload.json 清单"
-echo "==> [4/6] 生成 payload.json 清单"
+STEP="Geração do manifesto payload.json"
+echo "==> [4/6] Geração do manifesto payload.json"
 (
     cd "$TMP/stage"
     find . -type f ! -name payload.json | sed 's|^\./||' | sort
 ) > "$TMP/files.txt"
-[ -s "$TMP/files.txt" ] || fail "没有收集到文件" "检查白名单路径是否为空。"
+[ -s "$TMP/files.txt" ] || fail "Nenhum arquivo foi coletado" "Verifique se os caminhos permitidos estão vazios."
 
 ROBOTD_SHA=$(sha256_of "$TMP/stage/opt/robot/feetech-ft5-r5/robotd")
 CAPTURED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
@@ -364,7 +364,7 @@ KERNEL=$(uname -r)
     printf '  "captured_at": "%s",\n' "$(json_escape "$CAPTURED_AT")"
     printf '  "uname_r": "%s",\n' "$(json_escape "$KERNEL")"
     printf '  "robotd_sha256": "%s",\n' "$ROBOTD_SHA"
-    printf '  "notes": "robotd.toml 已去掉可确定的标定和 IMU 安装键，并删掉 trunk_imu 段；audio.bank 指向官方声音包；不确定的键留在文件里，逐行清单在捕获时打印。",\n'
+    printf '  "notes": "As chaves de calibração e montagem da IMU identificadas com certeza foram removidas de robotd.toml, assim como a seção trunk_imu; audio.bank aponta para o pacote oficial de sons; chaves incertas foram mantidas e listadas linha por linha durante a captura.",\n'
     printf '  "files": [\n'
     first=1
     while IFS= read -r rel; do
@@ -382,19 +382,19 @@ KERNEL=$(uname -r)
     printf '\n  ]\n}\n'
 } > "$TMP/stage/payload.json"
 
-# 清单自身也做一次可读性检查，避免包打好了才发现 JSON 坏了。
+# Validate the manifest itself so malformed JSON is caught before packaging.
 "$PYTHON" -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$TMP/stage/payload.json" \
-    || fail "payload.json 不是合法 JSON" "保留现场并检查路径里是否有异常字符。"
+    || fail "payload.json não contém JSON válido" "Preserve os arquivos e verifique se algum caminho contém caracteres inesperados."
 
-STEP="打包并核对输出"
-echo "==> [5/6] 打包并核对输出"
-tar -czf "$OUT" -C "$TMP/stage" --numeric-owner . || fail "tar 打包失败：$OUT" "检查输出目录空间和权限。"
-[ -s "$OUT" ] || fail "输出文件为空：$OUT" "检查磁盘空间。"
+STEP="Empacotamento e verificação da saída"
+echo "==> [5/6] Empacotamento e verificação da saída"
+tar -czf "$OUT" -C "$TMP/stage" --numeric-owner . || fail "Falha ao criar o pacote tar: $OUT" "Verifique o espaço disponível e as permissões do diretório de saída."
+[ -s "$OUT" ] || fail "O arquivo de saída está vazio: $OUT" "Verifique o espaço em disco."
 
-STEP="完成"
-echo "==> [6/6] 完成"
-echo "    payload：$OUT"
-echo "    大小：$(size_of "$OUT") 字节"
-echo "    robotd sha256：$ROBOTD_SHA"
-echo "    拉取时间：$CAPTURED_AT"
-echo "    robotd.toml 副本已清理，逐条记录见上方输出；二号鸭原文件未改动。"
+STEP="Concluído"
+echo "==> [6/6] Concluído"
+echo "    Payload: $OUT"
+echo "    Tamanho: $(size_of "$OUT") bytes"
+echo "    SHA-256 do robotd: $ROBOTD_SHA"
+echo "    Data da captura: $CAPTURED_AT"
+echo "    A cópia de robotd.toml foi limpa; consulte os detalhes acima. O arquivo original do Microduck de origem não foi alterado."
