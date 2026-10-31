@@ -1,7 +1,7 @@
-"""模型归档边界与无硬件预检；不写 robotd 配置、不接触总线。
+"""Limites de importação de modelos e pré-verificação sem hardware; não grava a configuração do robotd nem acessa o barramento.
 
-这里只识别导出合同的基础身份。观测映射、滤波、任务适配和 ONNX 图的
-完整兼容性由安装在本机的 robotd validate-policy 决定，不能用解包成功代替。
+Aqui são verificados apenas os dados básicos de identidade do contrato exportado. O mapeamento de observações, os filtros, o adaptador de tarefa e a compatibilidade completa do grafo ONNX
+são validados pelo robotd instalado localmente, por meio de validate-policy. O sucesso da extração não substitui essa validação.
 """
 from __future__ import annotations
 
@@ -39,49 +39,49 @@ BAM_SHA256 = "ef2d51adfb1cc0831b9b02ca19aa9176fceecdf725148d084378d7d9a64afceb"
 
 
 class PackageError(ValueError):
-    """可直接显示给导入用户的中文错误。"""
+    """Erro legível que pode ser exibido diretamente a quem está importando."""
 
 
 def _safe_name(raw: str, directory: bool) -> PurePosixPath:
     if not raw or "\\" in raw or ":" in raw or raw.startswith("/") or "\x00" in raw:
-        raise PackageError(f"压缩包含不安全路径：{raw!r}")
+        raise PackageError(f"O arquivo compactado contém um caminho inseguro：{raw!r}")
     name = raw[:-1] if directory and raw.endswith("/") else raw
     if any(part in ("", ".", "..") for part in name.split("/")):
-        raise PackageError(f"压缩包含不规范路径：{raw!r}")
+        raise PackageError(f"O arquivo compactado contém um caminho inválido：{raw!r}")
     if any(ord(c) < 32 for c in name):
-        raise PackageError("压缩包路径含控制字符")
+        raise PackageError("O caminho no arquivo compactado contém caracteres de controle")
     return PurePosixPath(name)
 
 
 def _zip_entries(archive):
     for info in archive.infolist():
         if info.orig_filename != info.filename:
-            raise PackageError("压缩包路径含空字符")
+            raise PackageError("O caminho no arquivo compactado contém um caractere nulo")
         kind = stat.S_IFMT(info.external_attr >> 16)
         directory = info.is_dir()
         allowed = (0, stat.S_IFDIR) if directory else (0, stat.S_IFREG)
         if kind not in allowed:
-            raise PackageError("压缩包含链接或特殊设备文件")
+            raise PackageError("O arquivo compactado contém um link ou arquivo de dispositivo especial")
         if info.flag_bits & 1:
-            raise PackageError("不支持加密的模型压缩包")
+            raise PackageError("Arquivos compactados de modelos criptografados não são aceitos")
         yield info.filename, directory, info.file_size, lambda i=info: archive.open(i, "r")
 
 
 def _tar_entries(archive):
     for info in archive:
         if (not info.isdir() and not info.isfile()) or info.issparse():
-            raise PackageError("压缩包含链接、稀疏文件或特殊设备文件")
+            raise PackageError("O arquivo compactado contém links, arquivos esparsos ou arquivos de dispositivo especial")
         yield info.name, info.isdir(), info.size, lambda i=info: archive.extractfile(i)
 
 
 class _TarStream:
-    """tarfile 在返回成员前会整块读取 PAX/长文件名，先限制这类分配。"""
+    """tarfile lê em bloco os metadados PAX e nomes longos antes de retornar um item; limitamos essas alocações primeiro."""
     def __init__(self, stream):
         self.stream = stream
 
     def read(self, size=-1):
         if size < 0 or size > 1024 * 1024:
-            raise PackageError("归档元数据过大，无法安全读取")
+            raise PackageError("Os metadados do arquivo compactado são grandes demais para uma leitura segura")
         return self.stream.read(size)
 
     def tell(self):
@@ -89,9 +89,9 @@ class _TarStream:
 
     def seek(self, offset, whence=0):
         position = offset if whence == 0 else self.tell() + offset
-        # tar 的文件头、末尾填充不属于展开文件体积，但仍然有界。
+        # Cabeçalhos tar e preenchimento final não contam no tamanho descompactado, mas continuam sujeitos a um limite.
         if whence not in (0, 1) or not 0 <= position <= MAX_EXPANDED_BYTES + MAX_FILES * 1024 + 10240:
-            raise PackageError("归档展开体积超过上限")
+            raise PackageError("O tamanho descompactado excede o limite")
         return self.stream.seek(offset, whence)
 
 
@@ -103,86 +103,86 @@ def _tar_archive(path):
 
 
 def _layout(entries):
-    """先检查整个归档，再读取文件，避免忽略未知文件里的危险条目。"""
+    """Verifica todo o arquivo compactado antes de ler os arquivos, para não ignorar entradas perigosas em arquivos desconhecidos."""
     files, directories, seen = [], [], set()
     total = 0
     for raw, directory, size, opener in entries:
         if len(seen) >= MAX_FILES:
-            raise PackageError(f"压缩包文件数量过多（最多 {MAX_FILES} 个文件或目录条目）")
+            raise PackageError(f"O arquivo compactado contém itens demais (máximo: {MAX_FILES} arquivos ou diretórios)")
         path = _safe_name(raw, directory)
         key = unicodedata.normalize("NFC", str(path)).casefold()
         if key in seen:
-            raise PackageError(f"压缩包含重复路径：{path}")
+            raise PackageError(f"O arquivo compactado contém um caminho duplicado: {path}")
         seen.add(key)
         if directory:
             directories.append(path)
             continue
         if size < 0 or size > MAX_FILE_BYTES:
-            raise PackageError("模型单文件超过 128 MiB 上限")
+            raise PackageError("Um arquivo do modelo excede o limite de 128 MiB")
         total += size
         if total > MAX_EXPANDED_BYTES:
-            raise PackageError("压缩包展开体积超过 256 MiB 上限")
+            raise PackageError("O conteúdo descompactado excede o limite de 256 MiB")
         files.append((path, size, opener))
     roots = [path.parent for path, _, _ in files if path.name == "policy.onnx"]
     if len(roots) > 1:
-        raise PackageError("压缩包中有多个模型，请一次只导入一个模型目录")
+        raise PackageError("Há vários modelos no arquivo compactado. Importe um diretório de modelo por vez.")
     if not roots:
-        raise PackageError("模型包缺少 policy.onnx")
+        raise PackageError("Falta policy.onnx no pacote do modelo")
     root = roots[0]
     for path, _, _ in files:
         if path.parent != root or path.name not in REQUIRED | OPTIONAL:
-            raise PackageError(f"模型包包含不支持的文件：{path}；请仅打包模型及部署合同，移除训练日志等文件")
+            raise PackageError(f"O pacote contém um arquivo não aceito: {path}. Inclua somente o modelo e o contrato de implantação; remova logs de treinamento e outros arquivos.")
     if any(path != root and path not in root.parents for path in directories):
-        raise PackageError("模型包包含不支持的额外目录")
+        raise PackageError("O pacote contém um diretório adicional não aceito")
     missing = REQUIRED - {path.name for path, _, _ in files}
     if missing:
-        raise PackageError("模型包缺少：" + "、".join(sorted(missing)))
+        raise PackageError("Faltam arquivos no pacote do modelo: " + "、".join(sorted(missing)))
     return files
 
 
 def _copy_file(opener, destination, size):
     if size == 0:
-        raise PackageError(f"模型文件为空：{destination.name}")
+        raise PackageError(f"O arquivo do modelo está vazio: {destination.name}")
     count = 0
     with opener() as source, destination.open("xb") as target:
         while chunk := source.read(min(1024 * 1024, size - count + 1)):
             count += len(chunk)
             if count > size or count > MAX_FILE_BYTES:
-                raise PackageError("归档实际单文件体积与声明不一致或超过上限")
+                raise PackageError("O tamanho real de um arquivo não corresponde ao declarado ou excede o limite")
             target.write(chunk)
     if count != size:
-        raise PackageError(f"归档文件不完整：{destination.name}")
+        raise PackageError(f"Arquivo compactado incompleto: {destination.name}")
 
 
 def _json_object(path):
-    # JSON 解析会为字符串、数组与字典再分配内存；不能沿用 ONNX 的单文件额度。
+    # O parser JSON aloca memória adicional para strings, listas e dicionários; não podemos usar o mesmo limite de arquivo único do ONNX.
     if path.stat().st_size > MAX_JSON_BYTES:
-        raise PackageError(f"{path.name} JSON 元数据超过 8 MiB 上限")
+        raise PackageError(f"Os metadados JSON de {path.name} excedem o limite de 8 MiB")
 
     def pairs(items):
         result = {}
         for key, value in items:
             if key in result:
-                raise PackageError(f"{path.name} JSON 含重复字段：{key}")
+                raise PackageError(f"O JSON de {path.name} contém um campo duplicado: {key}")
             result[key] = value
         return result
 
     def finite_number(value):
         number = float(value)
         if not math.isfinite(number):
-            raise PackageError(f"{path.name} JSON 数值必须有限")
+            raise PackageError(f"Os números no JSON de {path.name} devem ser finitos")
         return number
 
     def invalid_constant(value):
-        raise PackageError(f"{path.name} JSON 含非法数值：{value}")
+        raise PackageError(f"O JSON de {path.name} contém um número inválido: {value}")
 
     try:
         value = json.loads(path.read_bytes(), object_pairs_hook=pairs,
                            parse_float=finite_number, parse_constant=invalid_constant)
     except (UnicodeError, ValueError, RecursionError) as exc:
-        raise PackageError(f"{path.name} JSON 无效：{exc}") from exc
+        raise PackageError(f"JSON inválido em {path.name}: {exc}") from exc
     if not isinstance(value, dict):
-        raise PackageError(f"{path.name} JSON 必须是对象")
+        raise PackageError(f"O JSON de {path.name} deve ser um objeto")
     return value
 
 
@@ -200,33 +200,33 @@ def _contract_basics(contract):
             or type(contract.get("output_dim")) is not int or contract["output_dim"] != 14
             or contract.get("obs_normalizer") != "baked_in_onnx"
             or not isinstance(contract.get("task"), str) or not contract["task"].strip()):
-        raise PackageError("部署合同必须是适配 HD1910 的 v1 合同，包含归一化的 61 维观测和 14 维动作")
+        raise PackageError("O contrato de implantação deve ser da versão 1, compatível com HD1910, e conter observações normalizadas de 61 dimensões e ações de 14 dimensões")
     model = contract.get("model")
     if not isinstance(model, dict) or not isinstance(model.get("joints"), list):
-        raise PackageError("部署合同缺少 model.joints 关节 Home")
+        raise PackageError("O contrato de implantação não contém as posições Home das articulações em model.joints")
     joints = model["joints"]
     for name in JOINT_NAMES:
         rows = [row for row in joints if isinstance(row, dict) and row.get("name") == name]
         if len(rows) != 1 or not _finite(rows[0].get("home_rad")):
-            raise PackageError(f"部署合同关节 Home 缺失、重复或无效：{name}")
+            raise PackageError(f"A posição Home da articulação está ausente, duplicada ou inválida no contrato de implantação: {name}")
     metadata = contract.get("onnx_metadata")
     if not isinstance(metadata, dict) or metadata.get("joint_names") != ",".join(JOINT_NAMES):
-        raise PackageError("部署合同 ONNX 关节顺序与主程序不一致")
+        raise PackageError("A ordem das articulações ONNX no contrato de implantação não corresponde à do programa principal")
     actuators = model.get("actuators")
     if not isinstance(actuators, list) or len(actuators) != 1 or not isinstance(actuators[0], dict):
-        raise PackageError("部署合同缺少唯一的 HD1910 BAM 驱动参数")
+        raise PackageError("O contrato de implantação não contém exatamente um conjunto de parâmetros do atuador HD1910 BAM")
     actuator = actuators[0]
     parameter = actuator.get("parameter_file")
     p = actuator.get("kp_fw")
     if (not isinstance(parameter, dict) or parameter.get("sha256") != BAM_SHA256
             or not _finite(p) or not 1 <= p <= 32 or int(p) != p):
-        raise PackageError("部署合同 HD1910 BAM 参数校验或固件 P 值无效")
+        raise PackageError("A validação dos parâmetros HD1910 BAM ou o valor P do firmware no contrato de implantação é inválido")
     actions = contract.get("actions")
     if not isinstance(actions, dict) or not isinstance(actions.get("joint_pos"), dict):
-        raise PackageError("部署合同缺少 actions.joint_pos 动作映射")
+        raise PackageError("O contrato de implantação não contém o mapeamento de ações actions.joint_pos")
     observations = contract.get("observations")
     if not isinstance(observations, dict) or not isinstance(observations.get("terms"), dict):
-        raise PackageError("部署合同缺少 observations.terms 观测映射")
+        raise PackageError("O contrato de implantação não contém o mapeamento de observações observations.terms")
 
 
 def _recommended_slot(contract):
@@ -250,16 +250,16 @@ def _metadata(directory, names):
     with (directory / "policy.onnx").open("rb") as policy:
         digest = hashlib.file_digest(policy, "sha256").hexdigest()
     if manifest.get("onnx_sha256") != digest:
-        raise PackageError("ONNX SHA256 与 manifest.json 校验不一致")
+        raise PackageError("O SHA256 do ONNX não corresponde à verificação em manifest.json")
     if manifest.get("task") != contract.get("task"):
-        raise PackageError("manifest.json 与部署合同的 task 任务不一致")
+        raise PackageError("A tarefa em manifest.json não corresponde à do contrato de implantação")
     _contract_basics(contract)
     for name, schema in (("deployment-runtime.json", "microduck-runtime-commands/v1"),
                          ("deployment-execution.json", "microduck-runtime-execution/v1")):
         if name in names:
             value = _json_object(directory / name)
             if value.get("schema") != schema or value.get("model_sha256") != digest:
-                raise PackageError(f"{name} 的格式或模型 SHA256 校验不一致")
+                raise PackageError(f"O formato de {name} ou a verificação SHA256 do modelo não corresponde")
     info = _json_object(directory / "model-info.json") if "model-info.json" in names else {}
     name = info.get("name") or manifest.get("name")
     return {"onnx": "policy.onnx", "sha256": digest, "task": contract["task"],
@@ -268,14 +268,14 @@ def _metadata(directory, names):
 
 
 def extract_package(archive: Path, destination: Path) -> dict:
-    """导入单个 ZIP/tar.gz/tgz 模型；成功才交付目录，拒绝覆盖已有内容。"""
+    """Importa um único modelo ZIP/tar.gz/tgz; entrega o diretório somente em caso de sucesso e não sobrescreve conteúdo existente."""
     archive, destination = Path(archive), Path(destination)
     if destination.is_symlink() or (destination.exists() and
             (not destination.is_dir() or any(destination.iterdir()))):
-        raise PackageError("导入目标必须是新目录或已存在的空目录")
+        raise PackageError("O destino da importação deve ser um diretório novo ou existente e vazio")
     try:
         if archive.stat().st_size > MAX_ARCHIVE_BYTES:
-            raise PackageError("模型压缩包超过 64 MiB 上限")
+            raise PackageError("O arquivo compactado do modelo excede o limite de 64 MiB")
         if archive.name.lower().endswith(".zip"):
             container = zipfile.ZipFile(archive, "r")
             reader = _zip_entries
@@ -283,7 +283,7 @@ def extract_package(archive: Path, destination: Path) -> dict:
             container = _tar_archive(archive)
             reader = _tar_entries
         else:
-            raise PackageError("仅支持 .zip、.tar.gz 或 .tgz 模型压缩包")
+            raise PackageError("São aceitos somente arquivos de modelo .zip, .tar.gz ou .tgz")
         with container as contents:
             files = _layout(reader(contents))
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -301,28 +301,28 @@ def extract_package(archive: Path, destination: Path) -> dict:
         raise
     except (OSError, EOFError, ValueError, RuntimeError, NotImplementedError,
             zipfile.BadZipFile, tarfile.TarError, zlib.error) as exc:
-        raise PackageError(f"无法读取或展开模型压缩包：{exc}") from exc
+        raise PackageError(f"Não foi possível ler ou extrair o arquivo compactado do modelo: {exc}") from exc
 
 
 def validate_policy(path: Path, executable: str, *, env=None) -> dict:
-    """运行 robotd 的离线图预检；继承进程环境或使用调用方提供的运行库环境。"""
+    """Executa a pré-verificação offline do grafo pelo robotd; herda o ambiente do processo ou usa o ambiente de runtime fornecido pelo chamador."""
     try:
         result = subprocess.run([executable, "validate-policy", str(path)],
                                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                                 timeout=PREFLIGHT_TIMEOUT, shell=False, env=env)
     except subprocess.TimeoutExpired as exc:
-        raise PackageError("模型运行器预检超时，请检查模型大小和 ONNX Runtime") from exc
+        raise PackageError("A pré-verificação do modelo excedeu o tempo limite. Verifique o tamanho do modelo e o ONNX Runtime.") from exc
     except OSError as exc:
-        raise PackageError(f"无法启动模型运行器预检：{exc}") from exc
+        raise PackageError(f"Não foi possível iniciar a pré-verificação do modelo: {exc}") from exc
     if result.returncode:
-        detail = (result.stderr or result.stdout or "运行器未返回原因").strip()[:2000]
-        raise PackageError(f"模型运行器预检失败：{detail}")
+        detail = (result.stderr or result.stdout or "o runtime não informou o motivo").strip()[:2000]
+        raise PackageError(f"Falha na pré-verificação do modelo pelo runtime: {detail}")
     try:
         def invalid_constant(value):
-            raise ValueError(f"非法 JSON 数值：{value}")
+            raise ValueError(f"Valor JSON inválido: {value}")
         data = json.loads(result.stdout, parse_constant=invalid_constant)
     except (ValueError, RecursionError) as exc:
-        raise PackageError("模型运行器预检返回了无效 JSON") from exc
+        raise PackageError("A pré-verificação do modelo retornou JSON inválido") from exc
     if not isinstance(data, dict) or data.get("valid") is not True:
-        raise PackageError("模型运行器未确认预检通过（valid 必须为 true）")
+        raise PackageError("O runtime do modelo não confirmou a aprovação na pré-verificação (valid deve ser true)")
     return data
