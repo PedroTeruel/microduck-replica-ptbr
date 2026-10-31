@@ -1,25 +1,25 @@
-# 预训练Diretório e 计算资源验收 · 2026-10-23
+# Validação do catálogo de modelos pré-treinados e dos recursos · 23/10/2026
 
-本轮将现成Modelo de FonteDiretório加入动作实验室，并在训练详情加入执行端Atual资源监控。未改变训练Algoritmos、机器人策略或原实验状态。
+Nesta rodada, um catálogo de modelos prontos foi adicionado ao Laboratório de Ações e o monitoramento atual de recursos do executor foi incluído nos detalhes do treinamento. Algoritmos de treinamento, políticas do robô e estado dos experimentos existentes não foram alterados.
 
-## ModeloFonte
+## Origens dos modelos
 
-- 官方 [V8](https://huggingface.co/pollen-robotics/microduck-policies/blob/665ae4eb20bfe13bca1ef4ea6d4bb6b4a096e448/manifest.json)：固定 `665ae4eb20bfe13bca1ef4ea6d4bb6b4a096e448`，10 个 ONNX，XL330、61 维观测、14 维动作、50 Hz。V8 集合中保留早期独立行走/站立模型；默认行走是 VelStand。
-- [kissqy V167](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/firmware/verification/v167/arm64-models.json)：固定 `525a215a19397767a073b782f57e97cf53683761`，10 个 HD1910 模型，其中 4 个需要滑轮脚。作者审计为 QEMU ARM64 推理，`hardware_tested=false`，不代表本项目完成物理评估。
-- 15 个独立 ONNX  de upstream字节流 SHA-256 全部匹配；34,138,802 字节Firmware包内 de  10 个 ONNX 也全部匹配。没有将权重复制进产品或执行Modelo。包 de  161 个成员 em 没有 PT/PTH，Completo Git 树也没有；其他未Verificação de 包不作推断。
-- 20 个条目均有Hardware、Autor、固定Versão、SHA、实际字节大小、使用Licença e 获取入口。包内权重e单Arquivo链接分别标注，Comunidade受限权重仍由原发布者分发。
-- Atual只提供FonteInstruções e upstream获取，未接入外部Modelo本地仿真、自动Instalação或续训。新建配方实验从零训练，原有Verificação点续训流程保持原约束。
+- V8 oficial: [manifesto V8](https://huggingface.co/pollen-robotics/microduck-policies/blob/665ae4eb20bfe13bca1ef4ea6d4bb6b4a096e448/manifest.json), fixado no commit `665ae4eb20bfe13bca1ef4ea6d4bb6b4a096e448`. São 10 modelos ONNX para XL330, com observação de 61 dimensões, ação de 14 dimensões e frequência de 50 Hz. O conjunto V8 também mantém modelos antigos separados de caminhada e postura; o padrão para caminhada é VelStand.
+- kissqy V167: [manifesto dos modelos arm64](https://github.com/kissqy/Microduck-kissqy/blob/525a215a19397767a073b782f57e97cf53683761/microduck-hd1910/firmware/verification/v167/arm64-models.json), fixado no commit `525a215a19397767a073b782f57e97cf53683761`. São 10 modelos HD1910; quatro exigem pés com rodas. A auditoria do autor informa inferência QEMU ARM64 e `hardware_tested=false`; isso não significa que este projeto tenha concluído uma avaliação física.
+- Os hashes SHA-256 de todos os 15 fluxos ONNX independentes do upstream correspondem aos originais. Os 10 ONNX contidos no pacote de firmware de 34.138.802 bytes também correspondem. Os pesos não foram copiados para o produto nem os modelos foram executados. Os 161 itens do pacote não incluem PT/PTH, assim como a árvore Git completa; não são feitas afirmações sobre outros pacotes que não foram verificados.
+- Os 20 itens têm hardware, autor, versão fixa, SHA, tamanho real em bytes, licença e link para obtenção. Links do pacote e de arquivos individuais estão identificados separadamente; os pesos restritos da comunidade continuam sendo distribuídos pelos respectivos autores.
+- A página oferece informações de origem e links para obter os modelos no upstream, mas ainda não integra simulação local, instalação automática nem retomada de treinamento. Experimentos criados por novas receitas começam do zero; as regras existentes para retomar checkpoints continuam em vigor.
 
-## 资源 e 交互
+## Recursos e interação
 
-- Windows Python Teste 93 项：90 por meio de、3 项 Linux 专属跳过；WSL Python 93/93；Node 26/26。
-- 独立审查发现跨机器时钟比较会误报数据过期，已在 `7598562` 改为服务端单调时钟计算的样本年龄，加浏览器接收后的本地经过时间；远端时钟差和页面挂起回归通过。复审无剩余 P1/P2。
-- 隔离演示Serviçoe原 8094 真实Serviço de 浏览器验收por meio de：20 Modelo、Fonte/类别/关键词筛选、所有详情 de 源地址 e SHA、手机详情按钮、原配方入口、真实资源采样、断线Preservado旧读数/过期标记/恢复，e离开实验后停止前端轮询。零Página异常，浏览e选择不发送训练 POST。
-- 真实ServiçoLeitura RTX 5060 Ti（总显存 16311 MiB）、i5-14600KF（20 逻辑核心）、CPU 利用率e WSL 内存（总量 16640778240 bytes）。GPU 温度随采样变化；CPU 温度为 null，原因是 WSL 未暴露对应传感器。资源来自执行端整体，未声称为本次训练独占用量。
-- 桌面 1440 与手机 320 宽度检查并人工查看截图。原停止实验 `9843544f2296` 的 0/1000 轮、9 秒、0 检查点仍保留；另三条旧实验也完整保留。只在服务无活动任务时更新重启，GPU 环境仍就绪。
+- Testes Python no Windows: 93, com 90 aprovados e 3 exclusivos de Linux ignorados; Python no WSL: 93/93 aprovados; Node: 26/26 aprovados.
+- Uma revisão independente encontrou falsos avisos de dados desatualizados causados por comparar relógios de máquinas diferentes. No commit `7598562`, o cálculo passou a usar a idade da amostra com relógio monotônico no serviço e o tempo local decorrido após o recebimento no navegador. Os testes de diferença de relógio remoto e suspensão da página passaram. A nova revisão não encontrou problemas P1/P2.
+- A validação no navegador passou com o serviço de demonstração isolado e com o serviço real 8094: 20 modelos, filtros por origem/categoria/palavra-chave, links de origem e hashes em todos os detalhes, botão de detalhes em celular, entrada para receitas existentes, amostragem real de recursos, preservação da leitura anterior e indicação de expiração durante a desconexão, recuperação e interrupção da consulta ao sair do experimento. Nenhum erro de página; navegar e selecionar não enviou POST de treinamento.
+- O serviço real leu uma RTX 5060 Ti (16.311 MiB de memória total), um i5-14600KF (20 núcleos lógicos), utilização da CPU e memória visível no WSL (total de 16.640.778.240 bytes). A temperatura da GPU variou entre amostras; a temperatura da CPU foi null porque o WSL não expõe esse sensor. Os recursos são do executor como um todo e não foram atribuídos exclusivamente a este treinamento.
+- Desktop em 1440 px e celular em 320 px foram verificados; as capturas também foram inspecionadas manualmente. O experimento parado existente `9843544f2296` permaneceu com 0/1000 iterações, 9 segundos e nenhum checkpoint. Outros três experimentos antigos também foram preservados. O serviço só foi atualizado e reiniciado sem tarefas ativas; o ambiente de GPU continuou pronto.
 
-## 证据
+## Evidências
 
-外层 `本地记录/training-action-lab-20261023/` 保存 `pretrained-source-package-audit.json`、`kiss-model-inventory.json`、官方 refs/manifest/tree，以及 `models-resources-browser.mjs`。`models-resources-validation-stable/` 保存原 8094 服务的报告与截图，`models-resources-validation/` 保存隔离验收。`pretrained-ui-mock/` 是明确使用模拟资源的 UI 边界测试，不作为真实硬件证据。
+O diretório externo `本地记录/training-action-lab-20261023/` contém `pretrained-source-package-audit.json`, `kiss-model-inventory.json`, referências, manifestos, árvore do repositório upstream e `models-resources-browser.mjs`. `models-resources-validation-stable/` contém o relatório e as capturas do serviço 8094; `models-resources-validation/` contém a validação isolada. `pretrained-ui-mock/` é um teste de limites da interface que usa recursos simulados e não serve como evidência de hardware real.
 
-本轮未Inicialização真实 GPU 训练、付费云电脑或机器人动作；只在隔离演示Serviço创建一条合成训练记录usado para展示资源面板。
+Nesta rodada não houve treinamento real em GPU, uso de computador em nuvem pago nem movimento do robô. Uma única execução de treinamento sintética foi criada no serviço isolado de demonstração para exibir o painel de recursos.
