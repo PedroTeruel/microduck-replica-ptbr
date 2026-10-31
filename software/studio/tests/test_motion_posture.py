@@ -172,7 +172,7 @@ class FakePostureTest(unittest.IsolatedAsyncioTestCase):
                     if view["state"] == "idle":
                         break
                     await asyncio.sleep(.05)
-                self.assertEqual(view["last_result"], "回放完成", view)
+                self.assertEqual(view["last_result"], "Reprodução concluída.", view)
                 self.assertGreater(snapshots, 10)
                 self.assertEqual(sum(m == "robot.do" for _, m in fake.calls), 2)
             finally:

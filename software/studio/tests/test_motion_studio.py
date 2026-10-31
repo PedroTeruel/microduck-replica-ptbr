@@ -23,7 +23,7 @@ class StorageTest(unittest.TestCase):
         return motion_store
 
     def clip(self):
-        return {"version": 1, "id": "a" * 32, "name": "小步", "created": "2026-10-25T00:00:00Z",
+        return {"version": 1, "id": "a" * 32, "name": "Passo curto", "created": "2026-10-25T00:00:00Z",
                 "duration_s": 0.5, "fingerprint": "b" * 64,
                 "events": [{"t": 0.0, "method": "robot.move", "params": {"vx": .2, "vy": 0., "vyaw": 0.}},
                            {"t": .5, "method": "robot.move", "params": {"vx": 0., "vy": 0., "vyaw": 0.}}]}
@@ -35,8 +35,8 @@ class StorageTest(unittest.TestCase):
             clip = self.clip()
             store.save(clip)
             self.assertEqual(m.MotionStore(td).get(clip["id"]), clip)
-            store.rename(clip["id"], "转一圈")
-            self.assertEqual(m.MotionStore(td).get(clip["id"])["name"], "转一圈")
+            store.rename(clip["id"], "Girar uma vez")
+            self.assertEqual(m.MotionStore(td).get(clip["id"])["name"], "Girar uma vez")
             store.delete(clip["id"])
             self.assertEqual(m.MotionStore(td).summaries(), [])
             for mutate in (
@@ -135,7 +135,7 @@ class MotionStudioTest(PadTestBase):
 
     def motion(self, action, conn=None, **args):
         self.assertIn("motion_studio", self.ops.snapshot(conn=self.conn))
-        return self.ops.handle(dict(op="motion", action=action, **args), conn=conn or self.conn, by="电脑 A")
+        return self.ops.handle(dict(op="motion", action=action, **args), conn=conn or self.conn, by="Computador A")
 
     def view(self):
         snap = self.ops.snapshot(conn=self.conn)
@@ -155,7 +155,7 @@ class MotionStudioTest(PadTestBase):
         self.move()
         time.sleep(.05)
         self.motion("record_finish")
-        self.motion("save", name="一步")
+        self.motion("save", name="Um passo")
         return self.view()["recordings"][0]["id"]
 
     def test_records_clamped_accepted_output_and_cleanup(self):
@@ -166,7 +166,7 @@ class MotionStudioTest(PadTestBase):
             self.ops.handle({"op": "sound", "tag": "unknown"}, conn=self.conn)
         self.motion("record_finish")
         self.assertEqual(self.view()["state"], "draft")
-        self.motion("save", name="直走")
+        self.motion("save", name="Caminhar em linha reta")
         studio = self.ops.motion_studio
         c = studio.store.get(self.view()["recordings"][0]["id"])
         self.assertEqual(c["events"][0]["params"]["vx"], .3)
@@ -232,8 +232,8 @@ class MotionStudioTest(PadTestBase):
                      {'op':'skill','name':'roulade'}):
             with self.assertRaises(Refused):self.ops.handle(args,conn=self.conn)
         self.assertFalse(self.ops._notify_output('robot.head',{'head_pitch':.5}))
-        self.ops._call_rpc('停止','robot.stop',{},'test')
-        with self.assertRaises(Refused):self.ops._call_rpc('旧线程','robot.init',{},'test')
+        self.ops._call_rpc('Parar','robot.stop',{},'test')
+        with self.assertRaises(Refused):self.ops._call_rpc('thread antiga','robot.init',{},'test')
         self.ops._tick_evt.clear();self.ops._tick_once()
         self.assertFalse(self.ops._tick_evt.is_set(),'idle persistent guard must not spin the tick thread')
 
@@ -517,7 +517,7 @@ class MotionStudioTest(PadTestBase):
         self.ops.audio = Audio()
         self.cfg.connect_pad(fixtures.PRO, "Pad")
         self.ops._poll_status()
-        with self.assertRaisesRegex(Refused,"实体手柄"):
+        with self.assertRaisesRegex(Refused,"controle físico"):
             self.motion("idle_start",kind="music")
 
     def test_unsupported_skill_rejected_before_send_and_recording_keeps_running(self):
@@ -525,7 +525,7 @@ class MotionStudioTest(PadTestBase):
         for args in ({"op": "skill", "name": "kick_left"}, {"op": "key", "key": "x"},
                      {"op": "keys", "held": ["x"], "down": ["x"], "seq": next(self.seq)},
                      {"op": "action_start", "id": "kicks"}):
-            with self.subTest(args=args), self.assertRaisesRegex(Refused, "技能.*完成"):
+            with self.subTest(args=args), self.assertRaisesRegex(Refused, "habilidade.*verificável"):
                 self.ops.handle(args, conn=self.conn)
         self.assertFalse(any(m == "robot.do" for m, _ in self.robot.calls + self.sent()))
         self.assertEqual(self.view()["state"], "recording")
@@ -605,7 +605,7 @@ class MotionStudioTest(PadTestBase):
         self.motion("play", id=cid, loops=1)
         self.motion("stop")
         path.write_bytes(b"new model")
-        with self.assertRaisesRegex(Refused, "模型|配置"):
+        with self.assertRaisesRegex(Refused, "modelo|configuração"):
             self.motion("play", id=cid, loops=1)
 
     def test_lively_expanded_samples_are_recorded_and_stop_on_policy_invalid(self):
@@ -620,7 +620,7 @@ class MotionStudioTest(PadTestBase):
             time.sleep(.045)
         self.assertTrue(self.view()["idle_running"])
         self.motion("record_finish")
-        self.motion("save", name="灵动")
+        self.motion("save", name="Movimento livre")
         c = self.ops.motion_studio.store.get(self.view()["recordings"][0]["id"])
         self.assertTrue(any(e["method"] == "robot.head" and any(e["params"].values()) for e in c["events"]))
         self.assertFalse(any("seed" in e for e in c["events"]))
@@ -718,7 +718,7 @@ class MotionStudioTest(PadTestBase):
         self.assertTrue(any(e["params"] == {"tag": "wheee", "hold": False} for e in s["events"]))
         self.assertEqual(self.sent("robot.mouth")[-1][1], {"open": 0.})
         self.motion("record_finish")
-        self.motion("save", name="张嘴叫")
+        self.motion("save", name="Abrir a boca e chamar")
 
     def test_recording_limit_and_physical_pad_attach_end_automation(self):
         self.start()
@@ -749,7 +749,7 @@ class MotionStudioTest(PadTestBase):
         self.move(.20)
         clock[0] += .12
         self.motion("record_finish")
-        self.motion("save", name="三步")
+        self.motion("save", name="Três passos")
         cid = self.view()["recordings"][0]["id"]
         token = self.motion("play", id=cid, loops=3)["session_id"]
         self.robot.sent.clear()
@@ -762,7 +762,7 @@ class MotionStudioTest(PadTestBase):
             self.motion("heartbeat", session_id=token)
             self.ops._tick_once()
         self.assertEqual(self.view()["state"], "idle")
-        self.assertEqual(self.view()["last_result"], "回放完成")
+        self.assertEqual(self.view()["last_result"], "Reprodução concluída.")
         self.assertEqual(self.sent("robot.move")[-1][1]["vx"], 0.)
 
     def test_disconnected_draft_can_be_discarded_by_reconnected_page(self):
@@ -798,7 +798,7 @@ class MotionStudioTest(PadTestBase):
             reader.start()
             try:
                 self.assertTrue(snap_done.wait(.15))
-                with self.assertRaisesRegex(Refused, "保存|文件|整理"):
+                with self.assertRaisesRegex(Refused, "salvos|arquivos|organizados"):
                     self.motion("save", name="duplicate")
                 with self.assertRaises(Refused):
                     self.motion("discard")
@@ -810,7 +810,7 @@ class MotionStudioTest(PadTestBase):
 
     def test_skill_accepted_before_recording_needs_verified_policy_cycle(self):
         self.ops.handle({"op": "skill", "name": "kick_left"}, conn=self.conn)
-        with self.assertRaisesRegex(Refused, "技能.*完成|策略.*重新"):
+        with self.assertRaisesRegex(Refused, "habilidade.*verificável|política.*Interrompa"):
             self.start()
         # A stop RPC acknowledgement alone is not evidence of physical completion.
         self.ops.handle({"op": "walk_stop"}, conn=self.conn)
@@ -828,8 +828,8 @@ class MotionStudioTest(PadTestBase):
         self.feed(posture="holding")
         stopped = self.view()
         self.assertFalse(stopped["record_available"]["ok"])
-        self.assertIn("开始走", stopped["record_available"]["why"])
-        self.assertNotIn("先手动停下策略", stopped["record_available"]["why"])
+        self.assertIn("Começar a caminhar", stopped["record_available"]["why"])
+        self.assertNotIn("Interrompa a política manualmente", stopped["record_available"]["why"])
         with self.assertRaises(Refused):
             self.start()
         self.ops.handle({"op": "walk"}, conn=self.conn)
@@ -853,7 +853,7 @@ class MotionStudioTest(PadTestBase):
         self.ops.handle({"op": "sticks", "mode": "body", "ly": 1., "rx": 1., "seq": next(self.seq)}, conn=self.conn)
         time.sleep(.05)
         self.motion("record_finish")
-        self.motion("save", name="身体")
+        self.motion("save", name="Corpo")
         clip = self.ops.motion_studio.store.get(self.view()["recordings"][0]["id"])
         poses = [e["params"] for e in clip["events"] if e["method"] == "robot.pose"]
         self.assertIn({"active": False}, poses)
@@ -901,7 +901,7 @@ class MotionStudioTest(PadTestBase):
         self.motion("idle_start")
         with self.ops._lk:
             self.ops.motion_studio.session["heartbeat"] -= .6
-        with self.assertRaisesRegex(Refused, "心跳|结束"):
+        with self.assertRaisesRegex(Refused, "heartbeat|encerrada"):
             self.motion("record_start")
         self.assertEqual(self.view()["state"], "idle")
 
@@ -924,7 +924,7 @@ class MotionStudioTest(PadTestBase):
         self.motion("record_resume")
         self.move(.11)
         self.motion("record_finish")
-        self.motion("save", name="瞬间继续")
+        self.motion("save", name="Continuar imediatamente")
         c = studio.store.get(self.view()["recordings"][0]["id"])
         self.assertEqual([e["t"] for e in c["events"]], sorted(e["t"] for e in c["events"]))
 
@@ -1040,7 +1040,7 @@ class MotionStudioTest(PadTestBase):
         self.robot.replies["robot.do"] = fixtures.Timeout("reply lost after execution")
         with self.assertRaises(Refused):
             self.ops.handle({"op": "skill", "name": "kick_left"}, conn=self.conn)
-        with self.assertRaisesRegex(Refused, "技能.*完成"):
+        with self.assertRaisesRegex(Refused, "habilidade.*verificável"):
             self.start()
         self.feed(posture="holding", pol={"enabled": False})
         self.feed()
@@ -1053,7 +1053,7 @@ class MotionStudioTest(PadTestBase):
         self.robot.replies["robot.do"] = fixtures.Timeout("reply lost")
         self.ops.handle({"op": "action_start", "id": "kicks"}, conn=self.conn)
         fixtures.wait_until(lambda: self.ops._action is None)
-        with self.assertRaisesRegex(Refused, "技能.*完成"):
+        with self.assertRaisesRegex(Refused, "habilidade.*verificável"):
             self.start()
 
     def test_corrupt_library_exposes_warning_without_blocking_existing_controls(self):
@@ -1063,7 +1063,7 @@ class MotionStudioTest(PadTestBase):
         (folder / ("f" * 32 + ".json")).write_text("{broken", encoding="utf8")
         self.ops.motion_studio.store = MotionStore(self.ops.state_dir)
         self.assertIn("1", self.view()["library_warning"])
-        self.assertIn("损坏", self.view()["library_warning"])
+        self.assertIn("corrompidos", self.view()["library_warning"])
         self.move(.1)
         self.assertEqual(self.sent("robot.move")[-1][1]["vx"], .1)
 
@@ -1082,7 +1082,7 @@ class MotionStudioTest(PadTestBase):
             return result
 
         with mock.patch.object(module, "fingerprint", side_effect=changed):
-            with self.assertRaisesRegex(Refused, "模型|配置"):
+            with self.assertRaisesRegex(Refused, "modelo|configuração"):
                 self.motion(action, **args)
 
     def test_record_start_rejects_policy_changed_during_fingerprint(self):
@@ -1312,7 +1312,7 @@ class MotionStudioTest(PadTestBase):
         self.assertEqual(self.view()["state"], "recording")
         self.motion("record_finish")
         self.assertEqual(self.view()["state"], "draft")
-        self.motion("save", name="坐下再站起")
+        self.motion("save", name="Sentar e levantar")
         c = self.ops.motion_studio.store.get(self.view()["recordings"][0]["id"])
         self.assertEqual(c["version"], 2)
         self.assertEqual([e["params"]["target"] for e in c["events"] if e["method"] == "studio.posture"], ["sit", "stand"])
@@ -1330,7 +1330,7 @@ class MotionStudioTest(PadTestBase):
         with self.assertRaises(Refused):
             self.ops.handle({"op": "sit"}, conn=self.conn)
         self.ops.motion_studio.tick()
-        self.assertIn("未知", self.view()["last_result"])
+        self.assertIn("desconhecida", self.view()["last_result"])
         self.assertIsNotNone(self.view()["posture_step"])
         with self.assertRaises(Refused):
             self.start()
@@ -1361,7 +1361,7 @@ class MotionStudioTest(PadTestBase):
         s["anchor"] -= .3
         self.ops.motion_studio.tick()
         self.assertEqual(self.view()["state"], "idle")
-        self.assertEqual(self.view()["last_result"], "回放完成")
+        self.assertEqual(self.view()["last_result"], "Reprodução concluída.")
 
     def test_stop_during_posture_preserves_fence_and_emits_no_more_motion(self):
         self.stop_background_tick()
@@ -1371,7 +1371,7 @@ class MotionStudioTest(PadTestBase):
         self.ops.motion_studio.tick()
         self.robot.sent.clear()
         self.motion("stop")
-        self.assertIn("仍会完成", self.view()["last_result"])
+        self.assertIn("ainda será concluída", self.view()["last_result"])
         self.assertFalse(any(m == "robot.move" and any(p.values()) for m, p in self.sent()))
         self.assertFalse(any(m in ("robot.init", "robot.enable", "robot.do") for m, _ in self.sent()))
         with self.assertRaises(Refused):
@@ -1384,7 +1384,7 @@ class MotionStudioTest(PadTestBase):
         self.stop_background_tick()
         self.posture_feed()
         cid = self.posture_clip(("sit",))
-        with self.assertRaisesRegex(Refused, "站"):
+        with self.assertRaisesRegex(Refused, "em pé"):
             self.motion("play", id=cid, loops=3)
         self.motion("play", id=cid)
         self.ops.motion_studio.tick()
@@ -1402,8 +1402,8 @@ class MotionStudioTest(PadTestBase):
         self.ops.motion_studio.tick()
         self.motion("pause")
         self.assertEqual(self.view()["state"], "play_paused")
-        self.assertIn("仍会完成", self.view()["last_result"])
-        with self.assertRaisesRegex(Refused, "坐站"):
+        self.assertIn("ainda será concluída", self.view()["last_result"])
+        with self.assertRaisesRegex(Refused, "sentar/levantar"):
             self.motion("resume")
         self.settle_posture("sit")
         self.motion("resume")
@@ -1438,7 +1438,7 @@ class MotionStudioTest(PadTestBase):
         self.ops.motion_studio.posture.pending["start"] -= 16.
         self.ops.motion_studio.tick()
         self.assertEqual(self.view()["state"], "idle")
-        self.assertIn("15 秒", self.view()["last_result"])
+        self.assertIn("15 s", self.view()["last_result"])
         for _ in range(3):
             self.posture_feed()
             self.ops.motion_studio.tick()
@@ -1490,7 +1490,7 @@ class MotionStudioTest(PadTestBase):
         self.ops.bindings = [{"button": "dpad_down", "skill": "kick_left"}]
         self.ops._bindings_at = self.ops.clock()
         self.start()
-        with self.assertRaisesRegex(Refused, "技能"):
+        with self.assertRaisesRegex(Refused, "habilidade"):
             self.ops.handle({"op": "key", "key": "dpad_down"}, conn=self.conn)
         self.assertFalse(any(m == "robot.do" for m, _ in self.robot.calls))
 
@@ -1514,7 +1514,7 @@ class MotionStudioTest(PadTestBase):
         self.feed(state=None, state_at=None, policies_at=self.ops.clock())
         self.ops.motion_studio.tick()
         self.assertEqual(self.view()["state"], "idle")
-        self.assertIn("回读", self.view()["last_result"])
+        self.assertIn("leitura de retorno", self.view()["last_result"])
         self.assertIsNotNone(self.view()["posture_step"])
         self.settle_posture("sit")
         self.assertEqual(self.view()["state"], "idle")
@@ -1549,7 +1549,7 @@ class MotionStudioTest(PadTestBase):
         self.ops.motion_studio.session["anchor"] -= 61.
         self.ops.motion_studio.tick()
         self.assertEqual(self.view()["state"], "draft")
-        self.assertIn("60 秒", self.view()["last_result"])
+        self.assertIn("60 s", self.view()["last_result"])
         self.assertIsNotNone(self.view()["posture_step"])
         self.settle_posture("sit")
         self.assertEqual(self.view()["state"], "draft")
@@ -1627,7 +1627,7 @@ class MotionStudioTest(PadTestBase):
         pending = self.manual_pending_sit()
         pending["start"] -= 16.
         self.ops.motion_studio.tick()
-        self.assertIn("15 秒", self.view()["posture_step"]["label"])
+        self.assertIn("15 s", self.view()["posture_step"]["label"])
         self.assertTrue(self.ops.handle({"op": "stand"}, conn=self.conn)["accepted"])
         self.assertEqual(self.view()["posture_step"]["target"], "stand")
         self.posture_feed("rise", False)

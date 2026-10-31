@@ -73,9 +73,9 @@ try {
   await js(`document.querySelector('#motion-studio').scrollIntoView({block:'center'})`);
   await wait(`window.__pad?.active`, 'active remote');
   await click('[title="robot.do kick_left"]');
-  await wait(`document.querySelector('[data-motion="record_start"]').disabled && document.querySelector('#motion-studio').innerText.includes('上个模型技能')`, 'skill completion barrier');
+  await wait(`document.querySelector('[data-motion="record_start"]').disabled && document.querySelector('#motion-studio').innerText.includes('habilidade anterior do modelo')`, 'skill completion barrier');
   await click('.pd-bigs .pd-stopbtn');
-  await wait(`document.querySelector('#motion-studio').innerText.includes('已确认策略停下')`, 'runtime stopped while policy config remains enabled');
+  await wait(`document.querySelector('#motion-studio').innerText.includes('A política foi confirmada como parada')`, 'runtime stopped while policy config remains enabled');
   assert(await js(`document.querySelector('[data-motion="record_start"]').disabled`), 'stopped policy still cannot record');
   await click('.pd-bigs button:nth-child(2)');
   await wait(`!document.querySelector('[data-motion="record_start"]').disabled && !document.querySelector('[data-motion="idle_start"]').disabled`, 'fresh ready state clears skill barrier');
@@ -92,8 +92,8 @@ try {
   report.recorded_head_frames = records().slice(begin).filter(nonzeroHead).length;
   report.recorded_action_frames = records().slice(begin).filter(movingIntent).length;
   assert(report.recorded_action_frames > 3, 'lively recording must issue real head or mouth intents');
-  await input('[name="motion-name"]', '展示一号'); await click('[data-motion="save"]');
-  await wait(`document.querySelector('#motion-studio').innerText.includes('展示一号')`, 'saved recording');
+  await input('[name="motion-name"]', 'Demonstração 1'); await click('[data-motion="save"]');
+  await wait(`document.querySelector('#motion-studio').innerText.includes('Demonstração 1')`, 'saved recording');
   await state('idle');
   const playBegin = records().length;
   await click('[data-motion="play"]'); await state('playing'); await sleep(450);
@@ -105,7 +105,7 @@ try {
   report.replayed_head_frames = records().slice(playBegin).filter(nonzeroHead).length;
   report.replayed_action_frames = records().slice(playBegin).filter(movingIntent).length;
   assert(report.replayed_action_frames > 3, 'playback must issue recorded intents');
-  await js(`(() => {const e=document.querySelector('[aria-label="回放次数"]');e.value='3';e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await js(`(() => {const e=document.querySelector('[aria-label="Número de repetições"]');e.value='3';e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   const repeatedBegin = records().length;
   await click('[data-motion="play"]'); await state('playing');
   await js(`window.__motionLoopChecks=[]`);
@@ -119,10 +119,10 @@ try {
   const changes = await js(`window.__motionRequests.filter(x=>['pause','resume','record_pause','record_resume','record_finish','idle_stop'].includes(x.action))`);
   assert(changes.length >= 6 && changes.every(change => typeof change.session_id === 'string' && change.session_id.length > 0),
     'live-session mutations must carry their original session token');
-  await click('[data-motion="rename_open"]'); await input('[name="motion-rename"]', '展示改名');
+  await click('[data-motion="rename_open"]'); await input('[name="motion-rename"]', 'Demonstração renomeada');
   await click('[data-motion="rename"]');
-  await wait(`document.querySelector('#motion-studio').innerText.includes('展示改名')`, 'renamed');
-  await send('Page.reload'); await wait(`document.querySelector('#motion-studio')?.innerText.includes('展示改名')`, 'persisted clip after reload');
+  await wait(`document.querySelector('#motion-studio').innerText.includes('Demonstração renomeada')`, 'renamed');
+  await send('Page.reload'); await wait(`document.querySelector('#motion-studio')?.innerText.includes('Demonstração renomeada')`, 'persisted clip after reload');
   await js(`document.querySelector('#motion-studio').scrollIntoView({block:'center'})`);
   await wait(`window.__pad?.active`, 'active again');
   await click('[data-motion="idle_start"]'); await state('idle_motion'); await sleep(250);
@@ -139,7 +139,7 @@ try {
     report.layouts.push(width); await shot(`motion-${width}`);
   }
   await click('[data-motion="delete_open"]'); await click('[data-motion="delete"]');
-  await wait(`!document.querySelector('#motion-studio').innerText.includes('展示改名')`, 'delete recording');
+  await wait(`!document.querySelector('#motion-studio').innerText.includes('Demonstração renomeada')`, 'delete recording');
 
   // A clip consisting only of sit/stand must be meaningful and remain one session.
   const postureCalls = () => records().filter(r => r.method === 'robot.do' && r.params?.skill === 'sit_toggle');
@@ -155,14 +155,14 @@ try {
   await click('[data-motion="record_start"]'); await state('recording');
   const recordPostureBegin = postureCalls().length;
   await click('#pd-remote .pd-bigs button:nth-child(3)');
-  await wait(`document.querySelector('#motion-studio').dataset.state==='recording' && document.querySelector('#pd-remote .pd-pose b').innerText==='坐着'`, 'sit remains in recording');
+  await wait(`document.querySelector('#motion-studio').dataset.state==='recording' && document.querySelector('#pd-remote .pd-pose b').innerText==='Sentado'`, 'sit remains in recording');
   await wait(`!document.querySelector('[data-motion-posture]')`, 'seated transition confirmed');
   await click('#pd-remote .pd-bigs button:nth-child(1)');
-  await wait(`document.querySelector('#motion-studio').dataset.state==='recording' && document.querySelector('#pd-remote .pd-pose b').innerText.includes('准备好走') && !document.querySelector('[data-motion-posture]')`, 'stand remains in recording and finishes');
+  await wait(`document.querySelector('#motion-studio').dataset.state==='recording' && document.querySelector('#pd-remote .pd-pose b').innerText.includes('Pronto para caminhar') && !document.querySelector('[data-motion-posture]')`, 'stand remains in recording and finishes');
   await click('[data-motion="record_finish"]'); await state('draft');
   report.recorded_posture_commands = postureCalls().length - recordPostureBegin;
   assert(report.recorded_posture_commands === 2, 'recording sends exactly sit then stand');
-  await input('[name="motion-name"]', '坐下再站起'); await click('[data-motion="save"]'); await state('idle');
+  await input('[name="motion-name"]', 'Sentar e levantar'); await click('[data-motion="save"]'); await state('idle');
 
   const playPostureBegin = postureCalls().length;
   await click('[data-motion="play"]'); await state('playing');
@@ -170,9 +170,9 @@ try {
   await wait(`(() => {const e=document.querySelector('#motion-studio');const p=document.querySelector('#pd-remote .pd-pose b').innerText;if(!window.__postureSeen.includes(p))window.__postureSeen.push(p);return e.dataset.state==='idle';})()`, 'posture replay completion', 45000);
   report.posture_states_seen = await js('window.__postureSeen');
   report.replayed_posture_commands = postureCalls().length - playPostureBegin;
-  assert(report.replayed_posture_commands === 2 && report.posture_states_seen.includes('坐着') && report.posture_states_seen.some(p=>p.includes('准备好走')), 'replay must actually sit then stand');
+  assert(report.replayed_posture_commands === 2 && report.posture_states_seen.includes('Sentado') && report.posture_states_seen.some(p=>p.includes('Pronto para caminhar')), 'replay must actually sit then stand');
 
-  await js(`(() => {const e=document.querySelector('[aria-label="回放次数"]');e.value='3';e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await js(`(() => {const e=document.querySelector('[aria-label="Número de repetições"]');e.value='3';e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   const repeatPostureBegin = postureCalls().length;
   await click('[data-motion="play"]'); await state('playing');
   await wait(`document.querySelector('#motion-studio').dataset.state==='idle'`, 'three sit/stand loops complete', 90000);
@@ -210,14 +210,14 @@ try {
   await js(`document.querySelector('#audio-interaction').scrollIntoView({block:'center'})`);
   await wait(`document.querySelector('[data-audio="music"]') && !document.querySelector('[data-audio="music"]').disabled`, 'audio control ready');
   await click('[data-audio="music"]');
-  await wait(`document.querySelector('[data-audio-listening="true"]') && document.querySelector('[data-audio-rhythm]')?.innerText==='等待清晰节拍'`, 'microphone waiting for its first stable beat');
+  await wait(`document.querySelector('[data-audio-listening="true"]') && document.querySelector('[data-audio-rhythm]')?.innerText==='Aguardando um ritmo nítido'`, 'microphone waiting for its first stable beat');
   const musicBegin = records().length;
   await click('[data-motion-kind="music"]'); await state('idle_motion');
-  await wait(`document.querySelector('#motion-studio .motion-state')?.innerText==='等待稳定节拍'`, 'explicit waiting state before rhythm evidence');
+  await wait(`document.querySelector('#motion-studio .motion-state')?.innerText==='Aguardando um ritmo estável'`, 'explicit waiting state before rhythm evidence');
   report.music_waiting_visible = true;
   report.music_waiting_no_motion = !records().slice(musicBegin).some(movingIntent);
   assert(report.music_waiting_no_motion, 'waiting for music must not invent motion');
-  await wait(`document.querySelector('[data-audio-rhythm]')?.innerText.includes('120 BPM') && document.querySelector('#motion-studio .motion-state')?.innerText==='随乐律动中'`, 'visible tempo and actual music motion');
+  await wait(`document.querySelector('[data-audio-rhythm]')?.innerText.includes('120 BPM') && document.querySelector('#motion-studio .motion-state')?.innerText==='Movendo-se ao som da música'`, 'visible tempo and actual music motion');
   report.music_moving_visible = true;
   await sleep(900);
   const musicFrames = records().slice(musicBegin);
@@ -251,7 +251,7 @@ try {
   await wait(`document.querySelector('#motion-studio')?.dataset.state==='idle_motion'`, 'same background music session on return');
   await js(`document.querySelector('#audio-interaction').scrollIntoView({block:'center'})`);
   await wait(`window.__pad?.active`, 'foreground control restored after background music');
-  report.music_background_returned = await js(`document.querySelector('#motion-studio .motion-state')?.innerText==='随乐律动中'`);
+  report.music_background_returned = await js(`document.querySelector('#motion-studio .motion-state')?.innerText==='Movendo-se ao som da música'`);
   assert(report.music_background_returned,'return shows the current server music session');
   await click('[data-audio="listening"]'); await state('idle'); await sleep(250);
   const musicOff = records().length; await sleep(550);
@@ -270,7 +270,7 @@ try {
   await wait(`window.__pad?.active`, 'active area before disconnect test');
   await click('[data-audio="music"]');
   await click('[data-motion-kind="music"]'); await state('idle_motion');
-  await wait(`document.querySelector('#motion-studio .motion-state')?.innerText==='随乐律动中'`, 'music restarted for real disconnect check');
+  await wait(`document.querySelector('#motion-studio .motion-state')?.innerText==='Movendo-se ao som da música'`, 'music restarted for real disconnect check');
   await sleep(300);
   await js(`window.__motionSocket.close(1000,'music disconnect check')`);
   await sleep(1300);
