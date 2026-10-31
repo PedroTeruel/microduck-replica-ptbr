@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""把 microduck_rl 的 MuJoCo 模型（robot_allcollisions.xml + assets/*.stl）转成网页用的紧凑格式。
+"""Converte o modelo MuJoCo do microduck_rl (robot_allcollisions.xml + assets/*.stl) para um formato compacto usado na interface web.
 
   python build_model.py --src <microduck_rl>/src/mjlab_microduck/robot/microduck
 
-输出 model/model.json（运动学树、几何体、颜色、顶点在 bin 里的偏移）和 model/meshes.bin
-（每个网格：int16 量化的顶点 xyz + uint16/uint32 三角形索引）。只依赖 numpy。
+Gera model/model.json (árvore cinemática, geometrias, cores e deslocamentos dos vértices no binário) e model/meshes.bin
+(vértices xyz quantizados em int16 e índices de triângulos uint16/uint32 por malha). Depende apenas de numpy.
 
-来源：https://github.com/apirrone/microduck_rl（Apache-2.0）。里面的网格是 Pollen 官方 CAD 导出的。
+Origem: https://github.com/apirrone/microduck_rl (Apache-2.0). As malhas foram exportadas do CAD oficial da Pollen.
 """
 import argparse
 import json
@@ -21,7 +21,7 @@ JOINT_IDS = {
     "neck_pitch": 30, "head_pitch": 31, "head_yaw": 32, "head_roll": 33, "mouth": 34,
     "right_hip_yaw": 10, "right_hip_roll": 11, "right_hip_pitch": 12, "right_knee": 13, "right_ankle": 14,
 }
-# 壳子里看不见的东西，不进网页
+# Componentes internos que não são visíveis pela carcaça e não entram na interface web.
 SKIP_DEFAULT = "pcb__raspberry_pi_zero_2_w,elec_rpi_robot_hat_pcb,seeed_bearing__configuration__22x16x4,seeed_bearing__configuration_default,speaker,m12_lens_holder,banana_pcb_locker,upper_leg_rigidity_plate,motor_support,power_support"
 
 
@@ -39,7 +39,7 @@ def load_stl(path):
         n = struct.unpack("<I", data[80:84])[0]
         rec = np.frombuffer(data[84:84 + 50 * n], dtype=np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")]))
         v = rec["v"].reshape(-1, 3).astype(np.float32)
-    # 合并重复顶点
+    # Mescla vértices duplicados.
     uniq, inv = np.unique(v, axis=0, return_inverse=True)
     idx = inv.reshape(-1, 3).astype(np.uint32)
     return uniq, idx
@@ -51,13 +51,13 @@ def floats(s, default):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", required=True, help="microduck_rl 的 robot/microduck 目录")
+    ap.add_argument("--src", required=True, help="Diretório robot/microduck do microduck_rl")
     ap.add_argument("--xml", default="robot_allcollisions.xml")
     ap.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "model"))
     ap.add_argument("--skip", default=SKIP_DEFAULT)
-    ap.add_argument("--mouth-pivot", default="0.003 0 -0.018", help="嘴铰链在头壳体系里的位置（米），估的")
+    ap.add_argument("--mouth-pivot", default="0.003 0 -0.018", help="Posição estimada da dobradiça da boca no referencial da cabeça (metros)")
     ap.add_argument("--official", default="F:/chengshenzhilu/Robot/Microduck/microduck/kinematics/assets/alpha/robot_walk.xml",
-                    help="官方 robot_walk.xml，取每个 body 的质量和质心算重心；没有就不算")
+                    help="robot_walk.xml oficial, usado para obter massa e centro de massa de cada body; sem ele, não calcula")
     a = ap.parse_args()
     skip = set(x for x in a.skip.split(",") if x)
     root = ET.parse(os.path.join(a.src, a.xml)).getroot()
@@ -94,8 +94,10 @@ def main():
     for top in root.find("worldbody").findall("body"):
         walk(top, -1)
 
-    # 嘴：MJCF 里没有这个关节，下颌焊在头壳上。把 jaw / jaw_soft 两块几何拆出来挂到一个补的铰链上，
-    # 轴 = 头壳系的 y（左右），铰点取嘴舵机（xl330 几何）的原点，正角度 = 张嘴。位置是估的，只为显示。
+    # Boca: essa junta não existe no MJCF; a mandíbula está unida à cabeça. Separa as geometrias
+    # jaw / jaw_soft e as prende a uma dobradiça sintética. O eixo é y no referencial da cabeça
+    # (esquerda/direita); o pivô fica na origem da geometria do servo da boca (xl330), e ângulo positivo abre a boca.
+    # A posição é estimada e serve apenas para visualização.
     notes = []
     pivot = [float(x) for x in a.mouth_pivot.split()]
     for b in bodies:
@@ -108,10 +110,11 @@ def main():
         bodies.append({"name": "jaw_hinge", "parent": bodies.index(b), "pos": pivot, "quat": [1, 0, 0, 0],
                        "joint": {"name": "mouth", "axis": [0, 1, 0], "range": [-0.0873, 0.5236], "id": JOINT_IDS["mouth"], "synthetic": True},
                        "geoms": jaw_geoms})
-        notes.append("嘴 34 的铰链是补的（原模型没有），位置估的，只为显示")
+        notes.append("A dobradiça da boca 34 é sintética (não existe no modelo original); posição estimada apenas para visualização")
         break
 
-    # 质量和质心：从官方 robot_walk.xml 的 inertial 取，按关节名对应（两份模型 body 名字不一样）
+    # Massa e centro de massa: obtidos dos dados inertiais do robot_walk.xml oficial e associados
+    # pelo nome da junta (os nomes dos bodies diferem entre os dois modelos).
     if a.official and os.path.exists(a.official):
         off = ET.parse(a.official).getroot()
         by_joint = {}
@@ -128,9 +131,10 @@ def main():
             if b["joint"] and b["joint"].get("synthetic"): mass, com = 0.0, [0, 0, 0]
             b["mass"], b["com"] = mass, com
         total = sum(b["mass"] for b in bodies)
-        notes.append(f"质量 {total*1000:.0f} g 来自官方 robot_walk.xml，重心按它算")
-        print(f"质量：{total*1000:.0f} g，{sum(1 for b in bodies if b['mass'])} 个 body 有质量")
-    # 脚底支撑区：sole 网格在踝体系里的包围盒，页面投影到地面画矩形
+        notes.append(f"Massa total de {total*1000:.0f} g obtida do robot_walk.xml oficial; centro de massa calculado com base nele")
+        print(f"Massa: {total*1000:.0f} g; {sum(1 for b in bodies if b['mass'])} bodies com massa definida")
+    # Área de apoio dos pés: caixa delimitadora da malha sole no referencial do tornozelo;
+    # a página projeta essa área no chão e desenha um retângulo.
     for b in bodies:
         for g in b["geoms"]:
             if g["mesh"] in ("sole_left", "sole_right"):
@@ -165,11 +169,11 @@ def main():
     with open(os.path.join(a.out, "meshes.bin"), "wb") as f:
         f.write(blob)
     joints = [b["joint"]["name"] for b in bodies if b["joint"]]
-    print(f"\n{len(bodies)} bodies, {len(joints)} joints, {len(meshes)} meshes, meshes.bin {len(blob) / 1e6:.2f} MB")
-    print("joints:", joints)
+    print(f"\n{len(bodies)} corpos, {len(joints)} juntas, {len(meshes)} malhas; meshes.bin com {len(blob) / 1e6:.2f} MB")
+    print("Juntas:", joints)
     missing = [n for n in JOINT_IDS if n not in joints]
     if missing:
-        print("模型里没有的关节（网页上不动）:", missing)
+        print("Juntas ausentes no modelo (não se moverão na interface web):", missing)
 
 
 if __name__ == "__main__":
