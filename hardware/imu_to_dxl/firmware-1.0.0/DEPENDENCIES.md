@@ -1,37 +1,37 @@
-# Firmware依赖 e 构建Ferramentas
+# Dependências do firmware e ferramentas de compilação
 
-本工程将编译所需 de 芯片 e 传感器驱动源码保存在工程Diretório内。日常编译不é necessário再次Baixar STM32CubeMX、HAL 或联网取得驱动。
+O projeto mantém no próprio diretório o código-fonte dos drivers do microcontrolador e do sensor necessários à compilação. No uso diário, não é necessário baixar novamente STM32CubeMX, HAL nem drivers pela internet.
 
-| 组件 | 固定Fonte | Licença e 本地改动 |
-| --- | --- | --- |
-| CMSIS Core 6.2.0 | 已安装的 `C:\Keil_v5\ARM\PACK\ARM\CMSIS\6.2.0`，对应 [ARM-software/CMSIS_6 v6.2.0](https://github.com/ARM-software/CMSIS_6/tree/v6.2.0) | Apache-2.0；仅复制 Cortex-M0+ 与 Arm Compiler 6 所需头文件，内容未修改；许可证 `Drivers/CMSIS/LICENSE` |
-| STM32G0 CMSIS Device v1.4.5 | [STMicroelectronics/cmsis-device-g0](https://github.com/STMicroelectronics/cmsis-device-g0/tree/f576c24e123edf3332988ecd49512c0f35f85186)，commit `f576c24e123edf3332988ecd49512c0f35f85186`，2026-03-05 | Apache-2.0；器件头与 system 源文件未修改；许可证 `Drivers/CMSIS/Device/ST/STM32G0xx/LICENSE.md` |
-| STM32G031 启动代码 | 同一 ST commit 的 `Source/Templates/arm/startup_stm32g031xx.s` | 栈从 1024 改为 2048 字节；堆从 512 改为 0 字节，不使用动态内存。向量表、Reset_Handler 和弱 IRQ 名均保留 ST 实现 |
-| LSM6DSV16X PID 驱动 | [STMicroelectronics/lsm6dsv16x-pid](https://github.com/STMicroelectronics/lsm6dsv16x-pid/tree/2808e5cd6b85f91b66758e1dd0faab5f043aba07)，commit `2808e5cd6b85f91b66758e1dd0faab5f043aba07` | ST BSD-3-Clause；`Drivers/LSM6DSV16X/LICENSE`；驱动原文件与来源记录置于同目录 |
-| Keil 器件支持包 | 本机 `Keil.STM32G0xx_DFP.2.1.0` | 提供设备描述、SVD 和 `CMSIS/Flash/STM32G0xx_64.FLM` 烧录算法。此版本不再包含 Device:Startup/HAL，故本工程自行收录官方 CMSIS 启动文件，避免 RTE 重复添加 |
-| Arm Compiler for Embedded 6.24 | `C:\Keil_v5\ARM\ARMCLANG` | 本机 `Keil MDK STMicroelectronics Edition - Cortex-M0/M0+/M23` 授权。工程使用 Arm Compiler 6、旧语法 armasm 与 MicroLIB；只隐藏旧汇编器弃用通知 A1950W，不隐藏代码告警 |
+| Componente | Origem fixada | Licença e alterações locais |
+|---|---|---|
+| CMSIS Core 6.2.0 | Instalação local em `C:\Keil_v5\ARM\PACK\ARM\CMSIS\6.2.0`, correspondente a [ARM-software/CMSIS_6 v6.2.0](https://github.com/ARM-software/CMSIS_6/tree/v6.2.0) | Apache-2.0; foram copiados somente os cabeçalhos necessários ao Cortex-M0+ e ao Arm Compiler 6, sem alterações. Licença em `Drivers/CMSIS/LICENSE`. |
+| STM32G0 CMSIS Device v1.4.5 | [STMicroelectronics/cmsis-device-g0](https://github.com/STMicroelectronics/cmsis-device-g0/tree/f576c24e123edf3332988ecd49512c0f35f85186), commit `f576c24e123edf3332988ecd49512c0f35f85186`, de 05/03/2026 | Apache-2.0; o cabeçalho do dispositivo e o arquivo de sistema não foram alterados. Licença em `Drivers/CMSIS/Device/ST/STM32G0xx/LICENSE.md`. |
+| Código de inicialização do STM32G031 | `Source/Templates/arm/startup_stm32g031xx.s`, no mesmo commit da ST | A pilha foi ampliada de 1024 para 2048 bytes e o heap reduzido de 512 para 0 bytes, pois não há alocação dinâmica. A tabela de vetores, `Reset_Handler` e os nomes fracos de IRQ mantêm a implementação ST. |
+| Driver PID do LSM6DSV16X | [STMicroelectronics/lsm6dsv16x-pid](https://github.com/STMicroelectronics/lsm6dsv16x-pid/tree/2808e5cd6b85f91b66758e1dd0faab5f043aba07), commit `2808e5cd6b85f91b66758e1dd0faab5f043aba07` | ST BSD-3-Clause; licença em `Drivers/LSM6DSV16X/LICENSE`. O código original do driver e o registro de origem ficam nesse diretório. |
+| Pacote de suporte a dispositivos Keil | `Keil.STM32G0xx_DFP.2.1.0` da instalação local | Fornece descrições dos dispositivos, SVD e algoritmo de gravação `CMSIS/Flash/STM32G0xx_64.FLM`. Essa versão não inclui mais Device:Startup/HAL; o projeto mantém os arquivos oficiais CMSIS de inicialização para evitar duplicação ao adicionar RTE. |
+| Arm Compiler for Embedded 6.24 | `C:\Keil_v5\ARM\ARMCLANG` | Licença local `Keil MDK STMicroelectronics Edition - Cortex-M0/M0+/M23`. O projeto usa Arm Compiler 6, sintaxe antiga do armasm e MicroLIB. Somente o aviso de descontinuação A1950W do assembler antigo é ocultado; os avisos de código permanecem habilitados. |
 
-## 构建入口
+## Compilar
 
-打开FirmwareDiretório后，在 PowerShell 执行：
+Abra o diretório do firmware e execute no PowerShell:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Tools\build.ps1 `
   -ToolchainRoot 'C:\Keil_v5\ARM\ARMCLANG'
 ```
 
-或在 VS Code 按 `Ctrl+Shift+B`。工具安装路径不同可传 `-ToolchainRoot '<安装目录>\ARMCLANG'`。
+Como alternativa, pressione `Ctrl+Shift+B` no VS Code. Se as ferramentas estiverem instaladas em outro local, informe `-ToolchainRoot '<diretório de instalação>\ARMCLANG'`.
 
-Keil 直接打开 `MDK-ARM/imu_to_dxl_dap.uvprojx`（仓库只保留这一套 DAP 工程），Build 后输出 `Build/imu_to_dxl.axf`、`.hex`、`.bin` 和 `.map`。两种入口都使用 Cortex-M0+、C11、`-Oz`、软件浮点、短枚举、MicroLIB、`STM32G031xx`、`HSE_VALUE=16000000`。构建脚本另外生成详细日志与产物 SHA-256 清单（`Build/imu_to_dxl.build.json`）。
+No Keil, abra diretamente `MDK-ARM/imu_to_dxl_dap.uvprojx` (o repositório mantém somente esse projeto DAP). A compilação gera `Build/imu_to_dxl.axf`, `.hex`, `.bin` e `.map`. Ambas as formas usam Cortex-M0+, C11, `-Oz`, ponto flutuante por software, enumerações curtas, MicroLIB, `STM32G031xx` e `HSE_VALUE=16000000`. O script também gera um registro detalhado e a lista de hashes SHA-256 dos artefatos em `Build/imu_to_dxl.build.json`.
 
-链接文件限定 Flash 为 `0x08000000..0x0800FFFF`、数据 RAM 为 `0x20000000..0x200017FF`，最后 2 KiB `0x20001800..0x20001FFF` 专用于栈，初始 SP 为 `0x20002000`。若调整栈大小，必须同时修改启动文件与 scatter 文件。
+O arquivo de link limita a Flash a `0x08000000..0x0800FFFF` e a RAM de dados a `0x20000000..0x200017FF`; os 2 KiB finais, `0x20001800..0x20001FFF`, são reservados para a pilha, cujo SP inicial é `0x20002000`. Se o tamanho da pilha mudar, atualize também o arquivo de inicialização e o arquivo scatter.
 
-Keil 工程配置 CMSIS-DAP（DAP-Link）、SWD、STM32G0 64 KiB Flash 算法。**命令行烧录请用 OpenOCD**（`interface/cmsis-dap.cfg` + `target/stm32g0x.cfg`，4MHz），UV4 命令行存在"退出码 0 但未实际擦写"的假成功问题。实机烧录与共线通信已验证，记录见 `VALIDATION.md`。
+O projeto Keil configura CMSIS-DAP (DAP-Link), SWD e o algoritmo de Flash de 64 KiB do STM32G0. **Para gravar pela linha de comando, use OpenOCD** (`interface/cmsis-dap.cfg` + `target/stm32g0x.cfg`, 4 MHz): a linha de comando do UV4 apresenta um falso sucesso, retornando código 0 sem apagar ou gravar de fato. A gravação na placa e a comunicação no barramento compartilhado foram validadas; consulte `VALIDATION.md`.
 
-无硬件主机测试使用 gcc（WinLibs 的 `mingw64`，装在哪都行，MinGW-w64）编译 C 用例；上位机工具依赖 Python 3.8+、pyserial（曲线功能另需 matplotlib），清单见 `Tools/requirements.txt`。
+Os testes no computador, sem hardware, compilam os casos em C com gcc (`mingw64` do WinLibs; a instalação pode estar em qualquer diretório, MinGW-w64). As ferramentas de host exigem Python 3.8 ou posterior e pyserial; os gráficos também requerem matplotlib. Consulte a lista em `Tools/requirements.txt`.
 
-本机 Codex 沙箱使用不同Usuário身份时，Arm LicençaVerificação会报告“assigned to another user”；在实际Usuário身份InferiorLicençaVerificaçãoSucesso。该差异不会要求普通Usuário更改已激活 de Licença，也不涉 e 破解或替换Ferramentas。
+Quando o sandbox local do Codex usa uma identidade de usuário diferente, a verificação da licença Arm pode informar “assigned to another user”. Sob a identidade do usuário real, a verificação da licença é aprovada. Essa diferença não exige que um usuário comum altere uma licença já ativada e não envolve burlar ou substituir as ferramentas.
 
-## ArquivoCompleto性
+## Integridade dos arquivos
 
-`Drivers/CMSIS/dependency-hashes.json` 记录当前收录的 CMSIS、启动代码及传感器驱动文件的 SHA-256，便于后续升级时辨认变更。ST 源 commit 元数据见 `Drivers/CMSIS/Device/ST/STM32G0xx/source-commit.json`。
+`Drivers/CMSIS/dependency-hashes.json` registra os hashes SHA-256 atuais dos arquivos CMSIS, do código de inicialização e do driver do sensor incluídos. Use-o para identificar alterações em futuras atualizações. Os metadados dos commits de origem da ST estão em `Drivers/CMSIS/Device/ST/STM32G0xx/source-commit.json`.
