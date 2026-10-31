@@ -2,9 +2,9 @@
 """Inspeção dos servos: um comando lê as configurações de proteção e o estado atual
 de cada servo e salva um relatório. **Somente leitura; não grava em nenhum registrador.**
 
-  python servo_report.py --port COM5                 # 默认 15 颗：20-24,30-34,10-14
-  python servo_report.py --port COM5 --ids 21        # 总线上只接 21 号时
-  python servo_report.py --port COM5 --scan-all      # 不知道 ID（新舵机出厂是 1）：扫 0–253
+  python servo_report.py --port COM5                 # Padrão: 15 unidades, IDs 20-24,30-34,10-14
+  python servo_report.py --port COM5 --ids 21        # Quando apenas o servo 21 está conectado ao barramento
+  python servo_report.py --port COM5 --scan-all      # Varre 0–253 se o ID for desconhecido (servos novos vêm com ID 1)
 
 O relatório é salvo em logs/inspecao-data-hora.md (legível por pessoas) e no arquivo
 .json correspondente (valores brutos dos registradores 0–86 de cada servo).
@@ -12,7 +12,6 @@ A porta serial não pode estar em uso pelo painel de depuração (server.py) ou 
 feche-os antes. Os critérios seguem a etapa 5 do registro de depuração: as proteções
 contra superaquecimento (4), sobrecorrente (8) e sobretensão (1) devem estar ativadas;
 itens desativados são destacados em vermelho."""
-"""
 import argparse
 import json
 import os
