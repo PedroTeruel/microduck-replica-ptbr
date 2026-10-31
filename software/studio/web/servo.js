@@ -1,42 +1,41 @@
-// 舵机页：servo-web 整个收进 Studio（用户 10-18：「舵机这个工具就是把外部的工具合进去，一模一样」）。
+// Página de servos: o servo-web foi integrado por completo ao Studio.
 //
-// 布局（用户 10-18：「布局写得不好」「每个都没对齐乱乱的」「单颗中位校准就够了，别的用不上」）：
-// - 左边：3D 固定在屏幕上（往下滚也不跑），下面一张「常用」卡：一键校准、撤销、去官方姿势、全部保持 / 松开、停；
-// - 右边：15 颗按左腿 / 右腿 / 头颈分三组，所有行同一套固定列宽、有表头，上下对齐；
-//   点一行才展开电压、负载、电流、偏移、P/D、方向 ±；
-// - 最下面折叠的「更多」：运动方式、存的姿态、高级工具（导出寄存器、改 ID……）、日志。
-// 没接管总线时数据来自主程序，只能看；点「开始调舵机」才由 Studio 接管总线（主程序停、手柄不能用）。
-// 后端是 studio/servo_ops.py（照搬 servo-web 的 server.py）。
+// Layout:
+// - À esquerda: visualização 3D fixa na tela e, abaixo, um cartão de ações frequentes: calibrar, desfazer, aplicar poses oficiais, ativar ou liberar todos os servos e parar.
+// - À direita: 15 servos em três grupos (perna esquerda, perna direita e cabeça/pescoço), com colunas alinhadas; clique em uma linha para ver tensão, carga, corrente, deslocamento, P/D e direção.
+// - Na parte inferior, a seção recolhida “Mais” reúne movimento, poses salvas, ferramentas avançadas (exportar registradores, alterar ID etc.) e registros.
+// Sem assumir o barramento, os dados vêm do programa principal e são somente leitura. O Studio só assume o barramento ao iniciar o ajuste dos servos; nesse modo, o programa principal para e o controle fica indisponível.
+// O backend é studio/servo_ops.py, adaptado de server.py do servo-web.
 import { html, Component, useState, useEffect, useRef, useCallback } from './vendor/preact-htm.module.js';
 import { Duck3D, JOINT_NAMES } from './duck3d.js';
 import { drawServoLabels } from './labels.js';
 import { TwoStep } from './confirm.js';
 import { Stepper } from './stepper.js';
 
-// 官方参考姿势：microduck_rl scene.xml 的关键帧（servo-web 同一份），弧度、模型约定，按 JOINT_NAMES 顺序。
+// Poses oficiais de referência: keyframes de microduck_rl scene.xml, compartilhados com o servo-web, em radianos e na ordem de JOINT_NAMES.
 const POSES = {
-  zero: { label: '零位', rad: Array(15).fill(0) },
-  stand: { label: '站', rad: [0, -0.0873, -0.4579, -0.0049, 0.453, 0.3491, 0.3491, 0, 0, 0, 0, 0.0873, 0.4579, 0.0049, -0.453] },
-  sit: { label: '坐', rad: [0, 0, -0.5236, 1.0472, 0, 0.5, 1.6, 0, 0, 0, 0, 0, 0.5236, -1.0472, 0] },
-  fold: { label: '折叠', rad: [0, 0, 1.57, 1.57, 0, 1, 1, 0, 0, 0, 0, 0, -1.57, -1.57, 0] },
+  zero: { label: 'Posição zero', rad: Array(15).fill(0) },
+  stand: { label: 'Em pé', rad: [0, -0.0873, -0.4579, -0.0049, 0.453, 0.3491, 0.3491, 0, 0, 0, 0, 0.0873, 0.4579, 0.0049, -0.453] },
+  sit: { label: 'Sentado', rad: [0, 0, -0.5236, 1.0472, 0, 0.5, 1.6, 0, 0, 0, 0, 0, 0.5236, -1.0472, 0] },
+  fold: { label: 'Recolhido', rad: [0, 0, 1.57, 1.57, 0, 1, 1, 0, 0, 0, 0, 0, -1.57, -1.57, 0] },
 };
-const IDS = [20, 21, 22, 23, 24, 30, 31, 32, 33, 34, 10, 11, 12, 13, 14];       // = JOINT_NAMES 的顺序
+const IDS = [20, 21, 22, 23, 24, 30, 31, 32, 33, 34, 10, 11, 12, 13, 14];       // Ordem de JOINT_NAMES.
 const ID_OF = Object.fromEntries(JOINT_NAMES.map((n, i) => [n, IDS[i]]));
 const NAME_OF = Object.fromEntries(IDS.map((id, i) => [id, JOINT_NAMES[i]]));
 const GROUP_OF = (id) => (id >= 30 ? 'H' : id >= 20 ? 'L' : 'R');
 const SEL_COLOR = { R: '#E5484D', L: '#2F7CF6', H: '#F5B400' };
-const GROUPS = [['L', '左腿', '20–24'], ['R', '右腿', '10–14'], ['H', '头颈', '30–34']];
-const DANGER = { 5: 'ID：改了会撞号，总线上只能接这一颗再改', 6: '波特率：改了就失联', 8: '应答级别：改成 0 写指令就不回包',
-  9: '最小角度限制', 11: '最大角度限制', 19: '卸载条件（保护开关）：关掉过热过流就不自动卸', 33: '运行模式：改成速度模式舵机会一直转' };
-const REGS = [[41, '加速度', 1, 'SRAM'], [46, '运行速度', 2, 'SRAM'], [48, '转矩限制', 2, 'SRAM'],
-  [50, '位置环P（运行中）', 1, 'SRAM'], [51, '位置环D（运行中）', 1, 'SRAM'], [21, '位置环P', 1, 'EEPROM'],
-  [22, '位置环D', 1, 'EEPROM'], [23, '位置环I', 1, 'EEPROM'], [13, '最高温度上限', 1, 'EEPROM'], [19, '卸载条件', 1, 'EEPROM'],
-  [28, '保护电流', 2, 'EEPROM'], [9, '最小角度限制', 2, 'EEPROM'], [11, '最大角度限制', 2, 'EEPROM'], [8, '应答级别', 1, 'EEPROM'],
-  [33, '运行模式', 1, 'EEPROM'], [5, 'ID', 1, 'EEPROM'], [6, '波特率', 1, 'EEPROM']];
+const GROUPS = [['L', 'Perna esquerda', '20–24'], ['R', 'Perna direita', '10–14'], ['H', 'Cabeça e pescoço', '30–34']];
+const DANGER = { 5: 'ID: pode causar conflito; conecte somente este servo ao barramento antes de alterar', 6: 'Taxa de transmissão: a alteração interrompe a comunicação', 8: 'Nível de resposta: com valor 0, o servo não responde aos comandos de gravação',
+  9: 'Limite mínimo de ângulo', 11: 'Limite máximo de ângulo', 19: 'Condição de alívio (proteção): desativar a proteção contra superaquecimento e sobrecorrente impede o alívio automático', 33: 'Modo de operação: no modo de velocidade, o servo gira continuamente' };
+const REGS = [[41, 'Aceleração', 1, 'SRAM'], [46, 'Velocidade de operação', 2, 'SRAM'], [48, 'Limite de torque', 2, 'SRAM'],
+  [50, 'P do controle de posição (em operação)', 1, 'SRAM'], [51, 'D do controle de posição (em operação)', 1, 'SRAM'], [21, 'P do controle de posição', 1, 'EEPROM'],
+  [22, 'D do controle de posição', 1, 'EEPROM'], [23, 'I do controle de posição', 1, 'EEPROM'], [13, 'Limite máximo de temperatura', 1, 'EEPROM'], [19, 'Condição de alívio', 1, 'EEPROM'],
+  [28, 'Corrente de proteção', 2, 'EEPROM'], [9, 'Limite mínimo de ângulo', 2, 'EEPROM'], [11, 'Limite máximo de ângulo', 2, 'EEPROM'], [8, 'Nível de resposta', 1, 'EEPROM'],
+  [33, 'Modo de operação', 1, 'EEPROM'], [5, 'ID', 1, 'EEPROM'], [6, 'Taxa de transmissão', 1, 'EEPROM']];
 
 const fmt = (v, d = 0) => (typeof v === 'number' && isFinite(v) ? v.toFixed(d) : '—');
 const sign = (v, d = 1) => (typeof v === 'number' ? `${v > 0 ? '+' : ''}${v.toFixed(d)}` : '—');
-let calibHandler = null;      // ServoPage 设置：各处的「中位校准」都走同一个预览对话框
+let calibHandler = null;      // A ServoPage configura este handler para reutilizar a mesma confirmação de calibração em todos os pontos.
 
 // ---------------- 3D ----------------
 
@@ -54,7 +53,7 @@ function ServoStage({ sv, pose, setPose, selected, onSelect }) {
     return () => d.dispose();
   }, []);
 
-  // 实时：读数换成弧度（方向 ×（读数 − 2048）× 2π / 4096）；参考姿势：官方关键帧
+  // Modo em tempo real: converte a leitura em radianos (direção × (leitura − 2048) × 2π / 4096); poses de referência usam keyframes oficiais.
   useEffect(() => {
     const d = duckRef.current;
     if (!d || !ready) return;
@@ -79,48 +78,48 @@ function ServoStage({ sv, pose, setPose, selected, onSelect }) {
 
   return html`<div class="sv-stage" ref=${boxRef}>
     <canvas ref=${canvasRef}></canvas>
-    <div class="sv-poses" role="tablist" aria-label="3D 显示">
-      ${[['live', '实时'], ...Object.entries(POSES).map(([k, p]) => [k, p.label])].map(([k, label]) =>
+    <div class="sv-poses" role="tablist" aria-label="Visualização 3D">
+      ${[['live', 'Ao vivo'], ...Object.entries(POSES).map(([k, p]) => [k, p.label])].map(([k, label]) =>
         html`<button role="tab" aria-selected=${pose === k} class=${pose === k ? 'on' : ''} onClick=${(e) => { e.currentTarget.blur(); setPose(k); }}>${label}</button>`)}
     </div>
-    ${!ready ? html`<span class="sv-loading">3D 模型加载中…</span>` : null}
-    <span class="sv-note">${pose !== 'live' ? '参考姿势 · 不是鸭子现在的样子' : '拖动转视角 · 点舵机选中'}</span>
-    ${moved ? html`<button class="reset-view" onClick=${(e) => { e.currentTarget.blur(); duckRef.current?.resetView(); setMoved(false); }}>回正</button>` : null}
+    ${!ready ? html`<span class="sv-loading">Carregando modelo 3D…</span>` : null}
+    <span class="sv-note">${pose !== 'live' ? 'Pose de referência · não representa a posição atual do MicroDuck' : 'Arraste para girar · clique em um servo para selecioná-lo'}</span>
+    ${moved ? html`<button class="reset-view" onClick=${(e) => { e.currentTarget.blur(); duckRef.current?.resetView(); setMoved(false); }}>Redefinir visão</button>` : null}
   </div>`;
 }
 
-// 页头一行「软硬：P5 · D0 · 限力 1000（跟主程序一样 · 来源）」（用户 10-19：上力的 P/D/限力跟主程序一样）。
-// 手动在寄存器面板改过、或者有上着力但不一样的，后面标黄说一句。后端 servo_ops.gains_view
+// A linha do cabeçalho mostra P, D e limite de torque, iguais aos do programa principal.
+// Diferenças causadas por alterações manuais nos registradores ou por servos já ativados são destacadas. Ver servo_ops.gains_view no backend.
 function GainsLine({ g }) {
   const man = g.manual || [], off = g.differ_on || [];
   return html`<div class="sv-sub sv-gains" title=${g.detail + (g.warn ? '\n' + g.warn : '')}>
-    软硬：P${g.kp} · D${g.kd} · 限力 ${g.limit}（跟主程序一样 · ${g.source}）${
-    g.warn ? html` · <span class="sv-warn">参数文件不合法，先按主程序默认（看日志）</span>` : null}${
-    man.length ? html` · <span class="sv-warn">手动改过，跟主程序不一样：${man.map((m) => `#${m.id} ${m.what || '寄存器'}=${m.value}（寄存器 ${m.addr}）`).join('、')}</span>`
-      : off.length ? html` · <span class="sv-warn">${off.map((i) => '#' + i).join(' ')} 上着力但软硬不一样（先松开再保持就改成这个）</span>` : null}
+    Ganhos: P${g.kp} · D${g.kd} · limite de torque ${g.limit} (igual ao programa principal · ${g.source})${
+    g.warn ? html` · <span class="sv-warn">Arquivo de parâmetros inválido; usando os padrões do programa principal (consulte os registros)</span>` : null}${
+    man.length ? html` · <span class="sv-warn">Alterações manuais diferentes do programa principal: ${man.map((m) => `#${m.id} ${m.what || 'registrador'}=${m.value} (registrador ${m.addr})`).join(', ')}</span>`
+      : off.length ? html` · <span class="sv-warn">${off.map((i) => '#' + i).join(' ')} estão ativados com ganhos diferentes (libere e ative novamente para aplicar estes valores)</span>` : null}
   </div>`;
 }
 
 function Why() {
   return html`<section class="board sv-card sv-why">
-    <h3>为什么要人去摆、去标零位</h3>
+    <h3>Por que posicionar o robô e calibrar a posição zero?</h3>
     <ol>
-      <li>每颗舵机里有一个编码器，转一圈是 0–4095 共 4096 格。舵盘是一齿一齿装上去的，每颗装进去的角度都不一样，差一两齿就是好几度。</li>
-      <li><b>标定</b>就是照上面这张图，把鸭子摆成官方零位（腿伸直、头摆正、嘴闭上），告诉每颗舵机「你现在这个位置就是 <b>2048</b>」，写进舵机里。</li>
-      <li>标好以后，机器读到 2048 就知道这个关节正好在零位。官方程序、训练出来的走路策略、Studio，<b>全部以 2048 为零</b>来算角度。</li>
-      <li>没标好的话，策略以为腿是直的，实际弯了几度：走起来会歪、会蹭地、容易摔。</li>
-      <li>机器自己不知道零件装成了什么样，只能由人照官方零位摆好，所以这一步要人来做。</li>
+      <li>Cada servo tem um codificador com 4.096 posições por volta, de 0 a 4095. O disco estriado pode ser montado em ângulos diferentes; uma diferença de um ou dois dentes já representa vários graus.</li>
+      <li><b>Calibrar</b> significa posicionar o MicroDuck conforme a imagem acima, na posição zero oficial (pernas estendidas, cabeça alinhada e boca fechada), e gravar <b>2048</b> como posição atual em cada servo.</li>
+      <li>Após a calibração, a leitura 2048 indica que a articulação está na posição zero. O programa oficial, as políticas de marcha treinadas e o Studio <b>usam 2048 como zero</b> para calcular os ângulos.</li>
+      <li>Sem calibrar, a política pode considerar a perna estendida quando ela está alguns graus dobrada. O robô pode andar torto, raspar no chão ou cair.</li>
+      <li>O robô não detecta como as peças foram montadas. Uma pessoa precisa posicioná-lo conforme a referência oficial e fazer esta calibração.</li>
     </ol>
   </section>`;
 }
 
-// ---------------- 15 颗：同一套列宽，上下对齐 ----------------
+// ---------------- Os 15 servos, alinhados nas mesmas colunas ----------------
 
 function commDot(r) {
   const c = r.comm || {};
   const tip = c.asked == null
-    ? `累计丢 ${c.missed} 次 · 现在连丢 ${c.streak} 次（主程序统计）`
-    : `问 ${c.asked} · 回 ${c.ok} · 丢 ${c.missed} · 最多连丢 ${c.max_streak}${c.alarm ? ` · 报警 ${c.alarm}` : ''}`;
+    ? `${c.missed} perdas no total · ${c.streak} consecutivas (contagem do programa principal)`
+    : `${c.asked} solicitações · ${c.ok} respostas · ${c.missed} perdas · máximo de ${c.max_streak} consecutivas${c.alarm ? ` · alerta ${c.alarm}` : ''}`;
   const kind = !r.fresh || c.streak >= 3 ? 'bad' : c.asked != null && c.missed > 0 && c.missed / Math.max(c.asked, 1) > 0.01 ? 'warn' : 'ok';
   return html`<span class=${'sv-dot ' + kind} title=${tip}></span>`;
 }
@@ -133,13 +132,13 @@ function tempClass(r) {
 }
 
 function Row({ r, open, selected, onSelect, op, follow, setHint }) {
-  const [drag, setDrag] = useState(null);           // 拖动中的滑块值；松手 0.6 秒后回到实际读数
+  const [drag, setDrag] = useState(null);           // Valor durante o arraste; após soltar, volta à leitura real em 0,6 s.
   const last = useRef(0), release = useRef(null);
   const send = (v, force) => {
     if (!open) return;
-    if (r.torque !== 1) { setHint(`${r.id} ${r.cn} 扭矩没开：拖滑块舵机不会动（先打开它的「保持」）`); return; }
+    if (r.torque !== 1) { setHint(`${r.id} ${r.cn}: torque desativado. O servo não se moverá pelo controle deslizante; ative “Manter” primeiro.`); return; }
     const now = performance.now();
-    if (!force && now - last.current < 50) return;   // 每 50 ms 最多发一次
+    if (!force && now - last.current < 50) return;   // Envia no máximo uma vez a cada 50 ms.
     last.current = now;
     op({ op: 'goal', id: r.id, pos: v }, 3000, true);
   };
@@ -152,34 +151,34 @@ function Row({ r, open, selected, onSelect, op, follow, setHint }) {
     <span class=${'sv-id ' + r.group}>${r.id}</span>
     <span class="sv-name" title=${r.en}>${r.cn}</span>
     <input class="sv-slider" type="range" min="0" max="4095" step="1" value=${val} disabled=${!open}
-      aria-label=${`${r.cn} 目标位置`} onClick=${stop} onInput=${onInput} onChange=${onDone} />
+      aria-label=${`${r.cn} posição desejada`} onClick=${stop} onInput=${onInput} onChange=${onDone} />
     <span class="num r">${fmt(drag ?? r.raw)}</span>
     <span class="num r sv-deg">${r.deg == null ? '—' : sign(r.deg) + '°'}</span>
-    <span class=${'num r ' + tempClass(r)} title=${r.temp_limit ? `这颗的温度上限 ${r.temp_limit} °C` : ''}>${fmt(r.temp)}°C</span>
-    <label class=${'sv-switch' + (r.torque === 1 ? ' on' : '')} onClick=${stop} title=${r.torque === 1 ? '在保持：点一下松开' : '松着：点一下保持（先对准当前位置再上力，不会冲）'}>
+    <span class=${'num r ' + tempClass(r)} title=${r.temp_limit ? `Limite de temperatura deste servo: ${r.temp_limit} °C` : ''}>${fmt(r.temp)}°C</span>
+    <label class=${'sv-switch' + (r.torque === 1 ? ' on' : '')} onClick=${stop} title=${r.torque === 1 ? 'Servo mantendo a posição; clique para liberar' : 'Servo liberado; clique para manter (alinhe com a posição atual antes de ativar o torque)'}>
       <input type="checkbox" checked=${r.torque === 1} disabled=${!open}
         onChange=${(e) => op({ op: 'torque', on: e.target.checked ? 1 : 0, ids: [r.id] })} />
-      <span>${r.torque === 1 ? '保持' : '松'}</span>
+      <span>${r.torque === 1 ? 'Manter' : 'Liberar'}</span>
     </label>
     <button class="sv-mini" disabled=${!open} onClick=${(e) => { stop(e); calibHandler && calibHandler(String(r.id)); }}
-      title="中位校准：把这颗现在的位置设成零位 2048，校完自动保持">中位</button>
+      title="Calibrar posição central: define a posição atual deste servo como zero (2048) e mantém a posição ao terminar">Centro</button>
     ${commDot(r)}
     ${selected ? html`<div class="sv-more num" onClick=${stop}>
-      <span>电压 <b>${fmt(r.volt, 1)} V</b></span><span>负载 <b>${fmt(r.load)}</b></span>
-      ${r.current_ma != null ? html`<span>电流 <b>${fmt(r.current_ma)} mA</b></span>` : null}
-      ${r.offset != null ? html`<span title="寄存器 31：舵机里存的零位偏移">偏移 <b>${r.offset}</b></span>` : null}
-      ${r.p_run != null ? html`<span title=${`运行中的 P / D / 限力（回读 RAM 50 / 51 / 48；上力前 Studio 写成跟主程序一样，标黄 = 不一样）。EEPROM 里存的 P / D（21 / 22）：${r.p ?? '?'} / ${r.d ?? '?'}`}>P/D/限力 <b class=${r.gains_ok === false ? 'warn' : ''}>${r.p_run}/${r.d_run}/${r.limit ?? '?'}</b></span>`
-        : r.p != null ? html`<span title="位置环 P / D（寄存器 21 / 22）">P/D <b>${r.p}/${r.d}</b></span>` : null}
-      <span>通信 <b>丢 ${c.missed ?? 0}${c.asked != null ? ` / 问 ${c.asked}` : ''}</b></span>
-      ${r.status ? html`<span class="sv-alarm">状态位 ${r.status}</span>` : null}
+      <span>Tensão <b>${fmt(r.volt, 1)} V</b></span><span>Carga <b>${fmt(r.load)}</b></span>
+      ${r.current_ma != null ? html`<span>Corrente <b>${fmt(r.current_ma)} mA</b></span>` : null}
+      ${r.offset != null ? html`<span title="Registrador 31: deslocamento da posição zero armazenado no servo">Deslocamento <b>${r.offset}</b></span>` : null}
+      ${r.p_run != null ? html`<span title=${`P / D / limite de torque em operação (leituras de RAM 50 / 51 / 48; antes de ativar o torque, o Studio grava os valores do programa principal; destaque amarelo indica diferença). P / D armazenados na EEPROM (21 / 22): ${r.p ?? '?'} / ${r.d ?? '?'}`}>P/D/torque <b class=${r.gains_ok === false ? 'warn' : ''}>${r.p_run}/${r.d_run}/${r.limit ?? '?'}</b></span>`
+        : r.p != null ? html`<span title="P / D do controle de posição (registradores 21 / 22)">P/D <b>${r.p}/${r.d}</b></span>` : null}
+      <span>Comunicação <b>${c.missed ?? 0} perdas${c.asked != null ? ` / ${c.asked} solicitações` : ''}</b></span>
+      ${r.status ? html`<span class="sv-alarm">Bits de estado ${r.status}</span>` : null}
       <span class="sv-spacer"></span>
-      <span>方向</span><button class="sv-mini" disabled=${!open} onClick=${() => op({ op: 'set_dir', id: r.id, dir: -r.dir })}
-        title="方向 ±：读数变大对应模型里哪个方向（只影响显示和换算，不动舵机）">${r.dir > 0 ? '+1' : '−1'}</button>
+      <span>Direção</span><button class="sv-mini" disabled=${!open} onClick=${() => op({ op: 'set_dir', id: r.id, dir: -r.dir })}
+        title="Direção ±: define para qual lado do modelo a leitura aumenta (afeta apenas a exibição e a conversão; não move o servo)">${r.dir > 0 ? '+1' : '−1'}</button>
     </div>` : null}
   </div>`;
 }
 
-// 舵机数据每秒推 10 次：这一行显示的东西没变就不重画（15 行带滑块，整页重画会让 3D 转起来卡）
+// Os dados dos servos chegam 10 vezes por segundo. Só redesenha a linha quando algo muda; redesenhar a página inteira prejudica a visualização 3D.
 const rowSig = (p) => { const r = p.r, c = r.comm || {};
   return [r.raw, r.deg, r.volt, r.temp, r.load, r.current_ma, r.torque, r.fresh, r.dir, r.offset, r.p, r.d, r.status,
     r.p_run, r.d_run, r.limit, r.gains_ok, c.missed, c.streak, p.open, p.selected, p.follow].join('|'); };
@@ -191,14 +190,14 @@ class RowPure extends Component {
 function ServoList({ sv, open, selected, onSelect, op, follow, setHint }) {
   const rows = sv.rows || [];
   return html`<section class="board sv-list">
-    <div class="sv-row sv-headrow"><span></span><span>舵机</span><span>位置（拖动）</span><span class="r">读数</span><span class="r">角度</span>
-      <span class="r">温度</span><span>扭矩</span><span></span><span></span></div>
+    <div class="sv-row sv-headrow"><span></span><span>Servo</span><span>Posição (arraste)</span><span class="r">Leitura</span><span class="r">Ângulo</span>
+      <span class="r">Temperatura</span><span>Torque</span><span></span><span></span></div>
     ${GROUPS.map(([g, label, range]) => {
       const gr = rows.filter((r) => r.group === g);
       const hold = gr.filter((r) => r.torque === 1).length;
       return html`<div class="sv-group">
         <div class="sv-grouphead"><span class=${'sv-gdot ' + g}></span>${label}<span class="sv-small">${range}</span>
-          ${hold ? html`<span class="sv-hold-n">保持 ${hold}</span>` : null}</div>
+          ${hold ? html`<span class="sv-hold-n">Mantendo ${hold}</span>` : null}</div>
         ${gr.map((r) => html`<${RowPure} key=${r.id} r=${r} open=${open} selected=${r.id === selected} onSelect=${onSelect}
           op=${op} follow=${follow} setHint=${setHint} />`)}
       </div>`;
@@ -206,45 +205,45 @@ function ServoList({ sv, open, selected, onSelect, op, follow, setHint }) {
   </section>`;
 }
 
-// ---------------- 常用（3D 下面） ----------------
+// ---------------- Ações frequentes (abaixo do 3D) ----------------
 
-// 选一颗舵机的下拉框：跟 3D、表格联动（哪边选了，另外两边都跟着变）
+// Seletor de servo sincronizado com a visualização 3D e a tabela.
 function ServoPick({ selected, onSelect, rows }) {
   return html`<select class="sv-pick" value=${selected ?? ''} onChange=${(e) => onSelect(e.target.value === '' ? null : +e.target.value)}>
-    <option value="">选一颗舵机</option>
+    <option value="">Selecione um servo</option>
     ${GROUPS.map(([g, label]) => html`<optgroup label=${label}>${(rows || []).filter((r) => r.group === g).map((r) =>
       html`<option value=${r.id}>${r.id} · ${r.cn}</option>`)}</optgroup>`)}
   </select>`;
 }
 
-// 照 servo-web 顶上那一排（用户 10-18：「跟 servo-web 一样，左边 3D、右边各种功能，对齐」）
+// Barra de ações baseada no servo-web.
 function Toolbar({ open, op, link, motion, setMotion, idle, setIdle, follow, setFollow, poses, setHint, syncSliders, main }) {
   const ms = { seconds: motion.seconds, mode: motion.mode, acc: motion.acc };
-  // 存的姿态里名字带这个词的（实机调好的）优先；站姿没有就用官方站姿
+  // Prefere uma pose salva com esse nome (ajustada no robô); se não houver pose em pé, usa a pose oficial.
   const named = (word) => poses.find((p) => p.name.includes(word));
   const goNamed = (word, fallbackKey) => {
     const p = named(word);
     if (p) op({ op: 'go_pose', file: p.file, ...ms });
     else if (fallbackKey) op({ op: 'official', key: fallbackKey, ...ms });
-    else setHint(`还没有叫「${word}」的姿态：先摆好，在「更多」里存一个叫「${word}」的`);
+    else setHint(`Não há uma pose chamada “${word}”. Posicione o robô e salve uma pose com esse nome na seção “Mais”.`);
   };
   return html`<div class="sv-toolbar">
-    <button class="btn-ok" disabled=${!open} onClick=${() => op({ op: 'torque', on: 1 })} title="先对准当前位置再上力，不会冲">全部扭矩开</button>
+    <button class="btn-ok" disabled=${!open} onClick=${() => op({ op: 'torque', on: 1 })} title="Alinhe primeiro com a posição atual para evitar um movimento brusco">Ativar torque em todos</button>
     <button class="btn-danger" disabled=${!open} onClick=${(e) => { e.currentTarget.blur(); link.cmd('relax', {}, 7000); }}
-      title="这一页的急停（空格键也是）：15 颗全部卸力并回读确认；卸完后台不会再自动上力，自己点「全部扭矩开」或「保持」就恢复">全部扭矩关</button>
-    <button class="btn-light" onClick=${syncSliders}>滑块对齐当前位置</button>
+      title="Parada de emergência desta página (também pela tecla Espaço): libera os 15 servos e confirma a leitura. O torque não será reativado automaticamente; clique em “Ativar torque em todos” ou “Manter” para retomar">Desativar torque em todos</button>
+    <button class="btn-light" onClick=${syncSliders}>Alinhar controles à posição atual</button>
     <button class="btn-light" disabled=${!open} onClick=${() => op({ op: 'official', key: 'zero', ...ms })}
-      title="零位 = 腿伸直、脚板垂直、头平视、嘴闭上，官方定义这时每颗都是 2048">全部回零位（2048）</button>
-    <button class="btn-light" disabled=${!open} onClick=${() => goNamed('站姿', 'stand')}
-      title="存的姿态里名字带「站姿」的（实机调好的）；没有才用官方站姿">站姿</button>
-    <button class="btn-light" disabled=${!open} onClick=${() => goNamed('缩起来', null)} title="存的姿态里名字带「缩起来」的">缩起来</button>
+      title="Posição zero: pernas estendidas, pés verticais, cabeça alinhada e boca fechada. A referência oficial define 2048 para cada servo">Voltar à posição zero (2048)</button>
+    <button class="btn-light" disabled=${!open} onClick=${() => goNamed('\u7ad9\u59ff', 'stand')}
+      title="Usa a pose salva correspondente; se não houver, usa a pose oficial em pé">Em pé</button>
+    <button class="btn-light" disabled=${!open} onClick=${() => goNamed('\u7f29\u8d77\u6765', null)} title="Usa a pose salva recolhida">Recolher</button>
     <button class="btn-light" disabled=${!open} onClick=${async () => { const r = await op({ op: 'idle', on: !idle }); if (r.ok) setIdle(!idle); }}
-      title="头部随机小动作：歪头、摇头、点头、张嘴、左右看，只动 30–34">${idle ? '⏹ 停灵动' : '🦆 灵动'}</button>
-    <button class="btn-light" disabled=${!open} onClick=${() => op({ op: 'scan', ids: '20-24,30-34,10-14' })}>重新扫描</button>
-    <button class="btn-stop" disabled=${!open} onClick=${() => op({ op: 'stop' })} title="打断正在走的过渡和灵动，停在原地">停</button>
-    <span class="sv-inline">用时 <${Stepper} value=${motion.seconds} min=${0} max=${30} step=${0.5}
-      onChange=${(v) => setMotion({ ...motion, seconds: v === '' ? 0 : v })} unit="秒" aria-label="用时" /></span>
-    <label class="sv-inline"><input type="checkbox" checked=${follow} onChange=${(e) => setFollow(e.target.checked)} /> 跟随拖动</label>
+      title="Pequenos movimentos aleatórios da cabeça: inclinar, balançar, acenar, abrir a boca e olhar para os lados. Move apenas os servos 30–34">${idle ? '⏹ Parar movimentos' : '🦆 Movimentos'}</button>
+    <button class="btn-light" disabled=${!open} onClick=${() => op({ op: 'scan', ids: '20-24,30-34,10-14' })}>Verificar novamente</button>
+    <button class="btn-stop" disabled=${!open} onClick=${() => op({ op: 'stop' })} title="Interrompe a transição ou os movimentos e mantém a posição atual">Parar</button>
+    <span class="sv-inline">Duração <${Stepper} value=${motion.seconds} min=${0} max=${30} step=${0.5}
+      onChange=${(v) => setMotion({ ...motion, seconds: v === '' ? 0 : v })} unit="s" aria-label="Duração" /></span>
+    <label class="sv-inline"><input type="checkbox" checked=${follow} onChange=${(e) => setFollow(e.target.checked)} /> Acompanhar arraste</label>
     ${main}
   </div>`;
 }
@@ -253,53 +252,53 @@ function CalibCard({ open, op, selected, onSelect, rows }) {
   const [ids, setIds] = useState('20-24,30-34,10-14');
   return html`<section class="board sv-card sv-calib">
     <div class="sv-form">
-      <span class="sv-label">单颗中位</span>
+      <span class="sv-label">Calibrar um servo</span>
       <div class="sv-ctrl">
         <${ServoPick} selected=${selected} onSelect=${onSelect} rows=${rows} />
-        <button class="btn-dark" disabled=${!open || !selected} onClick=${() => calibHandler && calibHandler(String(selected))}>中位校准这一颗</button>
-        <span class="sv-small">也可以点每行的「中位」</span>
+        <button class="btn-dark" disabled=${!open || !selected} onClick=${() => calibHandler && calibHandler(String(selected))}>Calibrar posição zero deste servo</button>
+        <span class="sv-small">Você também pode clicar em “Centro” na linha do servo.</span>
       </div>
-      <span class="sv-label">一键校准</span>
+      <span class="sv-label">Calibração em lote</span>
       <div class="sv-ctrl">
-        <input type="text" value=${ids} onInput=${(e) => setIds(e.target.value)} title="校准哪些舵机" class="sv-ids" />
-        <button class="btn-dark" disabled=${!open} onClick=${() => calibHandler && calibHandler(ids)}>一键校准</button>
-        <button class="btn-light" disabled=${!open} onClick=${() => { if (window.confirm('撤销上一次校准：把那次备份的偏移写回去？')) op({ op: 'undo' }, 30000); }}>撤销上一次</button>
+        <input type="text" value=${ids} onInput=${(e) => setIds(e.target.value)} title="Quais servos calibrar" class="sv-ids" />
+        <button class="btn-dark" disabled=${!open} onClick=${() => calibHandler && calibHandler(ids)}>Calibrar seleção</button>
+        <button class="btn-light" disabled=${!open} onClick=${() => { if (window.confirm('Desfazer a última calibração e restaurar os deslocamentos salvos no backup?')) op({ op: 'undo' }, 30000); }}>Desfazer última calibração</button>
       </div>
-      <span></span><p class="sv-small">把鸭子摆成官方零位（腿伸直、头摆正、嘴闭上）再点：现在的位置设成 2048。先出预览，确认了才写；校完自动保持住。</p>
+      <span></span><p class="sv-small">Posicione o MicroDuck na posição zero oficial (pernas estendidas, cabeça alinhada e boca fechada). A posição atual será definida como 2048. Confira a prévia antes de gravar; ao terminar, os servos manterão a posição.</p>
     </div>
   </section>`;
 }
 
-// ---------------- 更多（折叠） ----------------
+// ---------------- Mais (seção recolhida) ----------------
 
 function MoreArea({ open, op, motion, setMotion, follow, setFollow, poses, setPoses, selected, onSelect, sv, dirs, link }) {
   const [name, setName] = useState('');
   const ms = { seconds: motion.seconds, mode: motion.mode, acc: motion.acc };
   return html`<details class="board sv-more-area">
-    <summary>更多：运动方式、存的姿态、高级工具、日志</summary>
+    <summary>Mais: movimento, poses salvas, ferramentas avançadas e registros</summary>
     <div class="sv-more-grid">
       <section class="sv-form">
-        <span class="sv-label">官方姿势</span>
+        <span class="sv-label">Poses oficiais</span>
         <div class="sv-ctrl">
           ${Object.entries(POSES).map(([k, p]) => html`<button class="btn-light" disabled=${!open} onClick=${() => {
-            if (k === 'fold' && !window.confirm('去折叠：膝只折 88°（官方 90° 会顶到零件）。零点没校准的话别用：膝差几度就顶上零件了。继续？')) return;
+            if (k === 'fold' && !window.confirm('Pose recolhida: os joelhos dobram apenas 88° (a referência oficial de 90° encosta nas peças). Não use sem calibrar a posição zero; alguns graus de diferença podem fazer os joelhos baterem nas peças. Continuar?')) return;
             op({ op: 'official', key: k, ...ms });
-          }}>去${p.label}</button>`)}
+          }}>Aplicar: ${p.label}</button>`)}
         </div>
-        <span class="sv-label">运动方式</span>
+        <span class="sv-label">Modo de movimento</span>
         <div class="sv-ctrl"><select value=${motion.mode} onChange=${(e) => setMotion({ ...motion, mode: e.target.value })}>
-          <option value="profile">平滑（舵机自己走梯形曲线）</option><option value="stream">流式（这边一步步发）</option></select>
-          <span class="sv-inline">加速度 <${Stepper} value=${motion.acc} min=${1} max=${254}
-            onChange=${(v) => setMotion({ ...motion, acc: v === '' ? 0 : v })} aria-label="加速度" /></span></div>
-        <span class="sv-label">存的姿态</span>
+          <option value="profile">Suave (o servo segue uma curva trapezoidal)</option><option value="stream">Fluxo contínuo (comandos enviados passo a passo)</option></select>
+          <span class="sv-inline">Aceleração <${Stepper} value=${motion.acc} min=${1} max=${254}
+            onChange=${(v) => setMotion({ ...motion, acc: v === '' ? 0 : v })} aria-label="Aceleração" /></span></div>
+        <span class="sv-label">Poses salvas</span>
         <div class="sv-ctrl sv-chips">
           ${poses.length ? poses.map((p) => html`<span class="sv-chip"><button disabled=${!open} onClick=${() => op({ op: 'go_pose', file: p.file, ...ms })} title=${p.time}>${p.name}</button>
-            <button class="x" disabled=${!open} title="删除（挪进回收站，能找回）" onClick=${async () => { if (!window.confirm(`删除姿态「${p.name}」？`)) return; const r = await op({ op: 'delete_pose', file: p.file }); if (r.ok) setPoses(r.data.poses); }}>×</button></span>`)
-            : html`<span class="sv-small">还没有</span>`}
+            <button class="x" disabled=${!open} title="Excluir (mover para a lixeira; é possível recuperar)" onClick=${async () => { if (!window.confirm(`Excluir a pose “${p.name}”?`)) return; const r = await op({ op: 'delete_pose', file: p.file }); if (r.ok) setPoses(r.data.poses); }}>×</button></span>`)
+            : html`<span class="sv-small">Nenhuma pose salva.</span>`}
         </div>
         <span></span>
-        <div class="sv-ctrl"><input type="text" placeholder="名字，比如 缩起来" value=${name} onInput=${(e) => setName(e.target.value)} />
-          <button class="btn-light" disabled=${!open || !name.trim()} onClick=${async () => { const r = await op({ op: 'save_pose', name }); if (r.ok) { setPoses(r.data.poses); setName(''); } }}>存当前位置</button></div>
+        <div class="sv-ctrl"><input type="text" placeholder="Nome da pose, por exemplo: recolhido" value=${name} onInput=${(e) => setName(e.target.value)} />
+          <button class="btn-light" disabled=${!open || !name.trim()} onClick=${async () => { const r = await op({ op: 'save_pose', name }); if (r.ok) { setPoses(r.data.poses); setName(''); } }}>Salvar posição atual</button></div>
       </section>
       <${Tools} open=${open} op=${op} selected=${selected} onSelect=${onSelect} sv=${sv} dirs=${dirs} />
     </div>
@@ -321,43 +320,43 @@ function Tools({ open, op, selected, onSelect, sv, dirs }) {
   const copyDirs = () => {
     const line = 'directions = [' + IDS.map((id) => ((dirs[id] ?? -1) < 0 ? -1 : 1)).join(', ') + ']';
     navigator.clipboard?.writeText(line);
-    setOut({ op: 'note', text: `已复制：${line}（robotd.toml 的 [bus.feetech] directions，顺序 20–24、30–34、10–14）` });
+    setOut({ op: 'note', text: `Copiado: ${line} (directions em [bus.feetech] de robotd.toml, na ordem 20–24, 30–34, 10–14)` });
   };
   return html`<section class="sv-form">
-    <span class="sv-label">舵机</span>
+    <span class="sv-label">Servo</span>
     <div class="sv-ctrl"><${ServoPick} selected=${sel} onSelect=${(id) => onSelect(id ?? 20)} rows=${sv.rows} /></div>
-    <span class="sv-label">高级</span>
+    <span class="sv-label">Avançado</span>
     <div class="sv-ctrl">
-      <button class="btn-light" disabled=${!open} onClick=${() => run({ op: 'dump', id: sel })}>导出寄存器</button>
-      <button class="btn-light" disabled=${!open} onClick=${() => { if (window.confirm(`重启 ${sel}（先关扭矩，约 0.8 秒后回来）？`)) run({ op: 'reboot', id: sel }); }}>重启</button>
-      <button class="btn-light" onClick=${copyDirs}>复制 robotd 方向表</button>
+      <button class="btn-light" disabled=${!open} onClick=${() => run({ op: 'dump', id: sel })}>Exportar registradores</button>
+      <button class="btn-light" disabled=${!open} onClick=${() => { if (window.confirm(`Reiniciar o servo ${sel}? O torque será desativado e ele voltará em cerca de 0,8 s.`)) run({ op: 'reboot', id: sel }); }}>Reiniciar</button>
+      <button class="btn-light" onClick=${copyDirs}>Copiar tabela de direção do robotd</button>
     </div>
-    <span class="sv-label">改 ID</span>
+    <span class="sv-label">Alterar ID</span>
     <div class="sv-ctrl"><span>${sel} →</span>
       <select value=${newId} onChange=${(e) => setNewId(e.target.value)}>
-        <option value="">选新 ID</option>
-        ${Array.from({ length: 254 }, (_, i) => i).filter((i) => i !== sel).map((i) => html`<option value=${i}>${i}${online.has(i) ? '（已占用）' : ''}</option>`)}
+        <option value="">Selecione o novo ID</option>
+        ${Array.from({ length: 254 }, (_, i) => i).filter((i) => i !== sel).map((i) => html`<option value=${i}>${i}${online.has(i) ? ' (em uso)' : ''}</option>`)}
       </select>
       <button class="btn-danger" disabled=${!open || newId === ''} onClick=${() => {
-        if (online.has(+newId)) { window.alert(`ID ${newId} 已经有舵机在用，会撞号`); return; }
-        if (window.confirm(`把 ${sel} 改成 ${newId}？改的时候总线上最好只接这一颗。`)) run({ op: 'set_id', old: sel, new: +newId });
-      }}>写 ID</button></div>
-    <span class="sv-label">写寄存器</span>
+        if (online.has(+newId)) { window.alert(`O ID ${newId} já está em uso por outro servo e causará conflito.`); return; }
+        if (window.confirm(`Alterar o ID ${sel} para ${newId}? O ideal é deixar somente este servo conectado ao barramento durante a alteração.`)) run({ op: 'set_id', old: sel, new: +newId });
+      }}>Gravar ID</button></div>
+    <span class="sv-label">Gravar registrador</span>
     <div class="sv-ctrl"><select value=${reg} onChange=${(e) => { const r = REGS.find((x) => x[0] === +e.target.value); setReg(+e.target.value); setSize(r ? r[2] : 1); setUnlock(r ? r[3] === 'EEPROM' : false); }}>
-        ${REGS.map(([a, n, s, area]) => html`<option value=${a}>${a} · ${n}（${s} 字节 ${area}）</option>`)}</select>
-      <input type="number" value=${val} onInput=${(e) => setVal(e.target.value)} placeholder="值" style="width:80px" />
-      <label class="sv-inline"><input type="checkbox" checked=${unlock} onChange=${(e) => setUnlock(e.target.checked)} /> 解锁写</label>
+        ${REGS.map(([a, n, s, area]) => html`<option value=${a}>${a} · ${n} (${s} byte(s), ${area})</option>`)}</select>
+      <input type="number" value=${val} onInput=${(e) => setVal(e.target.value)} placeholder="Valor" style="width:80px" />
+      <label class="sv-inline"><input type="checkbox" checked=${unlock} onChange=${(e) => setUnlock(e.target.checked)} /> Desbloquear gravação</label>
       <button class=${DANGER[reg] ? 'btn-danger' : 'btn-light'} disabled=${!open || val === ''} onClick=${() => {
-        if (DANGER[reg] && !window.confirm(`危险：${DANGER[reg]}\n确定把 ${sel} 的寄存器 ${reg} 写成 ${val}？`)) return;
+        if (DANGER[reg] && !window.confirm(`Atenção: ${DANGER[reg]}\nGravar o valor ${val} no registrador ${reg} do servo ${sel}?`)) return;
         run({ op: 'write_reg', id: sel, addr: +reg, size, value: +val, unlock });
-      }}>写</button></div>
-    ${DANGER[reg] ? html`<span></span><p class="sv-warn">寄存器 ${reg}：${DANGER[reg]}</p>` : null}
-    <span class="sv-label">总线</span>
+      }}>Gravar</button></div>
+    ${DANGER[reg] ? html`<span></span><p class="sv-warn">Registrador ${reg}: ${DANGER[reg]}</p>` : null}
+    <span class="sv-label">Barramento</span>
     <div class="sv-ctrl">
-      <button class="btn-light" disabled=${!open} onClick=${() => run({ op: 'timing', n: 200 }, 30000)}>时序测试 ×200</button>
-      <button class="btn-light" disabled=${!open} onClick=${() => run({ op: 'scan_all' }, 30000)}>全网扫描 0–253</button>
+      <button class="btn-light" disabled=${!open} onClick=${() => run({ op: 'timing', n: 200 }, 30000)}>Teste de temporização ×200</button>
+      <button class="btn-light" disabled=${!open} onClick=${() => run({ op: 'scan_all' }, 30000)}>Verificar todos os IDs (0–253)</button>
       <input type="text" value=${scanIds} onInput=${(e) => setScanIds(e.target.value)} style="width:140px" />
-      <button class="btn-light" disabled=${!open} onClick=${() => run({ op: 'scan', ids: scanIds })}>扫描</button>
+      <button class="btn-light" disabled=${!open} onClick=${() => run({ op: 'scan', ids: scanIds })}>Verificar</button>
     </div>
     ${out ? html`<span></span><${ToolOut} out=${out} />` : null}
   </section>`;
@@ -365,20 +364,20 @@ function Tools({ open, op, selected, onSelect, sv, dirs }) {
 
 function ToolOut({ out }) {
   if (out.op === 'note') return html`<p class="sv-small">${out.text}</p>`;
-  if (out.op === 'timing') return html`<p class="sv-out num">时序：${out.n} 次 × ${out.ids} 颗 · 最快 ${out.min_ms} ms · 平均 ${out.avg_ms} ms · p99 ${out.p99_ms} ms · 最慢 ${out.max_ms} ms · 漏读 ${out.fails}</p>`;
-  if (out.op === 'scan' || out.op === 'scan_all') return html`<p class="sv-out">在线 ${out.found.length} 颗：${out.found.join('、') || '无'}${out.lost?.length ? `；不在线：${out.lost.join('、')}` : ''}</p>`;
-  if (out.op === 'set_id') return html`<p class="sv-out">${out.ok ? '改好了，新 ID ping 得通' : '新 ID ping 不通'}</p>`;
-  if (out.op === 'write_reg') return html`<p class="sv-out">原来 ${out.old} → 读回 ${out.new}${out.same ? ' ✓' : '（读回跟写的不一样）'}</p>`;
+  if (out.op === 'timing') return html`<p class="sv-out num">Temporização: ${out.n} × ${out.ids} servos · mínimo ${out.min_ms} ms · média ${out.avg_ms} ms · p99 ${out.p99_ms} ms · máximo ${out.max_ms} ms · leituras perdidas ${out.fails}</p>`;
+  if (out.op === 'scan' || out.op === 'scan_all') return html`<p class="sv-out">${out.found.length} servos conectados: ${out.found.join(', ') || 'nenhum'}${out.lost?.length ? `; sem resposta: ${out.lost.join(', ')}` : ''}</p>`;
+  if (out.op === 'set_id') return html`<p class="sv-out">${out.ok ? 'Concluído; o novo ID respondeu ao ping.' : 'O novo ID não respondeu ao ping.'}</p>`;
+  if (out.op === 'write_reg') return html`<p class="sv-out">Antes ${out.old} → leitura de retorno ${out.new}${out.same ? ' ✓' : ' (o valor lido difere do valor gravado)'}</p>`;
   if (out.op === 'dump') {
-    const md = ['| 地址 | 名称 | 区 | 值 |', '|---|---|---|---|', ...out.rows.map((r) => `| ${r.addr} | ${r.name} | ${r.area} | ${r.value} |`)].join('\n');
+    const md = ['| Endereço | Nome | Área | Valor |', '|---|---|---|---|', ...out.rows.map((r) => `| ${r.addr} | ${r.name} | ${r.area} | ${r.value} |`)].join('\n');
     const download = () => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' }));
       a.download = `HD-1910-id${out.id}-regs-${new Date().toISOString().slice(0, 10)}.json`; a.click();
     };
     return html`<div class="sv-out">
-      <div class="sv-ctrl"><b>#${out.id} 寄存器</b><button class="btn-light" onClick=${download}>下载 JSON</button>
-        <button class="btn-light" onClick=${() => navigator.clipboard?.writeText(md)}>复制 Markdown 表</button></div>
+      <div class="sv-ctrl"><b>Registradores do servo #${out.id}</b><button class="btn-light" onClick=${download}>Baixar JSON</button>
+        <button class="btn-light" onClick=${() => navigator.clipboard?.writeText(md)}>Copiar tabela Markdown</button></div>
       <div class="sv-dump">${out.rows.map((r) => html`<span class=${DANGER[r.addr] ? 'danger' : ''}><i>${r.addr}</i> ${r.name} <b class="num">${r.value}</b></span>`)}</div>
     </div>`;
   }
@@ -388,12 +387,12 @@ function ToolOut({ out }) {
 function LogBox({ link }) {
   const [items, setItems] = useState([]);
   useEffect(() => link.on((m) => {
-    if (m.t === 'log' && ['总线', '校准', '安全', '命令'].includes(m.entry.cat)) setItems((xs) => [m.entry, ...xs].slice(0, 60));
+    if (m.t === 'log' && ['\u603b\u7ebf', '\u6821\u51c6', '\u5b89\u5168', '\u547d\u4ee4'].includes(m.entry.cat)) setItems((xs) => [m.entry, ...xs].slice(0, 60));
   }), []);
   return html`<div class="sv-logwrap">
-    <div class="sv-label">日志 <span class="sv-small">（总线、校准、安全；全部在左边「日志」页）</span></div>
+    <div class="sv-label">Registros <span class="sv-small">(barramento, calibração e segurança; todos estão na página “Registros” à esquerda)</span></div>
     <div class="sv-log">${items.length ? items.map((e) => html`<div key=${e.n} class=${e.level}><span class="num">${e.t}</span> [${e.cat}] ${e.msg}${e.raw ? html` <small>${e.raw}</small>` : null}</div>`)
-      : html`<span class="sv-small">还没有</span>`}</div>
+      : html`<span class="sv-small">Nenhum registro disponível.</span>`}</div>
   </div>`;
 }
 
@@ -401,33 +400,33 @@ function CalibDialog({ plan, onOk, onCancel }) {
   const big = plan.rows.filter((r) => r.diff_deg != null && Math.abs(r.diff_deg) > plan.big_deg);
   return html`<div class="sv-modal" role="dialog" aria-modal="true">
     <div class="board sv-modal-box">
-      <h2>中位校准（官方零位 2048）</h2>
-      <p class="sv-small">鸭子要摆成官方零位：腿伸直、头摆正、嘴闭上。每颗只关几毫秒扭矩；校完自动保持住。${plan.sim ? '（演示：没接舵机，校的是假的）' : ''}</p>
-      <table class="sv-plan"><thead><tr><th>舵机</th><th class="r">现在</th><th class="r">写成</th><th class="r">差</th></tr></thead>
+      <h2>Calibração da posição zero (referência oficial: 2048)</h2>
+      <p class="sv-small">Posicione o MicroDuck na posição zero oficial: pernas estendidas, cabeça alinhada e boca fechada. O torque de cada servo é desativado por alguns milissegundos e reativado ao terminar. ${plan.sim ? '(Demonstração: sem servos conectados; calibração simulada.)' : ''}</p>
+      <table class="sv-plan"><thead><tr><th>Servo</th><th class="r">Atual</th><th class="r">Definido como</th><th class="r">Diferença</th></tr></thead>
         <tbody>${plan.rows.map((r) => html`<tr class=${big.includes(r) ? 'big' : ''}><td>${r.id}</td><td class="r num">${fmt(r.pos)}</td>
-          <td class="r num">2048</td><td class="r num">${r.diff_deg == null ? '读不到' : sign(r.diff_deg) + '°'}</td></tr>`)}</tbody></table>
-      ${big.length ? html`<p class="sv-warn">有 ${big.length} 颗差 ${plan.big_deg}° 以上。装舵盘时转了半圈没关系；要是方向 ± 设反了，校进去的零点是错的。</p>` : null}
-      <div class="sv-modal-btns"><button class="btn-light" onClick=${onCancel}>取消</button>
-        <button class="btn-dark" onClick=${() => { if (!big.length || window.confirm(`有 ${big.length} 颗差 ${plan.big_deg}° 以上，确定照现在的位置校？`)) onOk(); }}>确认，校准 ${plan.rows.length} 颗</button></div>
+          <td class="r num">2048</td><td class="r num">${r.diff_deg == null ? 'Indisponível' : sign(r.diff_deg) + '°'}</td></tr>`)}</tbody></table>
+      ${big.length ? html`<p class="sv-warn">${big.length} servos têm diferença superior a ${plan.big_deg}°. Uma rotação de meia volta ao montar o disco estriado é normal; se a direção ± estiver invertida, a posição zero gravada ficará incorreta.</p>` : null}
+      <div class="sv-modal-btns"><button class="btn-light" onClick=${onCancel}>Cancelar</button>
+        <button class="btn-dark" onClick=${() => { if (!big.length || window.confirm(`${big.length} servos têm diferença superior a ${plan.big_deg}°. Deseja calibrar usando as posições atuais?`)) onOk(); }}>Confirmar calibração de ${plan.rows.length} servos</button></div>
     </div>
   </div>`;
 }
 
-// ---------------- 页面 ----------------
+// ---------------- Página ----------------
 
-// 「交还主程序」：页面内两步确认（confirm.js 的 TwoStep，跟测急停的跳过共用：审查 D4）——第一下旁边冒出确认按钮，
-// 700 ms 后、3 秒内点它才交还（舵机页头上、每一页顶上的提示条都用它）。
-// 交还走后端 hand_back：先等在路上的舵机操作做完，再在总线上全部卸力并回读确认、关总线、起主程序（小助手在的话）。
-// 交还是 Studio 当场卸力（审查 D7：以前写「主程序起来时会松开」不对；不卸力的交接要等 fork 的 robotd 部署）
-const HANDBACK_ASK = '交还：马上把 15 颗全部松开，鸭子会软下来——先扶住或放平';
+// “Devolver ao programa principal” usa confirmação em duas etapas (TwoStep de confirm.js).
+// O botão de confirmação aparece ao lado do primeiro clique; clique nele após 700 ms e dentro de 3 s.
+// O backend aguarda as operações pendentes, libera e confirma os 15 servos, fecha o barramento e inicia o programa principal, se o assistente estiver disponível.
+// A devolução libera os servos imediatamente pelo Studio.
+const HANDBACK_ASK = 'Devolver: os 15 servos serão liberados agora e o MicroDuck ficará sem sustentação. Segure ou apoie o robô antes de continuar.';
 export function HandBackButton({ link }) {
   const [err, setErr] = useState(null);
   const confirm = async () => {
     setErr(null);
-    const r = await link.cmd('servo.close', {}, 90000);     // 小助手起主程序要等启动四步（最多 60 秒）
-    if (!r.ok) setErr(r.reason || r.error || '没交还成');
+    const r = await link.cmd('servo.close', {}, 90000);     // O assistente aguarda as quatro etapas de inicialização do programa principal (até 60 s).
+    if (!r.ok) setErr(r.reason || r.error || 'Não foi possível devolver o controle.');
   };
-  return html`<span class="sv-handback"><${TwoStep} label="交还主程序" ask=${HANDBACK_ASK} busyLabel="交还中…" onConfirm=${confirm} />${
+  return html`<span class="sv-handback"><${TwoStep} label="Devolver ao programa principal" ask=${HANDBACK_ASK} busyLabel="Devolvendo…" onConfirm=${confirm} />${
     err ? html`<span class="sv-warn">${err}</span>` : null}</span>`;
 }
 
@@ -444,16 +443,16 @@ export function ServoPage({ sv, link, leaveGuards }) {
   const [plan, setPlan] = useState(null);
   const [syncKey, setSyncKey] = useState(0);
   const open = sv?.state === 'open';
-  // 滑块对齐当前位置：重建表格，所有滑块丢掉拖动中的值、回到实际读数（平时松手 0.6 秒也会自己回去）
-  const syncSliders = useCallback(() => { setSyncKey((k) => k + 1); setHint('滑块已对齐当前位置'); }, []);
+  // Alinha os controles deslizantes às leituras reais atuais; normalmente isso também ocorre 0,6 s após soltar.
+  const syncSliders = useCallback(() => { setSyncKey((k) => k + 1); setHint('Controles alinhados à posição atual.'); }, []);
   const dirs = Object.fromEntries((sv?.rows || []).map((r) => [r.id, r.dir]));
 
-  // 这几个函数要固定不变（useCallback）：每行按「数据变没变」决定重不重画，函数一变就白比了
+  // Mantenha estas funções estáveis com useCallback: cada linha só é redesenhada quando seus dados mudam.
   const onSelect = useCallback((id) => setSelected(id), []);
-  // 舵机操作：不成就在页头显示原因；quiet = 滑块这种高频的，成功了不打扰
+  // Operações dos servos: falhas aparecem no cabeçalho; quiet evita mensagens para operações frequentes dos controles deslizantes.
   const op = useCallback(async (args, timeout = 15000, quiet = false) => {
     const r = await link.cmd('servo.op', args, timeout);
-    if (!r.ok) setMsg(r.reason || r.error || '没成功');
+    if (!r.ok) setMsg(r.reason || r.error || 'A operação falhou.');
     else if (!quiet) setMsg(null);
     return r;
   }, []);
@@ -461,12 +460,12 @@ export function ServoPage({ sv, link, leaveGuards }) {
     setBusy(true); setMsg(null);
     const r = await link.cmd(name, args, 15000);
     setBusy(false);
-    if (!r.ok) setMsg(r.reason || r.error || '没成功');
+    if (!r.ok) setMsg(r.reason || r.error || 'A operação falhou.');
   };
-  // 用户 10-18：「点开舵机页自然就接进来了」——进来自动接管。离开：后来又定了「舵机这个页面出去的时候应该保持住使能，
-  // 不应该泄力」——有舵机保持着就不交还（fork 的 robotd 一起来就先全部卸力：duck-control feetech.rs:1495），会话留着、
-  // 每一页顶上有提示条；没有舵机保持着才自动交还。要交还点「交还主程序」（两步确认）
-  const [ports, setPorts] = useState(null);       // {ports, port, sim}：电脑上插 USB 转 TTL 时选串口（跟 servo-web 一样）
+  // A página assume o controle ao abrir. Ao sair, a sessão permanece se algum servo estiver mantendo torque;
+  // sem servos ativos, o controle é devolvido automaticamente. O aviso fixo informa quando a sessão continua aberta.
+  // Para devolver manualmente, use “Devolver ao programa principal” e confirme em duas etapas.
+  const [ports, setPorts] = useState(null);       // {ports, port, sim}: seleciona a porta serial ao conectar um adaptador USB para TTL ao computador.
   const [pick, setPick] = useState('');
   const loadPorts = async () => {
     const r = await link.cmd('servo.ports', {}, 5000);
@@ -474,10 +473,10 @@ export function ServoPage({ sv, link, leaveGuards }) {
     return r.ok ? r.data : null;
   };
   useEffect(() => {
-    // 配好了串口（鸭子上是 /dev/ttyS2）或者模拟：进来直接接管；电脑上没配：等人选好串口点「连接」
+    // Com porta serial configurada (no robô, /dev/ttyS2) ou modo simulado, assume ao abrir; no computador, aguarda a seleção da porta e o clique em “Conectar”.
     let alive = true;
     link.whenOpen().then(() => loadPorts()).then((d) => { if (alive && d && (d.port || d.sim)) run('servo.open'); });
-    // 离开：后端看现在有没有舵机保持着（页面上的数可能旧了），有就不交还，没有才交还。不再弹「确定离开？」
+    // Ao sair, o backend verifica se algum servo ainda está mantendo torque; devolve o controle somente se nenhum estiver ativo.
     return () => { alive = false; link.cmd('servo.close', { if_idle: true }, 15000); };
   }, []);
   calibHandler = useCallback(async (ids) => {
@@ -493,30 +492,30 @@ export function ServoPage({ sv, link, leaveGuards }) {
     <header class="sv-head">
       <div class="sv-titles">
         <div class="sv-titleline">
-          <h1>舵机</h1>
+          <h1>Servos</h1>
           ${sv?.rows ? html`<div class="sv-stats num">
-            <div><b>${sv.online}<small>/${sv.total}</small></b><span>在线</span></div>
-            <div><b>${fmt(sv.avg_volts, 1)}<small> V</small></b><span>平均电压</span></div>
-            <div><b>${open ? fmt(sv.hz, 0) : '—'}<small> Hz</small></b><span>刷新</span></div>
-            <div><b>${open && dr != null ? (dr * 100).toFixed(1) : '—'}<small> %</small></b><span>丢帧</span></div>
-            <div><b>${sv.holding}</b><span>保持</span></div>
+            <div><b>${sv.online}<small>/${sv.total}</small></b><span>Conectados</span></div>
+            <div><b>${fmt(sv.avg_volts, 1)}<small> V</small></b><span>Tensão média</span></div>
+            <div><b>${open ? fmt(sv.hz, 0) : '—'}<small> Hz</small></b><span>Atualização</span></div>
+            <div><b>${open && dr != null ? (dr * 100).toFixed(1) : '—'}<small> %</small></b><span>Quadros perdidos</span></div>
+            <div><b>${sv.holding}</b><span>Mantendo posição</span></div>
           </div>` : null}
         </div>
         <div class="sv-sub">${open
-          ? html`<b class="sv-live">调舵机中</b> · ${sv.port} · 主程序停着，手柄不能用${sv.latched ? ' · 已全部卸力' : ''} · 离开这页舵机照样保持；点「交还主程序」才交还
+          ? html`<b class="sv-live">Ajustando servos</b> · ${sv.port} · Programa principal pausado; controle indisponível${sv.latched ? ' · todos os servos liberados' : ''} · os servos continuam ativos ao sair; clique em “Devolver ao programa principal” para devolver o controle
             <${HandBackButton} link=${link} />`
-          : busy ? '正在接管舵机总线…'
-            : html`没接管 · 只读`}
-        <span class="sv-port">串口
+          : busy ? 'Assumindo o barramento dos servos…'
+            : html`Controle não assumido · somente leitura`}
+        <span class="sv-port">Porta serial
           <select value=${pick} onFocus=${loadPorts} onChange=${(e) => setPick(e.target.value)} disabled=${open}
-            title=${open ? '调舵机中不能换串口：先交还主程序' : ''}>
-            <option value="">选串口…</option>
+            title=${open ? 'Não é possível trocar a porta durante o ajuste dos servos; devolva o controle ao programa principal primeiro.' : ''}>
+            <option value="">Selecione uma porta…</option>
             ${(ports?.ports || []).map((p) => html`<option value=${p.device}>${p.device}${p.desc ? ` · ${p.desc}` : ''}</option>`)}
             ${ports?.port && !(ports.ports || []).some((p) => p.device === ports.port) ? html`<option value=${ports.port}>${ports.port}</option>` : null}
-            <option value="sim">演示（没接舵机，先看看页面）</option>
+            <option value="sim">Demonstração (sem servos conectados)</option>
           </select>
           <button class="btn-light" disabled=${open || busy || !pick} onClick=${() => run('servo.open', { port: pick })}
-            title=${open ? '调舵机中不能换串口：先交还主程序' : ''}>${open ? '换这个' : '连接'}</button>
+            title=${open ? 'Não é possível trocar a porta durante o ajuste dos servos; devolva o controle ao programa principal primeiro.' : ''}>${open ? 'Trocar' : 'Conectar'}</button>
         </span></div>
         ${open && sv.gains ? html`<${GainsLine} g=${sv.gains} />` : null}
       </div>
@@ -526,9 +525,9 @@ export function ServoPage({ sv, link, leaveGuards }) {
           main=${null} />
       </div>
     </header>
-    ${msg || sv?.error ? html`<div class="banner bad" role="alert"><b>${msg || '打不开舵机总线'}</b><span class="more">${msg ? '' : sv?.error || ''}</span>
-      <a href="#" onClick=${(e) => { e.preventDefault(); setMsg(null); }}>知道了</a></div>` : null}
-    ${sv?.marker_error ? html`<div class="banner warn" role="status"><b>会话标记没写进去</b>
+    ${msg || sv?.error ? html`<div class="banner bad" role="alert"><b>${msg || 'Não foi possível abrir o barramento dos servos.'}</b><span class="more">${msg ? '' : sv?.error || ''}</span>
+      <a href="#" onClick=${(e) => { e.preventDefault(); setMsg(null); }}>Entendi</a></div>` : null}
+    ${sv?.marker_error ? html`<div class="banner warn" role="status"><b>Não foi possível gravar o marcador da sessão</b>
       <span class="more">${sv.marker_error}</span></div>` : null}
     ${hint ? html`<div class="banner warn" role="status"><span>${hint}</span></div>` : null}
     <div class="sv-main">
@@ -548,7 +547,7 @@ export function ServoPage({ sv, link, leaveGuards }) {
       const r = await op({ op: 'calibrate', ids }, 60000);
       if (r.ok) {
         const d = r.data, bad = Object.keys(d.bad || {});
-        setHint(`校准完：成功 ${d.ok.length} 颗${bad.length ? `，失败 ${bad.join('、')}（看日志）` : ''}；成功的已经保持住`);
+        setHint(`Calibração concluída: ${d.ok.length} servos calibrados${bad.length ? `; falha em ${bad.join(', ')} (consulte os registros)` : ''}. Os servos calibrados estão mantendo a posição.`);
       }
     }} />` : null}
   </div>`;
