@@ -76,111 +76,110 @@ Não usa alocação dinâmica, RTOS ou HAL. O código da placa usa as definiçõ
 A recepção do barramento externo no STM32 usa uma fila circular acionada por interrupção, que guarda o horário de chegada de cada byte; protocolo, amostragem e formatação dos logs são executados no loop principal.
 O envio dos logs usa outra fila acionada por interrupção e não bloqueia a recepção do barramento.
 
-## 3. 默认HardwareConfiguração
+## 3. Configuração de hardware padrão
 
-| 功能 | 芯片引脚 / Configuração |
+| Função | Pino do chip / configuração |
 |---|---|
-| MCU | STM32G031F8P6，TSSOP20，64KB Flash / 8KB RAM |
-| 系统时钟 | HSI16 → PLL，M=1、N=8、R=2，64MHz，Flash 2 wait states |
-| 外部时钟选项 | `BOARD_USE_HSE_BYPASS=1`，X1 16MHz 有源时钟接封装脚2；启动失败退回 HSI 路线并记录状态 |
-| IMU SPI | SPI1 mode3、8bit、Software CS；64MHz Inferior 2MHz；PA4=CS、PA5=SCK、PA6=MISO、PA7=MOSI |
-| IMU INT | 首版轮询 FIFO，PA0/封装脚15 em 断信号暂不使用 |
-| 总线串口 | USART2，PA2=TX、PA3=RX，AF1，1Mbps、8N1；不启用 USART 单引脚 HDSEL |
-| 总线 DE | PA1 → U3.1 `1OE#`，**低有效**；GPIO 控制，等 USART TC 后才释放 |
-| 总线 RX_EN | PB7 → U3.7 `2OE`，**高有效**；发送期间关闭、PA3 上拉；同封装脚 PB8 保持模拟输入 |
-| 调试串口 | USART1，PA9/PA10 经 SYSCFG 重映射到封装脚16/17，115200、8N1；`BOARD_LOG_UART_SWAP=0` |
-| SWD | PA13=SWDIO、PA14=SWCLK，Preservado复位默认Depuração功能 |
-| 看门狗 | 默认开启，约2秒，LSI 误差影响实际时长；Depuração器暂停时冻结 |
+| MCU | STM32G031F8P6, TSSOP20, 64 KB Flash / 8 KB RAM |
+| Clock do sistema | HSI16 → PLL, M=1, N=8, R=2, 64 MHz, Flash com 2 wait states |
+| Opção de clock externo | `BOARD_USE_HSE_BYPASS=1`; clock ativo X1 de 16 MHz ligado ao pino 2 do encapsulamento; em caso de falha na inicialização, volta à configuração HSI e registra o estado |
+| SPI do IMU | SPI1 modo 3, 8 bits, CS por software; 64 MHz divididos para 2 MHz; PA4=CS, PA5=SCK, PA6=MISO, PA7=MOSI |
+| INT do IMU | Primeira versão consulta o FIFO; sinal de interrupção PA0/pino 15 do encapsulamento não é usado por enquanto |
+| Serial do barramento | USART2, PA2=TX, PA3=RX, AF1, 1 Mbps, 8N1; USART não usa HDSEL de pino único |
+| DE do barramento | PA1 → U3.1 `1OE#`, **ativo em nível baixo**; controlado por GPIO e liberado somente após USART TC |
+| RX_EN do barramento | PB7 → U3.7 `2OE`, **ativo em nível alto**; desabilitado durante a transmissão, PA3 com pull-up; PB8, no mesmo encapsulamento, permanece como entrada analógica |
+| Serial de depuração | USART1, PA9/PA10 remapeados pelo SYSCFG para os pinos 16/17 do encapsulamento, 115200, 8N1; `BOARD_LOG_UART_SWAP=0` |
+| SWD | PA13=SWDIO, PA14=SWCLK; mantém a função de depuração padrão após o reset |
+| Watchdog | Habilitado por padrão, cerca de 2 s; a tolerância do LSI afeta a duração real; fica congelado quando o depurador pausa a execução |
 
-PLL Inicialização异常时会Preservado HSI16 Execução，串口 BRR e计时器按实际主频计算。此时 SPI 也降为 0.5MHz，
-Serviço延迟会增加，属于故障诊断模式，应Verificação时钟状态，不作为Concluído性能验收 de Configuração。
+Se a inicialização da PLL falhar, o sistema continua com HSI16 e calcula BRR serial e temporizadores com a frequência real do clock. Nesse caso, o SPI também cai para 0,5 MHz,
+e a latência do serviço aumenta. Esse é um modo de diagnóstico de falha: confira o estado do clock; não o use como configuração aprovada para desempenho final.
 
-### J3 Fiação必须以[Princípio图 PDF](../imu_to_dxl-Princípio图.pdf)e实板Rede为准
+### Para a fiação J3, consulte o [diagrama de princípios em PDF](../imu_to_dxl-Princípio图.pdf) e as conexões da placa real
 
-| J3 脚号 | 最新Princípio图信号 | 接法 |
+| Pino J3 | Sinal no diagrama de princípios atual | Conexão |
 |---|---|---|
-| 1 | GND | J-Link/ST-LINK/USB-TTL 共地 |
-| 2 | SWDCLK | J-Link/ST-LINK SWCLK |
-| 3 | SWDIO | J-Link/ST-LINK SWDIO |
-| 4 | UART_RX，U1封装脚17 | USB-TTL TX，3.3V 电平 |
-| 5 | UART_TX，U1封装脚16 | USB-TTL RX，3.3V 电平 |
-| 6 | 3.3V | Depuração器电压参考；不要把 5V 接到aqui |
+| 1 | GND | Terra comum para J-Link/ST-LINK/USB-TTL |
+| 2 | SWDCLK | SWCLK do J-Link/ST-LINK |
+| 3 | SWDIO | SWDIO do J-Link/ST-LINK |
+| 4 | UART_RX, pino 17 do encapsulamento U1 | TX do USB-TTL, nível de 3,3 V |
+| 5 | UART_TX, pino 16 do encapsulamento U1 | RX do USB-TTL, nível de 3,3 V |
+| 6 | 3.3V | Referência de tensão do depurador; não conecte 5 V aqui |
 
-J3  de  SWD 四根线使用 **1、2、3、6** 脚；不要将旧 de 四针排线整排插到1–4脚，
-第4脚是串口输入，不能当作供电或电压参考。首次Superior电先按焊盘/EDA Rede核实。
-J3 没有引出 NRST；如需 under-reset Conexão，需在实际 NRST 测点另接。
-Depuração器若带Alimentação输出，不要 e 另一Alimentação盲目并联；先确认它是 VTref 输入还是Alimentação输出。
+Para SWD em J3, use os quatro fios nos pinos **1, 2, 3 e 6**. Não encaixe uma antiga fita de quatro vias nos pinos 1–4:
+o pino 4 é entrada serial e não serve como alimentação ou referência de tensão. Antes de energizar pela primeira vez, confira as ilhas de solda e a rede no EDA.
+J3 não expõe NRST; para conectar em under-reset, ligue também ao ponto NRST real.
+Se o depurador tiver saída de alimentação, não a conecte em paralelo às cegas com outra fonte; primeiro confirme se é entrada VTref ou saída de alimentação.
 
-J1/J2：1=GND、2=VDD_BUS、3=DATA；J4/J5：1=DATA、2=VDD_BUS、3=GND。
-总线Testeé necessário单线半双工 USB 适配器；普通 USB-TTL 仅usado para J3 日志。
+J1/J2: 1=GND, 2=VDD_BUS, 3=DATA; J4/J5: 1=DATA, 2=VDD_BUS, 3=GND.
+O teste do barramento exige um adaptador USB half-duplex de fio único; um USB-TTL comum serve somente para os logs de J3.
 
 ## 4. IMU 行为
 
-- WHO_AM_I 应为 `0x70`。软件复位后按步骤配置，并回读 ODR、量程及 SFLP 使能。
-- 加速度 ±4g，0.122mg/LSB；陀螺仪 ±500dps，17.5mdps/LSB。
-- 加速度、陀螺仪、SFLP e FIFO 批处理均为120Hz，供50Hz主控Leitura。
-- FIFO 按标签区分加速度、陀螺仪e四元数；每轮最多16条，不假设三者在同一条记录 em 。
-- 初始化、SPI 失败、FIFO 溢出或数据过期时 `ready=0`；约1秒后自动重试。
-- gyro 或 quaternion 任一超过100ms未Atualização即失效。即使主循环忙、未执行采样轮询，Leitura快照也会再次Verificação年龄。
-- Leitura接口保持一致快照，不在 em 断里Atualização姿态。传感器Instalação旋转留给主控，避免 e Oficial坐标变换重复。
-- 本版不保存实测偏置；SFLP 从Superior电默认状态开始估计。六轴姿态不提供绝对航向参考。
+- `WHO_AM_I` deve ser `0x70`. Após o reset por software, configura o dispositivo em etapas e lê de volta ODR, faixa e ativação SFLP.
+- Acelerômetro ±4g, 0,122 mg/LSB; giroscópio ±500 dps, 17,5 mdps/LSB.
+- Acelerômetro, giroscópio, SFLP e processamento em lote FIFO operam a 120 Hz para leitura pelo controlador a 50 Hz.
+- O FIFO distingue aceleração, giroscópio e quaternion por tags; processa no máximo 16 registros por rodada e não presume que os três estejam no mesmo registro.
+- `ready=0` durante a inicialização, falha SPI, overflow FIFO ou dados expirados; uma nova tentativa ocorre após cerca de 1 s.
+- Se os dados do gyro ou do quaternion não forem atualizados por mais de 100 ms, são considerados inválidos. Mesmo quando o loop principal está ocupado e não consulta a amostragem, a leitura do snapshot verifica a idade novamente.
+- A interface de leitura mantém um snapshot consistente e não atualiza a postura em uma interrupção. A rotação de instalação do sensor fica a cargo do controlador, para evitar aplicar duas vezes a transformação de coordenadas do upstream.
+- Esta versão não salva offsets medidos; o SFLP começa a estimar a partir do estado padrão ao ligar. A postura de seis eixos não fornece uma referência absoluta de rumo.
 
-合法的单位姿态 `xyz=0,0,0` 与上游全零“未就绪”哨兵重合。已收到有效 FIFO 姿态时，仅将 x 的半精度
-编码设为 IEEE 负零 `0x8000`，数学数值仍为0；真正未就绪始终返回全零。详见驱动说明和回归测试。
+Uma postura unitária válida `xyz=0,0,0` coincide com o marcador de “não pronto” composto por zeros do upstream. Depois de receber uma postura FIFO válida, somente a codificação fp16 de x é definida como zero negativo IEEE `0x8000`, cujo valor matemático continua sendo 0; quando realmente não está pronto, todos os valores permanecem zero. Consulte a descrição do driver e os testes de regressão.
 
-**运行时故障处理边界：** 已检查的官方主控在收到全零姿态后可能保留上次姿态，其 `ready()` 不会因此自动撤销。
-正式站立/运动联调前，主控应额外读取本版诊断 `ready`、采样计数和年龄，并执行失效处理。
-本版 PC 采集脚本已经Leitura这些字段；不能把“单板返回全零”当作整机已经具备自动停车行为。
+**Limite do tratamento de falhas durante a execução:** o controlador oficial examinado pode manter a postura anterior ao receber uma postura toda zerada; seu `ready()` não é automaticamente revogado por isso.
+Antes da integração oficial de movimentos ou postura em pé, o controlador deve ler também `ready`, o contador de amostras e a idade dos dados de diagnóstico desta versão, e tratar dados inválidos.
+O script de aquisição no PC desta versão já lê esses campos; o fato de “a placa isolada retornar zeros” não significa que o sistema completo pare automaticamente.
 
-## 5. 通信 e 寄存器
+## 5. Comunicação e registradores
 
-帧格式 `FF FF ID LEN INSTR 参数… CHK`，`CHK = ~(ID+LEN+INSTR+Σ参数)`，没有字节填充，所以载荷里也会出现 `FF FF`：接收按长度收完再验校验和，校验错就丢一个字节重新找帧头，不会被载荷里的假帧头带偏。逐条行为见[总线协议 §8](../总线协议.md#8-其它指令怎么应答)：
+Formato do quadro: `FF FF ID LEN INSTR parâmetros… CHK`, `CHK = ~(ID+LEN+INSTR+Σparâmetros)`. Como não há byte stuffing, `FF FF` também pode aparecer no payload: a recepção acumula o comprimento indicado e depois valida o checksum; se estiver incorreto, descarta um byte e procura novamente o cabeçalho, sem se confundir com um falso cabeçalho no payload. Consulte o comportamento de cada instrução no [protocolo do barramento §8](../总线协议.md#8-其它指令怎么应答):
 
 | 指令 | 行为 |
 |---|---|
-| `SYNC_READ 0x82`（广播） | 自己在列表第 k 位：k=0 收完指令 50 µs 后发；k>0 等前面 k 个设备的应答帧（ID 在前面、长度对、第 5 字节不是指令码），前面有设备 1 ms 不出声就当它不在线跳过 |
-| `PING` / `READ`（单播） | 回状态帧 / 数据，ERROR 恒为 0；广播 PING 不答 |
-| `WRITE` / `REG_WRITE`（单播） | 回 ACK，内容一概忽略（主控从不写这块板） |
-| `ACTION` `0x06` `0x09` `0x0A` `0x0B`（单播） | ACK，不动作 |
-| `REBOOT 0x08` | 不答，真重启 |
-| `SYNC_WRITE`、别的广播 | 不答 |
+| `SYNC_READ 0x82` (broadcast) | Se estiver na posição k da lista: para k=0, transmite 50 µs após receber a instrução completa; para k>0, aguarda os quadros de resposta dos k dispositivos anteriores (ID anterior, comprimento correto e quinto byte diferente do código de instrução); se algum dispositivo anterior ficar silencioso por 1 ms, considera-o offline e o ignora |
+| `PING` / `READ` (unicast) | Retorna quadro de estado/dados, ERROR sempre 0; PING em broadcast não recebe resposta |
+| `WRITE` / `REG_WRITE` (unicast) | Retorna ACK; ignora todo o conteúdo (o controlador nunca grava nesta placa) |
+| `ACTION` `0x06` `0x09` `0x0A` `0x0B` (unicast) | ACK, sem ação |
+| `REBOOT 0x08` | Sem resposta; reinicia de fato |
+| `SYNC_WRITE` e outros broadcasts | Sem resposta |
 
-时序（全是推断值，待实测，见总线Protocolo §5/§12；50 µs 是Protocolo逻辑里 de 数，加Superior解析e组包 de  CPU 时间后真实值要逻辑分析仪量）：T_resp 50 µs；帧内字节间隙超过 500 µs 丢弃残帧；排队时总线静默 1 ms 认为前一个设备不在线；等不到轮次 25 ms 放弃；到点后晚 2 ms 还发不出去就放弃，避免在Inferior一笔事务里抢总线。发送前再次原子Verificação新到达 de  RX Dados、USART BUSY e故障标志；忙时放弃这次应答。
-接收 em 断里只有**溢出（ORE）**才当总线故障清空收包；噪声 / 帧错标志只计数，字节照收，错了由校验e丢掉 —— 0.1.0 一律清空，一个字节带噪声标志就会把整条 sync_read 扔掉、这一 tick 15 颗Servo跟着丢（0.2.0 审查后改）。
+Temporização (todos são valores inferidos, ainda precisam ser medidos; consulte o protocolo do barramento §5/§12. Os 50 µs são o valor na lógica do protocolo; o valor real, incluindo o tempo de CPU para analisar e montar o quadro, deve ser medido com analisador lógico): T_resp 50 µs; descarta o quadro incompleto se o intervalo entre bytes exceder 500 µs; durante o enfileiramento, considera o dispositivo anterior offline após 1 ms de silêncio; desiste da rodada após 25 ms; se não conseguir transmitir até 2 ms depois do horário programado, desiste para não disputar o barramento no meio de outra transação. Antes de transmitir, faz uma verificação atômica de novos dados RX, USART BUSY e flags de erro; se o barramento estiver ocupado, abandona a resposta.
+Na interrupção de recepção, somente overflow (**ORE**) é tratado como falha do barramento e limpa o quadro recebido; flags de ruído/framing apenas incrementam contadores, os bytes continuam sendo recebidos e o checksum descarta os inválidos. A versão 0.1.0 limpava tudo, de modo que um byte com flag de ruído descartava o sync_read inteiro e fazia os 15 servos perderem aquele tick (corrigido após revisão da 0.2.0).
 
-**把 ID200 放在 Sync Read 列表第一位**，与官方 `bus.rs` 相同；放中间也能答（排队规则），但前面的设备缺席时主控侧的解析会错位，见总线协议 §2。
+**Coloque o ID 200 na primeira posição da lista Sync Read**, como em `bus.rs` oficial. Ele também pode responder no meio da lista (regra de enfileiramento), mas se faltar um dispositivo anterior, a análise no controlador fica desalinhada; consulte o protocolo do barramento §2.
 
 多字节字段全部小端。
 
 | 地址 | 字节数 | Conteúdo / 权限 |
 |---|---:|---|
-| 0 / 1 | 各1 | FirmwareVersão 0.2（主.次），不冒充Servo de  3.46 |
-| 2 | 1 | END = 0（小端） |
-| 3 | 2 | 自定义型号 `0x4D44` |
-| 5 / 6 / 8 | 各1 | ID 200 / 波特率 0（1Mbps）/ 应答状态级别 1 |
-| **56** | **15** | **主控每 tick 读 de 块**：gyro XYZ（int16，17.5 mdps/LSB）、四元数 XYZ（binary16）、采样计数（u8）、状态位、Preservado 0。original轴序，不做坐标变换 |
-| 124 | 6 | gyro XYZ，三个 int16，±500dps（诊断，跟块里同一份） |
-| 130 | 6 | quaternion XYZ，三个 IEEE binary16；W由主控重建 |
-| 136 | 6 | original加速度 XYZ，三个 int16，±4g |
-| 142 | 1 | 姿态采样计数低8位 |
-| 143 | 1 | bit0=ready、bit1=configured、bit2=error |
-| 144 / 145 | 各1 | WHO_AM_I / 错误码 |
-| 146 / 147 | 各1 | 时钟状态 / 看门狗开关 |
-| 148 / 152 / 156 | 各4 | 姿态 / gyro / accel 采样计数 |
-| 160 / 164 / 168 | 各4 | uptime_ms / gyro年龄ms / 姿态年龄ms |
-| 172 / 176 / 180 / 184 | 各4 | SPI错误 / FIFO溢出 / 非法四元数 / 恢复次数 |
-| 188 / 192 / 196 / 200 | 各4 | RX队列溢出 / UART错误（噪声/帧错/溢出都计）/ 校验e错误 / 非法包 |
-| 204 / 208 / 212 / 216 | 各4 | 收包超时 / 有效收包数 / 实际发包数 / 取消应答数 |
-| 220 / 224 / 228 / 232 | 各4 | RCC复位原因原值 / 主频Hz / TX超时 / 日志丢弃数 |
-| 236 | 1 | este projeto诊断寄存器表Versão 2（飞特Protocolo，块在 56） |
-| 240 | 4 | sync_read 排队时判定前面设备不在线、跳过 de 次数 |
-| 244 | 4 | 发送前检测到总线忙而放弃应答 de 次数 |
+| 0 / 1 | 1 cada | Versão do firmware 0.2 (principal/secundária); não se identifica como servo 3.46 |
+| 2 | 1 | END = 0 (little-endian) |
+| 3 | 2 | Modelo personalizado `0x4D44` |
+| 5 / 6 / 8 | 1 cada | ID 200 / baud rate 0 (1 Mbps) / nível de estado da resposta 1 |
+| **56** | **15** | **Bloco lido pelo controlador a cada tick**: gyro XYZ (int16, 17,5 mdps/LSB), quaternion XYZ (binary16), contador de amostras (u8), bits de estado e reservado 0. Eixos originais, sem transformação de coordenadas |
+| 124 | 6 | gyro XYZ, três int16, ±500 dps (diagnóstico, mesmos dados do bloco) |
+| 130 | 6 | quaternion XYZ, três IEEE binary16; o controlador reconstrói W |
+| 136 | 6 | Aceleração XYZ original, três int16, ±4g |
+| 142 | 1 | 8 bits inferiores do contador de amostras de postura |
+| 143 | 1 | bit0=ready, bit1=configured, bit2=error |
+| 144 / 145 | 1 cada | WHO_AM_I / código de erro |
+| 146 / 147 | 1 cada | Estado do clock / estado do watchdog |
+| 148 / 152 / 156 | 4 cada | Contadores de amostras da postura / gyro / acelerômetro |
+| 160 / 164 / 168 | 4 cada | uptime_ms / idade do gyro em ms / idade da postura em ms |
+| 172 / 176 / 180 / 184 | 4 cada | Erros SPI / overflows FIFO / quaternions inválidos / quantidade de recuperações |
+| 188 / 192 / 196 / 200 | 4 cada | Overflow da fila RX / erros UART (ruído/framing/overflow) / erros de checksum / pacotes inválidos |
+| 204 / 208 / 212 / 216 | 4 cada | Timeout de recepção / pacotes válidos recebidos / pacotes efetivamente transmitidos / respostas canceladas |
+| 220 / 224 / 228 / 232 | 4 cada | Valor bruto da causa de reset RCC / clock em Hz / timeout TX / logs descartados |
+| 236 | 1 | Versão 2 da tabela de registradores de diagnóstico deste projeto (protocolo Feetech, bloco no endereço 56) |
+| 240 | 4 | Quantidade de dispositivos anteriores ignorados como offline durante o enfileiramento sync_read |
+| 244 | 4 | Quantidade de respostas abandonadas após detectar o barramento ocupado antes da transmissão |
 
-其余 0~255 地址读为 0；写一律 ACK 但不生效（重新初始化 IMU 改用 J3 日志串口的 `r` 命令）。56~70 是主控接口；124 及之后是**本项目自定义诊断扩展**，不宣称与舵机的电压/温度寄存器兼容。
+As demais leituras nos endereços 0~255 retornam 0; gravações recebem ACK, mas não têm efeito (para reinicializar o IMU, use o comando `r` na serial de logs J3). 56~70 é a interface do controlador; 124 em diante é uma **extensão de diagnóstico personalizada deste projeto**, sem alegação de compatibilidade com os registradores de tensão/temperatura dos servos.
 
-块里 de 状态位（byte 13）：BIT0 融合没就绪（四元数全 0）；BIT1 跟 IMU 通信Falha（SPI/复位超时/Configuração/Dados过期/FIFO）；BIT2 自检Falha（WHO_AM_I 不对）；BIT3 两次读块之间刷新了 4 次以Superior（120 Hz 采样、50 Hz 读每次正常 2~3 次）。
-错误码见 `imu.h`：0正常、1启动、2SPI、3身份、4复位超时、5配置、6过期、7FIFO、8四元数。
-时钟状态：0=HSI PLL、1=HSE PLL、2=HSEFalha回退HSI PLL、3=PLLFalhaHSI16、4=切换Falha回退。
+Bits de estado do bloco (byte 13): BIT0 fusão não pronta (quaternion todo zero); BIT1 falha de comunicação com o IMU (SPI/timeout de reset/configuração/dados expirados/FIFO); BIT2 falha no autoteste (`WHO_AM_I` incorreto); BIT3 houve pelo menos 4 atualizações entre duas leituras do bloco (com amostragem de 120 Hz e leitura a 50 Hz, 2–3 atualizações por leitura são normais).
+Códigos de erro em `imu.h`: 0 normal, 1 inicialização, 2 SPI, 3 identidade, 4 timeout de reset, 5 configuração, 6 expirado, 7 FIFO, 8 quaternion.
+Estado do clock: 0=HSI PLL, 1=HSE PLL, 2=falha HSE com retorno a HSI PLL, 3=falha PLL usando HSI16, 4=falha na troca com retorno.
 
 ## 6. 板到后 de 顺序
 
