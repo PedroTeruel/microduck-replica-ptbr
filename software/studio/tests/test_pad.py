@@ -1403,18 +1403,18 @@ class ActionTest(PadTestBase):
         self.assertIn("开始走", str(cm.exception))
 
     def test_user_combos_saved_loaded_and_validated(self):
-        combo = {"id": "wave", "name": "挥挥手", "steps": [{"do": "sound", "tag": "coo"}, {"do": "nod", "times": 9},
+        combo = {"id": "wave", "name": "Acenar", "steps": [{"do": "sound", "tag": "coo"}, {"do": "nod", "times": 9},
                                                           {"do": "mouth", "open": 3, "ms": 50}]}
         self.ops.handle({"op": "combo_save", "combo": combo})
         saved = next(c for c in self.ops.snapshot()["motion"]["combos"] if c["id"] == "wave")
         self.assertFalse(saved["builtin"])
-        self.assertIn("点头 4 次", saved["text"])             # 夹到范围里
+        self.assertIn("Acenar 4 vez(es)", saved["text"])    # Limitado à faixa permitida
         again = P.PadOps(self.log, robot=self.robot, state_dir=self.ops.state_dir)
         self.assertEqual([c["id"] for c in again._user_combos], ["wave"])
-        for bad, word in (({"id": "hello", "name": "x", "steps": [{"do": "wait"}]}, "内置"),
-                          ({"id": "w2", "name": "x", "steps": [{"do": "move", "vx": 1}]}, "不认识"),
-                          ({"id": "w3", "name": "x", "steps": [{"do": "skill", "name": "sit_toggle"}]}, "坐下"),
-                          ({"id": "W!", "name": "x", "steps": [{"do": "wait"}]}, "编号")):
+        for bad, word in (({"id": "hello", "name": "x", "steps": [{"do": "wait"}]}, "predefinido"),
+                          ({"id": "w2", "name": "x", "steps": [{"do": "move", "vx": 1}]}, "desconhecida"),
+                          ({"id": "w3", "name": "x", "steps": [{"do": "skill", "name": "sit_toggle"}]}, "Sentar"),
+                          ({"id": "W!", "name": "x", "steps": [{"do": "wait"}]}, "identificador")):
             with self.subTest(word=word):
                 with self.assertRaises(P.Refused) as cm:
                     self.ops.handle({"op": "combo_save", "combo": bad})
@@ -2451,7 +2451,7 @@ class ComboTest(unittest.TestCase):
             with self.subTest(c=c["id"]):
                 self.assertEqual(C.clean_combo(dict(c, id="x" + c["id"]))["steps"], c["steps"])
                 self.assertLess(C.duration(c["steps"]), C.MAX_TOTAL_S)
-        self.assertEqual(C.describe(C.BUILTIN_COMBOS[0]["steps"]), "叫一声（打招呼） → 点头 2 次 → 张嘴")
+        self.assertEqual(C.describe(C.BUILTIN_COMBOS[0]["steps"]), "Emitir um som (Cumprimentar) → Acenar 2 vez(es) → Abrir a boca")
         with self.assertRaises(C.Refused):
             C.clean_combo({"id": "long", "name": "x", "steps": [{"do": "wait", "ms": 3000}] * 8})
 
