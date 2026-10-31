@@ -24,7 +24,7 @@ STEPS = ("1", "2", "3", "4")
 STEP_NAMES = {"1": "配置和控制线程", "2": "舵机总线和 IMU", "3": "加载模型", "4": "第一个控制周期"}
 READ_TIMEOUT_S = 2.0          # 订阅里多久没消息就回头看一眼（robotd 重启了没有、Studio 要不要暂停）
 RETRY_S = (1.0, 2.0, 5.0)
-POLICY_OFF = "策略按配置关闭"   # fork main.rs:2229：第 3 步成功、但走路策略没加载（执行配置坏了时也是这句，审查 T-R1）
+POLICY_OFF = "Estratégia desativada conforme configuração"   # fork main.rs:2229: etapa 3 concluída, mas a política de caminhada não foi carregada (revisão T-R1)
 
 
 class StartupTrack:
@@ -74,7 +74,7 @@ class StartupTrack:
         return None, None
 
     def policy_off(self):
-        """第 3 步成功、原话是「策略按配置关闭」。"""
+        """Etapa 3 concluída; a descrição literal é “Estratégia desativada conforme configuração”."""
         row = self.steps.get("3") or {}
         return row.get("status") == "success" and POLICY_OFF in (row.get("detail") or "")
 
@@ -163,7 +163,7 @@ def _log_change(rd, track):
         rd.log.error(f"主程序启动第 {n}/4 步失败", cat="robotd", step=STEP_NAMES[n], raw=row.get("detail"),
                      hint="看日志页里 robotd 的那几行；导出诊断包发出来")
     elif not n and track.policy_off():
-        rd.log.warn("主程序起来了，但走路策略没加载（第 3 步：策略按配置关闭）", cat="robotd", step="加载模型",
+        rd.log.warn("O programa principal iniciou, mas a política de caminhada não foi carregada (etapa 3: estratégia desativada conforme configuração)", cat="robotd", step="加载模型",
                     hint="多半是走路模型目录里的执行配置或合同不对；能站不能走")
 
 
@@ -193,7 +193,7 @@ def walk_unloaded(rd, pol=None, bus=None):
     if walk_err:
         return f"走路槽加载失败：{walk_err}"
     if missing or off:
-        return "主程序说「策略按配置关闭」，走路模型没加载" if off else "主程序没有加载走路模型（loaded_models 里没有 walk）"
+        return "O programa principal informou que a estratégia está desativada conforme configuração; o modelo de caminhada não foi carregado" if off else "O programa principal não carregou o modelo de caminhada (loaded_models não contém walk)"
     return None
 
 

@@ -87,9 +87,9 @@ class TrackTest(unittest.TestCase):
 
     def test_policy_off_detected_only_on_step3_success(self):
         t = S.StartupTrack()
-        t.update(report("success", "success", "success", "success", details={3: "策略按配置关闭"}))
+        t.update(report("success", "success", "success", "success", details={3: "Estratégia desativada conforme configuração"}))
         self.assertTrue(t.policy_off())
-        t.update(report("success", "success", "starting", details={3: "策略按配置关闭"}))
+        t.update(report("success", "success", "starting", details={3: "Estratégia desativada conforme configuração"}))
         self.assertFalse(t.policy_off())
 
     def test_garbage_ignored(self):
@@ -130,11 +130,11 @@ class TodoTest(unittest.TestCase):
     def test_walk_unloaded_todo(self):
         rd = self.rd("walk_unloaded")
         rd.startup.reset(rd.hello.at)
-        rd.startup.update(report("success", "success", "success", "success", details={3: "策略按配置关闭"}))
+        rd.startup.update(report("success", "success", "success", "success", details={3: "Estratégia desativada conforme configuração"}))
         todo = summarize(rd, {})["todo"]
         self.assertEqual(todo[0]["key"], "walk_unloaded")
         self.assertEqual(todo[0]["level"], "error")
-        self.assertIn("策略按配置关闭", todo[0]["hint"])
+        self.assertIn("Estratégia desativada conforme configuração", todo[0]["hint"])
 
     def test_walk_slot_error_named(self):
         f = FakeRobotd(FIXTURE, posture="holding")

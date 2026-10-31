@@ -1,26 +1,27 @@
-"""假 robotd 里跟「运行和调参」有关的形状（调参方案 v2 T1–T3）。fake_robotd.py 在三个地方调这里：
-- set_posture 之后：after_posture(fake, p) —— 策略开着时补 active_action_scale / active_target_filters / scale_use
-  （录的夹具是策略没开时的，没有这几个：等上鸭子录「策略开着站着 / 在走 / 坐着」三段再换真的）；
-  新姿势 walk_unloaded：照 fork 的真实行为（审查 T-R1）——第 3 步报 success「策略按配置关闭」、loaded_models 为空、
-  槽错误和 change_error 都是空的；
-- fake.set：fake_set(fake, params) 认这几个键：
-    startup {steps:{...}} / null        盖掉按姿势算的启动四步（null = 回到按姿势算），订阅着的连接马上收到通知
-    servo_parameters {kp,kd,torque_limit} / null / "absent"   native.hd1910.servo_parameters（"absent" = 键都没有，像原版板端固件）
-    walk_profile {action_scale,head_lowpass,legs_lowpass}    loaded_models.walk.runtime_execution_profile 改成这样
-    guard {...}                          home_start_guard 里改几项
-    last_enable_refusal "原因" / null
-    slot_error {槽: "原因" / null}       robot.policies 的 slots[].error
-    change_error "原因" / null           robot.policies 的 change_error
-    regs null                            registers_before_arm 变空（没上过力）
-- 连接上收到 robot.startupSubscribe：startup_stream(fake, reader, writer, rid) —— 先回现在的四步，有变化推 robot.startup，
-  客户端发一行或断开就结束（fork robotd main.rs:4671-4686 一样）。errors 里有这个方法就回错（模拟老 robotd 没有它）。
-步骤的原话是我们自己写的近似文字；只有「策略按配置关闭」照抄，startup.py 要认这几个字。
+"""Simula os dados de execução e ajuste de parâmetros no robotd falso (plano v2 T1–T3).
+fake_robotd.py usa este módulo em três situações:
+- Após set_posture: after_posture(fake, p) acrescenta active_action_scale / active_target_filters / scale_use quando a política está ativa.
+  Os registros disponíveis foram feitos com a política desligada; serão substituídos por registros reais em pé, andando e sentado.
+  Para walk_unloaded, reproduz o fork (revisão T-R1): etapa 3 bem-sucedida com “Estratégia desativada conforme configuração”,
+  loaded_models vazio, sem erros de slot nem change_error.
+- fake.set: fake_set(fake, params) reconhece estas chaves:
+    startup {steps:{...}} / null        substitui as quatro etapas calculadas pela postura; null restaura o cálculo e notifica assinantes
+    servo_parameters {kp,kd,torque_limit} / null / "absent"   native.hd1910.servo_parameters; "absent" remove a chave, como no firmware original
+    walk_profile {action_scale,head_lowpass,legs_lowpass}    substitui loaded_models.walk.runtime_execution_profile
+    guard {...}                          altera campos em home_start_guard
+    last_enable_refusal "motivo" / null
+    slot_error {slot: "motivo" / null}  robot.policies.slots[].error
+    change_error "motivo" / null       robot.policies.change_error
+    regs null                            esvazia registers_before_arm (sem torque aplicado)
+- Ao receber robot.startupSubscribe: startup_stream(fake, reader, writer, rid) retorna as quatro etapas atuais e envia robot.startup quando houver mudanças.
+  Termina quando o cliente envia uma linha ou desconecta (como fork robotd main.rs:4671-4686). Se errors contiver este método, retorna erro, simulando um robotd antigo.
+As descrições das etapas são aproximadas e foram escritas para este projeto; a frase “Estratégia desativada conforme configuração” é literal, pois startup.py a reconhece.
 """
 import asyncio
 import copy
 import json
 
-POLICY_OFF = "策略按配置关闭"
+POLICY_OFF = "Estratégia desativada conforme configuração"
 
 
 def _ok(detail):
@@ -31,33 +32,33 @@ def startup_report(fake):
     if getattr(fake, "startup_override", None) is not None:
         return {"steps": copy.deepcopy(fake.startup_override.get("steps") or {}), "build": fake.bus.get("build")}
     p = fake.posture
-    s1 = _ok("配置、实例锁、IPC、控制线程都起来了")
+    s1 = _ok("Configuração, bloqueio de instância, IPC e thread de controle iniciados")
     if p == "starting":
-        steps = {"1": s1, "2": {"status": "waiting", "detail": fake.bus.get("error") or "等全部关节的新鲜反馈；没发目标"}}
+        steps = {"1": s1, "2": {"status": "waiting", "detail": fake.bus.get("error") or "Aguardando dados atualizados de todas as juntas; nenhum alvo foi enviado"}}
     elif p == "stuck_calib":
         steps = {"1": s1, "2": {"status": "waiting", "detail": fake.bus.get("error")}}
     elif p == "commissioning":
-        # 照 fork feetech_commissioning.rs：开总线前第 2 步 starting / 打不开 waiting；第一次读成功以后四步都成功。
-        # 旧 fork（comm_stuck）四步照样都成功，只是 busStatus 一直回启动报告
+        # Segue o fork feetech_commissioning.rs: a etapa 2 fica em starting antes de abrir o barramento, ou waiting se falhar; após a primeira leitura bem-sucedida, as quatro etapas concluem.
+        # Fork antigo (comm_stuck): as quatro etapas também concluem, mas busStatus continua retornando o relatório de inicialização.
         cp = fake.comm_phase() if hasattr(fake, "comm_phase") and fake.mode == "commissioning" else "up"
         if cp == "waiting":
             steps = {"1": s1, "2": {"status": "waiting", "detail": "torque readback at register 40: Feetech Sync Read timeout"}}
         elif cp == "boot" and not getattr(fake, "comm_stuck", False):
-            steps = {"1": s1, "2": {"status": "starting", "detail": "标定模式：读取已有标定，关闭并确认扭矩，初始化 IMU"}}
+            steps = {"1": s1, "2": {"status": "starting", "detail": "Modo de calibração: lendo calibração existente, desligando e confirmando torque e inicializando a IMU"}}
         else:
-            steps = {"1": s1, "2": _ok("标定模式：第一份有效反馈读到了"), "3": _ok("标定模式不加载策略模型"),
-                     "4": _ok("标定模式第一个周期完成；运动策略关闭")}
+            steps = {"1": s1, "2": _ok("Modo de calibração: primeiro retorno válido recebido"), "3": _ok("Modo de calibração: modelos de política não são carregados"),
+                     "4": _ok("Modo de calibração: primeiro ciclo concluído; política de movimento desativada")}
     elif p == "walk_unloaded":
-        steps = {"1": s1, "2": _ok("第一份有效关节和 IMU 反馈读到了"), "3": _ok(POLICY_OFF), "4": _ok("第一个控制周期完成")}
+        steps = {"1": s1, "2": _ok("Primeiro retorno válido das juntas e da IMU recebido"), "3": _ok(POLICY_OFF), "4": _ok("Primeiro ciclo de controle concluído")}
     else:
-        steps = {"1": s1, "2": _ok("第一份有效关节和 IMU 反馈读到了"), "3": _ok("随包模型可用"), "4": _ok("第一个控制周期完成")}
+        steps = {"1": s1, "2": _ok("Primeiro retorno válido das juntas e da IMU recebido"), "3": _ok("Modelo incluído no pacote disponível"), "4": _ok("Primeiro ciclo de controle concluído")}
     return {"steps": steps, "build": fake.bus.get("build")}
 
 
 def after_posture(fake, p):
     bus = fake.bus
     if not isinstance(bus.get("native"), dict):
-        return                                    # 调试模式 / 等总线：busStatus 里没有这些
+        return                                    # Modo de depuração ou aguardando o barramento: busStatus não contém esses campos
     b0 = fake._bus0
     if p == "walk_unloaded":
         bus["loaded_models"] = None
@@ -128,7 +129,7 @@ async def startup_stream(fake, reader, writer, rid):
         while True:
             done, _ = await asyncio.wait({line}, timeout=0.1)
             if done:
-                return                            # 客户端发了一行或者断开：跟 robotd 一样结束
+                return                            # O cliente enviou uma linha ou desconectou; encerra como robotd
             cur = startup_report(fake)
             if cur != last:
                 last = cur
