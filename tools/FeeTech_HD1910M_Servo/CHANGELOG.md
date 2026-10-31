@@ -1,99 +1,85 @@
-# Atualização日志（CHANGELOG）
+# Histórico de alterações
 
-本Arquivo记录 HD1910M ServoTesteFerramentas de 所有重要变更。
+Este arquivo registra as mudanças importantes da ferramenta de teste de servos HD1910M.
 
-## [0.2.0] - 2026-10-03
+## [0.2.0] - 03/10/2026
 
-Autor：漂移菌
+Autor: 漂移菌
 
-本次Atualização de 主线：**补齐 e 飞特 FD DepuraçãoSoftware对标 de "零位校准"e"活动区间限制"能力**，
-并在 microduck 实机（15 颗 HD-1910，Firmware 3.46）SuperiorConcluído全量Validação。
+Objetivo principal: **adicionar recursos de calibração de zero e limitação da faixa ativa equivalentes ao software de depuração Feetech FD** e concluir a validação no Microduck real, com 15 servos HD-1910 e firmware 3.46.
 
-### 新增功能
+### Novos recursos
 
-#### 1. 零位校准 `zero`（0x0B 位置校准指令）—— 核心新增
+#### 1. Calibração de zero `zero` (instrução de calibração de posição 0x0B) — recurso principal
 
-等同飞特 FD DepuraçãoSoftware de "设置零位/ em 位校准"按钮：把Servo**AtualMecânica位置**标定为指定读数
-（默认 em 位 2048），Servo自动计算并修改 31 号位置偏移寄存器。
+Equivale aos botões “Definir zero/calibração de posição” do software Feetech FD: define a leitura desejada para a posição mecânica atual do servo (padrão: ponto médio 2048). O servo calcula e altera automaticamente o registrador de deslocamento de posição 31.
 
-> 为什么不能用老办法：HD-1910（HLS 系Firmware ≥3.43）**não suporta**"扭矩开关写 128" de  em 位校准
-> （写了回"Sucesso"但偏移寄存器Inalterado）。0x0B 是本机型唯一正确 de 校准指令。
+> Por que não usar o método antigo: HD-1910 com firmware HLS versão 3.43 ou superior **não aceita** a calibração de zero escrevendo 128 no controle de torque (responde “sucesso”, mas o registrador de deslocamento não muda). A instrução 0x0B é o único método correto para este modelo.
 
-使用方法（装机时逐颗操作）：
+Uso durante a montagem, servo por servo:
 
 ```bash
-feetech-HD1910M-tester torque off      # 1. 松轴
-# 2. 用手把关节摆到机械零位并扶住（中间别等待，重力会压偏）
-feetech-HD1910M-tester zero            # 3. 校准：当前位置 → 2048，自动掉电保存
-feetech-HD1910M-tester torque on       # 4. 恢复扭矩
-feetech-HD1910M-tester zero --to 1024  # 也可以标定为任意读数（0~4095）
+feetech-HD1910M-tester torque off      # 1. Libere o eixo
+# 2. Posicione manualmente a articulação no zero mecânico e mantenha-a ali; não espere, pois a gravidade pode deslocá-la
+feetech-HD1910M-tester zero            # 3. Calibre: posição atual -> 2048; grava automaticamente em memória não volátil
+feetech-HD1910M-tester torque on       # 4. Reative o torque
+feetech-HD1910M-tester zero --to 1024  # Também aceita qualquer leitura de destino (0~4095)
 ```
 
-Comando内部流程：读校准前位置 → 解锁 EPROM → 发 0x0B → 重新Superior锁 → 延时 →
-**回读"Atual位置 + 位置偏移"双重确认**（偏差 >4 个单位即报错）。
-因为飞特对não suporta de 操作也可能回"Sucesso"，一切以回读为准。
+Fluxo interno do comando: lê a posição antes da calibração → desbloqueia EPROM → envia 0x0B → bloqueia novamente → aguarda → **confirma por duas leituras: posição atual e deslocamento de posição** (diferença superior a 4 unidades gera erro). Como a Feetech pode responder “sucesso” a operações não suportadas, o resultado da leitura é que determina o sucesso.
 
-#### 2. 重启命令 `reboot`（0x08）
+#### 2. Comando de reinicialização `reboot` (0x08)
 
-等效断电重Superior电：SRAM 从 EPROM 重新加载。usado para**不物理断电**Validação EPROM Gravação是否落盘
-（robotd 更换Servo流程用 de 也是这条指令）。
+Equivale a desligar e ligar: SRAM é carregada novamente da EPROM. Serve para **verificar sem cortar fisicamente a alimentação** se uma gravação na EPROM foi persistida; o processo de troca de servo do robotd também usa essa instrução.
 
 ```bash
-feetech-HD1910M-tester reboot          # 重启后等约 1 秒再通信
+feetech-HD1910M-tester reboot          # Após reiniciar, aguarde cerca de 1 s antes de comunicar
 ```
 
-验证 EPROM 落盘的技巧：先写一个 SRAM 标记值（如 `torque-limit 300`）→ `reboot` →
-读回发现恢复为EPROM/Superior电默认值（1000），即证明重启真实发生，此时 EPROM 项读回什么就是什么。
+Uma forma de confirmar a recarga da EPROM: grave um valor de teste em SRAM, como `torque-limit 300`, execute `reboot` e leia o valor novamente. Se ele voltar ao padrão da EPROM (1000), a reinicialização ocorreu; a leitura dos itens de EPROM mostra os valores persistidos.
 
-#### 3. Protocolo层新增指令
+#### 3. Novas instruções na camada de protocolo
 
-`Instruction::Reboot = 0x08`、`Instruction::ResetTurns = 0x0A`（多圈圈数重置）、
-`Instruction::Calibrate = 0x0B`，附组包单元测试。
+`Instruction::Reboot = 0x08`, `Instruction::ResetTurns = 0x0A` (zera o contador de voltas múltiplas) e `Instruction::Calibrate = 0x0B`, com testes unitários de montagem dos pacotes.
 
-### 功能增强
+### Melhorias
 
-#### `limits` 活动区间限制（9/11 号最小/最大角度）
+#### Limites da faixa ativa `limits` (ângulos mínimo/máximo nos endereços 9/11)
 
-- 新增 `--deg`：直接按角度输入，如 `limits 90 270 --deg --save`（0~360° 对应 0~4095）
-- 新增交叉校验：`min >= max` 直接拒绝；多圈模式的 `0 0` 特判放行
-  （原来会被 max-angle 名义Inferior限 1 误拒）
-- `--save` 改为**一次解锁/上锁写两个寄存器**（EPROM 往返减半），
-  且任何一步Falha都保证重新Superior锁
-- Gravação后**回读确认**并按角度显示
+- Adicionada a opção `--deg` para informar ângulos, por exemplo `limits 90 270 --deg --save` (0–360° corresponde a 0–4095).
+- Adicionada validação cruzada: rejeita `min >= max`; o caso `0 0` no modo multivoltas é aceito explicitamente (antes era rejeitado incorretamente pelo limite inferior nominal do ângulo máximo).
+- `--save` agora desbloqueia e bloqueia uma vez para gravar os dois registradores, reduzindo pela metade as operações na EPROM; qualquer falha garante novo bloqueio.
+- Após gravar, lê de volta e exibe os valores em graus.
 
 ```bash
-feetech-HD1910M-tester limits 1024 3072 --save   # 原始值：中位 ±90°
-feetech-HD1910M-tester limits 90 270 --deg       # 角度值：只改内存，调试用
+feetech-HD1910M-tester limits 1024 3072 --save   # Valores brutos: ponto médio ±90°
+feetech-HD1910M-tester limits 90 270 --deg       # Graus: altera apenas a RAM, para depuração
 ```
 
-### 修复
+### Correções
 
-- **`set --defer` 异步写之前跳过范围校验**：越界值会被直接编码发出。现在所有写入路径
-  （`write_reg` / `sync_write` / `set --defer`）统一走 `Register::check_value()`。
+- `set --defer` ignorava a validação de faixa antes da gravação assíncrona, permitindo transmitir valores fora dos limites. Agora todos os caminhos (`write_reg`, `sync_write` e `set --defer`) usam `Register::check_value()`.
 
-### 内部改进
+### Melhorias internas
 
-- `Register::check_value()`：范围校验从三处重复代码收敛为一处
-- `ServoError::Malformed` 改为携带 `String`，可报告动态错误信息
-- 简化 `pid` 命令中的冗余分支
-- 新增单元Teste：0x0B 组包、check_value 边界（共 8 个Teste全过）
+- `Register::check_value()`: unificou em um só local a validação de faixa antes repetida em três trechos.
+- `ServoError::Malformed` agora carrega `String` para informar erros dinâmicos.
+- Simplificados ramos redundantes do comando `pid`.
+- Adicionados testes unitários para montagem do pacote 0x0B e limites de `check_value()`; os oito testes passaram.
 
-### 实机Registro de validação（microduck，15 颗 HD-1910，Firmware 3.46）
+### Validação no robô real (Microduck, 15 HD-1910, firmware 3.46)
 
-- **0x0B 校准实测**：位置 2958（+80°）→ 校准后精确 2048，偏移寄存器自动Gravação 910
-  （= 2958−2048，实测确认偏移语义为"反馈值 = original值 − 偏移量"），掉电保存
-- **0x08 重启实测可用**（项目文档"台架待验"事项pode划掉）
-- **15 颗全量验收**：ID 表（10-14/20-24/30-34）、Firmware 3.46、字节序 0、波特率 1M、
-  应答级别 1、模式 4、电压窗口 4.0~10.0V、卸载条件 13（电压+过热+过流）全部达标；
-  各关节读数 e 站姿目标偏差 ≤4 个单位
+- **Calibração 0x0B medida:** posição 2958 (+80°) → exatamente 2048 após calibrar; o registrador de deslocamento gravou automaticamente 910 (= 2958−2048). A leitura confirmou a semântica do deslocamento: “valor retornado = valor original − deslocamento”. O valor permaneceu após desligar a alimentação.
+- **Reinicialização 0x08 confirmada**; a pendência “aguarda teste de bancada” na documentação do projeto pode ser removida.
+- **Validação dos 15 servos:** IDs 10–14/20–24/30–34; firmware 3.46; ordem de bytes 0; baud 1M; nível de resposta 1; modo 4; faixa de tensão 4,0–10,0 V; condição de descarga 13 (tensão, superaquecimento e sobrecorrente) — todos aprovados. Diferença entre leitura das articulações e a meta da postura em pé: no máximo 4 unidades.
 
 ---
 
-## [0.1.0] - 初始Versão
+## [0.1.0] - versão inicial
 
-- FT-SCS ProtocoloCompleto实现：PING / READ / WRITE / REG WRITE / ACTION / SYNC WRITE / 恢复出厂
-- 覆盖官方 HLS_2 内存表全部寄存器的 `dump` / `get` / `set`（支持键名/十进制/十六进制地址）
-- `scan` 总线扫描、`monitor` 实时监控（位置/速度/负载/电压/温度/电流）
-- `goto` / `angle` / `swing` 运动控制，`torque` / `torque-limit` / `goal-current` 力控
-- 三环 PID 调参（`pid`）、保护参数（`protect`）、ID/波特率设置（`set-id` / `set-baud`）
-- EPROM 锁存机制（`lock` / `--save`）：解锁→写入→上锁，保护 EPROM 寿命
+- Implementação completa do protocolo FT-SCS: PING / READ / WRITE / REG WRITE / ACTION / SYNC WRITE / restauração de fábrica.
+- Comandos `dump`, `get` e `set` para todos os registradores da tabela HLS_2 oficial (aceitam nome, endereço decimal ou hexadecimal).
+- Varredura do barramento com `scan` e monitoramento em tempo real com `monitor` (posição, velocidade, carga, tensão, temperatura e corrente).
+- Controle de movimento `goto` / `angle` / `swing`; torque e controle de força com `torque` / `torque-limit` / `goal-current`.
+- Ajuste de PID em três malhas (`pid`), parâmetros de proteção (`protect`) e configuração de ID/baud (`set-id` / `set-baud`).
+- Mecanismo de bloqueio de EPROM (`lock` / `--save`): desbloquear → gravar → bloquear, para preservar a vida útil da EPROM.
