@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""调试台后端自检：真实的 server.handle + FeetechBus，对着协议级模拟器（sim_bus）跑一遍会写舵机的功能。
+"""Autoteste do backend do console: executa operações que escrevem nos servos usando server.handle e FeetechBus reais com o simulador de protocolo sim_bus.
 
   python selftest.py
 
-改了 feetech.py 或 server.py 里跟舵机打交道的地方，先跑这个再上真机。
-不碰真舵机，不碰仓库里的 poses/ 和 calib/（用临时目录）。
+Após alterar a comunicação com os servos em feetech.py ou server.py, execute este teste antes de usar o hardware real.
+Não acessa servos reais nem os diretórios poses/ e calib/ do repositório (usa diretórios temporários).
 """
 import json
 import os
@@ -32,11 +32,11 @@ def main():
     server.CALIB_DIR = os.path.join(tmp, "calib")
     server.POSES_DIR = os.path.join(tmp, "poses")
     server.LOG_DIR = os.path.join(tmp, "logs")
-    server.DIRS_FILE = os.path.join(tmp, "directions.json")   # 跟实机一致：15 颗全 −1；不读仓库里的文件
+    server.DIRS_FILE = os.path.join(tmp, "directions.json")   # Igual ao hardware: os 15 servos com −1; não lê o arquivo do repositório.
     with open(server.DIRS_FILE, "w", encoding="utf-8") as f:
         json.dump({str(i): -1 for i in IDS}, f)
     os.makedirs(server.POSES_DIR)
-    # 摆在一个离 2048 挺远的姿势上
+    # Posiciona os servos longe de 2048.
     start = {i: 2048 + (k * 37 - 250) for k, i in enumerate(IDS)}
     port = SimSerial(IDS, phys=start)
     server.BUS = feetech.FeetechBus(None, ser=port)
@@ -45,239 +45,239 @@ def main():
     H = server.handle
     sv = {s.r[5]: s for s in port.servos.values()}
 
-    print("扫描、读状态")
+    print("Busca e leitura do estado")
     H({"op": "scan"})
-    check(server.PRESENT == IDS, f"15 颗都在线（{len(server.PRESENT)}）")
+    check(server.PRESENT == IDS, f"Os 15 servos estão online ({len(server.PRESENT)})")
     st = server.BUS.states(IDS)
-    check(all(st[i]["pos"] == start[i] for i in IDS), "同步读的位置对得上")
+    check(all(st[i]["pos"] == start[i] for i in IDS), "As posições da leitura sincronizada correspondem")
 
-    print("存一个姿态，扭矩开，摆好不动")
+    print("Salva uma pose com torque ativado, sem mover os servos")
     H({"op": "torque", "on": 1})
-    H({"op": "save_pose", "name": "测试站姿"})
+    H({"op": "save_pose", "name": "Pose de teste"})
     before = {i: sv[i].phys for i in IDS}
 
-    print("一键校准到零位（扭矩开着，0x0B）")
+    print("Calibração de um toque para a posição zero (torque ativado, 0x0B)")
     r = H({"op": "calib_mid_all", "ids": IDS})
-    check(len(r["ok"]) == 15 and not r["bad"], f"15 颗成功（成功 {len(r['ok'])}，失败 {r['bad']}）")
-    check(all(sv[i].calibrations == 1 for i in IDS), "每颗都真的做了一次校准（不是被拉过去的）")
-    check(all(sv[i].phys == before[i] for i in IDS), "物理位置一步没动")
+    check(len(r["ok"]) == 15 and not r["bad"], f"15 servos calibrados ({len(r['ok'])} sucessos, falhas: {r['bad']})")
+    check(all(sv[i].calibrations == 1 for i in IDS), "Cada servo foi realmente calibrado (sem ser puxado para outra posição)")
+    check(all(sv[i].phys == before[i] for i in IDS), "As posições físicas não mudaram")
     st = server.BUS.states(IDS)
-    check(all(abs(st[i]["pos"] - 2048) <= 1 for i in IDS), "校准后都读 2048")
-    check(all(sv[i].r[55] == 1 for i in IDS), "每颗都重新加锁了")
-    check(all(sv[i].r[40] == 1 for i in IDS), "扭矩恢复成开着")
+    check(all(abs(st[i]["pos"] - 2048) <= 1 for i in IDS), "Todos leem 2048 após a calibração")
+    check(all(sv[i].r[55] == 1 for i in IDS), "Todos foram bloqueados novamente")
+    check(all(sv[i].r[40] == 1 for i in IDS), "O torque foi reativado")
     poses = server.list_poses()
-    p = [x for x in poses if x["name"] == "测试站姿"][0]
-    check(all(abs(p["goals"][i] - 2048) <= 1 for i in IDS), "存的姿态换算到新零点（同一个姿势现在是 2048）")
+    p = [x for x in poses if x["name"] == "Pose de teste"][0]
+    check(all(abs(p["goals"][i] - 2048) <= 1 for i in IDS), "A pose salva foi convertida para o novo zero (a mesma pose agora corresponde a 2048)")
 
-    print("回零位不该动")
+    print("Voltar ao zero não deve mover os servos")
     H({"op": "goals", "goals": {str(i): 2048 for i in IDS}})
     server.BUS.states(IDS)
-    check(all(sv[i].phys == before[i] for i in IDS), "发 2048 以后物理位置不变")
+    check(all(sv[i].phys == before[i] for i in IDS), "A posição física permanece igual após enviar 2048")
 
-    print("撤销")
+    print("Desfaz a calibração")
     r = H({"op": "calib_undo"})
-    check(len(r["ok"]) == 15, f"15 颗偏移写回（{len(r['ok'])}）")
+    check(len(r["ok"]) == 15, f"Deslocamentos restaurados para os 15 servos ({len(r['ok'])})")
     st = server.BUS.states(IDS)
-    check(all(st[i]["pos"] == start[i] for i in IDS), "读数回到校准前")
-    check(all(sv[i].phys == before[i] for i in IDS), "撤销时物理位置也没动")
-    check(all(sv[i].r[55] == 1 for i in IDS), "撤销后都加锁了")
-    p = [x for x in server.list_poses() if x["name"] == "测试站姿"][0]
-    check(all(p["goals"][i] == start[i] for i in IDS), "存的姿态换算回原值")
+    check(all(st[i]["pos"] == start[i] for i in IDS), "As leituras voltaram aos valores anteriores à calibração")
+    check(all(sv[i].phys == before[i] for i in IDS), "A posição física também permaneceu igual ao desfazer")
+    check(all(sv[i].r[55] == 1 for i in IDS), "Todos foram bloqueados após desfazer")
+    p = [x for x in server.list_poses() if x["name"] == "Pose de teste"][0]
+    check(all(p["goals"][i] == start[i] for i in IDS), "A pose salva voltou aos valores originais")
 
-    print("校准后新存的姿态，撤销时也要跟着挪回来")
+    print("Uma pose salva após calibrar também deve ser ajustada ao desfazer")
     H({"op": "calib_mid_all", "ids": IDS})
-    H({"op": "save_pose", "name": "校准后存的"})
-    phys_at_save = {i: sv[i].phys for i in IDS}     # 存它的时候，每个关节的物理位置
+    H({"op": "save_pose", "name": "Salva após calibrar"})
+    phys_at_save = {i: sv[i].phys for i in IDS}     # Posição física de cada junta no momento em que a pose é salva.
     H({"op": "calib_undo"})
-    after = [x for x in server.list_poses() if x["name"] == "校准后存的"][0]["goals"]
-    # 真正要保证的：撤销以后把这个姿态发出去，关节还是回到存它时那个物理姿势
+    after = [x for x in server.list_poses() if x["name"] == "Salva após calibrar"][0]["goals"]
+    # Garantia: após desfazer, enviar esta pose retorna as juntas à posição física em que ela foi salva.
     want = {i: round(phys_at_save[i] + sv[i].off) for i in IDS}
     worst = max(abs(after[i] - want[i]) for i in IDS)
-    check(worst <= 2, f"撤销后姿态里的数字仍然指向存它时那个物理姿势（最大差 {worst} 步）")
-    server.delete_pose([x for x in server.list_poses() if x["name"] == "校准后存的"][0]["file"])
+    check(worst <= 2, f"Após desfazer, os valores da pose ainda representam a posição física em que foi salva (diferença máxima: {worst} passos)")
+    server.delete_pose([x for x in server.list_poses() if x["name"] == "Salva após calibrar"][0]["file"])
 
-    print("按官方折叠校准：目标 = 官方 FOLD 角度 × ±，校完零点是官方 2048，存的姿态跟着换算")
-    fold_ids = IDS                                      # 腿按官方折叠、头颈摆正，15 颗一起标
-    H({"op": "save_pose", "name": "折叠前存的"})
-    saved_before = [x for x in server.list_poses() if x["name"] == "折叠前存的"][0]["goals"]
+    print("Calibra pela pose dobrada oficial: alvos = ângulos FOLD oficiais × sentido; o zero passa a 2048 e as poses salvas são convertidas")
+    fold_ids = IDS                                      # Pernas dobradas e cabeça/pescoço alinhados conforme o padrão oficial; calibra os 15 juntos.
+    H({"op": "save_pose", "name": "Salva antes da dobra"})
+    saved_before = [x for x in server.list_poses() if x["name"] == "Salva antes da dobra"][0]["goals"]
     phys = {i: sv[i].phys for i in IDS}
     _, want = server.official_targets("@official:FOLD")
     r = H({"op": "calib_mid_all", "ids": fold_ids, "ref": "@official:FOLD"})
     st = server.BUS.states(IDS)
-    check(sorted(r["ok"]) == sorted(fold_ids), f"15 颗都成功（{len(r['ok'])}，失败 {r['bad']}）")
+    check(sorted(r["ok"]) == sorted(fold_ids), f"Os 15 servos foram calibrados ({len(r['ok'])} sucessos, falhas: {r['bad']})")
     check(all(want[i] == 2048 for i in (20, 21, 24, 30, 31, 32, 33, 34, 10, 11, 14)),
-          "膝、髋 pitch 以外（含头颈摆正、嘴闭上）的目标都是 2048")
+          "Os alvos são 2048, exceto para joelho e inclinação do quadril (inclui alinhar cabeça/pescoço e fechar a boca)")
     check(all(abs(st[i]["pos"] - want[i]) <= 1 for i in fold_ids),
-          "读数变成官方折叠的值（" + " ".join(f"{i}→{want[i]}" for i in fold_ids) + "）")
-    check(all(sv[i].phys == phys[i] for i in IDS), "物理位置没动")
+          "As leituras correspondem à pose dobrada oficial (" + " ".join(f"{i}→{want[i]}" for i in fold_ids) + ")")
+    check(all(sv[i].phys == phys[i] for i in IDS), "A posição física não mudou")
     check((want[22], want[23], want[12], want[13]) == (1025, 1025, 3071, 3071),
-          f"± 全 −1：左髋 pitch / 左膝写 1025，右髋 pitch / 右膝写 3071（{want[22]} {want[23]} {want[12]} {want[13]}）")
-    saved_after = [x for x in server.list_poses() if x["name"] == "折叠前存的"][0]["goals"]
+          f"Com todos os sentidos em −1: inclinação do quadril esquerdo/joelho esquerdo = 1025; quadril direito/joelho direito = 3071 ({want[22]} {want[23]} {want[12]} {want[13]})")
+    saved_after = [x for x in server.list_poses() if x["name"] == "Salva antes da dobra"][0]["goals"]
     check(all(abs((saved_after[i] - saved_before[i]) - (st[i]["pos"] - start_fold)) <= 1
               for i, start_fold in ((i, saved_before[i]) for i in fold_ids)),
-          "折叠前存的姿态跟着换算（同一个物理姿势，新读数）")
+          "A pose salva antes da dobra foi convertida (mesma posição física, novas leituras)")
     r = H({"op": "calib_undo"})
-    check(len(r["ok"]) == 15 and all(sv[i].phys == phys[i] for i in IDS), "折叠校准也能撤销，关节不动")
-    check([x for x in server.list_poses() if x["name"] == "折叠前存的"][0]["goals"] == saved_before, "撤销后姿态换算回原值")
-    server.delete_pose([x for x in server.list_poses() if x["name"] == "折叠前存的"][0]["file"])
+    check(len(r["ok"]) == 15 and all(sv[i].phys == phys[i] for i in IDS), "A calibração pela pose dobrada pode ser desfeita sem mover as juntas")
+    check([x for x in server.list_poses() if x["name"] == "Salva antes da dobra"][0]["goals"] == saved_before, "A pose voltou aos valores originais após desfazer")
+    server.delete_pose([x for x in server.list_poses() if x["name"] == "Salva antes da dobra"][0]["file"])
 
-    print("扭矩关着按官方折叠校准（实际用法：手摆），校完用手展开，再开扭矩不能跳")
+    print("Calibra pela pose dobrada oficial com torque desligado (uso real: posicionar à mão); abre a pose manualmente após calibrar e reativa o torque sem saltos")
     H({"op": "torque", "on": 0})
-    for i in IDS:                                       # 手摆成校准用折叠，零点没校准，各差几步；右膝差 150°（装的时候转了）
+    for i in IDS:                                       # Posiciona manualmente para calibrar; o zero ainda não foi calibrado. O joelho direito difere 150° por causa da montagem.
         sv[i].phys = want[i] - sv[i].off + (1700 if i == 13 else 5)
     plan = H({"op": "calib_plan", "ids": IDS, "ref": "@official:FOLD", "for": "all"})
     rows = {x["id"]: x for x in plan["rows"]}
     check(rows[22]["target"] == 1025 and rows[22]["diff_deg"] == -0.4 and rows[13]["diff_deg"] == -149.4,
-          f"预览：每颗现在 → 目标、差几度（#22 {rows[22]['pos']}→{rows[22]['target']} {rows[22]['diff_deg']}°，#13 {rows[13]['diff_deg']}°）")
+          f"Prévia: posição atual → alvo e diferença angular (#22 {rows[22]['pos']}→{rows[22]['target']} {rows[22]['diff_deg']}°, #13 {rows[13]['diff_deg']}°)")
     phys = {i: sv[i].phys for i in IDS}
     r = H({"op": "calib_mid_all", "ids": IDS, "ref": "@official:FOLD"})
     st = server.BUS.states(IDS)
-    check(sorted(r["ok"]) == sorted(IDS) and list(r["big"]) == ["13"], f"15 颗成功，差得多的 #13 照常校、单独标出来（{r['big']}）")
-    check(all(abs(st[i]["pos"] - want[i]) <= 1 for i in IDS), "读数变成校准用折叠的值")
-    check(all(sv[i].r[40] == 0 for i in IDS), "扭矩原来关着，校完还关着")
-    check(all(sv[i].goal == st[i]["pos"] for i in IDS), "目标寄存器 = 当前读数")
-    check(all(sv[i].phys == phys[i] for i in IDS), "关节没动")
-    for i in IDS:                                       # 用手把鸭子展开
+    check(sorted(r["ok"]) == sorted(IDS) and list(r["big"]) == ["13"], f"Os 15 foram calibrados; #13, com grande diferença, foi calibrado e sinalizado ({r['big']})")
+    check(all(abs(st[i]["pos"] - want[i]) <= 1 for i in IDS), "As leituras correspondem à pose dobrada usada na calibração")
+    check(all(sv[i].r[40] == 0 for i in IDS), "O torque estava desligado e continua desligado")
+    check(all(sv[i].goal == st[i]["pos"] for i in IDS), "Registrador de alvo = leitura atual")
+    check(all(sv[i].phys == phys[i] for i in IDS), "As juntas não se moveram")
+    for i in IDS:                                       # Abre o pato manualmente.
         sv[i].phys = 2048 - sv[i].off
     r = H({"op": "torque", "on": 1})
     server.BUS.states(IDS)
-    check(len(r["aligned"]) == 15 and not r["bad"], f"开扭矩前 15 颗目标都对准了当前位置（{len(r['aligned'])}）")
-    check(all(sv[i].phys == 2048 - sv[i].off for i in IDS), "开扭矩后关节一步没动，不会甩回折叠")
+    check(len(r["aligned"]) == 15 and not r["bad"], f"Os alvos dos 15 servos foram alinhados às posições atuais antes de ativar o torque ({len(r['aligned'])})")
+    check(all(sv[i].phys == 2048 - sv[i].off for i in IDS), "As juntas não se moveram ao ativar o torque e não voltaram bruscamente à pose dobrada")
     H({"op": "calib_undo"})
 
-    print("扭矩关着发了姿势，再开扭矩也不能跳")
+    print("Enviar uma pose com torque desligado e reativá-lo não deve causar saltos")
     H({"op": "torque", "ids": [24], "on": 0})
-    H({"op": "goals", "goals": {"24": 2800}})          # 关着发的目标留在舵机里
+    H({"op": "goals", "goals": {"24": 2800}})          # O alvo enviado com torque desligado permanece no servo.
     sv[24].phys = 1900 - sv[24].off
     H({"op": "torque", "ids": [24], "on": 1})
     server.BUS.states([24])
-    check(sv[24].phys == 1900 - sv[24].off and sv[24].goal == 1900, "开扭矩停在原地（目标改成了 1900，不是 2800）")
+    check(sv[24].phys == 1900 - sv[24].off and sv[24].goal == 1900, "Ao ativar o torque, permanece no lugar (o alvo mudou para 1900, não 2800)")
 
-    print("按姿态校准：鸭子缩着放好，读数校回「缩」里存的值")
-    H({"op": "save_pose", "name": "缩"})
-    H({"op": "save_pose", "name": "别的"})
-    ref = [x for x in server.list_poses() if x["name"] == "缩"][0]
-    other_before = [x for x in server.list_poses() if x["name"] == "别的"][0]["goals"]
+    print("Calibração por pose: posiciona o pato agachado e ajusta as leituras aos valores salvos na pose 'Agachado'")
+    H({"op": "save_pose", "name": "Agachado"})
+    H({"op": "save_pose", "name": "Outra pose"})
+    ref = [x for x in server.list_poses() if x["name"] == "Agachado"][0]
+    other_before = [x for x in server.list_poses() if x["name"] == "Outra pose"][0]["goals"]
     legs = [22, 23, 24, 12, 13, 14]
-    H({"op": "torque", "ids": legs, "on": 0})          # 缩着放在地上，腿扭矩关着
-    for i in legs:                                     # 模拟舵盘重装：同一个物理位置读数偏了 7 步
+    H({"op": "torque", "ids": legs, "on": 0})          # Deixa o pato agachado no chão com o torque das pernas desligado.
+    for i in legs:                                     # Simula a reinstalação do braço do servo: a leitura muda 7 passos na mesma posição física.
         sv[i].off += 7
     phys = {i: sv[i].phys for i in IDS}
     r = H({"op": "calib_mid_all", "ids": legs, "ref": ref["file"]})
     st = server.BUS.states(IDS)
-    check(sorted(r["ok"]) == sorted(legs), f"6 颗腿成功（{r['ok']}，失败 {r['bad']}）")
-    check(all(st[i]["pos"] == ref["goals"][i] for i in legs), "读数回到「缩」里存的值")
-    check(all(sv[i].phys == phys[i] for i in IDS), "物理位置没动")
+    check(sorted(r["ok"]) == sorted(legs), f"As seis juntas das pernas foram calibradas ({r['ok']}; falhas: {r['bad']})")
+    check(all(st[i]["pos"] == ref["goals"][i] for i in legs), "As leituras voltaram aos valores salvos na pose 'Agachado'")
+    check(all(sv[i].phys == phys[i] for i in IDS), "A posição física não mudou")
     now = {x["name"]: x["goals"] for x in server.list_poses()}
-    check(now["缩"] == ref["goals"], "基准姿态本身没被挪")
-    check(now["别的"] == other_before, "别的姿态也没挪（跟基准同一套读数）")
+    check(now["Agachado"] == ref["goals"], "A pose de referência não foi alterada")
+    check(now["Outra pose"] == other_before, "A outra pose também não foi alterada (usa o mesmo referencial)")
     H({"op": "calib_undo"})
     st = server.BUS.states(IDS)
-    check(all(st[i]["pos"] == ref["goals"][i] + 7 for i in legs), "撤销回到偏了 7 步的样子")
+    check(all(st[i]["pos"] == ref["goals"][i] + 7 for i in legs), "Ao desfazer, as leituras voltam a ficar deslocadas em 7 passos")
 
-    print("舵机不认 0x0B：自动换兜底（自己算偏移写寄存器 31）")
+    print("Servo não reconhece 0x0B: usa automaticamente a alternativa (calcula e grava o deslocamento no registrador 31)")
     sv[31].support_0b = False
     H({"op": "goals", "goals": {"31": 2300}})
     server.BUS.states([31])
     p31 = sv[31].phys
     r = H({"op": "calibrate", "id": 31})
     st = server.BUS.states([31])
-    check(r["ok"] == [31], f"兜底把它校准了（失败 {r['bad']}）")
-    check(abs(p31 + sv[31].off - 2048) <= 2, "兜底也是把摆好的位置校成 2048")
-    check(abs(sv[31].phys - p31) <= 20 and sv[31].r[40] == 1 and sv[31].r[55] == 1, "关节没被拉走、扭矩恢复、加锁了")
+    check(r["ok"] == [31], f"A alternativa calibrou o servo (falhas: {r['bad']})")
+    check(abs(p31 + sv[31].off - 2048) <= 2, "A alternativa também calibra a posição preparada para 2048")
+    check(abs(sv[31].phys - p31) <= 20 and sv[31].r[40] == 1 and sv[31].r[55] == 1, "A junta não foi puxada; torque restaurado e servo bloqueado")
     sv[31].support_0b = True
 
-    print("0x0B 和写偏移都不认：偏移还原，不留半吊子")
+    print("Nem 0x0B nem a gravação do deslocamento são aceitos: restaura o deslocamento e não deixa a operação pela metade")
     sv[31].support_0b = False
     sv[31].ignore_offset_writes = True
-    H({"op": "goals", "goals": {"31": 2300}})     # 先挪开，不然"本来就在 2048"会直接算成功
+    H({"op": "goals", "goals": {"31": 2300}})     # Afasta da posição para que "já estar em 2048" não seja considerado sucesso.
     server.BUS.states([31])
     o31 = sv[31].off
     r = H({"op": "calibrate", "id": 31})
-    check(not r["ok"] and "31" in r["bad"], f"报失败（{r['bad'].get('31', '')[:40]}）")
-    check(sv[31].off == o31, "偏移原样还原")
+    check(not r["ok"] and "31" in r["bad"], f"A falha foi informada ({r['bad'].get('31', '')[:40]})")
+    check(sv[31].off == o31, "O deslocamento original foi restaurado")
     sv[31].support_0b = True
     sv[31].ignore_offset_writes = False
 
-    print("写 128 在 HD-1910 上不生效（模拟器跟真机一致）")
+    print("Gravar 128 não tem efeito no HD-1910 (o simulador corresponde ao hardware real)")
     sv[32].calibrations = 0
     server.BUS.unlock(32)
     server.BUS.write_u8(32, 40, 0)
     server.BUS.write_u8(32, 40, 128)
     server.BUS.lock(32)
-    check(sv[32].calibrations == 0, "解锁、扭矩关着写 128 也不校准")
+    check(sv[32].calibrations == 0, "Desbloquear, desligar o torque e gravar 128 não calibra")
 
-    print("单颗中位校准按钮")
+    print("Botão de calibração central de um único servo")
     r = H({"op": "calibrate", "id": 32})
-    check(r["ok"] == [32] and sv[32].calibrations == 1, "单颗也走同一套流程")
+    check(r["ok"] == [32] and sv[32].calibrations == 1, "Um único servo também segue o mesmo fluxo")
 
-    print("中途掉线：0x0B 以后读不到位置")
+    print("Desconexão durante o processo: não consegue ler a posição após 0x0B")
     sv[33].mute_after_calib = {56}
     r = H({"op": "calibrate", "id": 33})
     sv[33].mute_after_calib.clear(); sv[33].muted.clear()
     why = r["bad"].get("33", "")
-    check("卡在「" in why, f"失败原因写明卡在哪一步（{why[:40]}…）")
-    check(sv[33].r[55] == 1, "出错也重新加锁了（finally）")
-    check(sv[33].r[40] == 0, "位置读不到就不恢复扭矩，免得按旧目标把关节拉走")
-    line = [e for e in server.LOG if e["cat"] == "校准" and e["msg"].startswith("#33") and e["level"] == "warn"]
-    check(bool(line) and "加锁✓" in line[-1]["msg"], "日志那行里有每一步的结果")
+    check("parou em '" in why, f"A causa da falha informa em qual etapa parou ({why[:40]}…)")
+    check(sv[33].r[55] == 1, "O servo foi bloqueado novamente mesmo após o erro (finally)")
+    check(sv[33].r[40] == 0, "Se não consegue ler a posição, não reativa o torque para evitar puxar a junta ao alvo antigo")
+    line = [e for e in server.LOG if e["cat"] == "Calibração" and e["msg"].startswith("#33") and e["level"] == "warn"]
+    check(bool(line) and "bloqueio✓" in line[-1]["msg"], "A linha do log contém o resultado de cada etapa")
     with open(server.log_path(), encoding="utf-8") as f:
         text = f.read()
-    check("Traceback" in text and "[校准][错误]" in text, "日志文件里有分类和 traceback")
+    check("Traceback" in text and "[Calibração][ERRO]" in text, "O arquivo de log contém a categoria e o traceback")
     H({"op": "torque", "id": 33, "on": 1})
 
-    print("串口原始收发进日志文件")
+    print("Dados seriais brutos de envio e recepção gravados no arquivo de log")
     server.BUS.trace = server.bus_trace
     H({"op": "calibrate", "id": 32})
     text = open(server.log_path(), encoding="utf-8").read()
-    check("→ #32 位置校准" in text, "发出去的 0x0B 包记下来了（含十六进制）")
-    check("地址40「扭矩开关」" in text and "地址31" in text, "读写寄存器记了地址和名字")
-    check("← #32 状态0x00" in text, "舵机的应答也记了")
-    check("SYNC_READ" not in text, "10 Hz 的状态轮询不记，不然日志全是它")
+    check("→ #32 calibração de posição" in text, "O pacote 0x0B enviado foi registrado (incluindo hexadecimal)")
+    check("endereço 40 'interruptor de torque'" in text and "endereço 31" in text, "As leituras e gravações de registradores incluem endereço e nome")
+    check("← #32 estado 0x00" in text, "A resposta do servo também foi registrada")
+    check("SYNC_READ" not in text, "A consulta de estado a 10 Hz não é registrada para evitar encher o log")
     server.BUS.trace = None
 
-    print("日志分类")
+    print("Categorias do log")
     cats = {e["cat"] for e in server.LOG}
-    check({"总线", "运动", "校准", "姿态"} <= cats, f"出现的分类 {sorted(cats)}")
-    ok_line = [e for e in server.LOG if e["cat"] == "校准" and e["msg"].startswith("#20 ")]
-    check(bool(ok_line) and "偏移" in ok_line[0]["msg"] and "0x0B→2048✓" in ok_line[0]["msg"], "成功的那颗也记了偏移前后、每一步")
+    check({"Barramento", "Movimento", "Calibração", "Poses"} <= cats, f"Categorias encontradas: {sorted(cats)}")
+    ok_line = [e for e in server.LOG if e["cat"] == "Calibração" and e["msg"].startswith("#20 ")]
+    check(bool(ok_line) and "deslocamento" in ok_line[0]["msg"] and "0x0B→2048✓" in ok_line[0]["msg"], "O log registra o deslocamento antes/depois e cada etapa também para calibrações bem-sucedidas")
     if ok_line:
-        print("    例：" + ok_line[0]["msg"])
+        print("    Exemplo: " + ok_line[0]["msg"])
 
-    print("会往下垂的关节（真机颈部 0.62 步/毫秒，总线每包 1.5 ms）")
+    print("Juntas sujeitas a ceder (no hardware, o pescoço cede 0,62 passos/ms; cada pacote do barramento leva 1,5 ms)")
     port.latency_ms = 1.5
     for i in IDS:
         sv[i].droop = 0.62
     H({"op": "torque", "on": 1})
     server.BUS.states(IDS)
-    held = {i: sv[i].phys for i in IDS}          # 扭矩开着，舵机顶着不动
+    held = {i: sv[i].phys for i in IDS}          # Torque ativado; os servos mantêm a posição.
     r = H({"op": "calib_mid_all", "ids": IDS})
     st = server.BUS.states(IDS)
-    check(len(r["ok"]) == 15, f"15 颗都成功（{len(r['ok'])} 成功，失败 {list(r['bad'])[:3]}）")
-    # 真正的精度指标：把「你摆好的那个物理位置」代进新的坐标系，应该正好读 2048。
-    # 关节被重力垂几步是物理现实，挡不住；能挡住的是"零位被垂坏"。
+    check(len(r["ok"]) == 15, f"Os 15 servos foram calibrados ({len(r['ok'])} sucessos, falhas: {list(r['bad'])[:3]})")
+    # Métrica real de precisão: a posição física preparada deve ser lida como 2048 no novo referencial.
+    # Não é possível evitar alguns passos de queda por gravidade; o objetivo é impedir que isso deteriore o zero.
     worst = max(abs(held[i] + sv[i].off - 2048) for i in IDS)
-    check(worst <= 2, f"摆好的位置校准后读 2048（最大误差 {worst:.0f} 步 = {worst * 360 / 4096:.2f}°）")
+    check(worst <= 2, f"A posição preparada é lida como 2048 após calibrar (erro máximo: {worst:.0f} passos = {worst * 360 / 4096:.2f}°)")
     yank = max(abs(sv[i].phys - held[i]) for i in IDS)
-    check(yank <= 20, f"关节没被拉走（最多移动 {yank:.1f} 步，就是关扭矩那几毫秒垂的）")
+    check(yank <= 20, f"A junta não foi puxada (movimento máximo: {yank:.1f} passos, devido à queda durante os milissegundos sem torque)")
     for i in IDS:
         sv[i].droop = 0.0
     port.latency_ms = 0.0
     H({"op": "calib_undo"})
 
-    print("导出寄存器")
+    print("Exportação dos registradores")
     r = H({"op": "dump", "id": 20})
-    check(len(r["raw"]) == feetech.DUMP_END, f"读到 {len(r['raw'])} 字节，到地址 86 为止")
+    check(len(r["raw"]) == feetech.DUMP_END, f"Lidos {len(r['raw'])} bytes, até o endereço 86")
 
-    print("解锁写寄存器、改 ID")
+    print("Desbloqueio, gravação de registrador e alteração do ID")
     H({"op": "write_reg", "id": 21, "addr": 21, "size": 1, "value": 40, "unlock": True})
-    check(sv[21].r[21] == 40 and sv[21].r[55] == 1, "写 P=40，写完加锁")
+    check(sv[21].r[21] == 40 and sv[21].r[55] == 1, "Gravou P=40 e bloqueou o servo novamente")
     ok = server.BUS.set_id(34, 35)
-    check(ok and sv[34].r[5] == 35 and sv[34].r[55] == 1, "改 ID 34 → 35 成功并加锁")
+    check(ok and sv[34].r[5] == 35 and sv[34].r[55] == 1, "ID alterado de 34 → 35 com sucesso e servo bloqueado")
 
     shutil.rmtree(tmp)
     print()
-    print("全部通过" if not FAILS else f"{len(FAILS)} 项没过：{FAILS}")
+    print("Todos os critérios passaram" if not FAILS else f"Critérios não aprovados ({len(FAILS)}): {FAILS}")
     sys.exit(1 if FAILS else 0)
 
 
