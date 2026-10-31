@@ -60,37 +60,37 @@ Defina a senha pela página “Mais → Senha de login”. Para usar `python3 -I
 | `wifi-hotspot-down` | `{"by": …, "ssid": opcional}` | **Antes de desligar o ponto de acesso**, grava `/run/microduck/studio-connecting.json` (`root`, modo 0644, `until` = horário atual + 90 s, com o SSID de destino; grava primeiro em arquivo temporário e depois renomeia; diretório 0755), impedindo a interferência do netcheck durante esse período. Em seguida, executa `nmcli connection down Microduck-Hotspot` (prazo de 15 s). Se o ponto de acesso já estiver desligado, considera sucesso; a mensagem do nmcli “not an active connection” também é tratada como sucesso. Aguarda até 10 s para que `wlan0` deixe de usar essa conexão. **Não altera** o marcador do barramento, a unidade hold nem o `robotd`; não usa `helper.lock`, somente `wifi.lock`. |
 | `wifi-hotspot-up` | `{"by": …}` | Executa `nmcli connection up Microduck-Hotspot`. Se já estiver ativo, considera sucesso. Aguarda até 30 s para confirmar que `wlan0` realmente se conectou. Depois, remove `/run/microduck/studio-connecting.json`; a ausência do arquivo não é erro. Também não altera o barramento dos servos e usa `wifi.lock`. |
 | `calib-read` | `{"by": …}` (opcional) | Somente leitura do arquivo de calibração atual. Retorna `calibration` analisado, o modo atual (`commissioning`, `motion` ou `foreign`), se o drop-in de calibração existe e se `ExecStart` contém `--commissioning`. **Não usa `helper.lock` nem grava arquivos**; serve de alternativa para o Studio quando o programa está no modo de movimento, permanece em `waiting_for_bus` e não retorna `calibration-status`. |
-| `calib-commit` | `{"by": …, "joints": [{"id", "direction"} × 15], "imu": {"source": "bus\|bno08x\|lsm6dsv16x", "quat": [w,x,y,z]}, "dry_run": false}` | 把舵机零位（2048）、方向、IMU 安装方向写进 robotd 的 `hd1910-calibration.toml`。顺序：**先拿 `helper.lock`，再查 bus-held 旗**；标定模式跳过着势门槛，运动模式隔 200 ms 读两次 busStatus（策略在跑 / 站着就拒绝，退出 3）；认模式：镜像的 `zzzz-zz-microduck-commissioning.conf` 在 = 标定模式（写完删掉、`daemon-reload` 切运动模式），不在且 `ExecStart` 没有 `--commissioning` = 运动模式（只换标定），`ExecStart` 有但文件不在 = `foreign_commissioning`（不敢自动切，退出 3）。读现在的文件、按标准限位组新内容、逐条校验（跟 fork 的 `Calibration::validate` 一样）。每次写一组 `calib-backups/<4 位序号>-<UTC>/`（主文件、`.saved.toml`、commissioning 文件、`manifest.json`，序号取已有最大值 +1，保留 10 组）；`.previous`、`.toml`、`.saved.toml` 都先写临时文件、fsync、rename，保留原属主和权限；写完读回来逐项校验。从第一次写开始，任何异常都先回滚再报错。重启 robotd 后最多等 40 秒 hello；再每 0.5 秒读一次 `robot.busStatus`、最多 30 秒：**成功 = `mode=="motion"` 且 `phase=="control"`，并且 `calibration-status` 读回的 15 颗（name / id / zero_raw / direction / calibrated / min_rad / max_rad）、`motion_enabled`、总线小板 `imu_mount_quat` / `imu_mount_verified`、`imu_mounts` 每一格的 quat / verified 跟写进去的一致（浮点 1e-9）**。失败按原因回 `calib_rejected`（标定没通过主程序的检查）或 `bus_unavailable`（主程序打不开舵机总线，先看舵机电源），并回滚。非 dry_run 的整段用 `systemd-run` 跑在独立单元里，结果写 `last-result.json`；`dry_run: true` 到校验完就停，只在 `detail.toml` 回全文，不写文件、不重启。 |
-| `ssh-status` | `{"by": …}`（可省） | 只读：SSH 密码登录开没开（看 `05-microduck-ssh-password.conf` 在不在）、`ssh` 服务在不在跑、radxa 的 `authorized_keys` 登记了几把钥匙。不拿锁、不写任何文件（也不覆盖 `last-result.json`）。 |
-| `ssh-password` | `{"by": …, "on": true, "password": "…"}` / `{"by": …, "on": false}` | 打开：密码 8–64 个可见字符、不能是 `microduck` 这类大家都猜得到的（不合格回 `bad_password`，退出 2）；拿 `ssh.lock`，`chpasswd` 从 stdin 设 radxa 的密码，写 `/etc/ssh/sshd_config.d/05-microduck-ssh-password.conf`（`PasswordAuthentication yes`），`sshd -t` 过了、`sshd -T` 读回 `passwordauthentication yes` 才 `systemctl reload-or-restart ssh`；哪一步不对就删掉这个文件退回去（`sshd_config_bad` / `not_effective` / `reload_failed`）。关掉：删文件、reload，radxa 的密码不动（sudo 还用它）。**密码只在 stdin 里，不进命令行、journal、`last-result.json`、oplog。** |
+| `calib-commit` | `{"by": …, "joints": [{"id", "direction"} × 15], "imu": {"source": "bus\|bno08x\|lsm6dsv16x", "quat": [w,x,y,z]}, "dry_run": false}` | Grava os zeros dos servos (2048), as direções e a orientação de montagem da IMU em `hd1910-calibration.toml` do `robotd`. Ordem: **obtém `helper.lock` e depois verifica o marcador `bus-held`**. No modo de calibração, ignora o requisito de postura. No modo de movimento, lê `busStatus` duas vezes, com intervalo de 200 ms; recusa se uma política estiver ativa ou se o robô estiver em pé (código 3). Detecta o modo: se existir o arquivo da imagem `zzzz-zz-microduck-commissioning.conf`, está em calibração (após gravar, remove o arquivo, executa `daemon-reload` e muda para movimento); se o arquivo não existir e `ExecStart` não contiver `--commissioning`, está em movimento e somente a calibração é substituída; se `ExecStart` contiver o argumento, mas o arquivo estiver ausente, retorna `foreign_commissioning` e não tenta mudar o modo automaticamente (código 3). Lê o arquivo atual, agrupa o novo conteúdo pelas faixas de limites padrão e valida cada campo, como `Calibration::validate` no fork. Cada gravação cria `calib-backups/<sequência de 4 dígitos>-<UTC>/`, com o arquivo principal, `.saved.toml`, arquivo de calibração e `manifest.json`; a sequência usa o maior valor existente +1 e mantém os 10 backups mais recentes. `.previous`, `.toml` e `.saved.toml` são gravados primeiro em arquivos temporários, com `fsync` e `rename`, preservando proprietário e permissões originais; em seguida, são lidos de volta e conferidos campo a campo. Qualquer falha após o início da gravação aciona reversão antes de retornar o erro. Depois de reiniciar o `robotd`, aguarda até 40 s pelo `hello`; em seguida, consulta `robot.busStatus` a cada 0,5 s, por no máximo 30 s. **Sucesso exige `mode=="motion"`, `phase=="control"` e que `calibration-status` confirme exatamente os 15 servos (name/id/zero_raw/direction/calibrated/min_rad/max_rad), `motion_enabled`, `imu_mount_quat` e `imu_mount_verified` da placa de barramento e cada quaternion e estado `verified` em `imu_mounts` (tolerância de ponto flutuante 1e-9).** Conforme a causa, a falha retorna `calib_rejected` (validação recusada pelo programa principal) ou `bus_unavailable` (barramento indisponível; confira a alimentação dos servos) e reverte as alterações. Sem `dry_run`, toda a operação roda em uma unidade independente por meio de `systemd-run` e grava o resultado em `last-result.json`. Com `dry_run: true`, para após a validação e retorna o texto completo somente em `detail.toml`, sem gravar arquivos nem reiniciar serviços. |
+| `ssh-status` | `{"by": …}` (opcional) | Somente leitura: informa se o login SSH por senha está ativo (presença de `05-microduck-ssh-password.conf`), se o serviço `ssh` está em execução e quantas chaves constam em `authorized_keys` do usuário `radxa`. Não obtém locks nem grava arquivos; também não substitui `last-result.json`. |
+| `ssh-password` | `{"by": …, "on": true, "password": "…"}` / `{"by": …, "on": false}` | Para ativar, a senha precisa ter entre 8 e 64 caracteres visíveis e não pode ser fácil de adivinhar, como `microduck` (caso contrário, retorna `bad_password`, código 2). Obtém `ssh.lock`, usa `chpasswd` para definir a senha de `radxa` pela entrada padrão e grava `/etc/ssh/sshd_config.d/05-microduck-ssh-password.conf` (`PasswordAuthentication yes`). Só executa `systemctl reload-or-restart ssh` se `sshd -t` passar e `sshd -T` confirmar `passwordauthentication yes`. Se uma etapa falhar, remove o arquivo e reverte a configuração (`sshd_config_bad`, `not_effective` ou `reload_failed`). Para desativar, remove o arquivo e recarrega o serviço; a senha de `radxa` permanece (e continua sendo usada pelo sudo). **A senha só é enviada pela entrada padrão; nunca vai para a linha de comando, o journal, `last-result.json` ou o oplog.** |
 
-**输出**：一行一个 JSON：`{"step", "level", "ms", "msg", "detail"}`，最后一行 `step="done"`，`detail` 里有 `exit` 和 `result`。同一份结果写进 `/run/microduck-helper/last-result.json`（0644），Studio 重启以后读它。
+**Saída:** uma linha JSON por etapa, no formato `{"step", "level", "ms", "msg", "detail"}`. A última linha usa `step="done"`, e `detail` contém `exit` e `result`. O mesmo resultado é gravado em `/run/microduck-helper/last-result.json` (modo 0644) para que o Studio possa consultá-lo depois de reiniciar.
 
-`pad-pair` 的 `detail` 还有：`pair`（robotctl 的 stdout，按 `PadPairResult` 解析：`{"outcome":"paired","pad":{…}}` 或 `{"outcome":"failed","reason":"not_found|ambiguous|timeout|no_adapter|rejected|other","detail":…}`）、`stderr`（robotctl 的几行提示，如 `paused btd …`、`warning: …`）和 `stdout`。配上了退出 0；robotctl 说失败退出 5，`detail.reason` 保留官方原因。`pad-forget` 的 `detail` 有 `removed`（true / false / null）、`stdout`、`stderr`。
+O campo `detail` de `pad-pair` também inclui `pair` (saída do robotctl analisada como `PadPairResult`: `{"outcome":"paired","pad":{…}}` ou `{"outcome":"failed","reason":"not_found|ambiguous|timeout|no_adapter|rejected|other","detail":…}`), `stderr` (mensagens breves do robotctl, como `paused btd …` e `warning: …`) e `stdout`. Um pareamento concluído retorna código 0; se o robotctl informar falha, retorna 5 e preserva o motivo oficial em `detail.reason`. O campo `detail` de `pad-forget` inclui `removed` (`true`, `false` ou `null`), `stdout` e `stderr`.
 
-**退出码**
+**Códigos de saída**
 
-| 码 | 意思 |
+| Código | Significado |
 |---|---|
 | 0 | Sucesso |
-| 2 | Parâmetros错（动词不认识、stdin 不是 JSON 对象、有不认识 de 键、标记校验没过） |
-| 3 | 状态不允许（没装保护、策略在跑、鸭子站着 / 在走、没有会话、不是 root；`calib-commit` 还可能是 bus-held、`foreign_commissioning`） |
-| 4 | 忙或 em 止（管理锁被板端脚本占着、小助手正在跑别 de 总线操作 / 另一个配对或忘掉、另一个 WiFi Ponto de acesso操作、交还被 em 止） |
-| 5 | 执行失败（停不下来、串口被占、robotd 没认标记已经全卸、软交还起不来；或者 `pad-pair` / `pad-forget` 找不到 robotctl、robotctl 说配对失败、超时被杀；热点关 / 开没成、nmcli 出错、等超时；`calib-commit` 写失败 / 重启失败 / 主程序没进运动模式 / 读回不一致，已经回滚） |
-| 6 | 交接没成，总线已拿回（旗重新立好、robotd 停了、锁还在），Studio 重开串口接着保持 |
+| 2 | Argumentos inválidos (verbo desconhecido, entrada padrão que não é um objeto JSON, chave desconhecida ou validação do marcador reprovada). |
+| 3 | Estado não permitido (proteção não instalada, política ativa, robô em pé ou andando, sessão ausente ou processo sem root; `calib-commit` também pode retornar `bus-held` ou `foreign_commissioning`). |
+| 4 | Ocupado ou cancelado (lock de gerenciamento mantido por um script da placa, auxiliar executando outra operação de barramento, outro pareamento ou remoção de controle, outra operação do ponto de acesso ou devolução interrompida). |
+| 5 | Falha de execução (não foi possível parar o serviço, serial ocupada, `robotd` não confirmou que todos os servos foram liberados pelo marcador, devolução suave falhou; `pad-pair`/`pad-forget` não encontrou o robotctl, o robotctl recusou o pareamento ou encerrou por timeout; falha ao ligar/desligar o ponto de acesso, erro ou timeout do nmcli; falha de gravação ou reinicialização em `calib-commit`, modo de movimento não iniciado ou leitura de retorno divergente; as alterações foram revertidas). |
+| 6 | Transferência não concluída e barramento retomado pelo Studio (marcador de posse recriado, `robotd` parado e lock mantido); o Studio reabre a serial e continua mantendo os servos. |
 
-`result` 的取值：
+Valores possíveis de `result`:
 
-- bus-take：`taken`、`refused`、`no_guard`、`busy`、`stop_failed`、`port_busy`
-- bus-give-back：`adopted`、`retake`、`retake_failed`、`limp`（运动模式没认标记，或者标定模式）、`aborted`、`soft`、`soft_failed`（主程序一直报启动阶段时 `detail.still_starting = true`、`detail.msg` 是整句）、`refused`、`no_session`、`detach_failed`
-- bus-abort：`aborted`、`abort_incomplete`、`no_session`（没有会话时拒绝，退出 3）
-- pad-pair：`paired`、`pair_failed`（退出 5，`detail.reason` 是官方原因）、`timeout`、`no_robotctl`、`bad_output`
-- pad-forget：`forgotten`、`forget_failed`、`timeout`、`no_robotctl`
-- wifi-hotspot-down：`hotspot_down`、`already_down`、`down_failed`、`timeout`、`nmcli_failed`
-- wifi-hotspot-up：`hotspot_up`、`already_up`、`up_failed`、`timeout`、`nmcli_failed`
-- calib-read：`read`。`detail` 有 `calibration`、`mode`（`commissioning` / `motion` / `foreign`）、`commissioning_present`、`exec_has_commissioning`、`mode_text`；不拿锁、不写文件
-- calib-commit：`preview`（dry_run）、`committed`（`mode=motion` 且 `phase=control`，并且 `calibration-status` 读回逐项一致）、`not_motion`（30 秒还没进运动模式）、`calib_rejected`（主程序说标定没通过检查）、`bus_unavailable`（主程序打不开舵机总线）、`readback_mismatch`（进了运动模式但读回不一致）、`bus_held`、`no_calibration`、`bad_calibration`、`joint_mismatch`、`invalid`、`bad_toml`、`restart_failed`、`write_failed`、`backup_failed`、`read_failed`、`foreign_commissioning`、`refused`（策略在跑 / 站着）。失败结果里 `detail.rolled_back` / `files_restored` / `mode_restored` / `robotd_up_after_rollback` 分开报；`readback_ok`、`mismatches`、`bus_status`（最后一次的 mode / phase / error）和 `backup` 也在。若回滚自己没完全成功，`msg` 会写「去日志页导出诊断包」
-- 都可能有：`bad_args`、`bad_marker`、`bad_verb`、`not_root`、`busy`、`error`
+- `bus-take`: `taken`, `refused`, `no_guard`, `busy`, `stop_failed`, `port_busy`.
+- `bus-give-back`: `adopted`, `retake`, `retake_failed`, `limp` (marcador não reconhecido no modo de movimento ou modo de calibração), `aborted`, `soft`, `soft_failed` (se a inicialização continuar sendo informada, `detail.still_starting = true` e `detail.msg` contém a mensagem completa), `refused`, `no_session`, `detach_failed`.
+- `bus-abort`: `aborted`, `abort_incomplete`, `no_session` (sem sessão, operação recusada com código 3).
+- `pad-pair`: `paired`, `pair_failed` (código 5; `detail.reason` mantém o motivo oficial), `timeout`, `no_robotctl`, `bad_output`.
+- `pad-forget`: `forgotten`, `forget_failed`, `timeout`, `no_robotctl`.
+- `wifi-hotspot-down`: `hotspot_down`, `already_down`, `down_failed`, `timeout`, `nmcli_failed`.
+- `wifi-hotspot-up`: `hotspot_up`, `already_up`, `up_failed`, `timeout`, `nmcli_failed`.
+- `calib-read`: `read`. `detail` inclui `calibration`, `mode` (`commissioning`, `motion` ou `foreign`), `commissioning_present`, `exec_has_commissioning` e `mode_text`; não usa lock nem grava arquivos.
+- `calib-commit`: `preview` (simulação), `committed` (`mode=motion`, `phase=control` e todos os campos de `calibration-status` conferidos), `not_motion` (não entrou no modo de movimento em 30 s), `calib_rejected` (calibração recusada pelo programa principal), `bus_unavailable` (barramento dos servos não abriu), `readback_mismatch` (entrou no modo de movimento, mas a leitura divergiu), `bus_held`, `no_calibration`, `bad_calibration`, `joint_mismatch`, `invalid`, `bad_toml`, `restart_failed`, `write_failed`, `backup_failed`, `read_failed`, `foreign_commissioning`, `refused` (política ativa ou robô em pé). Nos resultados de falha, `detail.rolled_back`, `files_restored`, `mode_restored` e `robotd_up_after_rollback` são informados separadamente; também podem aparecer `readback_ok`, `mismatches`, `bus_status` (último modo/fase/erro) e `backup`. Se a própria reversão não for concluída, `msg` orienta exportar um pacote de diagnóstico pela página de registros.
+- Qualquer operação pode retornar: `bad_args`, `bad_marker`, `bad_verb`, `not_root`, `busy` ou `error`.
 
 ## 2. Arquivos e caminhos
 
@@ -168,39 +168,39 @@ cd /tmp/studio-deploy && sudo sh install.sh radxa
 Depois da instalação, confira o resultado na placa:
 
 ```sh
-systemctl show robotd -p DropInPaths            # 要有 zzzz-studio-bus.conf
-echo '{}' | sudo -n /usr/local/sbin/microduck-helper bus-nope; echo $?   # 用 radxa：应该是 2
-echo '{}' | sudo -n /usr/local/sbin/microduck-helper bus-take;  echo $?  # 应该是 2：缺 by（什么都没动）
-echo '{}' | sudo -n /usr/local/sbin/microduck-helper pad-pair;  echo $?  # 应该是 2：缺 by（不跑 robotctl）
-echo '{}' | sudo -n /usr/local/sbin/microduck-helper wifi-hotspot-down; echo $?  # 应该是 2：缺 by（不碰 nmcli）
-echo '{}' | sudo -n /usr/local/sbin/microduck-helper wifi-hotspot-up;   echo $?  # 应该是 2：缺 by（不碰 nmcli）
-echo '{}' | sudo -n /usr/local/sbin/microduck-helper calib-read;       echo $?  # 应该是 0：读文件 + 模式（不拿锁、不写）
-echo '{}' | sudo -n /usr/local/sbin/microduck-helper calib-commit;   echo $?  # 应该是 2：缺 by（不读写标定）
-ls -l /usr/local/bin/robotctl                                        # 官方 0.15.1 或更新
+systemctl show robotd -p DropInPaths            # deve incluir zzzz-studio-bus.conf
+echo '{}' | sudo -n /usr/local/sbin/microduck-helper bus-nope; echo $?   # como radxa: deve retornar 2
+echo '{}' | sudo -n /usr/local/sbin/microduck-helper bus-take;  echo $?  # deve retornar 2: falta by; nada foi alterado
+echo '{}' | sudo -n /usr/local/sbin/microduck-helper pad-pair;  echo $?  # deve retornar 2: falta by; robotctl não foi executado
+echo '{}' | sudo -n /usr/local/sbin/microduck-helper wifi-hotspot-down; echo $?  # deve retornar 2: falta by; nmcli não foi chamado
+echo '{}' | sudo -n /usr/local/sbin/microduck-helper wifi-hotspot-up;   echo $?  # deve retornar 2: falta by; nmcli não foi chamado
+echo '{}' | sudo -n /usr/local/sbin/microduck-helper calib-read;       echo $?  # deve retornar 0: leitura do arquivo e modo, sem lock ou gravação
+echo '{}' | sudo -n /usr/local/sbin/microduck-helper calib-commit;   echo $?  # deve retornar 2: falta by; calibração não foi lida nem gravada
+ls -l /usr/local/bin/robotctl                                        # versão oficial 0.15.1 ou posterior
 stat -c '%U:%G %a %n' /usr /usr/local /usr/local/sbin /usr/local/sbin/microduck-helper
 sudo -l -U radxa | grep microduck-helper
 ```
 
-## 4. 卸载
+## 4. Desinstalação
 
 ```sh
-sudo sh uninstall.sh            # 旗在（Studio 正占着总线）时拒绝
-sudo sh uninstall.sh --purge    # 连 /var/lib/microduck-helper 一起删
+sudo sh uninstall.sh            # recusa se o marcador estiver ativo (Studio usando o barramento)
+sudo sh uninstall.sh --purge    # também remove /var/lib/microduck-helper
 ```
 
-卸载会删掉 sudoers 那一行、drop-in（然后 daemon-reload）、小助手，停掉 `microduck-bus-hold`，清掉 `/run/microduck-helper` 和 `/run/microduck-handover`。robotd 不重启。
+A desinstalação remove a regra do sudoers, o drop-in (e executa `daemon-reload`), o auxiliar, para `microduck-bus-hold` e limpa `/run/microduck-helper` e `/run/microduck-handover`. O `robotd` não é reiniciado.
 
-## 5. 出事时怎么看
+## 5. Diagnóstico de problemas
 
-- `sudo ls -l /run/microduck-helper/`：`bus-held` 在 = 主程序被 Studio 挡着，起不来是故意的。要放开：在 Studio 里交还，或者重启。
-- `cat /run/microduck-helper/last-result.json`：上一次做了什么、卡在哪一步（`steps` 是最后 30 行进度）。
-- `journalctl -t microduck-helper -b`：每一行进度都写在这里。
-- `systemctl status microduck-bus-hold`：管理锁在不在 Studio 手里。
-- `sudo tail /var/lib/microduck-helper/oplog.jsonl`：操作记录。
+- `sudo ls -l /run/microduck-helper/`: se `bus-held` estiver presente, o Studio está impedindo intencionalmente a inicialização do programa principal. Para liberar, devolva o barramento pelo Studio ou reinicie o robô.
+- `cat /run/microduck-helper/last-result.json`: mostra a última operação e a etapa em que parou; `steps` contém as últimas 30 linhas de progresso.
+- `journalctl -t microduck-helper -b`: exibe todas as linhas de progresso da inicialização atual.
+- `systemctl status microduck-bus-hold`: verifica se o Studio está mantendo o lock de gerenciamento.
+- `sudo tail /var/lib/microduck-helper/oplog.jsonl`: mostra o registro de operações.
 
-## 6. Superior机核对清单（二号鸭，Usuário扶着；他说开始就连着跑，不用每次问）
+## 6. Lista de verificação no robô (segundo robô, com o usuário segurando; executar as etapas em sequência após o início, sem pedir confirmação a cada uma)
 
-**先只读核对**（不动任何东西）：
+**Primeiro, faça verificações somente leitura** (sem alterar nada):
 
 - `systemctl --version`（257）、`sudo -V | grep -i -E 'env_reset|secure_path'`、`ls -l /etc/sudoers.d`。
 - **systemd-run 那几个行为**：
@@ -208,20 +208,20 @@ sudo sh uninstall.sh --purge    # 连 /var/lib/microduck-helper 一起删
   - `--pipe` 下把调用方杀掉，服务里面的进程写 stdout 会拿到 EPIPE（小助手忽略 SIGPIPE），而不是被一起杀掉；
   - 临时单元默认 `KillMode=control-group`，所以 `systemctl stop microduck-bus-hold` 会连 flock 和 sleep 一起停掉、锁跟着放掉。用 `flock -n /run/microduck-service-management.lock true; echo $?` 核对。
 
-**第 1 步 de Superior机Teste（跟小助手有关 de ）**：
+**Etapa 1: testes no robô relacionados ao auxiliar:**
 
 | 编号 | 做什么 | 看什么 |
 |---|---|---|
-| U1 | 卸力状态下 `bus-take` | 退出码 0；旗在；robotd inactive；Studio 开串口读 40 全是 0、位置不变 |
-| U2 | 站姿保持（init 以后）`bus-take` | 0；Studio 读 40 全是 1，位置差 <1°，鸭子不往下沉 |
-| U3 | 策略开着（手柄 Start 进保持）`bus-take` | 3，原因是「先按手柄 Start…」；padd 回来了；robotd 没被停。按 Start 2 秒回站姿以后再 take → 0，不软 |
+| U1 | Executar `bus-take` com torque aliviado | Código de saída 0; marcador presente; `robotd` inativo; Studio abre a serial, lê 0 nos 40 registradores e confirma que as posições não mudaram. |
+| U2 | Executar `bus-take` mantendo a postura em pé (depois de `init`) | Código 0; Studio lê 1 nos 40 registradores; diferença de posição <1°; o robô não cede. |
+| U3 | Executar `bus-take` com a política ativa (Start no controle para manter) | Código 3 e motivo orientando a pressionar Start primeiro; `padd` continua ativo e o `robotd` não é parado. Depois de pressionar Start por 2 s e retornar à postura em pé, `bus-take` deve retornar 0, sem devolução suave. |
 | U4 | 旗在的时候 `sudo systemctl start robotd` | 退出码 0，但 `systemctl show robotd -p ActiveState,ConditionResult` 是 inactive / no；板上的 `service.sh status`（路径以板上实际为准）被锁拒：「已有服务管理操作正在执行」 |
 | U4b | 旗在时 KILL 以后的自动重启 | **不要在用户拿着总线的时候拿 robotd 做。** 先用一个假单元验：建一个带同样 Condition 的临时服务，起来、立旗、`systemctl kill -s KILL`，看 2 秒后它有没有被拉起来。用户空下来以后，再在 robotd 上做一次 |
 | U4c | 旗在时连着 `systemctl start robotd` 6 次 | 看 `Result` 会不会变成 start-limit-hit。然后撤旗（`bus-give-back {"soft":true}` 会先 reset-failed）确认能起来 |
-| U5 | 会话中 `systemctl restart studio-trial` | 鸭子不软；旗、`microduck-bus-hold` 还在；Studio 起来以后 `bus-take` 返回 0，detail 里 `session_was_open=true` |
-| U6 | 软交还 | 扶住；`bus-give-back {"soft":true}` 返回 0；robotd 四步 success；padd 回来；`microduck-bus-hold` 停了 |
+| U5 | Executar `systemctl restart studio-trial` durante uma sessão | O robô não cede; o marcador e `microduck-bus-hold` permanecem. Depois que o Studio reinicia, `bus-take` retorna 0 e `detail` contém `session_was_open=true`. |
+| U6 | Fazer a devolução suave | Segure o robô; `bus-give-back {"soft":true}` retorna 0; as quatro etapas do `robotd` têm sucesso; `padd` volta a funcionar e `microduck-bus-hold` é parado. |
 | U7 | 离开Servo页 | 有保持就不交还（另一个子代理 de 部分，一起验） |
-| V0（小助手部分） | 量 `bus-take` 和 `bus-abort` 各用多久 | 看 last-result 的 `ms`；abort 目标 ≤1 秒 |
+| V0 (parte do auxiliar) | Medir a duração de `bus-take` e `bus-abort` | Consulte `ms` em `last-result`; a meta de `abort` é ≤1 s. |
 | U8 | 在 Studio 里配一次手柄（雷神 G50 Pro，Switch Pro 模式，名字 `Pro Controller`） | 向导里「配对走的是」写小助手；`cat /run/microduck-helper/last-result.json` 的 `verb=pad-pair`、`result=paired`，`detail.stderr` 有 `paused btd …`；30 秒内 padd 认到并进按键测试。没有新版小助手时向导会提示先重装 |
 | U9 | 热点开着时 `wifi-hotspot-down {"by":"核对","ssid":"Home"}` | 退出 0、`result=hotspot_down`；关之前已有 `/run/microduck/studio-connecting.json`（root 0644，`until` 约 90 秒后，`ssid=Home`）；`nmcli connection show --active` 里没有 `Microduck-Hotspot`；手机的热点连接断开。热点本来关着再调一次 → 0、`already_down`，且不写连接窗口 |
 | U10 | 热点关着时 `wifi-hotspot-up {"by":"核对"}` | 退出 0、`result=hotspot_up`；`nmcli connection show --active` 里有 `Microduck-Hotspot`（wlan0）；手机能搜到热点；`studio-connecting.json` 已删掉。再调一次 → 0、`already_up`，文件不在也不报错 |
@@ -232,12 +232,12 @@ sudo sh uninstall.sh --purge    # 连 /var/lib/microduck-helper 一起删
 | U12d | 回滚（读回不一致）：临时把假主程序 / 测试桩的 calibration-status 改一颗 `zero_raw`，再跑一次 U12 | 退出 5、`result=readback_mismatch`、`detail.readback_ok=false`、`detail.mismatches` 里写明哪一项；文件和模式都换回 |
 | U13 | 回滚：临时让 robotd 起不来（建一个 `robotd.service.d/zzzz-e2e-fail.conf`，写 `[Unit]` + `ConditionPathExists=/nonexistent-e2e`，`daemon-reload`），再跑一次 U12 | 退出 5、`result=restart_failed`、`detail.files_restored=true`、`detail.robotd_up_after_rollback=false`（真的等到 hello 才算 true）；主文件和 `.saved.toml` 跟 U12 之前一样；`detail.journal` 有 robotd 最后 30 行；`reason` 带「去日志页导出诊断包」。核对完删掉那个 drop-in、`daemon-reload`、`systemctl start robotd` |
 
-**还没覆盖到的**：标记交还（`{"marker": …}`）要等 fork 的 robotd 装上、drop-in 打开 Environment 以后才能在板上测，那是第 4 步的 V1–V12。
+**Ainda não coberto:** a devolução com marcador (`{"marker": …}`) só pode ser testada na placa depois de instalar o `robotd` do fork e ativar `Environment` no drop-in. Esses testes são V1–V12 da etapa 4.
 
-## 7. 已知 de 限制
+## 7. Limitações conhecidas
 
-- bus-take 在「判完状态」到「立旗、停 robotd」之间，有大约 0.1 秒 de 窗口，这期间蓝牙 App 还能把策略打开。padd、gamesir 已经先停了，btd 没停。
-- configd 的 `system.reboot`、SSH 里直接 `poweroff` 拦不住（方案 §2.5）。重启的话，robotd 起来时照老规矩全卸。
-- 交接倒数期间手柄 Select 不起作用（padd 要等 robotd 四步都 success 才Inicialização）；那几秒用Web卸力（走 bus-abort）或关Alimentação。
-- 旧版小助手（不认 `pad-pair`）会回 `bad_verb`；Studio 把它当没有新版小助手，退回 configd → bluetoothctl。这块板（`/var/lib/robot/weird-ble`）上后备路可能配不上，向导会提示重装小助手或在鸭子上运行 `sudo robotctl pad pair`。
-- 旧版小助手（0.2.0，不认 `wifi-hotspot-down` / `wifi-hotspot-up`）也回 `bad_verb`；Studio 配网时会提示「小助手太旧，重装 deploy/install.sh」。
+- Entre a verificação do estado e a criação do marcador/parada do `robotd` em `bus-take`, há uma janela de aproximadamente 0,1 s durante a qual um app Bluetooth ainda pode ativar a política. `padd` e `gamesir` já foram parados; `btd` não é parado.
+- Não é possível impedir `system.reboot` do `configd` nem um `poweroff` executado diretamente por SSH (plano, seção 2.5). Após reiniciar, o `robotd` alivia o torque de todos os servos como de costume.
+- Durante a contagem da transferência, Select no controle não funciona (`padd` aguarda o sucesso das quatro etapas de inicialização do `robotd`). Nesse intervalo, use o botão web de alívio, que executa `bus-abort`, ou desligue a alimentação.
+- Uma versão antiga do auxiliar que não reconheça `pad-pair` retorna `bad_verb`. O Studio a trata como se não houvesse auxiliar atualizado e usa a alternativa `configd` → `bluetoothctl`. Essa alternativa pode falhar na placa `/var/lib/robot/weird-ble`; o assistente orienta reinstalar o auxiliar ou executar `sudo robotctl pad pair` no robô.
+- O auxiliar 0.2.0, que não reconhece `wifi-hotspot-down` nem `wifi-hotspot-up`, também retorna `bad_verb`; durante a configuração da rede, o Studio informa que o auxiliar está desatualizado e orienta reinstalar `deploy/install.sh`.
