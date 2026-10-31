@@ -12,70 +12,69 @@ Os limites da compilação, dos testes de desktop e da primeira validação na p
 Este diretório reúne o diagrama de princípios e a PCB, e contém o código-fonte, o projeto Keil e o único artefato pré-compilado preservado
 [`Build/imu_to_dxl.hex`](Build/imu_to_dxl.hex). O console de depuração serial [`tools/servo-web`](../../../tools/servo-web) sobrepõe os ângulos das articulações dos servos e a postura do tronco do IMU na mesma página Web. Há três modos de leitura: `--imu-bus` (barramento dos servos, mesma chamada sync_read do controlador), `--imu-swd` (ST-Link / DAPLink) e `--imu-jlink` (J-Link).
 
-SWD / J-Link 观察器从 HEX 解码 `0x08000000` 起的 **10,724 字节** Flash 镜像，检查 SHA-256
-`66bc7c532f5a1ad87e3dfff71a4b51f8c4f20840a8f62436874fa5b7c665938e`，并校验板上镜像。
-只有这个基线可使用已审核的 RAM 布局：`sample=0x2000006C`（60 字节）、
-`tick=0x20000A34`（4 字节），按 0.2.0 的 MAP 核对过。仅使用姿态网页无需重新编译；改动固件后需重新审核
-Flash 校验值 e 这两个符号 de 地址、大小，不能沿用旧地址Leitura新程序。
+O observador SWD/J-Link decodifica do HEX a imagem Flash de **10.724 bytes** a partir de `0x08000000`, confere o SHA-256
+`66bc7c532f5a1ad87e3dfff71a4b51f8c4f20840a8f62436874fa5b7c665938e` e valida a imagem na placa.
+Somente esta versão base pode usar o layout de RAM revisado: `sample=0x2000006C` (60 bytes),
+`tick=0x20000A34` (4 bytes), conferido no MAP da versão 0.2.0. Não é necessário recompilar para usar apenas a página de postura; depois de alterar o firmware, revise novamente
+o checksum da Flash e o endereço/tamanho destes dois símbolos. Não reutilize endereços antigos ao ler um programa novo.
 
-源码断点调试需在自己的环境重新构建 `.axf`；构建仍生成 `.map`、`.bin` 供开发时复核，
+Para depurar o código-fonte com breakpoints, compile novamente o `.axf` no seu ambiente. A compilação também gera `.map` e `.bin` para conferência durante o desenvolvimento;
 这些文件及测试产物由 `.gitignore` 排除，不提交到仓库。
 
-Dados流：LSM6DSV16X → SPI1 → STM32 → USART2 + 外部缓冲 → 单线半双工总线 → Linux 主控。
-实现**飞特 SCS/STS Protocolo，ID 200，1Mbps**，在Servo总线Superior冒充一颗Servo（0.1.0 是 Dynamixel Protocol 2.0）。
-代码不驱动Servo运动，不写 MCU Option Bytes，不写FirmwareConfiguração到 Flash。
+Fluxo de dados: LSM6DSV16X → SPI1 → STM32 → USART2 + buffer externo → barramento half-duplex de fio único → controlador Linux.
+Implementa o **protocolo Feetech SCS/STS, ID 200, 1 Mbps** e se apresenta como um servo no barramento (a versão 0.1.0 usava Dynamixel Protocol 2.0).
+O código não movimenta servos, não grava nos Option Bytes do MCU e não grava configurações de firmware na Flash.
 
-**真总线验收**：接上半双工适配器（URT-2）跑 `python tools/imu200/imu200.py check --port COMx`，13 项判据照主控源码写，过了才能上整机。电气检查（DE 释放、电平、T_resp 实测）仍需逻辑分析仪。
+**Validação no barramento real:** conecte um adaptador half-duplex (URT-2) e execute `python tools/imu200/imu200.py check --port COMx`. Os 13 critérios foram derivados do código-fonte do controlador; todos devem passar antes de integrar o sistema. A verificação elétrica (liberação de DE, níveis lógicos e medição real de T_resp) ainda exige um analisador lógico.
 
 ## 1. 直接开始
 
 ### Keil
 
-1. 使用 J-Link 时，打开 `MDK-ARM/imu_to_dxl_jlink.uvprojx`。
-2. 在自己的 Keil 中选择已合法安装的 Arm Compiler 6（验证过 6.24 和 6.22；MDK 5.24 这类带 6.7 的老版本编不了，CMSIS 6 头文件要求 ≥ 6.10，会报 `cmsis_clang.h` 找不到）和 `STM32G031F8Px` 器件包。
-3. 按 **F7** 编译；`Build/imu_to_dxl.hex` 为烧录文件，`.axf` 用于源码断点调试。
-4. 在 Debug → Settings  em 选择自己 de  J-Link，核对 SWD、STM32G0xx 64KB Flash Algoritmose Run to main。
-   `JLinkSettings.JLinkScript` 在连接和复位后将传输速度设为 **100kHz**；保留此文件。
-   首板曾在 4MHz Baixar时出现Dados传输Falha，初次Conexão建议先使用已Validação de  100kHz。
-5. 按 **Ctrl+F5** 进入调试并停在 `main`；**F10** 单步跳过、**F11** 单步进入、**F5** 运行。
-   暂停会改变采样e总线时序，连续通信Teste时全速Execução。
+1. Para usar J-Link, abra `MDK-ARM/imu_to_dxl_jlink.uvprojx`.
+2. No seu Keil, selecione uma instalação licenciada do Arm Compiler 6 (foram verificados 6.24 e 6.22; versões antigas como MDK 5.24, que incluem 6.7, não compilam: os cabeçalhos CMSIS 6 exigem ≥ 6.10 e podem resultar no erro `cmsis_clang.h` não encontrado) e o pacote do dispositivo `STM32G031F8Px`.
+3. Pressione **F7** para compilar; `Build/imu_to_dxl.hex` é o arquivo para gravação e `.axf` é usado para depurar o código-fonte com breakpoints.
+4. Em Debug → Settings, selecione seu J-Link e confira SWD, o algoritmo de Flash de 64 KB do STM32G0xx e Run to main.
+   `JLinkSettings.JLinkScript` define a velocidade de transferência em **100 kHz** após conectar e reiniciar; mantenha esse arquivo.
+   A primeira placa apresentou falhas de transferência ao baixar a 4 MHz. Na primeira conexão, recomenda-se começar pelos 100 kHz já validados.
+5. Pressione **Ctrl+F5** para iniciar a depuração e parar em `main`; **F10** avança sobre a instrução, **F11** entra nela e **F5** executa.
+   A pausa altera o tempo de amostragem e do barramento; em testes contínuos de comunicação, execute em velocidade total.
 
-原 `MDK-ARM/imu_to_dxl.uvprojx` 的 ST-LINK 配置保留。更换 J-Link 时，应在 Debug → Settings
-重新选择探针。
+A configuração ST-LINK original de `MDK-ARM/imu_to_dxl.uvprojx` foi mantida. Ao trocar para J-Link, selecione novamente a sonda em Debug → Settings.
 
 ### VS Code
 
-用 VS Code 打开这个Arquivo夹编辑源码，在集成终端执行abaixo de 构建Comando。
-该路线使用 VS Code 编辑、Keil 编译 e HardwareDepuração；不é necessário再Instalação CubeMX、CubeIDE 或 GCC 才能构建。
-源码自带必要 CMSIS 头Arquivoe ST IMU 驱动，首次构建无需联网Baixar依赖。
+Abra esta pasta no VS Code para editar o código-fonte e execute o comando de compilação abaixo no terminal integrado.
+Este fluxo usa VS Code para edição e Keil para compilação e depuração de hardware; não é necessário instalar CubeMX, CubeIDE ou GCC para compilar.
+O código-fonte inclui os cabeçalhos CMSIS necessários e o driver ST do IMU; a primeira compilação não precisa baixar dependências da Internet.
 
-也pode在本Diretório de  PowerShell 终端执行：
+Também é possível executar no terminal PowerShell deste diretório:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools\build.ps1
 ```
 
-编译器默认路径 `E:\Keil_v5\ARM\ARMCLANG` 仅为示例。其他电脑用 `-ToolchainRoot` 指定已合法安装的 Arm Compiler。
-构建临时目录位于本工程 `Build` 下；操作系统和已有工具的授权缓存仍由各软件管理。
-构建会替换 `Build` 中的预编译固件；如需保持网页的已验证基线，请先保留原始产物。
+O caminho padrão do compilador `E:\Keil_v5\ARM\ARMCLANG` é apenas um exemplo. Em outro computador, use `-ToolchainRoot` para indicar uma instalação licenciada do Arm Compiler.
+Os arquivos temporários de compilação ficam em `Build` neste projeto; cada software continua gerenciando as licenças do sistema operacional e das ferramentas instaladas.
+A compilação substitui o firmware pré-compilado em `Build`; se quiser manter a versão validada pela página Web, preserve o artefato original antes.
 
-## 2. 工程Conteúdo
+## 2. Conteúdo do projeto
 
 | Arquivo | Conteúdo |
 |---|---|
-| `Core/Inc/board_config.h` | 集中的板级开关、时钟、波特率、SPI 速率 |
-| `Core/Src/board.c` | 时钟、GPIO、SPI、USART、SWD 保留、毫秒/微秒时基、看门狗 |
-| `Core/Src/imu.c` | 身份检查、初始化回读、FIFO、原始加速度/陀螺仪、SFLP、故障重试 |
-| `Core/Src/protocol.c` | 飞特 SCS/STS 从机：帧解析（按校验和重同步）、各指令应答、sync_read 排队、应答时序 |
-| `Core/Src/control_table.c` | 地址 56 的 15 字节块、状态位、诊断寄存器 |
-| `Core/Src/main.c` | 主循环调度、串口命令及状态日志 |
-| `Drivers/` | 固定版本的 ST/CMSIS 源码与许可证 |
-| `MDK-ARM/` | Keil 工程、链接布局和 J-Link 低速连接脚本 |
-| `Tests/` | 无板可运行的协议、模拟传感器、寄存器测试；`bus_sim_test.py` 把真协议代码编成 DLL 挂到模拟总线上跑验收 |
+| `Core/Inc/board_config.h` | Opções da placa, clock, baud rate e velocidade SPI centralizados |
+| `Core/Src/board.c` | Clock, GPIO, SPI, USART, SWD, bases de tempo em ms/µs e watchdog |
+| `Core/Src/imu.c` | Verificação de identidade, leitura de retorno da inicialização, FIFO, aceleração/giroscópio brutos, SFLP e novas tentativas após falhas |
+| `Core/Src/protocol.c` | Escravo Feetech SCS/STS: análise de quadros (ressincronização por checksum), respostas às instruções, enfileiramento sync_read e temporização das respostas |
+| `Core/Src/control_table.c` | Bloco de 15 bytes no endereço 56, bits de estado e registradores de diagnóstico |
+| `Core/Src/main.c` | Agendamento do loop principal, comandos seriais e logs de estado |
+| `Drivers/` | Código-fonte ST/CMSIS e licenças em versões fixas |
+| `MDK-ARM/` | Projeto Keil, layout de linkedição e script de conexão lenta J-Link |
+| `Tests/` | Testes de protocolo, sensores simulados e registradores que rodam sem placa; `bus_sim_test.py` compila o código real do protocolo como DLL e valida em um barramento simulado |
 
-无动态内存，无 RTOS，无 HAL 依赖。板级代码使用 ST Oficial CMSIS 寄存器定义；传感器使用Oficial平台无关驱动。
-STM32  de 外部总线接收使用 em 断环形队列，每字节保存接收时刻；Protocolo、采样e日志格式化Execução在主循环。
-日志发送另用 em 断队列，不阻塞总线接收。
+Não usa alocação dinâmica, RTOS ou HAL. O código da placa usa as definições oficiais de registradores CMSIS da ST; o sensor usa o driver oficial independente de plataforma.
+A recepção do barramento externo no STM32 usa uma fila circular acionada por interrupção, que guarda o horário de chegada de cada byte; protocolo, amostragem e formatação dos logs são executados no loop principal.
+O envio dos logs usa outra fila acionada por interrupção e não bloqueia a recepção do barramento.
 
 ## 3. 默认HardwareConfiguração
 
