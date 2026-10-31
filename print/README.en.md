@@ -1,6 +1,6 @@
 # Download print files from the CAD repository
 
-[简体中文](README.md) · **English**
+[Português](README.md) · **English**
 
 **Models, mechanical parts and printing projects are maintained in [fanhao375/microduck-replica-cad](https://github.com/fanhao375/microduck-replica-cad). Select the version matching your servos there.**
 
