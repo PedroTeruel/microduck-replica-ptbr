@@ -142,11 +142,11 @@ class ModelsHttp(unittest.IsolatedAsyncioTestCase):
     async def test_rejected_package_cleans_temporary_file_and_preserves_error(self):
         async def reject(path, name=''):
             self.assertTrue(path.is_file())
-            raise ValueError('模型合同不兼容')
+            raise ValueError('Contrato do modelo incompatível.')
         self.models.import_package = reject
         status, headers, payload = await self.call('POST', '/api/models/import?filename=a.tar.gz', b'archive', self.headers)
         self.assertEqual(status, 400)
-        self.assertEqual(payload['error'], '模型合同不兼容')
+        self.assertEqual(payload['error'], 'Contrato do modelo incompatível.')
         self.assertEqual(headers['cache-control'], 'no-store')
         self.assertFalse(list((Path(self.tmp.name) / 'model-uploads').iterdir()))
 

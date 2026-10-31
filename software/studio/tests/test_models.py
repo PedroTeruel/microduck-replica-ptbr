@@ -159,7 +159,7 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
     async def test_builtin_cannot_be_deleted(self):
         v = await self.service.view()
         item = next(i for i in v['items'] if i['source'] == 'builtin')
-        with self.assertRaisesRegex(ModelError, '内置'):
+        with self.assertRaisesRegex(ModelError, 'integrado'):
             await self.service.handle({'op': 'delete', 'id': item['id']})
 
     async def test_select_confirms_loaded_path_and_restore_uses_explicit_default(self):
@@ -175,14 +175,14 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
         item = await self.install()
         before = self.runtime.paths['walk']
         self.runtime.accept_only = next(i for i in (await self.service.view())['items'] if i['id'] == item['id'])['path']
-        with self.assertRaisesRegex(ModelError, '回退|恢复'):
+        with self.assertRaisesRegex(ModelError, 'reversão|restaurada'):
             await self.service.handle({'op': 'select', 'id': item['id'], 'slot': 'walk'})
         self.assertEqual(self.runtime.paths['walk'], before)
 
     async def test_select_requires_fresh_confirmed_torque_off(self):
         item = await self.install()
         self.runtime.torque = True
-        with self.assertRaisesRegex(ModelError, '卸力'):
+        with self.assertRaisesRegex(ModelError, 'sem torque|Desative'):
             await self.service.handle({'op': 'select', 'id': item['id'], 'slot': 'walk'})
         self.assertFalse(any(m == 'robot.loadPolicy' for m, _ in self.runtime.calls))
 
@@ -190,18 +190,18 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
         for c in (contract(home=0.1), contract(kp=6)):
             self.new_contract = c
             item = await self.install()
-            with self.assertRaisesRegex(ModelError, 'HOME|舵机|P|站姿'):
+            with self.assertRaisesRegex(ModelError, 'HOME|servos|P|postura'):
                 await self.service.handle({'op': 'select', 'id': item['id'], 'slot': 'walk'})
 
     async def test_wrong_slot_is_refused(self):
         item = await self.install()
-        with self.assertRaisesRegex(ModelError, '用途|槽'):
+        with self.assertRaisesRegex(ModelError, 'finalidade|slot'):
             await self.service.handle({'op': 'select', 'id': item['id'], 'slot': 'roulade'})
 
     async def test_referenced_import_cannot_be_deleted_and_unused_can(self):
         item = await self.install()
         await self.service.handle({'op': 'select', 'id': item['id'], 'slot': 'walk'})
-        with self.assertRaisesRegex(ModelError, '选用|引用|使用'):
+        with self.assertRaisesRegex(ModelError, 'usado|referências|usa'):
             await self.service.handle({'op': 'delete', 'id': item['id']})
         await self.service.handle({'op': 'restore', 'slot': 'walk'})
         v = await self.service.handle({'op': 'delete', 'id': item['id']})
@@ -210,14 +210,14 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
     async def test_skill_reference_prevents_delete(self):
         item = await self.install()
         self.runtime.skills.append({'name': 'custom', 'path': item['path'], 'duration': 1})
-        with self.assertRaisesRegex(ModelError, '引用|使用'):
+        with self.assertRaisesRegex(ModelError, 'usado|referências|usa'):
             await self.service.handle({'op': 'delete', 'id': item['id']})
 
     async def test_offline_rename_allowed_but_delete_refused(self):
         item = await self.install()
         self.runtime.online = False
         await self.service.handle({'op': 'rename', 'id': item['id'], 'name': '离线名称'})
-        with self.assertRaisesRegex(ModelError, '连接|主程序|确认'):
+        with self.assertRaisesRegex(ModelError, 'conexão|programa principal|confirmar'):
             await self.service.handle({'op': 'delete', 'id': item['id']})
         self.assertTrue(any(i['id'] == item['id'] for i in (await self.service.view())['items']))
 
@@ -302,7 +302,7 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
         item = await self.install()
         self.runtime.known_skills.remove('roulade')
         self.runtime.skills = [s for s in self.runtime.skills if s['name'] != 'roulade']
-        with self.assertRaisesRegex(ModelError, '技能|动作'):
+        with self.assertRaisesRegex(ModelError, 'habilidade|movimento'):
             await self.service.handle({'op': 'select', 'id': item['id'], 'slot': 'roulade'})
         self.assertFalse(any(m == 'robot.loadPolicy' for m, _ in self.runtime.calls))
 
@@ -342,13 +342,13 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
         self.config.write_text('[policy]\nwalk="' + item['path'] + '"\n', encoding='utf-8')
         v = await self.service.view()
         self.assertFalse(next(i for i in v['items'] if i['id'] == item['id'])['can_delete'])
-        with self.assertRaisesRegex(ModelError, '配置|引用'):
+        with self.assertRaisesRegex(ModelError, 'configuração|referência'):
             await self.service.handle({'op': 'delete', 'id': item['id']})
 
     async def test_unreadable_persisted_config_prevents_delete(self):
         item = await self.install()
         self.config.write_text('invalid [', encoding='utf-8')
-        with self.assertRaisesRegex(ModelError, '配置|确认'):
+        with self.assertRaisesRegex(ModelError, 'configuração|confirmar'):
             await self.service.handle({'op': 'delete', 'id': item['id']})
 
     async def test_missing_policy_is_reported_not_installed(self):
@@ -358,7 +358,7 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
         row = next(i for i in v['items'] if i['id'] == item['id'])
         self.assertFalse(row['installed'])
         self.assertTrue(row['reason'])
-        with self.assertRaisesRegex(ModelError, '文件|模型'):
+        with self.assertRaisesRegex(ModelError, 'arquivo|modelo'):
             await self.service.handle({'op': 'select', 'id': item['id'], 'slot': 'walk'})
 
     async def test_same_path_already_result_does_not_require_overridden_to_change(self):
@@ -369,7 +369,7 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
     async def test_wrong_observation_interface_is_refused(self):
         self.new_contract['input_dim'] = 62
         item = await self.install()
-        with self.assertRaisesRegex(ModelError, '观测|接口'):
+        with self.assertRaisesRegex(ModelError, 'observação|interface'):
             await self.service.handle({'op': 'select', 'id': item['id'], 'slot': 'walk'})
 
     async def test_corrupt_default_signature_is_reported_as_catalog_error(self):
@@ -386,23 +386,23 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
         item = await self.install()
         alias = item['path'].replace('/policy.onnx', '/../' + item['id'] + '/policy.onnx')
         self.config.write_text('[policy]\nwalk="' + alias + '"\n', encoding='utf-8')
-        with self.assertRaisesRegex(ModelError, '引用'):
+        with self.assertRaisesRegex(ModelError, 'referências'):
             await self.service.handle({'op': 'delete', 'id': item['id']})
 
     async def test_missing_current_contract_gives_actionable_error(self):
         item = await self.install()
         (self.root / self.runtime.paths['walk'].lstrip('/')).with_name('deployment-contract.json').unlink()
-        with self.assertRaisesRegex(ModelError, '合同|文件'):
+        with self.assertRaisesRegex(ModelError, 'contrato|arquivos'):
             await self.service.handle({'op': 'select', 'id': item['id'], 'slot': 'walk'})
 
     async def test_import_name_requires_text(self):
         with self.assertRaises(ModelError):
             await self.service.import_package(self.pkg, name=0)
 
-    async def test_disk_write_error_is_an_expected_chinese_service_error(self):
+    async def test_disk_write_error_is_an_expected_localized_service_error(self):
         item = await self.install()
         with patch('studio.models._atomic_json', side_effect=PermissionError('read only')):
-            with self.assertRaisesRegex(ModelError, '保存|写入|文件'):
+            with self.assertRaisesRegex(ModelError, 'salvar|gravar|arquivos'):
                 await self.service.handle({'op': 'rename', 'id': item['id'], 'name': '更新名'})
 
 

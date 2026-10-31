@@ -1,4 +1,4 @@
-"""Studio 用户模型库；运行配置的成功以主程序实际加载回读为准。"""
+"""Biblioteca de modelos do Studio; a configuração só é considerada aplicada após confirmação de leitura do programa principal."""
 import asyncio
 import hashlib
 import json
@@ -23,11 +23,11 @@ META = '.studio-model.json'
 BASE = '/opt/robot/feetech-ft5-r5'
 PREFLIGHT = BASE + '/robotd'
 SLOTS = ('walk', 'sitstand', 'ground_pick', 'kick_left', 'kick_right', 'roulade', 'stand')
-LABELS = dict(zip(SLOTS, ('走路 / 保持', '坐下 / 站起', '低头捡东西', '左脚踢', '右脚踢', '前滚翻', '站立（独立）')))
+LABELS = dict(zip(SLOTS, ('Caminhar / manter', 'Sentar / levantar', 'Abaixar a cabeça para pegar objetos', 'Chute com a perna esquerda', 'Chute com a perna direita', 'Cambalhota para a frente', 'Em pé (independente)')))
 SKILLS = {'sitstand': 'sit_toggle', 'ground_pick': 'ground_pick', 'kick_left': 'kick_left',
           'kick_right': 'kick_right', 'roulade': 'roulade'}
 DEFAULT_KEYS = {'a': 'ground_pick', 'x': 'roulade', 'lb': 'kick_left', 'rb': 'kick_right', 'dpad_down': 'sit_toggle'}
-BUTTONS = {'a': 'A', 'x': 'X', 'lb': 'LB', 'rb': 'RB', 'dpad_down': '十字下'}
+BUTTONS = {'a': 'A', 'x': 'X', 'lb': 'LB', 'rb': 'RB', 'dpad_down': 'Direcional para baixo'}
 JOINTS = ('left_hip_yaw,left_hip_roll,left_hip_pitch,left_knee,left_ankle,neck_pitch,'
           'head_pitch,head_yaw,head_roll,right_hip_yaw,right_hip_roll,right_hip_pitch,right_knee,right_ankle').split(',')
 READBACK_TIMEOUT = 25.0
@@ -42,15 +42,15 @@ class ModelError(ValueError):
 
 def _json(path, limit=8 << 20):
     if path.is_symlink() or path.stat().st_size > limit:
-        raise ValueError('文件为链接或超过大小上限')
+        raise ValueError('O arquivo é um link simbólico ou excede o tamanho permitido.')
     value = json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(value, dict):
-        raise ValueError('需要 JSON 对象')
+        raise ValueError('É necessário fornecer um objeto JSON.')
     return value
 
 
 def _atomic_json(path, value):
-    """同目录临时文件、落盘、原子替换，避免掉电留下半份库记录。"""
+    """Grava em um arquivo temporário no mesmo diretório e faz a substituição atômica para evitar registros parciais após falta de energia."""
     fd, name = tempfile.mkstemp(prefix='.write-', dir=path.parent)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
@@ -70,37 +70,37 @@ def _atomic_json(path, value):
 
 
 def _signature(contract):
-    """HOME/P 是进程启动时安装的全局量，热换不能改变它们。"""
+    """HOME/P são parâmetros globais instalados na inicialização do processo e não podem ser alterados durante a execução."""
     try:
         if (type(contract.get('input_dim')) is not int or contract['input_dim'] != 61 or
                 type(contract.get('output_dim')) is not int or contract['output_dim'] != 14 or
                 contract.get('obs_normalizer') != 'baked_in_onnx'):
-            raise ValueError('观测接口必须是已归一化的 61 维输入 / 14 维动作')
+            raise ValueError('A interface de observação deve ter entrada normalizada de 61 dimensões e ação de 14 dimensões.')
         model = contract['model']
         names = contract['onnx_metadata']['joint_names'].split(',')
         if names != JOINTS:
-            raise ValueError('关节顺序不同')
+            raise ValueError('A ordem das articulações é diferente.')
         rows = model['joints']
         if not isinstance(rows, list):
-            raise ValueError('HOME 关节数量不完整')
+            raise ValueError('O conjunto de articulações HOME está incompleto.')
         homes = {}
         for name in JOINTS:
             matches = [r for r in rows if isinstance(r, dict) and r.get('name') == name]
             if len(matches) != 1:
-                raise ValueError('HOME 关节名称缺失或重复：' + name)
+                raise ValueError('Nome de articulação HOME ausente ou duplicado: ' + name)
             homes[name] = matches[0]['home_rad']
         if any(isinstance(homes[n], bool) or not isinstance(homes[n], (float, int))
                or not math.isfinite(homes[n]) for n in JOINTS):
-            raise ValueError('HOME 含无效角度')
+            raise ValueError('HOME contém um ângulo inválido.')
         actuators = model['actuators']
         if not isinstance(actuators, list) or len(actuators) != 1:
-            raise ValueError('舵机 P 参数不完整')
+            raise ValueError('Os parâmetros P dos servos estão incompletos.')
         kp = actuators[0]['kp_fw']
         if isinstance(kp, bool) or not isinstance(kp, (int, float)) or not math.isfinite(kp) or int(kp) != kp:
-            raise ValueError('舵机 P 参数无效')
+            raise ValueError('Os parâmetros P dos servos são inválidos.')
         return {'joints': names, 'home': [float(homes[n]) for n in JOINTS], 'kp_fw': int(kp)}
     except (KeyError, TypeError, AttributeError, ValueError, OverflowError) as exc:
-        raise ModelError(f'无法确认模型控制合同（HOME / 舵机 P / 关节顺序）：{exc}') from exc
+        raise ModelError(f'Não foi possível confirmar o contrato de controle do modelo (HOME / P dos servos / ordem das articulações): {exc}') from exc
 
 
 class Models:
@@ -115,7 +115,7 @@ class Models:
 
     def _local(self, path):
         if not isinstance(path, str) or not path.startswith('/'):
-            raise ModelError('主程序模型路径必须是绝对路径')
+            raise ModelError('O caminho do modelo do programa principal deve ser absoluto.')
         return self.root / path.lstrip('/')
 
     def _remote(self, path):
@@ -125,7 +125,7 @@ class Models:
         try:
             return '/' + path.relative_to(self.root.resolve()).as_posix()
         except ValueError:
-            # 用于电脑端独立 state 目录；生产 state 在 /var/lib 下。
+            # Usado com um diretório state independente no computador; em produção, state fica em /var/lib.
             return path.as_posix()
 
     def _managed(self, path):
@@ -137,13 +137,13 @@ class Models:
 
     def _init_dir(self):
         if self.directory.is_symlink():
-            raise ModelError('模型库目录不能是符号链接')
+            raise ModelError('O diretório da biblioteca de modelos não pode ser um link simbólico.')
         self.directory.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def _name(value):
         if not isinstance(value, str) or not value.strip() or len(value.strip()) > 80 or any(ord(c) < 32 for c in value):
-            raise ModelError('模型名称需为 1–80 个可见字符')
+            raise ModelError('O nome do modelo deve ter de 1 a 80 caracteres visíveis.')
         return value.strip()
 
     async def _call(self, method, params=None, timeout=2.0):
@@ -161,12 +161,12 @@ class Models:
             else:
                 snap[name] = None
                 errors.append(name)
-        snap['error'] = '主程序连接或回读失败，暂时无法确认运行配置' if errors else None
+        snap['error'] = 'Falha na conexão ou na leitura de retorno do programa principal; não foi possível confirmar a configuração ativa.' if errors else None
         return snap
 
     @staticmethod
     def _report_valid(name, value):
-        """空对象/半份报告不是权威回读，特别不能据此判定模型无人引用。"""
+        """Um objeto vazio ou relatório parcial não é uma leitura de retorno confiável e não prova que nenhum modelo esteja em uso."""
         if not isinstance(value, dict):
             return False
         def path_ok(path):
@@ -198,14 +198,14 @@ class Models:
     def _idle_reason(snap):
         bus, pol = snap.get('bus'), snap.get('policies')
         if not isinstance(bus, dict) or not isinstance(pol, dict):
-            return '主程序连接或回读失败，无法确认卸力状态'
+            return 'Falha na conexão ou na leitura de retorno do programa principal; não foi possível confirmar que os servos estão sem torque.'
         native = bus.get('native')
         if not isinstance(native, dict) or native.get('torque_enabled') is not False or native.get('torque_state_confirmed') is not False:
-            return '请先卸力，等待主程序确认已卸力后再修改模型或按键'
+            return 'Desative o torque e aguarde a confirmação do programa principal antes de alterar modelos ou botões.'
         if bus.get('policy_enabled') is not False:
-            return '请先停止策略并卸力后再修改模型或按键'
+            return 'Interrompa a política e desative o torque antes de alterar modelos ou botões.'
         if bus.get('mode') != 'motion' or pol.get('enabled') is not True:
-            return '当前模式未开启模型运行器，请切回运动模式并保持卸力'
+            return 'O executor de modelos não está ativo neste modo. Volte ao modo de movimento e mantenha os servos sem torque.'
         if snap.get('error'):
             return snap['error']
         return None
@@ -228,28 +228,28 @@ class Models:
         try:
             data = _json(self.catalog, 1 << 20)
             if data.get('schema') != SCHEMA or not isinstance(data.get('defaults'), dict):
-                raise ValueError('库格式不匹配')
+                    raise ValueError('Formato da biblioteca incompatível.')
             for slot, d in data['defaults'].items():
                 if slot not in SLOTS or not isinstance(d, dict) or d.get('id') != 'builtin-' + slot:
-                    raise ValueError('默认模型记录无效')
+                    raise ValueError('Registro do modelo padrão inválido.')
                 path = d.get('path')
                 disabled = d.get('disabled') is True and slot != 'walk' and path is None
                 if not disabled and (not isinstance(path, str) or not path.startswith('/') or self._managed(path)):
-                    raise ValueError('默认恢复路径无效或指向导入库')
+                    raise ValueError('O caminho padrão de restauração é inválido ou aponta para a biblioteca importada.')
                 self._name(d.get('name'))
                 if d.get('sha256') is not None and (not isinstance(d['sha256'], str) or not re.fullmatch(r'[a-f0-9]{64}', d['sha256'])):
-                    raise ValueError('默认模型摘要无效')
+                    raise ValueError('Resumo do modelo padrão inválido.')
                 sig = d.get('signature')
                 if sig is not None:
                     if not isinstance(sig, dict) or sig.get('joints') != JOINTS or not isinstance(sig.get('home'), list) or len(sig['home']) != len(JOINTS):
-                        raise ValueError('默认 HOME 合同记录无效')
+                        raise ValueError('Registro do contrato HOME padrão inválido.')
                     if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in sig['home']):
-                        raise ValueError('默认 HOME 含无效角度')
+                        raise ValueError('O HOME padrão contém um ângulo inválido.')
                     if type(sig.get('kp_fw')) is not int or not 1 <= sig['kp_fw'] <= 32:
-                        raise ValueError('默认舵机 P 记录无效')
+                        raise ValueError('Registro padrão dos parâmetros P dos servos inválido.')
             return data, None
         except (OSError, ValueError, RecursionError, OverflowError) as exc:
-            return {'schema': SCHEMA, 'defaults': {}}, f'模型库默认记录损坏，已停止配置修改：{exc}'
+            return {'schema': SCHEMA, 'defaults': {}}, f'Registro dos modelos padrão corrompido; as alterações de configuração foram interrompidas: {exc}'
 
     def _read_library(self, snap=None):
         with self._disk_lock:
@@ -267,21 +267,21 @@ class Models:
                 try:
                     entry = _json(child / META, 64 << 10)
                     if entry.get('id') != child.name or entry.get('slot') not in SLOTS or not isinstance(entry.get('sha256'), str) or not re.fullmatch(r'[a-f0-9]{64}', entry['sha256']):
-                        raise ValueError('模型身份记录无效')
+                        raise ValueError('Registro de identidade do modelo inválido.')
                     entry['name'] = self._name(entry.get('name'))
                     entry['path'] = self._remote(child / 'policy.onnx')
                     entry['source'] = 'imported'
                     entry['installed'] = self._local(entry['path']).is_file() and not self._local(entry['path']).is_symlink()
                     entries.append(entry)
                 except (ValueError, OSError, RecursionError) as exc:
-                    error = error or f'模型 {child.name[:8]} 的记录无法读取：{exc}'
+                    error = error or f'Não foi possível ler o registro do modelo {child.name[:8]}: {exc}'
             builtins = [dict(d, source='builtin', slot=s,
                              installed=self._local(d['path']).is_file() and not self._local(d['path']).is_symlink())
                         for s, d in catalog['defaults'].items() if not d.get('disabled')]
             return catalog, builtins + entries, error
 
     def _capture_defaults(self, snap):
-        """优先随镜像的档案；只在首次建立库时记原始显式路径。"""
+        """Dá preferência ao pacote incluído na imagem; registra o caminho explícito original somente ao criar a biblioteca pela primeira vez."""
         candidates, names = {}, {}
         try:
             profile = _json(self._local(BASE + '/management-profile.json'))
@@ -321,7 +321,7 @@ class Models:
         for row in self._rows(snap.get('policies'), 'slots'):
             slot = row.get('slot')
             if slot in SLOTS and slot != 'walk' and slot not in defaults and row.get('path') is None:
-                defaults[slot] = {'id': 'builtin-' + slot, 'path': None, 'name': LABELS[slot] + '（默认未安装）',
+                defaults[slot] = {'id': 'builtin-' + slot, 'path': None, 'name': LABELS[slot] + ' (não instalado por padrão)',
                                   'task': None, 'sha256': None, 'signature': None, 'disabled': True}
         return defaults
 
@@ -349,10 +349,10 @@ class Models:
             result = self.validator(path)
         else:
             if not self._validator_available():
-                raise ModelError('本机没有可信模型运行器，无法执行 ONNX 预检', status=503)
+                raise ModelError('Não há um executor de modelos confiável neste dispositivo para validar o ONNX.', status=503)
             result = validate_policy(path, str(self._local(PREFLIGHT)), env=self._runtime_env())
         if not isinstance(result, dict) or result.get('valid') is not True:
-            raise ModelError('模型运行器预检未通过：' + str((result or {}).get('error', '未确认有效') if isinstance(result, dict) else '返回无效结果'))
+            raise ModelError('A validação prévia do executor de modelos falhou: ' + str((result or {}).get('error', 'validade não confirmada') if isinstance(result, dict) else 'resposta inválida'))
 
     def _install(self, path, name):
         ident = uuid.uuid4().hex
@@ -363,20 +363,20 @@ class Models:
             self._preflight(stage / data['onnx'])
             slot = data.get('slot')
             if slot not in SLOTS:
-                raise ModelError('无法识别这个模型的动作用途，暂不能安装')
+                raise ModelError('Não foi possível identificar a finalidade de movimento deste modelo; a instalação não está disponível.')
             record = {'id': ident, 'name': self._name(name or data.get('name') or LABELS[slot]),
                       'task': data['task'], 'slot': slot, 'sha256': data['sha256'], 'files': data['files']}
             _atomic_json(stage / META, record)
             os.replace(stage, final)
         except (PackageError, OSError, KeyError, TypeError) as exc:
-            raise ModelError(f'模型导入失败：{exc}') from exc
+            raise ModelError(f'Falha ao importar o modelo: {exc}') from exc
         finally:
             if stage.exists():
                 shutil.rmtree(stage)
 
     async def import_package(self, path, name=''):
         if not isinstance(name, str):
-            raise ModelError('模型名称必须是文字')
+            raise ModelError('O nome do modelo deve ser texto.')
         if name:
             self._name(name)
         async with self._lock:
@@ -400,43 +400,43 @@ class Models:
         return paths
 
     def _configured_refs(self):
-        """配置先落盘、加载后失败时，运行快照可能还是旧文件；不能遗漏重启引用。"""
+        """Se a configuração for gravada, mas o carregamento falhar, o snapshot ativo ainda pode apontar para o arquivo antigo; inclua referências após reinicializações."""
         path = self._local('/etc/robot/feetech-ft5/robotd.toml')
         try:
             if path.stat().st_size > 2 << 20:
-                raise ValueError('配置超过大小上限')
+                raise ValueError('A configuração excede o tamanho permitido.')
             with path.open('rb') as f:
                 data = tomllib.load(f)
             policy = data.get('policy')
             if not isinstance(policy, dict):
-                raise ValueError('缺少 policy 配置')
+                raise ValueError('Configuração policy ausente.')
             rows = policy.get('skill', [])
             if not isinstance(rows, list) or any(not isinstance(r, dict) for r in rows):
-                raise ValueError('policy.skill 格式无效')
+                raise ValueError('Formato de policy.skill inválido.')
             paths = [policy.get(s) for s in SLOTS] + [r.get('path') for r in rows]
             if any(p is not None and (not isinstance(p, str) or p != 'none' and not p.startswith('/')) for p in paths):
-                raise ValueError('模型配置路径无效')
+                raise ValueError('Caminho de configuração do modelo inválido.')
             return {p for p in paths if p and p != 'none'}, None
         except (OSError, ValueError, RecursionError) as exc:
-            return set(), f'无法读取主程序持久化配置，不能确认模型可删除：{exc}'
+            return set(), f'Não foi possível ler a configuração persistida do programa principal e confirmar se o modelo pode ser excluído: {exc}'
 
     def _normalize_refs(self, refs):
         try:
             return {self._remote(self._local(path).resolve()) for path in refs}
         except (OSError, RuntimeError) as exc:
-            raise ModelError(f'模型引用路径无法解析，不能确认可删除：{exc}') from exc
+            raise ModelError(f'Não foi possível resolver o caminho de referência do modelo e confirmar se ele pode ser excluído: {exc}') from exc
 
     @staticmethod
     def _delete_reason(item, snap, refs, config_error):
         if item['source'] == 'builtin':
-            return '内置默认模型不能删除'
+            return 'O modelo padrão integrado não pode ser excluído.'
         if snap['error'] or config_error:
             return snap['error'] or config_error
         policies = snap.get('policies') or {}
         if policies.get('change_error') or any(r.get('error') for r in Models._rows(policies, 'slots')):
-            return '主程序模型加载有错误，无法确认旧配置引用，请先处理加载问题'
+            return 'O programa principal apresentou um erro ao carregar modelos; não é possível confirmar referências da configuração anterior. Resolva o problema de carregamento primeiro.'
         if item['path'] in refs:
-            return '模型仍被运行槽、技能或持久化配置引用，请先切换或恢复默认'
+            return 'O modelo ainda é usado por um slot de execução, habilidade ou configuração persistida. Troque o modelo ou restaure o padrão primeiro.'
         return None
 
     async def view(self):
@@ -444,7 +444,7 @@ class Models:
         try:
             catalog, entries, library_error = await asyncio.to_thread(self._read_library, snap)
         except (OSError, ValueError) as exc:
-            catalog, entries, library_error = {'defaults': {}}, [], f'模型库无法读取：{exc}'
+            catalog, entries, library_error = {'defaults': {}}, [], f'Não foi possível ler a biblioteca de modelos: {exc}'
         reason = library_error or self._idle_reason(snap)
         by_path = {i['path']: i['id'] for i in entries}
         slot_rows = {r.get('slot'): r for r in self._rows(snap.get('policies'), 'slots') if isinstance(r, dict)}
@@ -479,7 +479,7 @@ class Models:
             path, slot = entry['path'], entry['slot']
             chosen = [s['slot'] for s in slots if s.get('path') == path]
             delete_reason = self._delete_reason(entry, snap, refs, config_error)
-            file_reason = None if entry['installed'] else '模型 policy.onnx 文件缺失或不安全，请重新导入'
+            file_reason = None if entry['installed'] else 'O arquivo policy.onnx do modelo está ausente ou é inseguro. Importe-o novamente.'
             items.append({'id': entry['id'], 'name': entry['name'], 'source': entry['source'], 'task': entry.get('task'),
                           'suggested_slot': slot, 'allowed_slots': [slot], 'slots': chosen,
                           'running': bool(isinstance(active, dict) and active.get('path') == path),
@@ -487,12 +487,12 @@ class Models:
                           'can_delete': delete_reason is None, 'reason': file_reason or delete_reason,
                           'sha12': (entry.get('sha256') or '')[:12] or None, 'path': path, 'installed': entry['installed']})
         available = await asyncio.to_thread(self._validator_available)
-        reason = reason or (None if available else '本机没有可信模型运行器，无法预检模型')
+        reason = reason or (None if available else 'Não há um executor de modelos confiável neste dispositivo para validar o modelo.')
         return {'items': items, 'slots': slots, 'bindings': bindings,
                 'buttons': [{'button': b, 'label': l} for b, l in BUTTONS.items()],
                 'capabilities': {'import': available and not library_error, 'select': reason is None,
                                  'rename': not library_error, 'delete': not snap['error'] and not config_error and not library_error,
-                                 'reason': reason, 'import_reason': library_error or (None if available else '本机没有可信模型运行器，无法预检模型')},
+                                 'reason': reason, 'import_reason': library_error or (None if available else 'Não há um executor de modelos confiável neste dispositivo para validar o modelo.')},
                 'error': library_error or snap['error']}
 
     async def _library(self, snap):
@@ -508,13 +508,13 @@ class Models:
         except ModelError:
             raise
         except (OSError, ValueError) as exc:
-            raise ModelError(f'模型文件读取或保存失败：{exc}', status=503) from exc
+            raise ModelError(f'Falha ao ler ou salvar os arquivos do modelo: {exc}', status=503) from exc
 
     @staticmethod
     def _item(entries, ident):
         item = next((i for i in entries if i['id'] == ident), None)
         if item is None:
-            raise ModelError('找不到这个模型，请刷新列表')
+            raise ModelError('Modelo não encontrado. Atualize a lista.')
         return item
 
     def _rename(self, item, catalog, name):
@@ -530,34 +530,34 @@ class Models:
 
     def _delete(self, item):
         if not re.fullmatch(r'[a-f0-9]{32}', item['id']):
-            raise ModelError('模型目录身份无效')
+            raise ModelError('Identidade do diretório do modelo inválida.')
         target = self.directory / item['id']
         if target.is_symlink() or target.resolve().parent != self.directory.resolve():
-            raise ModelError('模型目录路径不安全')
+            raise ModelError('O caminho do diretório do modelo não é seguro.')
         shutil.rmtree(target)
 
     def _check_compatibility(self, item, catalog, snap):
         baseline = (catalog['defaults'].get('walk') or {}).get('signature')
         if not isinstance(baseline, dict):
-            raise ModelError('缺少开机行走模型的 HOME / 舵机 P 合同，无法确认安全热切换')
+            raise ModelError('Falta o contrato HOME/parâmetros P do modelo de caminhada carregado na inicialização; não é possível confirmar uma troca segura durante a execução.')
         target = _signature(_json(self._local(item['path']).with_name('deployment-contract.json')))
         current_path = next((r.get('path') for r in self._rows(snap['policies'], 'slots')
                              if isinstance(r, dict) and r.get('slot') == 'walk'), None)
         if not current_path:
-            raise ModelError('无法确认当前行走模型的控制合同')
+            raise ModelError('Não foi possível confirmar o contrato de controle do modelo de caminhada atual.')
         current = _signature(_json(self._local(current_path).with_name('deployment-contract.json')))
         for candidate in (current, target):
             if candidate.get('joints') != baseline.get('joints'):
-                raise ModelError('模型关节顺序与开机控制合同不一致，不能热切换')
+                raise ModelError('A ordem das articulações do modelo difere do contrato de controle carregado na inicialização; a troca durante a execução foi bloqueada.')
             if candidate.get('kp_fw') != baseline.get('kp_fw'):
-                raise ModelError('模型舵机 P 与开机控制合同不同；需重新部署并重启主程序')
+                raise ModelError('Os parâmetros P dos servos diferem do contrato carregado na inicialização; implante novamente e reinicie o programa principal.')
             a, b = candidate.get('home'), baseline.get('home')
             if not isinstance(a, list) or not isinstance(b, list) or len(a) != len(b) or any(abs(x - y) > 1e-8 for x, y in zip(a, b)):
-                raise ModelError('模型 HOME 站姿与开机控制合同不同；需重新部署并重启主程序')
+                raise ModelError('A postura HOME do modelo difere do contrato carregado na inicialização; implante novamente e reinicie o programa principal.')
         if item['source'] == 'imported':
             digest = hashlib.sha256(self._local(item['path']).read_bytes()).hexdigest()
             if digest != item['sha256']:
-                raise ModelError('导入模型文件已改变，SHA256 校验不通过，请重新导入')
+                raise ModelError('O arquivo do modelo importado foi alterado e não passou na verificação SHA256. Importe-o novamente.')
         self._preflight(self._local(item['path']))
 
     def _check_selection_files(self, item, catalog, snap):
@@ -566,16 +566,16 @@ class Models:
         except ModelError:
             raise
         except (OSError, ValueError, OverflowError) as exc:
-            raise ModelError(f'无法读取或预检模型文件及部署合同：{exc}') from exc
+            raise ModelError(f'Não foi possível ler ou validar os arquivos do modelo e o contrato de implantação: {exc}') from exc
 
     async def _write_rpc(self, method, params):
         result = await self._call(method, params, timeout=8.0)
         if not isinstance(result, dict) or result.get('accepted') is not True:
-            raise ModelError('主程序拒绝配置修改：' + str((result or {}).get('reason', '未确认接受') if isinstance(result, dict) else '未返回结果'), status=409)
+            raise ModelError('O programa principal recusou a alteração da configuração: ' + str((result or {}).get('reason', 'aceitação não confirmada') if isinstance(result, dict) else 'nenhum resultado retornado'), status=409)
 
     async def _wait_loaded(self, slot, path, expected_skill=None):
         deadline = time.monotonic() + READBACK_TIMEOUT
-        last = '尚未回读到模型已加载'
+        last = 'Ainda não foi confirmado pela leitura de retorno que o modelo foi carregado.'
         while True:
             snap = await self._snapshot()
             rows = {r.get('slot'): r for r in self._rows(snap.get('policies'), 'slots') if isinstance(r, dict)}
@@ -594,26 +594,26 @@ class Models:
             loaded_ok = actual is None if expected is None else isinstance(actual, dict) and actual.get('path') == expected
             if not error and row and row.get('path') == expected and isinstance(row.get('overridden'), bool) and loaded_ok and skill_ok:
                 return
-            last = str(error or ('槽路径或实际加载模型尚不一致' if not loaded_ok else '技能模型或槽回读尚不一致'))
+            last = str(error or ('O caminho do slot e o modelo carregado ainda divergem.' if not loaded_ok else 'O modelo da habilidade e a leitura do slot ainda divergem.'))
             if time.monotonic() >= deadline:
-                raise ModelError('模型加载未确认：' + last, status=503, code='load_unconfirmed')
+                raise ModelError('O carregamento do modelo não foi confirmado: ' + last, status=503, code='load_unconfirmed')
             await asyncio.sleep(READBACK_POLL)
 
     async def _select(self, item, slot, catalog, snap):
         if slot not in SLOTS or item['slot'] != slot:
-            raise ModelError('这个模型的用途与所选运行槽不匹配')
+            raise ModelError('A finalidade deste modelo não corresponde ao slot de execução selecionado.')
         if not item.get('installed'):
-            raise ModelError('模型 policy.onnx 文件缺失或不安全，请重新导入')
+            raise ModelError('O arquivo policy.onnx do modelo está ausente ou é inseguro. Importe-o novamente.')
         await asyncio.to_thread(self._check_selection_files, item, catalog, snap)
-        # 预检可能持续数秒；写配置前重新确认卸力，不能沿用预检前的状态。
+        # A validação prévia pode levar alguns segundos; confirme novamente que os servos estão sem torque antes de gravar a configuração.
         snap = await self._require_idle()
         old = next((r.get('path') for r in self._rows(snap['policies'], 'slots')
                     if isinstance(r, dict) and r.get('slot') == slot), None)
         if old is None and slot == 'walk':
-            raise ModelError('当前行走模型路径未知，无法保存回退来源')
+            raise ModelError('O caminho do modelo de caminhada atual é desconhecido; não é possível registrar a origem para reversão.')
         canonical = SKILLS.get(slot)
         if canonical and canonical not in snap['policies'].get('skills', []) and canonical not in snap['skills'].get('built_in', []):
-            raise ModelError('主程序没有提供这个动作技能，不能只改模型槽后宣称选用成功')
+            raise ModelError('O programa principal não oferece esta habilidade de movimento; alterar apenas o slot do modelo não confirma sua ativação.')
         skill = next((r for r in self._rows(snap['skills'], 'skills')
                       if isinstance(r, dict) and r.get('name') == canonical and isinstance(r.get('path'), str)), None)
         changed_skill = skill is not None and slot not in ('sitstand', 'ground_pick') and skill['path'] != item['path']
@@ -632,8 +632,8 @@ class Models:
                     await self._write_rpc('robot.setSkill', {'name': canonical, 'path': skill['path']})
                 await self._wait_loaded(slot, old or 'none', (canonical, skill['path']) if changed_skill else None)
             except Exception as rollback:
-                raise ModelError(f'模型切换失败：{exc}；旧配置回退也未确认：{rollback}', status=503, code='rollback_failed') from exc
-            raise ModelError(f'模型切换失败：{exc}；已回退到原来的模型', status=503, code='load_failed') from exc
+                raise ModelError(f'Falha ao trocar o modelo: {exc}; a reversão para a configuração anterior também não foi confirmada: {rollback}', status=503, code='rollback_failed') from exc
+            raise ModelError(f'Falha ao trocar o modelo: {exc}; configuração do modelo anterior restaurada.', status=503, code='load_failed') from exc
 
     async def _restore_disabled(self, slot, snap):
         old = next((r.get('path') for r in self._rows(snap['policies'], 'slots') if r['slot'] == slot), None)
@@ -647,8 +647,8 @@ class Models:
                 await self._write_rpc('robot.loadPolicy', {'slot': slot, 'path': old or 'none'})
                 await self._wait_loaded(slot, old or 'none')
             except Exception as rollback:
-                raise ModelError(f'恢复默认未安装失败：{exc}；回退也未确认：{rollback}', status=503, code='rollback_failed') from exc
-            raise ModelError(f'恢复默认未安装失败：{exc}；已回退原配置', status=503, code='load_failed') from exc
+                raise ModelError(f'Falha ao restaurar o padrão não instalado: {exc}; a reversão também não foi confirmada: {rollback}', status=503, code='rollback_failed') from exc
+            raise ModelError(f'Falha ao restaurar o padrão não instalado: {exc}; configuração anterior restaurada.', status=503, code='load_failed') from exc
 
     async def _wait_bindings(self, expected):
         deadline = time.monotonic() + READBACK_TIMEOUT
@@ -663,7 +663,7 @@ class Models:
             except Exception:
                 pass
             if time.monotonic() >= deadline:
-                raise ModelError('按键配置写入后未能回读确认', status=503)
+                raise ModelError('A configuração dos botões foi gravada, mas não foi confirmada pela leitura de retorno.', status=503)
             await asyncio.sleep(READBACK_POLL)
 
     async def _bind(self, args, snap):
@@ -675,24 +675,24 @@ class Models:
         else:
             button = args.get('button')
             if not isinstance(button, str) or button not in BUTTONS:
-                raise ModelError('只支持 A、X、LB、RB 和十字下按键')
+            raise ModelError('São aceitos somente os botões A, X, LB, RB e direcional para baixo.')
             skill = ''
             if op == 'bind':
                 slot = args.get('slot')
                 if not isinstance(slot, str) or slot not in SKILLS:
-                    raise ModelError('行走和独立站立不是可绑定的单次技能')
+                    raise ModelError('Caminhar e ficar em pé de forma independente não são habilidades individuais que possam ser vinculadas.')
                 selected = next((r for r in self._rows(snap['policies'], 'slots')
                                  if isinstance(r, dict) and r.get('slot') == slot), {})
                 if not selected.get('path') or selected.get('error'):
-                    raise ModelError('这个动作还没有可用的模型，请先选用模型')
+                    raise ModelError('Ainda não há um modelo disponível para este movimento. Selecione um modelo primeiro.')
                 skill = SKILLS[slot]
                 current = rows.get(button, {}).get('skill')
                 if current and current != skill and args.get('replace') is not True:
                     label = next((LABELS[s] for s, sk in SKILLS.items() if sk == current), current)
-                    raise ModelError(f'{BUTTONS[button]} 当前用于「{label}」，请确认替换后再修改', status=409, code='binding_conflict')
+                    raise ModelError(f'{BUTTONS[button]} está vinculado a “{label}”. Confirme a substituição antes de alterar.', status=409, code='binding_conflict')
             changes = [(button, skill)]
         if any(b not in rows or not isinstance(rows[b].get('skill'), str) or not isinstance(rows[b].get('overridden'), bool) for b, _ in changes):
-            raise ModelError('按键原配置回读不完整，无法保存回退来源', status=503)
+            raise ModelError('A leitura de retorno da configuração original dos botões está incompleta; não é possível registrar a origem para reversão.', status=503)
         attempted = []
         try:
             expected = {}
@@ -716,12 +716,12 @@ class Models:
                     await self._write_rpc('pad.bind', params)
                 await self._wait_bindings({b: rows[b] for b in attempted})
             except Exception as rollback:
-                raise ModelError(f'按键修改失败：{exc}；原按键配置回退也未确认：{rollback}', status=503, code='rollback_failed') from exc
-            raise ModelError(f'按键修改失败：{exc}；已恢复原按键配置', status=503, code='binding_failed') from exc
+                raise ModelError(f'Falha ao alterar os botões: {exc}; a reversão para a configuração anterior também não foi confirmada: {rollback}', status=503, code='rollback_failed') from exc
+            raise ModelError(f'Falha ao alterar os botões: {exc}; configuração anterior dos botões restaurada.', status=503, code='binding_failed') from exc
 
     async def handle(self, args, by=None):
         if not isinstance(args, dict) or args.get('op') not in ('rename', 'select', 'restore', 'delete', 'bind', 'unbind', 'reset_bindings'):
-            raise ModelError('不支持的模型管理操作')
+            raise ModelError('Operação de gerenciamento de modelos não suportada.')
         op = args['op']
         async with self._lock:
             snap = await self._snapshot()
@@ -745,10 +745,10 @@ class Models:
                 if op in ('select', 'restore'):
                     slot = args.get('slot')
                     if slot not in SLOTS:
-                        raise ModelError('无法识别这个模型运行槽')
+                        raise ModelError('Slot de execução do modelo desconhecido.')
                     ident = args.get('id') if op == 'select' else (catalog['defaults'].get(slot) or {}).get('id')
                     if not ident:
-                        raise ModelError('没有保存这个动作的内置默认模型，无法恢复')
+                        raise ModelError('Não há um modelo padrão integrado salvo para este movimento; não é possível restaurá-lo.')
                     if op == 'restore' and catalog['defaults'][slot].get('disabled'):
                         await self._restore_disabled(slot, snap)
                     else:
@@ -757,5 +757,5 @@ class Models:
                 else:
                     await self._bind(args, snap)
         if self.log:
-            self.log.write('模型管理配置已确认', cat='Modelos', raw=f'op={op}; by={by or "web"}')
+            self.log.write('Configuração de gerenciamento de modelos confirmada', cat='Modelos', raw=f'op={op}; by={by or "web"}')
         return await self.view()
