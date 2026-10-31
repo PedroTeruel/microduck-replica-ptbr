@@ -1,13 +1,12 @@
-// 设置页的「电池」一栏（battery-plan.md v2 §4）：型号（2S 锂电 / 台架电源）、提醒线、红线、负载电压线、读数校准
-// （带「我量了电池电压」）、提示音、保养提示。设置存在鸭子上（state 目录的 battery-settings.json，后端 battery.op 校验），
-// 存了马上生效。只警告：这里没有任何让鸭子动的东西。
+// Seção Bateria das configurações (battery-plan.md v2 §4): tipo de alimentação, faixas de aviso, tensão mínima sob carga, calibração da leitura, alerta sonoro e recomendações de manutenção.
+// As opções são salvas no Microduck em state/battery-settings.json, validadas por battery.op e aplicadas imediatamente. Esta seção apenas exibe avisos; não movimenta o robô.
 import { html, useState, useEffect } from './vendor/preact-htm.module.js';
 import { loadMute, saveMute } from './battery.js';
 import { Stepper } from './stepper.js';
 
 const f2 = (v) => (typeof v === 'number' && isFinite(v) ? v.toFixed(2) : '—');
 const sign = (v) => (typeof v === 'number' && isFinite(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}` : '—');
-const CLS = { rest: '卸力', light: '站着 / 坐着', heavy: '走路 / 做动作' };
+const CLS = { rest: 'Servos liberados', light: 'Em pé / sentado', heavy: 'Caminhando / em movimento' };
 
 const CSS = `
 .bset { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
@@ -37,23 +36,23 @@ if (!document.getElementById('bset-css')) {
 }
 
 export function BatterySettings({ link, st }) {
-  const [data, setData] = useState(null);         // 后端给的：settings、defaults、ranges、presets
+  const [data, setData] = useState(null);         // Dados do backend: configurações, valores padrão, limites e predefinições.
   const [form, setForm] = useState(null);
   const [msg, setMsg] = useState(null);           // {kind, text}
   const [busy, setBusy] = useState(false);
   const [meter, setMeter] = useState('');
-  const [cal, setCal] = useState(null);           // calibrate 的回执
+  const [cal, setCal] = useState(null);           // Resultado da calibração.
   const [muted, setMuted] = useState(loadMute());
 
   const load = async () => {
     await link.whenOpen();
     const r = await link.cmd('battery.op', { op: 'get' }, 8000);
-    if (r.ok) { setData(r.data); setForm({ ...r.data.settings }); } else setMsg({ kind: 'bad', text: `读不到电池设置：${r.reason || r.error}` });
+    if (r.ok) { setData(r.data); setForm({ ...r.data.settings }); } else setMsg({ kind: 'bad', text: `Não foi possível ler as configurações da bateria: ${r.reason || r.error}` });
   };
   useEffect(() => { load(); }, []);
 
   if (!form) {
-    return html`<div class="board bset" aria-label="电池"><h2>电池</h2><div class="now">${msg ? msg.text : '读取中…'}</div></div>`;
+    return html`<div class="board bset" aria-label="Bateria"><h2>Bateria</h2><div class="now">${msg ? msg.text : 'Carregando…'}</div></div>`;
   }
   const s0 = data.settings, rg = data.ranges || {};
   const bench = form.preset === 'bench';
@@ -67,8 +66,8 @@ export function BatterySettings({ link, st }) {
     setBusy(true);
     const r = await link.cmd('battery.op', { op: 'set', values }, 8000);
     setBusy(false);
-    if (r.ok) { setData(r.data); setForm({ ...r.data.settings }); setMsg({ kind: 'ok', text: '已保存，马上生效' }); setCal(null); return true; }
-    setMsg({ kind: 'bad', text: `没存：${r.reason || r.error}` });
+    if (r.ok) { setData(r.data); setForm({ ...r.data.settings }); setMsg({ kind: 'ok', text: 'Salvo e aplicado imediatamente.' }); setCal(null); return true; }
+    setMsg({ kind: 'bad', text: `Não foi possível salvar: ${r.reason || r.error}` });
     return false;
   };
   const measure = async () => {
@@ -80,77 +79,76 @@ export function BatterySettings({ link, st }) {
     setCal(r.data);
   };
 
-  const now = b.mode === 'no_data' ? '现在读不到舵机电压'
-    : b.mode === 'estimating' ? '现在：估算中'
-      : `现在：舵机读数 ${f2(b.volts)} V（${CLS[b.cls] || '状态不明'}）${bench || b.mode === 'bench' ? '' : `，电量约 ${b.pct ?? '—'}%`}`;
-  return html`<div class="board bset" aria-label="电池">
-    <h2>电池</h2>
-    <div class="now num">${data.presets?.[s0.preset] || s0.preset} · ${s0.preset === 'bench' ? '只显示电压' : '通用查表'} · 校准 ${sign(s0.cal_offset_v)} V　${now}</div>
+  const now = b.mode === 'no_data' ? 'Tensão dos servos indisponível'
+    : b.mode === 'estimating' ? 'Estimativa em andamento'
+      : `Leitura dos servos: ${f2(b.volts)} V (${CLS[b.cls] || 'estado desconhecido'})${bench || b.mode === 'bench' ? '' : ` · carga aproximada: ${b.pct ?? '—'}%`}`;
+  return html`<div class="board bset" aria-label="Bateria">
+    <h2>Bateria</h2>
+    <div class="now num">${data.presets?.[s0.preset] || s0.preset} · ${s0.preset === 'bench' ? 'exibe somente a tensão' : 'estimativa por tabela genérica'} · calibração ${sign(s0.cal_offset_v)} V　${now}</div>
 
     <div class="row">
-      <span class="k">型号</span>
+      <span class="k">Tipo</span>
       <div class="radio">
         ${Object.entries(data.presets || {}).map(([k, label]) => html`<label>
           <input type="radio" name="bat-preset" value=${k} checked=${form.preset === k} onChange=${() => set('preset', k)} /> ${label}</label>`)}
       </div>
       <div class="note">${bench
-        ? '台架电源（可调电源供电）：只显示电压，不算百分比、不报电量。电压连续 30 秒低于下面的负载电压线照样提醒（电源限流了、线太细时会掉下去）'
-        : 'HD-1910 最高 8.4 V，只能用 2S。电量是舵机电压查表估的（没有电量计），误差约 ±15%，没校准时偏保守（报得比实际低）'}</div>
+        ? 'Fonte de bancada (fonte ajustável): mostra somente a tensão, sem calcular nem avisar a porcentagem de carga. Ainda avisa se a tensão ficar abaixo do limite sob carga por 30 s (por exemplo, devido ao limite de corrente da fonte ou a cabos finos).'
+        : 'A HD-1910 suporta até 8,4 V e deve ser usada somente com bateria 2S. A carga é estimada por uma tabela baseada na tensão dos servos (não há medidor de carga); a margem de erro é de cerca de ±15%. Sem calibração, a estimativa tende a ser conservadora.'}</div>
     </div>
 
     ${bench ? null : html`
     <div class="row">
-      <label>提醒线（黄）</label>
+      <label>Limite de aviso (amarelo)</label>
       <span>${num('warn_pct', 1, '%')}</span>
-      <div class="note">默认 ${data.defaults.warn_pct}%。查表的 30% 比以前主程序直线的 30% 电压高（7.42 V 对 7.08 V），黄条会比以前早亮</div>
+      <div class="note">Padrão: ${data.defaults.warn_pct}%. Na tabela, 30% corresponde a uma tensão maior do que os 30% lineares do programa antigo (7,42 V contra 7,08 V), então a faixa amarela aparece antes.</div>
     </div>
     <div class="row">
-      <label>红线</label>
+      <label>Limite crítico (vermelho)</label>
       <span>${num('red_pct', 1, '%')}</span>
-      <div class="note">默认 ${data.defaults.red_pct}%，至少比提醒线低 5%。到红线也照样能站能走，只是提醒</div>
+      <div class="note">Padrão: ${data.defaults.red_pct}%, pelo menos 5 pontos abaixo do limite de aviso. Atingir este limite apenas exibe um aviso; ainda é possível ficar em pé e caminhar.</div>
     </div>`}
     <div class="row">
-      <label>负载电压线</label>
+      <label>Limite de tensão sob carga</label>
       <span>${num('load_floor_v', 0.1, 'V')}</span>
-      <div class="note">默认 ${data.defaults.load_floor_v} V（每芯 3.45 V）。电压连续 30 秒低于这个就出最醒目的提醒</div>
+      <div class="note">Padrão: ${data.defaults.load_floor_v} V (3,45 V por célula). Se a tensão ficar abaixo deste valor por 30 s, será exibido o aviso mais destacado.</div>
     </div>
     <div class="row">
-      <label>读数校准</label>
+      <label>Calibração da leitura</label>
       <span>${num('cal_offset_v', 0.01, 'V')}</span>
-      <div class="note">电池端电压 − 舵机读数，默认 0。15 颗舵机各有 ±0.1 V 的偏差，整体可能偏低一点</div>
+      <div class="note">Diferença entre a tensão medida nos terminais da bateria e a leitura dos servos; padrão: 0. Cada um dos 15 servos pode ter um desvio de ±0,1 V, fazendo a leitura geral ficar um pouco abaixo.</div>
     </div>
     <div class="row">
-      <span class="k">我量了电池电压</span>
+      <span class="k">Medi a tensão da bateria</span>
       <div class="cal">
-        <${Stepper} value=${meter} min=${6} max=${9} step=${0.01} placeholder="7.62" aria-label="万用表读数" unit="V"
+        <${Stepper} value=${meter} min=${6} max=${9} step=${0.01} placeholder="7.62" aria-label="Leitura do multímetro" unit="V"
           onChange=${(v) => { setMeter(v); setCal(null); }} />
-        <button class="btn" type="button" disabled=${meter === ''} onClick=${measure}>算一下</button>
+        <button class="btn" type="button" disabled=${meter === ''} onClick=${measure}>Calcular</button>
       </div>
-      <div class="note">先让鸭子卸力静置 30 秒以上，用万用表量 HAT 的电池输入端，填进来，自动算出读数校准。
-        接可调电源时，看电源屏上的电压跟这里对一下也行（鸭子不动时）</div>
+      <div class="note">Libere os servos e deixe o Microduck parado por pelo menos 30 s. Meça com um multímetro a entrada de bateria do HAT e informe o valor para calcular a calibração da leitura.
+        Se estiver usando uma fonte ajustável, também é possível comparar com a tensão exibida nela enquanto o Microduck estiver parado.</div>
       ${cal ? html`<div class=${'note msg ' + (cal.ok ? '' : 'bad')}>${cal.reason}
         ${cal.ok ? html`<div style="margin-top:6px"><button class="btn primary" type="button" disabled=${busy}
-          onClick=${() => save({ cal_offset_v: cal.offset })}>${cal.confirm ? '确定，' : ''}用这个校准（${sign(cal.offset)} V）</button></div>` : null}</div>` : null}
+          onClick=${() => save({ cal_offset_v: cal.offset })}>${cal.confirm ? 'Confirmar: ' : ''}Aplicar esta calibração (${sign(cal.offset)} V)</button></div>` : null}</div>` : null}
     </div>
 
     <div class="row">
-      <span class="k">提示音</span>
+      <span class="k">Alerta sonoro</span>
       <label style="font-size:14px"><input type="checkbox" checked=${!muted}
-        onChange=${(e) => { const m = !e.target.checked; setMuted(m); saveMute(m); }} /> 过红线、电压很低时响一声</label>
-      <div class="note">只在打开着的网页上响（页面关了就听不到）；跟 IMU 页的静音开关是同一个</div>
+        onChange=${(e) => { const m = !e.target.checked; setMuted(m); saveMute(m); }} /> Emitir um som curto ao atingir o limite crítico ou quando a tensão estiver muito baixa</label>
+      <div class="note">O som é reproduzido somente enquanto esta página estiver aberta. O controle de silêncio é compartilhado com a página da IMU.</div>
     </div>
 
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
-      <button class="btn primary" type="button" disabled=${!dirty || busy} onClick=${() => save(form)}>保存</button>
-      <button class="btn" type="button" disabled=${busy} onClick=${() => { setForm({ ...data.defaults }); setMsg(null); }}>恢复默认</button>
+      <button class="btn primary" type="button" disabled=${!dirty || busy} onClick=${() => save(form)}>Salvar</button>
+      <button class="btn" type="button" disabled=${busy} onClick=${() => { setForm({ ...data.defaults }); setMsg(null); }}>Restaurar padrões</button>
       ${msg ? html`<span class=${'msg ' + msg.kind}>${msg.text}</span>` : null}
     </div>
 
     <ul class="tips">
-      ${bench ? null : html`<li>只警告：没电时鸭子不会自己停，用完关电源、拔电池（挂着卸力也在耗电）。忘了关会把电池抽到过放，
-        保护板（如果有）大约 5 V 断电，主板跟着掉电</li>
-      <li>放空了尽快充；长期不用存一半电（约 7.4–7.6 V）</li>`}
-      <li>设置存在鸭子上（${data.path}），换电脑、换手机都一样</li>
+      ${bench ? null : html`<li>Este recurso apenas avisa; o Microduck não para automaticamente quando a bateria acaba. Após usar, desligue a alimentação e desconecte a bateria. Mesmo com os servos liberados, há consumo. Se a bateria for deixada conectada, pode descarregar excessivamente; a placa de proteção, quando presente, corta a alimentação por volta de 5 V, desligando também a placa principal.</li>
+      <li>Recarregue a bateria pouco depois de descarregá-la. Para armazenamento prolongado, deixe-a com meia carga (cerca de 7,4–7,6 V).</li>`}
+      <li>As configurações ficam salvas no Microduck (${data.path}) e são compartilhadas entre computadores e celulares.</li>
     </ul>
   </div>`;
 }

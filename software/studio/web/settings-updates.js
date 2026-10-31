@@ -12,7 +12,7 @@ export function UpdateSettings({api,csrf}){
   async function refresh(){
     if(loading.current)return;loading.current=true;
     try{const result=await api('/api/updates');if(!mounted.current)return;
-      if(!result.ok){setError(result.error||'暂时无法读取更新状态');return;}
+      if(!result.ok){setError(result.error||'Não foi possível consultar o estado das atualizações.');return;}
       merge(result);setReconnecting(false);
     }catch{if(mounted.current)setReconnecting(true);}finally{loading.current=false;}
   }
@@ -22,59 +22,59 @@ export function UpdateSettings({api,csrf}){
     const native=op==='native_install'||op==='native_recover';
     if(native&&!confirmed){setPending(false);return;}
     try{const result=await api('/api/updates',native?{op,confirmed:true}:{op},20000);if(!mounted.current)return;
-      if(!result.ok)throw new Error(result.error||'更新请求未完成');merge(result);
-    }catch(reason){if(mounted.current)setError(reason.message||'连接中断，正在重新读取任务状态');}
+      if(!result.ok)throw new Error(result.error||'A solicitação de atualização não foi concluída.');merge(result);
+    }catch(reason){if(mounted.current)setError(reason.message||'A conexão foi interrompida. Consultando novamente o estado da tarefa.');}
     finally{if(mounted.current){if(native)setConfirmed(false);setPending(false);refresh();}}
   }
   async function upload(event){
     const file=event.target.files?.[0];if(!file)return;
-    if(!file.size||file.size>160*1024*1024){setError('请选择 160 MiB 以内的软件更新包');event.target.value='';return;}
+    if(!file.size||file.size>160*1024*1024){setError('Selecione um pacote de atualização de até 160 MiB.');event.target.value='';return;}
     setPending(true);setError('');
     try{const response=await fetch('/api/updates/upload',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/octet-stream','X-CSRF':csrf},body:file});
-      const result=await response.json();if(!result.ok)throw new Error(result.error||'上传未完成');if(mounted.current)merge(result);
-    }catch(reason){if(mounted.current)setError(reason.message||'上传中断，请重新选择文件');}
+      const result=await response.json();if(!result.ok)throw new Error(result.error||'O envio não foi concluído.');if(mounted.current)merge(result);
+    }catch(reason){if(mounted.current)setError(reason.message||'O envio foi interrompido. Selecione o arquivo novamente.');}
     finally{event.target.value='';if(mounted.current){setPending(false);refresh();}}
   }
   const actions=updateActions(data,pending),job=data?.job,native=data?.native,nativeOps=nativeActions(data,pending,confirmed);
-  return html`<section class="board update-settings" data-updates aria-label="软件更新">
-    <h2>软件更新</h2>
-    <h3>① 网页 / 语音软件</h3>
-    <p>当前网页 / 语音版本：<strong data-update-installed>${data?.installed||'尚未登记'}</strong> · 包含网页控制台、匹配的小助手和本地坐站语音。</p>
-    <p>更新前请停下并按原流程站好，关闭策略、语音监听和音乐，结束舵机、标定、录制与回放会话，保持充足电量。</p>
-    <p>安装会短暂重启网页和语音服务。页面会自动重连并读取保存的任务结果。</p>
-    ${!data&&!error?html`<p role="status">读取更新服务…</p>`:null}
+  return html`<section class="board update-settings" data-updates aria-label="Atualizações de software">
+    <h2>Atualizações de software</h2>
+    <h3>① Interface web e software de voz</h3>
+    <p>Versão atual da interface web e do software de voz: <strong data-update-installed>${data?.installed||'não registrada'}</strong> · inclui o console web, o assistente compatível e os comandos locais de sentar e levantar por voz.</p>
+    <p>Antes de atualizar, interrompa as atividades e coloque o Microduck em pé conforme o procedimento normal. Desative a política de movimento, a escuta por voz e a música; encerre as sessões de servos, calibração, gravação e reprodução. Mantenha a bateria carregada.</p>
+    <p>A instalação reinicia brevemente a interface web e o serviço de voz. A página se reconectará automaticamente e consultará o resultado salvo da tarefa.</p>
+    ${!data&&!error?html`<p role="status">Consultando o serviço de atualização…</p>`:null}
     <p role="status" data-update-phase=${job?.phase||'idle'}>${updateMessage(data)}${typeof job?.percent==='number'?`（${job.percent}%）`:''}</p>
-    ${reconnecting?html`<p role="status">网页连接中断，正在重新读取独立更新服务的任务状态…</p>`:null}
-    ${data?.busy&&typeof job?.percent==='number'?html`<progress max="100" value=${job.percent} aria-label=${PHASES[job.phase]||'更新进度'} />`:null}
-    ${data?.candidate?html`<p>发布版本：<strong>${data.candidate.version}</strong>（下载验证前为发布源提供的信息）</p><pre>${data.candidate.changelog||'此发布未填写更新说明。'}</pre>`:null}
-    ${data?.staged?html`<p>本机缓存：${data.staged.version} · ${data.ready?'验证通过':'尚未通过当前安装条件验证'}</p>`:null}
+    ${reconnecting?html`<p role="status">A conexão com a interface foi interrompida. Consultando novamente o estado da tarefa no serviço de atualização…</p>`:null}
+    ${data?.busy&&typeof job?.percent==='number'?html`<progress max="100" value=${job.percent} aria-label=${PHASES[job.phase]||'Progresso da atualização'} />`:null}
+    ${data?.candidate?html`<p>Versão publicada: <strong>${data.candidate.version}</strong> (informação da fonte de lançamento antes do download e da verificação)</p><pre>${data.candidate.changelog||'Esta versão não inclui notas de atualização.'}</pre>`:null}
+    ${data?.staged?html`<p>Arquivo em cache local: ${data.staged.version} · ${data.ready?'verificado':'ainda não atende aos requisitos atuais de instalação'}</p>`:null}
     <div class="update-actions">
-      <button type="button" data-update="check" disabled=${!actions.check} onClick=${()=>operate('check')}>检查更新</button>
-      <button type="button" data-update="download" disabled=${!actions.download} onClick=${()=>operate('download')}>下载更新</button>
-      <button type="button" data-update="upload" disabled=${!actions.upload} onClick=${()=>input.current?.click()}>上传离线包</button>
-      <input ref=${input} type="file" aria-label="软件更新包" accept=".tar" style="display:none" disabled=${!actions.upload} onChange=${upload} />
-      <button type="button" data-update="validate" disabled=${!actions.validate} onClick=${()=>operate('validate')}>重新验证</button>
-      <button type="button" class="primary" data-update="install" disabled=${!actions.install} onClick=${()=>operate('install')}>立即更新</button>
-      <button type="button" data-update="rollback" disabled=${!actions.rollback} onClick=${()=>operate('rollback')}>退回上一版网页 / 语音</button>
+      <button type="button" data-update="check" disabled=${!actions.check} onClick=${()=>operate('check')}>Verificar atualizações</button>
+      <button type="button" data-update="download" disabled=${!actions.download} onClick=${()=>operate('download')}>Baixar atualização</button>
+      <button type="button" data-update="upload" disabled=${!actions.upload} onClick=${()=>input.current?.click()}>Enviar pacote offline</button>
+      <input ref=${input} type="file" aria-label="Pacote de atualização de software" accept=".tar" style="display:none" disabled=${!actions.upload} onChange=${upload} />
+      <button type="button" data-update="validate" disabled=${!actions.validate} onClick=${()=>operate('validate')}>Verificar novamente</button>
+      <button type="button" class="primary" data-update="install" disabled=${!actions.install} onClick=${()=>operate('install')}>Atualizar agora</button>
+      <button type="button" data-update="rollback" disabled=${!actions.rollback} onClick=${()=>operate('rollback')}>Reverter interface e voz para a versão anterior</button>
     </div>
-    ${pending?html`<p role="status">正在提交请求…</p>`:null}
-    ${error?html`<p role="alert">${error} <button type="button" onClick=${()=>{setError('');refresh();}}>重新读取</button></p>`:null}
-    ${job?.id?html`<p>任务：${job.id}</p>`:null}
+    ${pending?html`<p role="status">Enviando solicitação…</p>`:null}
+    ${error?html`<p role="alert">${error} <button type="button" onClick=${()=>{setError('');refresh();}}>Consultar novamente</button></p>`:null}
+    ${job?.id?html`<p>Tarefa: ${job.id}</p>`:null}
     <hr />
     <div data-native-updates style="scroll-margin-top:72px">
-      <h3>② 主程序更新（可选）</h3>
-      <p>用于本版 Qinmo 手动类型选择。现有板卡继续用“自动识别（现有板卡）”，无需为了保留原用法更新主程序。仅支持已知 20261027 基线，其他版本请维护者核对。</p>
+      <h3>② Atualização do programa principal (opcional)</h3>
+      <p>Esta opção permite selecionar manualmente o tipo de placa Qinmo nesta versão. Placas existentes podem continuar usando “Detecção automática (placa existente)”; não é necessário atualizar o programa principal para manter o uso atual. Somente a versão-base conhecida 20261027 é compatível; outras versões devem ser verificadas pela equipe de manutenção.</p>
       <p role="status" data-native-phase=${native?.phase||'unavailable'}>${nativeMessage(native)}</p>
-      <p>实际运行：<strong data-native-identity>${native?.supported?'已核验':'未核验'}</strong>${native?.mode?` · ${native.mode==='motion'?'控制模式':native.mode==='commissioning'?'标定模式':native.mode}`:''}</p>
-      ${native?.installed_sha256||native?.transaction_id?html`<details><summary>诊断信息</summary>${native?.installed_sha256?html`<p>实际 SHA256：${native.installed_sha256}</p>`:null}${native?.transaction_id?html`<p>主程序事务：${native.transaction_id}</p>`:null}</details>`:null}
-      <p>先扶稳、承托鸭子并卸力，关闭策略、语音、音乐和所有录制 / 标定会话。确认后才会启动独立主程序任务；中途断开网页可重连继续看。第二步保持承托卸力即可。</p>
-      <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.6"><input type="checkbox" data-native-confirm checked=${confirmed} onChange=${event=>setConfirmed(event.target.checked)} disabled=${pending||!native?.service_available||!!data?.busy} /><span>我已扶稳承托鸭子、确认卸力并关闭上述活动；同意安装或恢复主程序。</span></label>
+      <p>Estado da instalação: <strong data-native-identity>${native?.supported?'verificado':'não verificado'}</strong>${native?.mode?` · ${native.mode==='motion'?'modo de movimento':native.mode==='commissioning'?'modo de calibração':native.mode}`:''}</p>
+      ${native?.installed_sha256||native?.transaction_id?html`<details><summary>Informações de diagnóstico</summary>${native?.installed_sha256?html`<p>SHA256 instalado: ${native.installed_sha256}</p>`:null}${native?.transaction_id?html`<p>Transação do programa principal: ${native.transaction_id}</p>`:null}</details>`:null}
+      <p>Segure e apoie o Microduck, libere os servos e desative a política de movimento, a voz, a música e todas as sessões de gravação e calibração. Após a confirmação, uma tarefa independente atualizará o programa principal. Se a página desconectar durante o processo, reconecte para acompanhar. Na etapa 2, mantenha o Microduck apoiado e os servos liberados.</p>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.6"><input type="checkbox" data-native-confirm checked=${confirmed} onChange=${event=>setConfirmed(event.target.checked)} disabled=${pending||!native?.service_available||!!data?.busy} /><span>Segurei e apoiei o Microduck, confirmei que os servos estão liberados e encerrei as atividades acima. Autorizo instalar ou restaurar o programa principal.</span></label>
       <div class="update-actions">
-        <button type="button" class="primary" data-update="native_install" disabled=${!nativeOps.install} onClick=${()=>operate('native_install')}>确认安装主程序</button>
-        <button type="button" data-update="native_recover" disabled=${!nativeOps.recover} onClick=${()=>operate('native_recover')}>恢复未完成的主程序更新</button>
+        <button type="button" class="primary" data-update="native_install" disabled=${!nativeOps.install} onClick=${()=>operate('native_install')}>Confirmar instalação do programa principal</button>
+        <button type="button" data-update="native_recover" disabled=${!nativeOps.recover} onClick=${()=>operate('native_recover')}>Restaurar atualização incompleta do programa principal</button>
       </div>
-      ${native?.request_error?html`<p role="alert">${native.request_error}。以这里的实际状态为准，急停仍可使用。</p>`:null}
-      <p>主程序失败时会尝试恢复旧二进制；上方“退回上一版”只回退网页 / 语音，后续主程序降级不在本版范围内。Qinmo 实物及本版整机升级仍待实机验收。</p>
+      ${native?.request_error?html`<p role="alert">${native.request_error}. Considere o estado exibido aqui como referência; a parada de emergência continua disponível.</p>`:null}
+      <p>Se a atualização do programa principal falhar, o sistema tentará restaurar o binário anterior. O botão “Reverter interface e voz” acima não reverte o programa principal; a redução de versão dele não está incluída nesta versão. A placa Qinmo física e a atualização completa do sistema ainda precisam ser validadas no hardware.</p>
     </div>
   </section>`;
 }
