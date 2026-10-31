@@ -65,14 +65,14 @@ class ClientTests(unittest.TestCase):
         self.client = CompatibleClient()
 
     def test_true_model_request_uses_saved_model_and_auth_and_redacts_reply(self):
-        reply = self.client.complete(self.config,[{'role':'user','content':'你好'}])
-        self.assertEqual(reply,'hello [已隐藏]')
+        reply = self.client.complete(self.config,[{'role':'user','content':'olá'}])
+        self.assertEqual(reply,'hello [oculto]')
         path, auth, data = self.server.requests[0]
         self.assertEqual(path,'/v1/chat/completions')
         self.assertEqual(auth,'Bearer secret-123')
         self.assertEqual(data['model'],'manual-model')
         self.assertFalse(data['stream'])
-        self.assertEqual(data['messages'],[{'role':'user','content':'你好'}])
+        self.assertEqual(data['messages'],[{'role':'user','content':'olá'}])
         self.assertLessEqual(data['max_tokens'],512)
         self.client.complete(self.config,[{'role':'user','content':'test'}], max_tokens=64)
         self.assertEqual(self.server.requests[-1][2]['max_tokens'],64)
@@ -150,7 +150,7 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(errors,['timeout','timeout'])
         self.assertLess(time.monotonic()-started,.35)
         self.server.drip_headers = False
-        self.assertEqual(client.complete(self.config,[{'role':'user','content':'recovered'}]),'hello [已隐藏]')
+        self.assertEqual(client.complete(self.config,[{'role':'user','content':'recovered'}]),'hello [oculto]')
 
     def test_expired_resolution_connect_never_sends_request_credentials(self):
         original = http.client.HTTPConnection.connect
@@ -185,7 +185,7 @@ class ClientTests(unittest.TestCase):
             while True:
                 try:
                     reply = await asyncio.to_thread(service.client.complete,self.config,[{'role':'user','content':'recovered'}])
-                    self.assertEqual(reply,'hello [已隐藏]')
+                    self.assertEqual(reply,'hello [oculto]')
                     break
                 except AiError as error:
                     if error.code != 'busy' or time.monotonic()-started > .3:

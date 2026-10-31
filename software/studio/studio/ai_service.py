@@ -15,27 +15,27 @@ class AiService:
 
     async def handle(self, body):
         if not isinstance(body, dict):
-            raise AiError('validation', '请求须为 JSON 对象')
+            raise AiError('validation', 'A solicitação deve ser um objeto JSON.')
         op = body.get('op')
         fields = {'save':{'op','connection'}, 'select':{'op','id'}, 'delete':{'op','id'},
                   'test':{'op','id','revision'}, 'chat':{'op','id','revision','messages'}}
         if not isinstance(op, str) or op not in fields or set(body) != fields[op]:
-            raise AiError('validation', 'AI 操作或参数不正确')
+            raise AiError('validation', 'Operação ou parâmetros de IA inválidos.')
         if op == 'save':
             item = await asyncio.to_thread(self.store.save,body['connection'])
             return {**await self.view(), 'saved_id':item['id']}
         ident = body['id']
         if (ident is not None and (not isinstance(ident,str) or len(ident) != 24)
                 or (ident is None and op != 'select')):
-            raise AiError('validation', '连接 ID 不正确')
+            raise AiError('validation', 'ID da conexão inválido.')
         if op in ('select','delete'):
             await asyncio.to_thread(getattr(self.store,op),ident)
             return await self.view()
         config, generation = await asyncio.to_thread(self.store.private,ident,body['revision'])
         if (not all(config[k] for k in ('name','base_url','model'))
                 or config['auth_mode'] == 'bearer' and not config['api_key']):
-            raise AiError('incomplete', '请先保存完整的名称、Base URL、Model ID 和认证设置')
-        messages = ([{'role':'user','content':'请只回复：连接成功'}] if op == 'test'
+            raise AiError('incomplete', 'Salve primeiro o nome, a URL base, o ID do modelo e as configurações de autenticação completos.')
+        messages = ([{'role':'user','content':'Responda somente: conexão bem-sucedida'}] if op == 'test'
                     else validate_messages(body['messages']))
         control = RequestControl()
         try:
@@ -46,6 +46,6 @@ class AiService:
             raise
         except asyncio.TimeoutError:
             control.cancel()
-            raise AiError('timeout','AI 请求超时，请稍后重试',504) from None
+            raise AiError('timeout','A solicitação de IA expirou. Tente novamente em instantes.',504) from None
         result = await asyncio.to_thread(self.store.finish,generation,result)
         return {'id':ident, 'revision':config['revision'], 'text':result}

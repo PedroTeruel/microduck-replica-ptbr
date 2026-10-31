@@ -16,7 +16,7 @@ class ConnectionsTests(unittest.TestCase):
         self.store = Connections(self.tmp.name)
 
     def save(self, **values):
-        return self.store.save({'name': '豆包草稿', 'provider': 'doubao_ark',
+        return self.store.save({'name': 'Rascunho Doubao', 'provider': 'doubao_ark',
             'base_url': 'https://ark.cn-beijing.volces.com/api/v3', 'model': '',
             'auth_mode': 'bearer', **values})
 
@@ -52,7 +52,7 @@ class ConnectionsTests(unittest.TestCase):
 
     def test_short_key_does_not_rewrite_schema_or_identifiers(self):
         item = self.save(model='model', api_key='model')
-        self.assertEqual(item['model'], '[已隐藏]')
+        self.assertEqual(item['model'], '[oculto]')
         self.assertEqual(item['provider'], 'doubao_ark')
         self.assertEqual(len(item['id']),24)
         self.store.select(item['id'])
@@ -94,7 +94,7 @@ class ConnectionsTests(unittest.TestCase):
             self.save()
 
     def test_keys_cannot_contain_header_whitespace_or_non_ascii(self):
-        for key in ('hello world','bad\tkey','bad\nkey','密钥'):
+        for key in ('hello world','bad\tkey','bad\nkey','chavé'):
             with self.subTest(key=key), self.assertRaises(AiError):
                 self.save(api_key=key)
 
@@ -117,7 +117,7 @@ class ConnectionsTests(unittest.TestCase):
     def test_finishing_reply_checks_revision_and_redacts_under_the_same_lock(self):
         item = self.save(model='manual',api_key='private-key-123')
         _,generation = self.store.private(item['id'],item['revision'])
-        self.assertEqual(self.store.finish(generation,'echo private-key-123'),'echo [已隐藏]')
+        self.assertEqual(self.store.finish(generation,'echo private-key-123'),'echo [oculto]')
         self.store.select(item['id'])
         with self.assertRaises(AiError) as caught:
             self.store.finish(generation,'stale reply')

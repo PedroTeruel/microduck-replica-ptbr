@@ -217,7 +217,7 @@ class LogTest(unittest.TestCase):
         self.log.warn("登录失败", raw="password=duck-123456")
         text = self.log.files()[-1].read_text(encoding="utf-8")
         self.assertNotIn("duck-123456", text)
-        self.assertIn("[已隐藏]", text)
+        self.assertIn("[oculto]", text)
 
     def test_secret_keys_are_redacted_even_without_hide(self):
         """按键名打码：psk、password 这些键的值不进日志（家里的 WiFi 密码走这条）。"""
@@ -228,7 +228,7 @@ class LogTest(unittest.TestCase):
         text = self.log.files()[-1].read_text(encoding="utf-8")
         self.assertNotIn("Unique-PSK-2026-xyz", text)
         self.assertNotIn("p2-unique", text)
-        self.assertIn("[已隐藏]", text)
+        self.assertIn("[oculto]", text)
 
     def test_repeats_within_a_minute_are_merged(self):
         for _ in range(5):

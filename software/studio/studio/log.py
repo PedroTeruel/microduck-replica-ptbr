@@ -48,9 +48,9 @@ SECRET_KEYS = frozenset({"psk", "password", "passwd", "secret", "token", "author
 
 
 def redact(value):
-    """把字典里敏感键的值换成「[已隐藏]」；嵌套的字典、列表也照做（原文是 JSON 的也走这里）。"""
+    """把字典里敏感键的值换成「[oculto]」；嵌套的字典、列表也照做（原文是 JSON 的也走这里）。"""
     if isinstance(value, dict):
-        return {k: ("[已隐藏]" if isinstance(k, str) and k.lower() in SECRET_KEYS else redact(v))
+        return {k: ("[oculto]" if isinstance(k, str) and k.lower() in SECRET_KEYS else redact(v))
                 for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [redact(v) for v in value]
@@ -88,7 +88,7 @@ class Log:
     # ---- 写 ----
 
     def hide(self, value):
-        """以后日志里出现这个字符串，一律换成「[已隐藏]」（密码、令牌）。"""
+        """以后日志里出现这个字符串，一律换成「[oculto]」（密码、令牌）。"""
         if value and len(value) >= 4:
             with self._lock:
                 if len(self._secrets) < MAX_SECRETS:
@@ -222,7 +222,7 @@ class Log:
             return None
         text = _ANSI.sub("", str(text))
         for s in self._secrets:
-            text = text.replace(s, "[已隐藏]")
+            text = text.replace(s, "[oculto]")
         return text
 
     def _to_file(self, now, text, important=False):

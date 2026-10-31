@@ -68,13 +68,13 @@ class AudioClient:
         self.until = 0.
         self.cached = None
         self.at = None
-        self.why = '语音服务尚未连接'
+        self.why = 'O serviço de voz ainda não está conectado.'
 
     def _call(self, message):
         try:
             result = self.request(message)
             if not isinstance(result,dict) or result.get('ok') is not True:
-                raise ValueError('语音服务未完成操作')
+                raise ValueError('O serviço de voz não concluiu a operação.')
             status = validate_status(result.get('status'))
             with self.lock:
                 self.cached,self.at,self.why = status,self.clock(),None
@@ -82,12 +82,12 @@ class AudioClient:
         except (OSError,ValueError,TypeError):
             with self.lock:
                 self.cached = self.at = None
-                self.why = '连接不到语音服务，请检查 duck-echo'
+                self.why = 'Não foi possível conectar ao serviço de voz. Verifique o duck-echo.'
             raise
 
     def set(self, **switches):
         if not switches or set(switches)-{'listening','music'} or any(type(v) is not bool for v in switches.values()):
-            raise ValueError('监听和音乐开关必须为布尔值')
+            raise ValueError('As opções de escuta e música devem ser valores booleanos.')
         return self._call({'method':'set',**switches})
 
     def snapshot(self):
@@ -98,7 +98,7 @@ class AudioClient:
                 self.thread = threading.Thread(target=self._loop,name='audio-status',daemon=True)
                 self.thread.start()
             if self.cached is None or self.at is None or now-self.at > .6:
-                return {'available':False,'why':self.why or '语音状态超过600毫秒未更新'}
+                return {'available':False,'why':self.why or 'O estado de voz não é atualizado há mais de 600 ms.'}
             result = copy.deepcopy(self.cached)
             result['available'] = True
             if result['rhythm'].get('age') is not None:

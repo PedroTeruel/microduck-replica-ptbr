@@ -22,7 +22,7 @@ class AiHttp(unittest.IsolatedAsyncioTestCase):
         self.fake_server, port = await self.fake.serve_tcp()
         self.rd = Robotd(f'tcp:127.0.0.1:{port}', f'tcp:127.0.0.1:{port}', self.log)
         app = build_app(auth=self.auth, robotd=self.rd, log=self.log, web_dir=WEB,
-                        duck={'label':'测试鸭'}, state_dir=self.tmp.name)
+                        duck={'label':'Pato de teste'}, state_dir=self.tmp.name)
         self.server = uvicorn.Server(uvicorn.Config(app, host='127.0.0.1', port=0, ws='wsproto',
             http='h11', lifespan='on', log_level='critical'))
         self.task = asyncio.create_task(self.server.serve())

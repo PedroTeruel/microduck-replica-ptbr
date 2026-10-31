@@ -62,7 +62,7 @@ class RequestControl:
 
 def validate_messages(messages):
     if not isinstance(messages, list) or not 1 <= len(messages) <= 12:
-        raise AiError('validation', '对话最多 12 条消息，请清空后重试')
+        raise AiError('validation', 'A conversa aceita no máximo 12 mensagens. Limpe o histórico e tente novamente.')
     total = 0
     for index, message in enumerate(messages):
         if (not isinstance(message, dict) or set(message) != {'role','content'}
@@ -70,10 +70,10 @@ def validate_messages(messages):
                 or not isinstance(message['content'], str) or not message['content'].strip()
                 or len(message['content']) > (2000 if index % 2 == 0 else OUTPUT_LIMIT)
                 or '\x00' in message['content']):
-            raise AiError('validation', '消息格式不正确，用户输入最多 2000 字，模型回复最多 4000 字')
+            raise AiError('validation', 'Formato de mensagem inválido. A entrada do usuário pode ter até 2.000 caracteres e a resposta do modelo, até 4.000.')
         total += len(message['content'])
     if total > 12000 or messages[-1]['role'] != 'user':
-        raise AiError('validation', '对话过长或顺序不正确，请清空后重试')
+        raise AiError('validation', 'A conversa é longa demais ou está fora de ordem. Limpe o histórico e tente novamente.')
     return messages
 
 
@@ -85,7 +85,7 @@ class CompatibleClient:
     def complete(self, config, messages, *, max_tokens=512, cancel=None):
         validate_messages(messages)
         if not self._gate.acquire(blocking=False):
-            raise AiError('busy', 'AI 请求正在进行，请稍后重试', 429)
+            raise AiError('busy', 'Já há uma solicitação de IA em andamento. Tente novamente em instantes.', 429)
         connection = response = watchdog = None
         control = cancel if cancel is not None else RequestControl()
         try:
@@ -113,12 +113,12 @@ class CompatibleClient:
             control.check()
             if response.status != 200:
                 code, message = {
-                    401:('auth','API Key 无效或尚未开通'),
-                    403:('forbidden','提供商拒绝访问，请检查模型权限'),
-                    404:('not_found','模型或接口路径不存在，请检查 Base URL 和 Model ID'),
-                    429:('rate_limit','提供商限流或余额不足，请稍后检查'),
-                }.get(response.status, ('redirect','提供商重定向已拒绝，请填写最终接口地址')
-                      if 300 <= response.status < 400 else ('provider','提供商请求失败'))
+                    401:('auth','Chave de API inválida ou não ativada.'),
+                    403:('forbidden','O provedor recusou o acesso. Verifique as permissões do modelo.'),
+                    404:('not_found','O modelo ou o caminho da API não existe. Verifique a URL base e o ID do modelo.'),
+                    429:('rate_limit','O provedor limitou as solicitações ou o saldo é insuficiente. Verifique novamente mais tarde.'),
+                }.get(response.status, ('redirect','O redirecionamento do provedor foi recusado. Informe o endereço final da API.')
+                      if 300 <= response.status < 400 else ('provider','A solicitação ao provedor falhou.'))
                 raise AiError(code,message,502)
             parts, size = [], 0
             while True:
@@ -133,33 +133,33 @@ class CompatibleClient:
                 parts.append(part)
                 size += len(part)
                 if size > BODY_LIMIT:
-                    raise AiError('oversize','提供商回复过大',502)
+                    raise AiError('oversize','A resposta do provedor é grande demais.',502)
             try:
                 data = json.loads(b''.join(parts))
                 result = data['choices'][0]['message']['content']
                 if not isinstance(result,str) or not result.strip():
                     raise ValueError()
             except (ValueError, TypeError, KeyError, IndexError, RecursionError):
-                raise AiError('malformed','提供商未返回有效文字回复',502) from None
+                raise AiError('malformed','O provedor não retornou uma resposta de texto válida.',502) from None
             if len(result) > OUTPUT_LIMIT:
-                raise AiError('oversize','提供商回复文字过长',502)
+                raise AiError('oversize','A resposta de texto do provedor é longa demais.',502)
             control.check()
             key = config.get('api_key')
-            return result.replace(key,'[已隐藏]') if key else result
+            return result.replace(key,'[oculto]') if key else result
         except socket.gaierror:
             if control.stopped.is_set():
-                raise AiError('timeout','AI 请求超时或已取消，请稍后重试',504) from None
-            raise AiError('dns','无法解析提供商地址，请检查网络和 Base URL',502) from None
+                raise AiError('timeout','A solicitação de IA expirou ou foi cancelada. Tente novamente em instantes.',504) from None
+            raise AiError('dns','Não foi possível resolver o endereço do provedor. Verifique a rede e a URL base.',502) from None
         except ssl.SSLError:
             if control.stopped.is_set():
-                raise AiError('timeout','AI 请求超时或已取消，请稍后重试',504) from None
-            raise AiError('tls','提供商 HTTPS 证书或 TLS 连接失败',502) from None
+                raise AiError('timeout','A solicitação de IA expirou ou foi cancelada. Tente novamente em instantes.',504) from None
+            raise AiError('tls','Falha no certificado HTTPS ou na conexão TLS do provedor.',502) from None
         except (TimeoutError, socket.timeout):
-            raise AiError('timeout','AI 请求超时，请稍后重试',504) from None
+            raise AiError('timeout','A solicitação de IA expirou. Tente novamente em instantes.',504) from None
         except (OSError, http.client.HTTPException):
             if control.stopped.is_set():
-                raise AiError('timeout','AI 请求超时或已取消，请稍后重试',504) from None
-            raise AiError('provider','无法连接提供商，请检查服务和网络',502) from None
+                raise AiError('timeout','A solicitação de IA expirou ou foi cancelada. Tente novamente em instantes.',504) from None
+            raise AiError('provider','Não foi possível conectar ao provedor. Verifique o serviço e a rede.',502) from None
         finally:
             if watchdog:
                 watchdog.cancel()

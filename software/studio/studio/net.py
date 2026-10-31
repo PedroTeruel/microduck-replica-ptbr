@@ -121,12 +121,12 @@ def explain(reason, detail=None):
 
 
 def _scrub(text, psk=None):
-    """写日志 / last-try 之前再兜一层：家里的密码和它在 URL 里出现的样子都换成 [已隐藏]。"""
+    """写日志 / last-try 之前再兜一层：家里的密码和它在 URL 里出现的样子都换成 [oculto]。"""
     if text is None:
         return None
     out = str(text)
     if psk:
-        out = out.replace(psk, "[已隐藏]")
+        out = out.replace(psk, "[oculto]")
     return out[:600]
 
 

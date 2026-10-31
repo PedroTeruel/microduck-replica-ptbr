@@ -276,7 +276,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             body = {}
         pw = str(body.get("password", ""))
         # 请求体从来不写日志，不用 log.hide(pw)（代码审查 #12：每个试过的密码都进打码表，
-        # 试过 "true" 以后日志里所有 true 都会变成 [已隐藏]）
+        # 试过 "true" 以后日志里所有 true 都会变成 [oculto]）
         async with login_gate:
             token, why, wait = await asyncio.to_thread(auth.login, pw, ip, bool(body.get("remember")))
         if not token:

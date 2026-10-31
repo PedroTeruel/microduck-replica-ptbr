@@ -441,7 +441,7 @@ class SecretTest(Base):
         for text in texts:
             self.assertNotIn(psk, text)
         self.assertIn("带密码", "\n".join(texts))
-        self.assertIn("[已隐藏]", "\n".join(texts))
+        self.assertIn("[oculto]", "\n".join(texts))
 
 
 if __name__ == "__main__":
