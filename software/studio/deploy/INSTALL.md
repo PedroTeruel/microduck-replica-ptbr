@@ -2,7 +2,7 @@
 
 Este documento explica cada etapa e sua finalidade para usuários e para quem for dar continuidade ao trabalho.
 
-## 重做初次 IMU 校准（imu-recalibrate）
+## Refazer a calibração inicial da IMU (`imu-recalibrate`)
 
 Na versão 0.7.2, o verbo fixo `enter` aceita o parâmetro opcional `profile="legacy"|"qinmo"`, que a página IMU seleciona uma vez e salva. O parâmetro não aceita comandos, caminhos nem serviços. O recurso exige evidência explícita da capacidade `configured_imu_profile` na nova versão do `robotd`; a compatibilidade não é decidida apenas pelo número da versão da API. Qinmo é identificada como configuração e oferece suporte a Feetech; a velocidade angular é `raw/16.4 °/s`. As placas existentes continuam com detecção automática por padrão e usam `raw×0.0175 °/s`. Consulte o [guia de uso da página Web](../../../docs/Qinmo-IMU-网页使用.md) para o procedimento do usuário.
 
@@ -12,42 +12,42 @@ O controle normal mantém os requisitos existentes: duas leituras recentes confi
 
 A operação só é concluída se o resumo criptográfico confirmar que as configurações de tipo principal e `saved` em disco permanecem correspondentes, se a configuração em execução corresponder ao tipo detectado e se a associação entre protocolo e perfil da nova orientação, incluindo o estado `verified`, for lida de volta sem divergências. Em caso de falha, os arquivos originais são restaurados. Se não for possível restaurá-los, o auxiliar mantém `recovery_required` e o backup original para que a recuperação possa continuar. As operações comuns de commit, repetição e cancelamento preservam o campo opcional `imu_bus_profile`; o padrão continua sendo `legacy`. Uma mudança de tipo invalida capturas, cálculos em andamento e resultados aguardando gravação. Qinmo não pode ser marcada como verificada por meio de “Pular” nem de uma gravação comum: é necessária a validação pelo programa principal. Ainda não houve validação no hardware físico. Esta alteração não atualiza a imagem pública nem implanta o `robotd` automaticamente.
 
-新版小助手增加固定动词 `imu-recalibrate`，stdin 只接受 `enter/status/finish/cancel` 四种 action，不能指定命令、路径或服务。运动模式下已有 `verified=true` 和已保存四元数也可以重新验证：先扶稳、卸力，`enter` 两次读取新状态，要求 `motion/control`、`policy_enabled=false`、无起身、原生扭矩明确为 false、无卸力待确认、HD1910 临时增益已恢复。手柄服务先停，随后再次检查门槛；任何不明确的状态都拒绝。
+A nova versão do auxiliar inclui o verbo fixo `imu-recalibrate`. A entrada padrão aceita somente uma destas quatro ações: `enter`, `status`, `finish` ou `cancel`; não é possível especificar comandos, caminhos ou serviços. Mesmo no modo de movimento, é permitido refazer a validação quando já houver `verified=true` e um quaternion salvo: estabilize o robô, alivie o torque e execute `enter`. O auxiliar lê o estado recente duas vezes e exige `motion/control`, `policy_enabled=false`, nenhuma transição para ficar em pé, confirmação explícita de torque nativo desligado, nenhum alívio de torque pendente e restauração dos ganhos temporários do HD1910. O serviço do controle é parado antes de uma segunda verificação desses requisitos. Qualquer estado ambíguo causa a recusa da operação.
 
-- 进入：`{"by":"Studio","action":"enter","confirmed":true}`。保留实际生效的直接 robotd 启动参数，只增加 `--commissioning`；包装命令或有歧义的 ExecStart 拒绝。不会使用或删除出厂 `zzzz-zz-microduck-commissioning.conf`。
-- 状态：`{"by":"Studio","action":"status"}`。会话有 `active/phase/session_id/source`；网页读取公开只读 manifest，不在每次推状态时调用 sudo。
-- 完成：`{"by":"Studio","action":"finish","session_id":"…","source":"bus","quat":[1,0,0,0]}`。只在原来的 `verify-imu` 通过，且当前来源、verified、归一化四元数及标定文件逐项读回一致之后调用。原 verifier 会把 `motion_enabled` 设为 false；助手只恢复进入前的这个值，其他字段除当前芯片的安装方向 / verified 都必须保持一致。不会重建整份标定，也不会把非 2048 零位、方向、限位、另一颗 IMU 或未知设置覆盖成默认值。若主程序未保留这些字段，拒绝完成，保留会话供取消恢复。
-- 取消：`{"by":"Studio","action":"cancel","confirmed":true,"session_id":"…"}`。主标定和 saved 各自恢复原始备份，恢复原来的模式与手柄服务状态；不算新校准成功。
+- **Iniciar:** `{"by":"Studio","action":"enter","confirmed":true}`. Mantém os parâmetros efetivos de inicialização direta do `robotd` e acrescenta somente `--commissioning`; comandos wrapper ou um `ExecStart` ambíguo são recusados. O arquivo de fábrica `zzzz-zz-microduck-commissioning.conf` não é usado nem removido.
+- **Consultar o estado:** `{"by":"Studio","action":"status"}`. A sessão informa `active/phase/session_id/source`; a página lê o manifesto público somente leitura, sem executar `sudo` em cada atualização de estado.
+- **Concluir:** `{"by":"Studio","action":"finish","session_id":"…","source":"bus","quat":[1,0,0,0]}`. Só é aceito depois que `verify-imu` for aprovado e a origem atual, `verified`, o quaternion normalizado e cada campo do arquivo de calibração forem lidos de volta e corresponderem ao esperado. O verificador original define `motion_enabled` como false; o auxiliar restaura somente o valor que existia antes de iniciar. Todos os outros campos, exceto a orientação de instalação do chip atual e `verified`, devem permanecer iguais. O auxiliar não recria todo o arquivo de calibração nem substitui por padrões o zero diferente de 2048, as direções, os limites, outra IMU ou configurações desconhecidas. Se o programa principal não preservar esses campos, a operação é recusada e a sessão permanece disponível para cancelamento e restauração.
+- **Cancelar:** `{"by":"Studio","action":"cancel","confirmed":true,"session_id":"…"}`. Restaura separadamente os backups originais da calibração principal e do arquivo `saved`, além do modo anterior e do estado do serviço do controle. O cancelamento não conta como uma nova calibração concluída.
 
-会话先持久化到 `/var/lib/microduck-helper/imu-recalibrate/manifest.json`（root:root 0644），每次独立的 `<session_id>/` 备份目录 0700，主标定、saved 和解析后的原始标定分别备份并校验 SHA256。父目录 0755，操作记录仍为 0600。会话使用自己的持久模式文件 `/etc/systemd/system/robotd.service.d/zzzzzz-studio-imu-recalibrate.conf`，有会话 ID 和内容摘要，只允许删除本会话原样的文件；重启 Studio / 刷新网页会恢复会话，断电后持久模式文件仍保留。开始阶段失败恢复原状态；完成阶段失败恢复已验证的安全标定模式，可重新做原验证或取消。只有运动模式、完整标定读回一致且已失能时才恢复手柄服务。
+O estado da sessão é salvo persistentemente em `/var/lib/microduck-helper/imu-recalibrate/manifest.json` (`root:root`, modo 0644). Cada `<session_id>/` tem um diretório de backup próprio, modo 0700; os arquivos de calibração principal e `saved`, além da calibração original analisada, são copiados separadamente e verificados por SHA-256. O diretório pai usa modo 0755 e os registros de operações continuam em 0600. A sessão usa seu próprio arquivo persistente de modo do serviço: `/etc/systemd/system/robotd.service.d/zzzzzz-studio-imu-recalibrate.conf`. O arquivo contém o ID da sessão e um resumo do conteúdo; o auxiliar só pode removê-lo se ainda corresponder exatamente ao arquivo criado pela própria sessão. A sessão é recuperada ao reiniciar o Studio ou atualizar a página, e o arquivo de modo permanece após uma queda de energia. Uma falha ao iniciar restaura o estado anterior. Uma falha ao concluir restaura o modo de calibração seguro já validado, permitindo repetir a validação original ou cancelar. O serviço do controle só é reativado quando o robô estiver no modo de movimento, a leitura completa da calibração corresponder e o estado estiver desabilitado.
 
-`imu-recalibrate` 和总线 / 标定操作共用 `helper.lock`。会话活动时 `bus-take`、普通 `calib-commit` 拒绝；网页卸力仍可用。卸载（含 `--purge`）遇到未结束或读不回的会话会拒绝，先完成或取消，避免删除恢复备份。该流程保留原来的静止 3 秒 / 前倾 3 秒粗校及直立后低头的 runtime 验证；出厂标定模式直接使用原流程。
+`imu-recalibrate` compartilha `helper.lock` com as operações do barramento e de calibração. Enquanto a sessão estiver ativa, `bus-take` e `calib-commit` comuns são recusados; o botão de alívio de torque na página continua disponível. A desinstalação, inclusive com `--purge`, é recusada se houver uma sessão incompleta ou cujo estado não possa ser lido. Conclua ou cancele a sessão antes, para que o backup de recuperação não seja apagado. O fluxo mantém a calibração inicial existente (3 segundos parado e 3 segundos inclinado para a frente) e a validação em execução com o robô ereto e a cabeça inclinada. No modo de calibração de fábrica, o procedimento original é usado diretamente.
 
-方案出处：scratchpad `console/handover-plan.md`（v2 定稿）§2.2、§4.2、§5；规矩照 `console/studio-ops-plan.md` §7。
+Referências de planejamento: scratchpad `console/handover-plan.md` (versão final v2), seções 2.2, 4.2 e 5; regras em `console/studio-ops-plan.md`, seção 7.
 
-## 1. 它是干什么 de 
+## 1. Para que serve
 
-Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 robotd 要先停下，用完再交还。
+A página Servo do Studio precisa abrir diretamente o barramento `/dev/ttyS2`. Por isso, o programa principal `robotd` deve ser parado antes e retomado ao terminar.
 
-- 停、起 robotd 要 root，Studio 不是 root。
-- 所以只给 Studio 一把「只能开这一扇门的钥匙」：sudoers 只放行 `/usr/local/sbin/microduck-helper` 这一个文件。
-- 它只认十二个固定动词，参数逐个校验，robotd 是什么状态它自己去读，不信网页传来的（0.5.0 起：新增 `calib-read`，`calib-commit` 按 fork 的真实启动方式认标定 / 运动模式；0.5.2：`bus-give-back` 把标定模式的实时快照也算成「主程序起来了」；0.6.0：新增 `ssh-status` / `ssh-password`，「更多」页的 SSH 开关；0.7.0：新增 `imu-recalibrate`，持久保存重做初次 IMU 校准会话）。
+- Parar e iniciar o `robotd` exige root, mas o Studio não roda como root.
+- Por isso, o Studio recebe somente uma “chave para uma porta”: o `sudoers` autoriza apenas o arquivo `/usr/local/sbin/microduck-helper`.
+- O auxiliar aceita somente doze verbos fixos, valida cada parâmetro e consulta por conta própria o estado do `robotd`, sem confiar no que a página Web informa. Na versão 0.5.0, foram adicionados `calib-read` e a detecção do modo real de inicialização do fork por `calib-commit`; na 0.5.2, snapshots em tempo real do modo de calibração também passaram a confirmar que o programa principal iniciou durante `bus-give-back`; na 0.6.0, foram adicionados `ssh-status` e `ssh-password` para controlar o SSH pela página “Mais”; na 0.7.0, foi adicionado `imu-recalibrate`, que mantém persistentemente a sessão para refazer a calibração inicial da IMU.
 
-**标定模式的 busStatus**（fork `robotd/src/main.rs` 的 `robot.busStatus`、`feetech_commissioning.rs` 的 `Status`）：robotd 一起来先写一份启动报告 `{"build","mode":"commissioning","phase":"configuring_bus","port"}`，phase 还是启动阶段就一直回它；第一次读成功以后才回实时快照（phase `ready` / `moving` / `read_error` / `stop_unconfirmed` / `power_pending`，带 `last_sample`）。旧版 fork 从来不清启动报告——从舵机页交还时小助手会等满 30 秒判 `soft_failed`（`detail.still_starting = true`，话写「一直报启动中」，不说成「起不来」）。要新版 fork（20261020 之后的镜像）。
+**`busStatus` no modo de calibração** (método `robot.busStatus` em `robotd/src/main.rs` e `Status` em `feetech_commissioning.rs` do fork): ao iniciar, o `robotd` grava primeiro um relatório de inicialização `{"build","mode":"commissioning","phase":"configuring_bus","port"}` e continua retornando esse relatório enquanto a fase ainda for de inicialização. Só depois da primeira leitura bem-sucedida retorna snapshots em tempo real (`phase` `ready`, `moving`, `read_error`, `stop_unconfirmed` ou `power_pending`, com `last_sample`). Versões antigas do fork nunca limpam o relatório. Ao devolver o barramento pela página Servo, o auxiliar aguarda 30 segundos e retorna `soft_failed` (`detail.still_starting = true`), informando que o programa continua relatando inicialização — sem afirmar que não conseguiu iniciar. É necessária uma versão atualizada do fork, incluída em imagens posteriores a 20/10/2026.
 
-**出厂镜像跑标定模式**：镜像放 `/etc/systemd/system/robotd.service.d/zzzz-zz-microduck-commissioning.conf`，`ExecStart` 带 `--commissioning`（fork `main.rs:1300-1315`：busStatus 的 mode 只看启动参数，跟标定文件里写了什么无关）。标定模式下 `calibration-status` 马上能读，busStatus 带 `last_sample`（15 颗舵机 + `imu`），`verify-imu` 会把方向写进标定文件；运动模式下标定不合格 / 舵机总线打不开会停在 `waiting_for_bus`，`calibration-status` 回 `calibration not available yet`。第 3 步写成功时小助手删掉这个文件、`daemon-reload`、重启 robotd，主程序回到运动模式。如果 `ExecStart` 里有 `--commissioning` 但文件不在，小助手拒绝自动切（`foreign_commissioning`），让人去日志页导出诊断包。
+**Modo de calibração na imagem de fábrica:** a imagem inclui `/etc/systemd/system/robotd.service.d/zzzz-zz-microduck-commissioning.conf`, com `--commissioning` em `ExecStart`. (No fork, consulte `main.rs:1300-1315`: o modo em `busStatus` depende somente do argumento de inicialização, não do conteúdo do arquivo de calibração.) Nesse modo, `calibration-status` responde imediatamente, `busStatus` inclui `last_sample` (os 15 servos e `imu`) e `verify-imu` grava a orientação no arquivo de calibração. No modo de movimento, uma calibração inválida ou a falha ao abrir o barramento deixa o programa em `waiting_for_bus`; `calibration-status` responde `calibration not available yet`. Depois que a etapa 3 grava os dados com sucesso, o auxiliar remove esse arquivo, executa `daemon-reload` e reinicia o `robotd`, que volta ao modo de movimento. Se `ExecStart` contiver `--commissioning`, mas o arquivo não estiver presente, o auxiliar recusa a troca automática (`foreign_commissioning`) e orienta exportar um pacote de diagnóstico pela página de registros.
 
-## Imagem里 vs 手动装
+## Diferenças entre a imagem e a instalação manual
 
-「连 WiFi」卡片不是 Studio 单独就能提供 de ，它依赖复刻Imagem里 de 四样东西：
+O cartão “Conectar ao Wi-Fi” depende de quatro componentes da imagem da réplica; o Studio sozinho não os fornece:
 
-- netcheck 写的 `/run/microduck/net.json`；
-- NetworkManager 里的 `Microduck-Hotspot` 热点配置；
-- configd 以 `--allow-user btd,radxa` 运行；
-- mDNS 配置（`duck-xxxx.local`）。
+- estado de rede gravado pelo netcheck em `/run/microduck/net.json`;
+- configuração `Microduck-Hotspot` no NetworkManager;
+- `configd` iniciado com `--allow-user btd,radxa`;
+- configuração mDNS para resolver `duck-xxxx.local`.
 
-按本文手动装 Studio e root 小助手、但没有复刻Imagem overlay  de 鸭子，没有这些，Studio 就不显示「连 WiFi」卡片；总览、手柄、Servo、IMU、日志eWeb设密码都照常。
-网页设密码在「更多 → 登录密码」；命令行 `python3 -I run.py set-password` 要用 radxa 用户运行，别用 `sudo`，否则 Studio 读不了密码文件。
+Se o Studio e o auxiliar de root forem instalados manualmente conforme este documento, mas o robô não tiver os overlays da imagem da réplica, esses componentes não estarão disponíveis e o cartão “Conectar ao Wi-Fi” não aparecerá. Visão geral, Controle, Servo, IMU, Registros e a configuração de senha pela Web continuarão funcionando normalmente.
+Defina a senha pela página “Mais → Senha de login”. Para usar `python3 -I run.py set-password`, execute como usuário `radxa`, sem `sudo`; caso contrário, o Studio não conseguirá ler o arquivo de senha.
 
 | 动词 | stdin（一个 JSON 对象） | 做什么 |
 |---|---|---|
@@ -92,24 +92,24 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
 - calib-commit：`preview`（dry_run）、`committed`（`mode=motion` 且 `phase=control`，并且 `calibration-status` 读回逐项一致）、`not_motion`（30 秒还没进运动模式）、`calib_rejected`（主程序说标定没通过检查）、`bus_unavailable`（主程序打不开舵机总线）、`readback_mismatch`（进了运动模式但读回不一致）、`bus_held`、`no_calibration`、`bad_calibration`、`joint_mismatch`、`invalid`、`bad_toml`、`restart_failed`、`write_failed`、`backup_failed`、`read_failed`、`foreign_commissioning`、`refused`（策略在跑 / 站着）。失败结果里 `detail.rolled_back` / `files_restored` / `mode_restored` / `robotd_up_after_rollback` 分开报；`readback_ok`、`mismatches`、`bus_status`（最后一次的 mode / phase / error）和 `backup` 也在。若回滚自己没完全成功，`msg` 会写「去日志页导出诊断包」
 - 都可能有：`bad_args`、`bad_marker`、`bad_verb`、`not_root`、`busy`、`error`
 
-## 2. ArquivoeCaminho
+## 2. Arquivos e caminhos
 
-| 东西 | 位置 | 为什么 |
+| Item | Caminho | Finalidade |
 |---|---|---|
-| 小助手 | `/usr/local/sbin/microduck-helper`（root:root 0755，`#!/usr/bin/python3 -IS`） | `-I` 不读用户的环境和目录，`-S` 不加载 site。Linux 把 shebang 后面当成一个参数，所以写成 `-IS`，不能写 `-I -S` |
-| robotd 的 drop-in | `/etc/systemd/system/robotd.service.d/zzzz-studio-bus.conf` | `ConditionPathExists=!/run/microduck-helper/bus-held`：旗在，robotd 就起不来。**不用 `systemctl mask --runtime`**：robotd 的本体在 /etc，/run 里的 mask 盖不住 |
-| sudoers | `/etc/sudoers.d/microduck-studio`（0440） | 只放行一个全路径。装之前 `visudo -cf` |
-| 旗 | `/run/microduck-helper/bus-held`（目录 0755、文件 0644） | 在内存盘里：断电、重启就没了，robotd 照常开机自启。不放在 Studio 的目录里，是因为 Studio 单元以后要是用 `RuntimeDirectory`，systemd 会在 Studio 重启时删掉那个目录。**Studio 的单元不许用 `RuntimeDirectory=microduck-helper`** |
-| 中止请求 | `/run/microduck-helper/abort` | bus-abort 写，正在跑的 bus-give-back 看到就停 |
-| 小助手自己的锁 | `/run/microduck-helper/helper.lock`（flock） | bus-take、bus-give-back、calib-commit、imu-recalibrate、pad-pair、pad-forget 一次只跑一个（写标定 / 重启主程序时舵机页不能接管总线，一次也只允许一个配对）。**bus-abort 不拿**：卸力不能被正在跑的交还挡住，它的几步都可以重复做 |
-| 热点锁 | `/run/microduck-helper/wifi.lock`（flock） | `wifi-hotspot-down` / `wifi-hotspot-up` 一次只跑一个；跟舵机总线的 `helper.lock` 分开，互不挡 |
-| 官方 robotctl | `/usr/local/bin/robotctl`（写死在 `deploy/microduck-helper` 里） | 只有 `pad-pair` / `pad-forget` 调它。不存在就回 `no_robotctl`（退出 5），不会去别的路径找 |
-| 管理锁 | `/run/microduck-service-management.lock`，由临时单元 `microduck-bus-hold` 一直拿着（`flock -n … sleep infinity`） | 板上的 `service.sh` 拿不到这把锁就不动 robotd |
-| 交接标记 | `/run/microduck-handover/handover.json`（目录 0700、文件 0600，同目录临时文件 + fsync + rename） | 只有 root 读写；robotd 读完就删 |
-| 操作记录 | `/var/lib/microduck-helper/oplog.jsonl`（父目录 0755、日志文件 0600；私有备份子目录 0700） | 一次一行：谁、什么时候、结果。父目录允许 Studio 读取公开的 IMU 会话状态，日志和备份仍只允许 root 读取 |
-| 标定备份 | `/var/lib/microduck-helper/calib-backups/<4 位序号>-<UTC>/`（目录 0700、文件 0600，只留最新 10 组） | 每组有写之前的 `.toml`、`.saved.toml`（各备各的）、commissioning drop-in（有就备）和 `manifest.json`（原属主、权限、sha256）。序号按已有目录最大值 +1，不靠墙钟排序；回滚照 manifest 各自换回去 |
+| Auxiliar | `/usr/local/sbin/microduck-helper` (`root:root`, modo 0755, `#!/usr/bin/python3 -IS`) | `-I` ignora o ambiente e o diretório do usuário; `-S` não carrega `site`. No Linux, o texto depois do shebang é passado como um único argumento; por isso se usa `-IS`, e não `-I -S`. |
+| Drop-in do robotd | `/etc/systemd/system/robotd.service.d/zzzz-studio-bus.conf` | `ConditionPathExists=!/run/microduck-helper/bus-held`: enquanto o marcador existir, o `robotd` não inicia. **Não use `systemctl mask --runtime`**: a unidade do `robotd` está em `/etc`, e um mask em `/run` não a sobrepõe. |
+| sudoers | `/etc/sudoers.d/microduck-studio` (0440) | Autoriza somente um caminho absoluto. Valide com `visudo -cf` antes de instalar. |
+| Marcador do barramento | `/run/microduck-helper/bus-held` (diretório 0755, arquivo 0644) | Fica no sistema de arquivos em memória e desaparece após queda de energia ou reinicialização; o `robotd` volta a iniciar normalmente. Não fica no diretório do Studio porque o systemd poderia removê-lo ao reiniciar o Studio se a unidade usasse `RuntimeDirectory`. **A unidade do Studio não deve usar `RuntimeDirectory=microduck-helper`.** |
+| Solicitação de cancelamento | `/run/microduck-helper/abort` | É criada por `bus-abort`; a operação `bus-give-back` em andamento a detecta e para. |
+| Lock do auxiliar | `/run/microduck-helper/helper.lock` (`flock`) | Serializa `bus-take`, `bus-give-back`, `calib-commit`, `imu-recalibrate`, `pad-pair` e `pad-forget`. Durante a gravação da calibração ou reinicialização do programa principal, a página Servo não pode tomar o barramento; também só é permitido um pareamento por vez. **`bus-abort` não usa esse lock:** o alívio de torque não pode ser bloqueado por uma devolução em andamento, e suas etapas podem ser repetidas. |
+| Lock do ponto de acesso | `/run/microduck-helper/wifi.lock` (`flock`) | Serializa `wifi-hotspot-down` e `wifi-hotspot-up`. É separado de `helper.lock`, usado pelo barramento dos servos, e não há disputa entre eles. |
+| robotctl oficial | `/usr/local/bin/robotctl` (caminho fixo em `deploy/microduck-helper`) | Usado somente por `pad-pair` e `pad-forget`. Se não existir, retorna `no_robotctl` (código de saída 5); nenhum outro caminho é pesquisado. |
+| Lock de gerenciamento | `/run/microduck-service-management.lock`, mantido pela unidade temporária `microduck-bus-hold` (`flock -n … sleep infinity`) | O `service.sh` da placa não altera o `robotd` se não conseguir obter esse lock. |
+| Marcador de transferência | `/run/microduck-handover/handover.json` (diretório 0700, arquivo 0600; arquivo temporário no mesmo diretório, seguido de `fsync` e `rename`) | Somente root pode ler e gravar; o `robotd` o remove depois de lê-lo. |
+| Registro de operações | `/var/lib/microduck-helper/oplog.jsonl` (diretório pai 0755, arquivo de registro 0600; subdiretórios privados de backup 0700) | Uma linha por operação: responsável, horário e resultado. O diretório pai permite ao Studio ler o estado público da sessão IMU; somente root pode ler os registros e backups. |
+| Backups de calibração | `/var/lib/microduck-helper/calib-backups/<sequência de 4 dígitos>-<UTC>/` (diretórios 0700, arquivos 0600; mantém os 10 mais recentes) | Cada grupo inclui os arquivos `.toml` e `.saved.toml` anteriores à gravação, o drop-in de calibração se existir e `manifest.json` com proprietário, permissões e SHA-256. A sequência é o maior número existente +1, sem depender da ordenação do relógio. A reversão restaura separadamente os arquivos descritos no manifesto. |
 
-**标记格式**（fork  de  robotd 照这个读）：
+**Formato do marcador** (lido pelo `robotd` do fork):
 
 ```
 {"schema": "microduck-handover/1", "requested_by": str, "boot_id": str, "mono_ms": int,
@@ -117,55 +117,55 @@ Studio 的舵机页要自己打开舵机总线 `/dev/ttyS2`，所以主程序 ro
  "joints": [{"id", "torque", "goal", "present", "offset", "load"?, "temp"?, "status"?} × 15]}
 ```
 
-- `boot_id`、`mono_ms`（CLOCK_MONOTONIC 毫秒）由**小助手自己填**，Studio 给了也覆盖掉。
-- **ttl_ms 超过 30000 直接拒（退出码 2），不悄悄截断**，低于 1000 也拒；默认 20000。robotd 那边最多也只认 30 秒，两边说法一致。
-- id 必须正好是 10–14、20–24、30–34，每个一次；torque 必须是 1（主程序只接手 15 颗全开 de ）；goal、present、offset 是 −32767..32767  de 整数。
+- `boot_id` e `mono_ms` (milissegundos de `CLOCK_MONOTONIC`) são preenchidos **pelo próprio auxiliar**, mesmo que o Studio envie outros valores.
+- **Um `ttl_ms` acima de 30000 é recusado** (código de saída 2), sem truncamento silencioso; valores abaixo de 1000 também são recusados. O padrão é 20000. O `robotd` também aceita no máximo 30 segundos.
+- Deve haver exatamente uma entrada para cada ID 10–14, 20–24 e 30–34. `torque` precisa ser 1 (o programa principal só assume o controle quando os 15 servos estão habilitados). `goal`, `present` e `offset` devem ser inteiros no intervalo −32767..32767.
 
-**几个时间**：
+**Tempos limite:**
 
 | 时间 | 值 |
 |---|---|
-| gate 两次读 de 间隔 | 0.2 s |
-| 等回站姿 | 3 s |
-| stop 到 KILL | 10 s |
-| KILL 以后再等 | 3 s |
-| robotd 读标记 | 15 s |
-| 接手后走完Inicialização第 4 步 | 20 s |
-| 软交还 | 30 s |
-|  em 止交接 | KILL 后等 0.5 s |
-| 写标定后等 robotd | 40 s（unit active + `/run/robotd.sock` 的 hello） |
-| 等运动模式 | 30 s（每 0.5 s 读一次 busStatus；Sucesso还要读回 calibration-status 逐项一致） |
-| Studio 等小助手 | 180 s（超时也去读 `last-result.json`，不直接报 TimeoutExpired） |
+| Intervalo entre as duas leituras da condição | 0,2 s |
+| Espera para voltar à postura em pé | 3 s |
+| Espera entre `stop` e `KILL` | 10 s |
+| Espera adicional após `KILL` | 3 s |
+| Prazo para o `robotd` ler o marcador | 15 s |
+| Prazo para concluir a etapa 4 da inicialização após assumir o barramento | 20 s |
+| Devolução suave | 30 s |
+| Interrupção da transferência | aguarda 0,5 s após `KILL` |
+| Espera pelo `robotd` após gravar a calibração | 40 s (unidade ativa e `hello` em `/run/robotd.sock`) |
+| Espera pelo modo de movimento | 30 s (consulta `busStatus` a cada 0,5 s; o sucesso também exige correspondência de todos os campos lidos de `calibration-status`) |
+| Espera do Studio pelo auxiliar | 180 s (mesmo em caso de timeout, consulta `last-result.json` em vez de retornar diretamente `TimeoutExpired`) |
 
-**几个环境变量**：`MICRODUCK_HELPER_DETACHED`、`MICRODUCK_HELPER_REQUEST`、`MICRODUCK_HELPER_REQUESTED_MS`（`bus-give-back` 和 `calib-commit` 都用）。
+**Variáveis de ambiente:** `MICRODUCK_HELPER_DETACHED`, `MICRODUCK_HELPER_REQUEST` e `MICRODUCK_HELPER_REQUESTED_MS` (usadas por `bus-give-back` e `calib-commit`).
 
-- 用途：bus-give-back / 非 dry_run 的 calib-commit 第一次被调用时，用 `systemd-run --wait --pipe --collect --quiet --unit=microduck-handover-<时间>-<pid>` 把自己放进独立的临时单元再跑一遍，stdin 原样转过去，输出原样转回来。这样 Studio 死了，交还也不会断在半路。
-- 这几个变量**只**决定「不要再转一次」，e em 止Por favor求、Resultado怎么对号，**不给任何权限**。sudo 默认 env_reset，调用方也传不进来。
-- **没有任何环境变量能改根Diretório**：Teste是 import 进去、换一个假 de  Ctx，不靠环境变量。
+- Finalidade: na primeira chamada de `bus-give-back` ou de `calib-commit` sem `dry_run`, `systemd-run --wait --pipe --collect --quiet --unit=microduck-handover-<horário>-<pid>` inicia uma segunda execução em uma unidade temporária independente. A entrada padrão é encaminhada sem alterações, assim como a saída. Desse modo, se o Studio encerrar, a devolução do barramento ainda termina.
+- Essas variáveis **servem somente para impedir uma segunda transferência**, associar solicitações de cancelamento aos resultados e correlacionar resultados. **Não concedem permissões.** O `sudo` usa `env_reset` por padrão, e o processo chamador também não pode repassá-las.
+- **Nenhuma variável de ambiente pode alterar o diretório raiz:** os testes carregam o módulo e substituem o contexto por um contexto simulado; não usam variáveis de ambiente.
 
-**所有判断 robotd 起没起来的地方**，都看 `systemctl show robotd -p ActiveState,SubState,Result,ConditionResult`。旗在的时候 `systemctl start robotd` 返回 0，但单元停在 inactive、`ConditionResult=no`，不能当成起来了。每次拉 robotd 之前都先 `reset-failed`，防撞上 start-limit-hit。
+**Sempre que for necessário determinar se o `robotd` iniciou**, consulte `systemctl show robotd -p ActiveState,SubState,Result,ConditionResult`. Enquanto o marcador existir, `systemctl start robotd` pode retornar 0 mesmo com a unidade em `inactive` e `ConditionResult=no`; isso não significa que o serviço iniciou. Execute `reset-failed` antes de iniciar o `robotd`, para não esbarrar em `start-limit-hit`.
 
-**信任边界**：能 sudo 小助手 de Usuário（现在是 radxa）本来就能直接打开 ttyS2；robotd 又会在总线Superior回读核对标记。所以伪造标记不会多给权限，最坏是「保持住本来就顶着 de Servo」。
+**Limite de confiança:** um usuário autorizado a executar o auxiliar com `sudo` (atualmente, `radxa`) já poderia abrir `/dev/ttyS2` diretamente. Além disso, o `robotd` confere o marcador por meio de leituras de retorno no barramento. Portanto, falsificar um marcador não concede permissões adicionais; no pior caso, mantém os servos na posição em que já estavam.
 
-## 3. Instalação（一次，SSH）
+## 3. Instalação (uma vez, por SSH)
 
 ```sh
-# 电脑上：把 deploy 目录拷到鸭子上
-scp -r deploy radxa@鸭子:/tmp/studio-deploy
-# 鸭子上
+# No computador: copie o diretório deploy para o robô
+scp -r deploy radxa@<robô>:/tmp/studio-deploy
+# No robô
 cd /tmp/studio-deploy && sudo sh install.sh radxa
 ```
 
-`install.sh` 做四件事：
+`install.sh` executa quatro etapas:
 
-1. 装小助手到 `/usr/local/sbin`（0755）；`/usr`、`/usr/local`、`/usr/local/sbin` 要是属主不是 root，或者组 / 其他人可写，就提醒；
-2. 装 drop-in，然后 `systemctl daemon-reload`。**不重启 robotd**；
-3. 生成 sudoers 那一行，`visudo -cf` 过了才装（0440）；
-4. 打印核对信息。
+1. Instala o auxiliar em `/usr/local/sbin` (modo 0755). Emite um aviso se `/usr`, `/usr/local` ou `/usr/local/sbin` não pertencer ao root ou puder ser gravado pelo grupo ou por outros usuários.
+2. Instala o drop-in e executa `systemctl daemon-reload`. **Não reinicia o `robotd`.**
+3. Gera a regra do `sudoers` e só a instala (modo 0440) se `visudo -cf` aprovar o arquivo.
+4. Exibe as informações para conferência.
 
-**第 1 步只装 drop-in 的 `[Unit]` 那段。** `[Service] Environment=MICRODUCK_HANDOVER_MARKER=…` 是注释掉的：等 fork 的 robotd 装好、第 3 步（Studio 交还不卸力）验收以后，再手动打开那两行、`daemon-reload`。打开以后 robotd 下次启动才会看交接标记；没有标记就跟 V167 完全一样。旧版 robotd 不认这个变量，打开了也没影响。
+**A etapa 1 instala somente a seção `[Unit]` do drop-in.** A linha `[Service] Environment=MICRODUCK_HANDOVER_MARKER=…` fica comentada. Depois de instalar o `robotd` do fork e validar a etapa 3 (devolução do Studio sem aliviar o torque), descomente manualmente as duas linhas e execute `daemon-reload`. O `robotd` só começará a procurar o marcador de transferência na inicialização seguinte; sem marcador, o comportamento permanece igual ao da versão V167. Versões antigas do `robotd` não reconhecem essa variável, então descomentá-la não produz efeito nelas.
 
-装完马Superior核对：
+Depois da instalação, confira o resultado na placa:
 
 ```sh
 systemctl show robotd -p DropInPaths            # 要有 zzzz-studio-bus.conf
