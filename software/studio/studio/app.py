@@ -220,7 +220,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         except UpdateError as error:
             return JSONResponse({'ok':False,'code':error.code,'error':str(error)},status_code=error.status,headers={'Cache-Control':'no-store'})
         except Exception:
-            return JSONResponse({'ok':False,'code':'service','error':'更新服务未完成请求，请稍后重试'},status_code=503,headers={'Cache-Control':'no-store'})
+            return JSONResponse({'ok':False,'code':'service','error':'O serviço de atualização não concluiu a solicitação. Tente novamente mais tarde.'},status_code=503,headers={'Cache-Control':'no-store'})
 
     async def api_ai(request):
         def response(data, status=200):
@@ -229,11 +229,11 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         local_dev = dev_autologin and request.client and request.client.host == '127.0.0.1'
         # The general Studio open session is unsuitable for billable external requests.
         if not auth.has_password() and not local_dev:
-            return response({'ok':False,'code':'password_required','error':'请先在设置中配置网页密码，再使用 AI 连接'},403)
+            return response({'ok':False,'code':'password_required','error':'Configure uma senha para a interface web nas configurações antes de conectar a IA.'},403)
         if not sess:
-            return response({'ok':False,'code':'unauthorized','error':'请先登录'},401)
+            return response({'ok':False,'code':'unauthorized','error':'Faça login primeiro.'},401)
         if request.method == 'POST' and (not origin_ok(request) or request.headers.get('x-csrf') != sess['csrf']):
-            return response({'ok':False,'code':'csrf','error':'请求来源或登录令牌不正确'},403)
+            return response({'ok':False,'code':'csrf','error':'A origem da solicitação ou o token de login é inválido.'},403)
         try:
             if request.method == 'GET':
                 result = await ai.view()
@@ -242,18 +242,18 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 async for chunk in request.stream():
                     raw.extend(chunk)
                     if len(raw) > 65536:
-                        raise AiError('oversize','AI 请求过大',413)
+                        raise AiError('oversize','A solicitação à IA é grande demais.',413)
                 try:
                     body = json.loads(raw)
                 except (ValueError,RecursionError):
-                    raise AiError('validation','请求不是有效 JSON') from None
+                    raise AiError('validation','A solicitação não contém JSON válido.') from None
                 result = await ai.handle(body)
             return response({'ok':True,**result})
         except AiError as error:
             return response({'ok':False,'code':error.code,'error':str(error)},error.status)
         except Exception:
             # Do not log exception details: network libraries may include request credentials.
-            return response({'ok':False,'code':'internal','error':'AI 请求未完成，请稍后重试'},500)
+            return response({'ok':False,'code':'internal','error':'A solicitação à IA não foi concluída. Tente novamente mais tarde.'},500)
 
     async def healthz(request):
         return JSONResponse({"ok": True, "version": VERSION,"suite_version":SUITE_VERSION,"runtime_root":str(RUNTIME_ROOT)})
@@ -266,7 +266,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
 
     async def api_login(request):
         if not origin_ok(request):
-            return JSONResponse({"ok": False, "error": "请求来源不对"}, status_code=403)
+            return JSONResponse({"ok": False, "error": "Origem da solicitação inválida."}, status_code=403)
         try:
             body = await request.json()
         except ValueError:
@@ -301,11 +301,11 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         """在网页上设 / 改 / 清管理员密码。写的就是 run.py set-password 用的 password.json。"""
         token, sess = session_of(request)
         if not origin_ok(request):
-            return JSONResponse({"ok": False, "error": "请求来源不对"}, status_code=403)
+            return JSONResponse({"ok": False, "error": "Origem da solicitação inválida."}, status_code=403)
         if not sess:
-            return JSONResponse({"ok": False, "error": "先登录才能改密码"}, status_code=401)
+            return JSONResponse({"ok": False, "error": "Faça login para alterar a senha."}, status_code=401)
         if request.headers.get("x-csrf") != sess["csrf"]:
-            return JSONResponse({"ok": False, "error": "请求校验失败，刷新页面再试"}, status_code=403)
+            return JSONResponse({"ok": False, "error": "Falha na validação da solicitação. Atualize a página e tente novamente."}, status_code=403)
         try:
             body = await request.json()
         except ValueError:
@@ -322,13 +322,13 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             resp.delete_cookie(COOKIE, path="/")
             return resp
         if action != "set":
-            return JSONResponse({"ok": False, "error": "不认识的操作"}, status_code=400)
+            return JSONResponse({"ok": False, "error": "Operação desconhecida."}, status_code=400)
         pw = body.get("password")
         confirm = body.get("confirm")
         if not isinstance(pw, str) or len(pw) < 6:
-            return JSONResponse({"ok": False, "error": "密码至少 6 位"}, status_code=400)
+            return JSONResponse({"ok": False, "error": "A senha deve ter pelo menos 6 caracteres."}, status_code=400)
         if pw != confirm:
-            return JSONResponse({"ok": False, "error": "两次输入不一样"}, status_code=400)
+            return JSONResponse({"ok": False, "error": "As senhas digitadas não coincidem."}, status_code=400)
         had_password = auth.has_password()
         keep = token if had_password and token and token != "open" else None
         try:
@@ -413,7 +413,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     log.info(f"SSH 钥匙删掉了：{body.get('fp')}（{by}）", cat="Sistema")
                 return JSONResponse({"ok": True, "removed": gone, "ssh": await ssh_view()})
             if not await asyncio.to_thread(helper.available):
-                return JSONResponse({"ok": False, "error": "这只鸭子没装 root 小助手，网页里开不了 SSH 密码登录"},
+                    return JSONResponse({"ok": False, "error": "O auxiliar root não está instalado neste robô; não é possível ativar o login SSH por senha pela interface web."},
                                     status_code=503)
             if action == "on":
                 ok, result, detail = await asyncio.to_thread(helper.ssh_password, by, True, body["password"])
@@ -436,7 +436,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         try:
             limit = max(1, min(int(request.query_params.get("limit", 200)), 500))
         except ValueError:
-            return JSONResponse({"ok": False, "error": "limit 要是数字"}, status_code=400)
+                return JSONResponse({"ok": False, "error": "O limite deve ser um número."}, status_code=400)
         return JSONResponse({"ok": True, "items": log.recent(limit=limit)})
 
     async def api_diag(request):
@@ -484,16 +484,16 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         headers = {"Cache-Control": "no-store"}
         _, sess = session_of(request)
         if not sess:
-            return JSONResponse({"ok": False, "error": "先登录才能查看传感器"}, status_code=401, headers=headers)
+            return JSONResponse({"ok": False, "error": "Faça login para consultar os sensores."}, status_code=401, headers=headers)
         if sensors is None:
             return JSONResponse({"ok": False, "error": "O backend da página de sensores não está ativado"}, status_code=503, headers=headers)
         try:
             data = await getattr(sensors, kind)()
             return JSONResponse({"ok": True, "data": data}, headers=headers)
         except Exception as e:
-            label = "摄像头" if kind == "camera" else "ToF"
+            label = "câmera" if kind == "camera" else "ToF"
             log.error(f"读取{label}状态失败", cat="Sensores", raw=f"{type(e).__name__}: {e}", exc=True)
-            return JSONResponse({"ok": False, "error": f"暂时无法读取{label}状态，请稍后重试或查看日志"},
+            return JSONResponse({"ok": False, "error": f"Não foi possível consultar o estado de {label} agora. Tente novamente mais tarde ou consulte os logs."},
                                 status_code=503, headers=headers)
 
     async def api_camera(request):
@@ -508,11 +508,11 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
     def model_access(request, *, write=False):
         _, sess = session_of(request)
         if not sess:
-            return model_response({"ok": False, "error": "先登录才能管理模型"}, 401)
+            return model_response({"ok": False, "error": "Faça login para gerenciar os modelos."}, 401)
         if write and (not origin_ok(request) or request.headers.get("x-csrf") != sess["csrf"]):
-            return model_response({"ok": False, "error": "请求校验失败，刷新页面再试"}, 403)
+            return model_response({"ok": False, "error": "Falha na validação da solicitação. Atualize a página e tente novamente."}, 403)
         if write and updates.installing():
-            return model_response({'ok':False,'error':'软件更新正在进行，请等待完成'},409)
+            return model_response({'ok':False,'error':'Uma atualização de software está em andamento. Aguarde a conclusão.'},409)
         if models is None:
             return model_response({"ok": False, "error": "当前模式没有开启模型管理"}, 503)
         return None
@@ -523,9 +523,9 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         except ValueError as e:
             return model_response({"ok": False, "error": str(e), "code": getattr(e, "code", "invalid")},
                                   getattr(e, "status", 400))
-        except Exception as e:  # 不把上传内容写进日志
-            log.error("模型管理操作失败", cat="Modelos", raw=f"{type(e).__name__}: {e}", exc=True)
-            return model_response({"ok": False, "error": "模型管理暂时出错，请查看日志后重试"}, 500)
+        except Exception as e:  # Não grave o conteúdo enviado nos logs.
+            log.error("Falha na operação de gerenciamento de modelos", cat="Modelos", raw=f"{type(e).__name__}: {e}", exc=True)
+            return model_response({"ok": False, "error": "O gerenciamento de modelos falhou. Consulte os logs e tente novamente."}, 500)
 
     async def limited_body(request, limit):
         length = request.headers.get("content-length")
@@ -536,7 +536,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 if int(length) > limit:
                     raise OverflowError()
             except ValueError:
-                raise ValueError("请求大小不正确") from None
+                raise ValueError("Tamanho da solicitação inválido.") from None
         data = bytearray()
         async for chunk in request.stream():
             if len(data) + len(chunk) > limit:
@@ -559,12 +559,12 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             if not isinstance(body, dict):
                 raise ValueError()
         except OverflowError:
-            return model_response({"ok": False, "error": "操作请求过大"}, 413)
+            return model_response({"ok": False, "error": "A solicitação da operação é grande demais."}, 413)
         except (ValueError, UnicodeError, RecursionError):
-            return model_response({"ok": False, "error": "操作请求格式不正确"}, 400)
+            return model_response({"ok": False, "error": "Formato da solicitação da operação inválido."}, 400)
         task=asyncio.current_task();update_commands.add(task)
         try:
-            if updates.installing():return model_response({'ok':False,'error':'软件更新正在进行，请等待完成'},409)
+            if updates.installing():return model_response({'ok':False,'error':'Uma atualização de software está em andamento. Aguarde a conclusão.'},409)
             return await model_result(lambda: models.handle(body, by=_client_desc(request)))
         finally:update_commands.discard(task)
 
@@ -585,7 +585,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         async with model_upload_gate:
             temporary = None
             try:
-                if updates.installing():return model_response({'ok':False,'error':'软件更新正在进行，请等待完成'},409)
+                if updates.installing():return model_response({'ok':False,'error':'Uma atualização de software está em andamento. Aguarde a conclusão.'},409)
                 length = request.headers.get("content-length")
                 if length is not None and int(length) > MODEL_UPLOAD_LIMIT:
                     raise OverflowError()
@@ -1130,7 +1130,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     name, cid = msg.get("name"), msg.get("id")
                     args = msg.get('args') or {}
                     if updates.installing() and not safe_during_update(name,args):
-                        await send({'t':'result','id':cid,'ok':False,'reason':'软件更新正在进行，请等待完成；急停仍可使用'})
+                        await send({'t':'result','id':cid,'ok':False,'reason':'Uma atualização de software está em andamento. Aguarde a conclusão; a parada de emergência continua disponível.'})
                         continue
                     if (imu is not None and getattr(imu, 'blocks_updates', lambda: False)()
                             and name in {'pad.op', 'tune.op', 'servo.open', 'servo.op', 'calib.op'}
@@ -1390,7 +1390,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         if servo is None:
             return
         if updates.installing():
-            log.warn('主程序更新保护仍在：暂停自动恢复舵机会话，请先在软件更新页恢复主程序更新',cat='Barramento')
+            log.warn('A proteção de atualização do programa principal continua ativa: a retomada automática da sessão dos servos está pausada. Restaure o programa principal na página de atualização.',cat='Barramento')
             return
         there, data = await asyncio.to_thread(marker_read)
         if not there:

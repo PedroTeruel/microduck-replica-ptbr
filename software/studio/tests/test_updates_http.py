@@ -56,7 +56,7 @@ class UpdatesHttp(unittest.IsolatedAsyncioTestCase):
                     await client.send({'t':'cmd','id':str(index),'name':name,'args':{'op':'move'}})
                     await client.pump(until=lambda:any(message.get('id')==str(index) and message.get('t')=='result' for message in client.msgs))
                     result=next(message for message in client.msgs if message.get('id')==str(index) and message.get('t')=='result')
-                    self.assertFalse(result['ok']);self.assertIn('软件更新',result['reason'])
+                    self.assertFalse(result['ok']);self.assertIn('atualização de software',result['reason'])
                 await client.send({'t':'cmd','id':'relax','name':'relax'})
                 await client.pump(until=lambda:any(message.get('id')=='relax' and message.get('t')=='result' for message in client.msgs))
                 result=next(message for message in client.msgs if message.get('id')=='relax' and message.get('t')=='result')
