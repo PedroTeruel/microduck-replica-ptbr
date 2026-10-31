@@ -26,11 +26,11 @@ export function AiSettings({ api }) {
       if (!alive.current) return;
       if (!response.ok) {
         if (response.code === 'stale') clearConversation();
-        setError(response.error || 'AI 请求未完成');return;
+        setError(response.error || 'A solicitação de IA não foi concluída');return;
       }
       done(response);
     } catch (error) {
-      if (alive.current) setError(error?.name === 'AbortError' ? 'AI 请求超时或已取消，请重试' : '网页连接中断，请重试');
+      if (alive.current) setError(error?.name === 'AbortError' ? 'A solicitação de IA expirou ou foi cancelada. Tente novamente.' : 'A conexão da página foi interrompida. Tente novamente.');
     } finally {
       pending.current = false;
       if (alive.current) setBusy(false);
@@ -46,9 +46,9 @@ export function AiSettings({ api }) {
   const ready = !!saved?.ready && !dirty && !busy;
   const edit = (key,value) => {setForm({...form,[key]:value});setError('');clearConversation();};
   const choose = id => {setSelected(id);setForm(draftFrom(data.connections.find(item=>item.id === id)));setError('');clearConversation();};
-  const save = () => run({op:'save',connection:form},response=>{apply(response,response.saved_id);clearConversation();setNotice('连接已保存；保存不会联系提供商');});
-  const select = () => run({op:'select',id:selected},response=>{apply(response,selected);clearConversation();setNotice('已设为当前连接');});
-  const remove = () => run({op:'delete',id:selected},response=>{apply(response,'');clearConversation();setNotice('连接已删除');});
+  const save = () => run({op:'save',connection:form},response=>{apply(response,response.saved_id);clearConversation();setNotice('Conexão salva; salvar não contata o provedor');});
+  const select = () => run({op:'select',id:selected},response=>{apply(response,selected);clearConversation();setNotice('Definida como conexão atual');});
+  const remove = () => run({op:'delete',id:selected},response=>{apply(response,'');clearConversation();setNotice('Conexão removida');});
   const test = () => {setTested(false);setNotice('');run({op:'test',id:selected,revision:saved.revision},response=>{
     if (response.id === selected && response.revision === saved.revision) {setTested(true);setNotice(response.text);}
   });};
@@ -61,45 +61,45 @@ export function AiSettings({ api }) {
       }
     });
   };
-  return html`<section id="ai-settings" class="board ai-settings" data-ai-settings aria-label="AI 对话">
-    <h2>AI 对话</h2>
-    <p>先保存提供商与模型配置，开通账号后再填写 Key。当前仅支持网页文字试聊；麦克风、扬声器和实时语音尚未接入，对话不会驱动机器人。</p>
+  return html`<section id="ai-settings" class="board ai-settings" data-ai-settings aria-label="Conversa com IA">
+    <h2>Conversa com IA</h2>
+    <p>Salve primeiro as configurações do provedor e do modelo; preencha a chave depois de criar a conta. No momento, há somente conversa de texto pela página. Microfone, alto-falante e voz em tempo real ainda não foram integrados, e a conversa não controla o robô.</p>
     ${error ? html`<p role="alert">${error}</p>` : null}
-    ${!data ? html`<p>${busy ? '读取 AI 设置中…' : 'AI 设置暂不可用。请先设置网页密码后刷新页面。'}</p>` : html`
-    <label>已保存连接<select aria-label="已保存连接" value=${selected} disabled=${busy} onChange=${e=>choose(e.target.value)}>
-      <option value="">新建连接</option>${data.connections.map(item=>html`<option value=${item.id}>${item.name || '未命名草稿'}${item.id === data.current_id ? '（当前）' : ''}</option>`)}
+    ${!data ? html`<p>${busy ? 'Carregando configurações de IA…' : 'As configurações de IA estão indisponíveis. Defina uma senha para a página e atualize-a.'}</p>` : html`
+    <label>Conexões salvas<select aria-label="Conexões salvas" value=${selected} disabled=${busy} onChange=${e=>choose(e.target.value)}>
+      <option value="">Nova conexão</option>${data.connections.map(item=>html`<option value=${item.id}>${item.name || 'Rascunho sem nome'}${item.id === data.current_id ? '(atual)' : ''}</option>`)}
     </select></label>
-    <p data-ai-current>当前：${data.connections.find(item=>item.id === data.current_id)?.name || '未选择'} · 已保存 ${data.connections.length}/10</p>
-    <div class="ai-actions"><button type="button" class="btn" data-ai="new" disabled=${busy || data.connections.length >= 10} onClick=${()=>choose('')}>新建连接</button></div>
+    <p data-ai-current>Atual: ${data.connections.find(item=>item.id === data.current_id)?.name || 'Nenhuma selecionada'} · salvas ${data.connections.length}/10</p>
+    <div class="ai-actions"><button type="button" class="btn" data-ai="new" disabled=${busy || data.connections.length >= 10} onClick=${()=>choose('')}>Nova conexão</button></div>
     <fieldset disabled=${busy} style="border:0;padding:0;margin:0;min-width:0" data-ai-connection=${selected || ''}>
       <div class="ai-fields">
-        <label>连接名称<input aria-label="连接名称" maxlength="80" value=${form.name} onInput=${e=>edit('name',e.target.value)} placeholder="例如：豆包文字模型" /></label>
-        <label>提供商<select aria-label="提供商" value=${form.provider} onChange=${e=>{
+        <label>Nome da conexão<input aria-label="Nome da conexão" maxlength="80" value=${form.name} onInput=${e=>edit('name',e.target.value)} placeholder="Ex.: modelo de texto Doubao" /></label>
+        <label>Provedor<select aria-label="Provedor" value=${form.provider} onChange=${e=>{
           const provider=e.target.value;setForm({...form,provider,base_url:provider === 'doubao_ark' ? ARK_URL : '',api_key:'',clear_key:false});setError('');clearConversation();
-        }}><option value="doubao_ark">豆包·方舟文字模型</option><option value="openai_compatible">其他 OpenAI 兼容接口</option></select></label>
-        <label class="ai-wide">Base URL<input aria-label="Base URL" maxlength="500" value=${form.base_url} onInput=${e=>edit('base_url',e.target.value)} placeholder="https://服务地址/v1" spellcheck="false" /></label>
-        <label class="ai-wide">Model ID<input aria-label="Model ID" maxlength="200" value=${form.model} onInput=${e=>edit('model',e.target.value)} placeholder="填写控制台提供的模型 ID 或接入点 ID" spellcheck="false" /></label>
-        <label class="ai-wide">API Key<input type="password" aria-label="API Key" value=${form.api_key} maxlength="4096" autocomplete="new-password" onInput=${e=>edit('api_key',e.target.value)} placeholder=${saved?.key_configured ? '已保存；留空保留同一提供商和地址的 Key' : '尚未配置，可先保存草稿'} /></label>
-        <label class="ai-check ai-wide"><input type="checkbox" checked=${form.clear_key} onChange=${e=>edit('clear_key',e.target.checked)} />清除已保存的 API Key</label>
-        <label class="ai-check ai-wide"><input aria-label="无需 API Key（仅本地服务）" type="checkbox" checked=${form.auth_mode === 'none'} onChange=${e=>edit('auth_mode',e.target.checked ? 'none' : 'bearer')} />无需 API Key（仅本地服务）</label>
+        }}><option value="doubao_ark">Doubao · modelo de texto Ark</option><option value="openai_compatible">Outra interface compatível com OpenAI</option></select></label>
+        <label class="ai-wide">Base URL<input aria-label="Base URL" maxlength="500" value=${form.base_url} onInput=${e=>edit('base_url',e.target.value)} placeholder="https://endereco-do-servico/v1" spellcheck="false" /></label>
+        <label class="ai-wide">Model ID<input aria-label="Model ID" maxlength="200" value=${form.model} onInput=${e=>edit('model',e.target.value)} placeholder="Informe o ID do modelo ou do endpoint fornecido pelo console" spellcheck="false" /></label>
+        <label class="ai-wide">API Key<input type="password" aria-label="API Key" value=${form.api_key} maxlength="4096" autocomplete="new-password" onInput=${e=>edit('api_key',e.target.value)} placeholder=${saved?.key_configured ? 'Salvo; deixe em branco para manter a chave do mesmo provedor e endereço' : 'Ainda não configurado; você pode salvar um rascunho'} /></label>
+        <label class="ai-check ai-wide"><input type="checkbox" checked=${form.clear_key} onChange=${e=>edit('clear_key',e.target.checked)} />Remover a chave de API salva</label>
+        <label class="ai-check ai-wide"><input aria-label="Não requer chave de API (somente serviço local)" type="checkbox" checked=${form.auth_mode === 'none'} onChange=${e=>edit('auth_mode',e.target.checked ? 'none' : 'bearer')} />Não requer chave de API (somente serviço local)</label>
       </div>
     </fieldset>
-    <p>Key 只保存在鸭子本机，网页不会回显，不进入浏览器存储、日志或诊断包。更换提供商或地址后须重新填写 Key，或明确选择本地无 Key 服务。</p>
-    ${missing.length ? html`<p data-ai-missing>待补齐：${missing.join('、')}。草稿可以保存，补齐并保存后才能测试与试聊。</p>` : dirty ? html`<p>有未保存的修改，请先保存。</p>` : null}
+    <p>A chave fica somente no Microduck; não é exibida novamente na página nem incluída no armazenamento do navegador, nos logs ou no pacote de diagnóstico. Após trocar o provedor ou endereço, informe a chave novamente ou selecione explicitamente um serviço local sem chave.</p>
+    ${missing.length ? html`<p data-ai-missing>Falta preencher: ${missing.join('、')}. O rascunho pode ser salvo; preencha os campos e salve antes de testar ou conversar.</p>` : dirty ? html`<p>Há alterações não salvas. Salve primeiro.</p>` : null}
     <div class="ai-actions">
-      <button class="btn primary" type="button" data-ai="save" disabled=${busy || !dirty || (!saved && data.connections.length >= 10)} onClick=${save}>保存连接</button>
-      <button class="btn" type="button" data-ai="select" disabled=${!ready || data.current_id === selected} onClick=${select}>设为当前</button>
-      <button class="btn" type="button" data-ai="delete" disabled=${busy || !saved} onClick=${remove}>删除连接</button>
-      <button class="btn" type="button" data-ai="test" disabled=${!ready} onClick=${test}>测试连接</button>
+      <button class="btn primary" type="button" data-ai="save" disabled=${busy || !dirty || (!saved && data.connections.length >= 10)} onClick=${save}>Salvar conexão</button>
+      <button class="btn" type="button" data-ai="select" disabled=${!ready || data.current_id === selected} onClick=${select}>Definir como atual</button>
+      <button class="btn" type="button" data-ai="delete" disabled=${busy || !saved} onClick=${remove}>Remover conexão</button>
+      <button class="btn" type="button" data-ai="test" disabled=${!ready} onClick=${test}>Testar conexão</button>
     </div>
-    <p>保存和选择不会请求云端；测试连接会发送一次简短文字请求，可能产生提供商费用。</p>
-    ${busy ? html`<p role="status">正在处理…</p>` : null}
-    ${notice ? html`<p class="ai-result" role="status" data-ai-tested=${tested}>${tested ? '测试成功：' : ''}${notice}</p>` : null}
-    <div class="ai-chat"><strong>文字试聊</strong><p>仅保留本页内存中的近期对话上下文（最多 5 轮、12000 字）；每条输入最多 2000 字。切换、修改连接或离开设置页会清空，不保存聊天记录。</p>
-      <div aria-live="polite" data-ai-history>${history.map(message=>html`<div class="ai-message"><strong>${message.role === 'user' ? '你' : '模型'}</strong>${message.content}</div>`)}</div>
-      <label>试聊内容<textarea aria-label="试聊内容" rows="3" maxlength="2000" disabled=${busy} value=${input} onInput=${e=>setInput(e.target.value)} placeholder="开通服务并测试后，可以在这里试聊" /></label>
-      <div class="ai-actions"><button class="btn primary" type="button" data-ai="send" disabled=${!ready || !input.trim()} onClick=${send}>发送</button><button class="btn" type="button" data-ai="clear" disabled=${busy || (!history.length && !input)} onClick=${()=>{setHistory([]);setInput('');}}>清空对话</button></div>
+    <p>Salvar ou selecionar não faz chamadas à nuvem. Testar a conexão envia uma solicitação curta de texto e pode gerar custos do provedor.</p>
+    ${busy ? html`<p role="status">Processando…</p>` : null}
+    ${notice ? html`<p class="ai-result" role="status" data-ai-tested=${tested}>${tested ? 'Teste concluído: ' : ''}${notice}</p>` : null}
+    <div class="ai-chat"><strong>Conversa de teste por texto</strong><p>O contexto recente fica somente na memória desta página (até 5 turnos e 12.000 caracteres); cada mensagem pode ter até 2.000 caracteres. O contexto é apagado ao trocar ou editar a conexão ou sair das configurações. O histórico não é salvo.</p>
+      <div aria-live="polite" data-ai-history>${history.map(message=>html`<div class="ai-message"><strong>${message.role === 'user' ? 'Você' : 'Modelo'}</strong>${message.content}</div>`)}</div>
+      <label>Mensagem de teste<textarea aria-label="Mensagem de teste" rows="3" maxlength="2000" disabled=${busy} value=${input} onInput=${e=>setInput(e.target.value)} placeholder="Depois de configurar e testar o serviço, você poderá conversar aqui" /></label>
+      <div class="ai-actions"><button class="btn primary" type="button" data-ai="send" disabled=${!ready || !input.trim()} onClick=${send}>Enviar</button><button class="btn" type="button" data-ai="clear" disabled=${busy || (!history.length && !input)} onClick=${()=>{setHistory([]);setInput('');}}>Limpar conversa</button></div>
     </div>
-    <p>豆包实时语音使用独立的 WebSocket 地址与协议，不能把语音地址填进这里作为文字接口。实时语音接入将在后续单独配置。</p>`}
+    <p>A voz em tempo real do Doubao usa um endereço e protocolo WebSocket próprios. Não informe o endereço de voz aqui como interface de texto. A integração de voz será configurada separadamente em uma etapa futura.</p>`}
   </section>`;
 }

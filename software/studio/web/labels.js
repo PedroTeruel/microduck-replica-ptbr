@@ -1,22 +1,22 @@
-// 3D 上的舵机标注：编号 + 中文 + 英文，引线指到舵机转轴上。
-// 用户 10-18：只在舵机页、点「零位」参考姿势时出现；右腿红、左腿蓝、头颈黄（照他给的那张实物标注图的分法）。
-// 看不见的（藏在外壳或别的零件后面）画虚线、空心点：相机到转轴的连线上，前面 3 cm 以外先碰到别的零件就算挡住
-// （转轴本来就在舵机里面，先碰到自己外壳很正常，所以要留 3 cm）。
+// Rótulos dos servos no modelo 3D: número, português e inglês, com linhas apontando para os eixos.
+// Servos 10 a 18 aparecem somente na página Servos, na postura de referência “posição zero”; perna direita em vermelho, esquerda em azul e cabeça/pescoço em amarelo, conforme o diagrama fornecido pelo usuário.
+// Peças ocultas pelo corpo ou por outros componentes usam linha tracejada e marcador vazado; considera-se obstruído quando outra peça cruza a linha da câmera ao eixo a mais de 3 cm.
+// O eixo fica dentro do servo; por isso, ignoramos o primeiro contato com a própria carcaça usando essa margem de 3 cm.
 import * as THREE from './vendor/three/three.module.js';
 
 export const TAGS = {
-  right_hip_yaw: [10, '右髋偏航', 'Right Hip Yaw', 'R'], right_hip_roll: [11, '右髋横滚', 'Right Hip Roll', 'R'],
-  right_hip_pitch: [12, '右髋俯仰', 'Right Hip Pitch', 'R'], right_knee: [13, '右膝', 'Right Knee', 'R'],
-  right_ankle: [14, '右踝', 'Right Ankle', 'R'],
-  left_hip_yaw: [20, '左髋偏航', 'Left Hip Yaw', 'L'], left_hip_roll: [21, '左髋横滚', 'Left Hip Roll', 'L'],
-  left_hip_pitch: [22, '左髋俯仰', 'Left Hip Pitch', 'L'], left_knee: [23, '左膝', 'Left Knee', 'L'],
-  left_ankle: [24, '左踝', 'Left Ankle', 'L'],
-  neck_pitch: [30, '颈部俯仰', 'Neck Pitch', 'H'], head_pitch: [31, '头部俯仰', 'Head Pitch', 'H'],
-  head_yaw: [32, '头部偏航', 'Head Yaw', 'H'], head_roll: [33, '头部横滚', 'Head Roll', 'H'], mouth: [34, '嘴巴', 'Mouth', 'H'],
+  right_hip_yaw: [10, 'Guinada do quadril direito', 'Right Hip Yaw', 'R'], right_hip_roll: [11, 'Rolagem do quadril direito', 'Right Hip Roll', 'R'],
+  right_hip_pitch: [12, 'Inclinação do quadril direito', 'Right Hip Pitch', 'R'], right_knee: [13, 'Joelho direito', 'Right Knee', 'R'],
+  right_ankle: [14, 'Tornozelo direito', 'Right Ankle', 'R'],
+  left_hip_yaw: [20, 'Guinada do quadril esquerdo', 'Left Hip Yaw', 'L'], left_hip_roll: [21, 'Rolagem do quadril esquerdo', 'Left Hip Roll', 'L'],
+  left_hip_pitch: [22, 'Inclinação do quadril esquerdo', 'Left Hip Pitch', 'L'], left_knee: [23, 'Joelho esquerdo', 'Left Knee', 'L'],
+  left_ankle: [24, 'Tornozelo esquerdo', 'Left Ankle', 'L'],
+  neck_pitch: [30, 'Inclinação do pescoço', 'Neck Pitch', 'H'], head_pitch: [31, 'Inclinação da cabeça', 'Head Pitch', 'H'],
+  head_yaw: [32, 'Guinada da cabeça', 'Head Yaw', 'H'], head_roll: [33, 'Rolagem da cabeça', 'Head Roll', 'H'], mouth: [34, 'Bico', 'Mouth', 'H'],
 };
 const COLOR = { R: '#E5484D', L: '#2F7CF6', H: '#F5B400' };
 
-/** 在 box（舞台元素）里画标注。duck 是已经 load 完的 Duck3D。返回一个清理函数。 */
+/** Desenha os rótulos dentro da caixa (elemento de palco). duck é uma instância carregada de Duck3D. Retorna uma função de limpeza. */
 export function drawServoLabels(duck, box) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('class', 'sv-lines');
@@ -38,7 +38,7 @@ export function drawServoLabels(duck, box) {
       if (!j) continue;
       const world = new THREE.Vector3();
       j.pivot.getWorldPosition(world);
-      // 遮挡判断（射线碰 40 多万面）只在不转的时候做；转动中沿用上一次的，不然拖起来卡
+      // A verificação de oclusão (raios contra mais de 400 mil faces) roda somente quando o modelo está parado; durante o giro, reutiliza o resultado anterior para evitar travamentos.
       if (!dragging || !(id in hiddenCache)) {
         const dir = world.clone().sub(duck.camera.position);
         const dist = dir.length();
@@ -49,8 +49,8 @@ export function drawServoLabels(duck, box) {
       const v = world.clone().project(duck.camera);
       pts.push({ id, cn, en, side, hidden: hiddenCache[id], x: (v.x + 1) / 2 * W, y: (1 - v.y) / 2 * H });
     }
-    // 右腿一列、左腿一列（哪边在屏幕左边看实际投影）；头颈按头中线分到两列；
-    // 头颈在上、按高低排（线不交叉），腿按编号排（10、11、12…，好对号）
+    // Uma coluna por perna; a posição esquerda/direita depende da projeção. Cabeça e pescoço são distribuídos pelas duas colunas a partir da linha central da cabeça.
+    // Cabeça e pescoço ficam acima, ordenados pela altura para evitar cruzamento das linhas; as pernas seguem a numeração (10, 11, 12…).
     const avg = (s) => { const xs = pts.filter((p) => p.side === s).map((p) => p.x); return xs.reduce((a, b) => a + b, 0) / (xs.length || 1); };
     const rightOnLeft = avg('R') < avg('L'), headX = avg('H');
     const cols = [[], []];

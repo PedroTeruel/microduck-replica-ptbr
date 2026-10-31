@@ -1,13 +1,13 @@
-// 总览仪表带的「电池」格（battery-plan.md v2 §5）：数从后端的估算器来（studio/battery.py，st.battery），这里只画。
-// 点开看「这个数怎么来的」（估算器给的 detail 一行一行列出来）。过红线、电压很低各响一声短音（只在浏览器里，
-// 跟 IMU 页共用静音开关 studio.imu.mute）。只警告：页面上不放任何会让鸭子动的东西。
+// Cartão “Bateria” da barra de indicadores da Visão geral (battery-plan.md v2 §5): os valores vêm do estimador do backend (studio/battery.py, st.battery); aqui só são exibidos.
+// Ao abrir o cartão, são exibidos os detalhes do cálculo, linha por linha. Ao ultrapassar o limite crítico ou quando a tensão estiver muito baixa, um bipe curto é emitido (somente no navegador;
+// compartilha o controle de silêncio da página da IMU, studio.imu.mute). É apenas um aviso: esta página não contém comandos que movimentem o robô.
 import { html, useState, useEffect, useLayoutEffect, useRef } from './vendor/preact-htm.module.js';
 
-const MUTE_KEY = 'studio.imu.mute';          // 跟 IMU 页同一个（web/imu.js）
+const MUTE_KEY = 'studio.imu.mute';          // compartilhado com a página da IMU (web/imu.js)
 export function loadMute() { try { return localStorage.getItem(MUTE_KEY) === '1'; } catch { return false; } }
-export function saveMute(v) { try { localStorage.setItem(MUTE_KEY, v ? '1' : '0'); } catch { /* 隐私模式 */ } }
+export function saveMute(v) { try { localStorage.setItem(MUTE_KEY, v ? '1' : '0'); } catch { /* modo privado */ } }
 
-// 浏览器要求「用户点过」才能出声：页面上第一次点击时把声音准备好
+// O navegador exige uma interação do usuário antes de reproduzir áudio; inicialize o som no primeiro clique.
 let actx = null;
 function unlock() {
   try {
@@ -24,7 +24,7 @@ function beep() {
   if (!actx || loadMute()) return;
   try {
     const t = actx.currentTime + 0.01;
-    for (const [f, dt] of [[660, 0], [440, 0.16]]) {          // 往下走的两声：跟 IMU 页「做够了」往上走的区分开
+    for (const [f, dt] of [[660, 0], [440, 0.16]]) {          // Dois bipes descendentes, distintos do sinal ascendente de conclusão da calibração da IMU.
       const o = actx.createOscillator(), g = actx.createGain();
       o.frequency.value = f;
       g.gain.setValueAtTime(0.0001, t + dt);
@@ -34,10 +34,10 @@ function beep() {
       o.start(t + dt);
       o.stop(t + dt + 0.16);
     }
-  } catch { /* 出不了声就算了 */ }
+  } catch { /* ignore se o áudio não puder ser reproduzido */ }
 }
 
-// 样式只在这个文件里（不动 styles.css）
+// Os estilos ficam neste arquivo (sem alterar styles.css).
 const CSS = `
 .bat-cell { position: relative; }
 .bat-hit { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; cursor: pointer; border-radius: 8px; }
@@ -66,16 +66,16 @@ if (!document.getElementById('bat-css')) {
 
 const f2 = (v) => (typeof v === 'number' && isFinite(v) ? v.toFixed(2) : '—');
 
-/** 小字一行：电压 · 怎么估的 */
+/** Linha menor: tensão e método de estimativa. */
 function smallLine(b) {
   if (!b || !b.mode) return '—';
-  if (b.mode === 'no_data') return '读不到电压';
-  if (b.mode === 'estimating') return `估算中${typeof b.estimating_left_s === 'number' ? `，${b.estimating_left_s} 秒` : ''}`;
-  if (b.mode === 'bench') return b.why || '台架电源';         // 大字已经是电压了
+  if (b.mode === 'no_data') return 'Não foi possível ler a tensão';
+  if (b.mode === 'estimating') return `Estimando${typeof b.estimating_left_s === 'number' ? ` por ${b.estimating_left_s} s` : ''}`;
+  if (b.mode === 'bench') return b.why || 'Fonte de bancada';         // A tensão já aparece em destaque.
   return `${f2(b.volts)} V · ${b.why || ''}`;
 }
 
-/** 过红线 / 电压很低：从「没亮」到「亮」的那一下响一声（刚打开页面就已经亮着的不响） */
+/** Ao ultrapassar o limite crítico ou quando a tensão estiver muito baixa, emite um bipe na transição para alerta. */
 function useBeep(b) {
   const prev = useRef(null);
   const on = { red: !!b?.red, low: !!b?.low_volt };
@@ -91,8 +91,8 @@ export function BatteryCell({ b }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useBeep(b);
-  // 点开就挂上 Esc / 点别处收起：用 useLayoutEffect（跟弹窗同一拍挂上）。useEffect 要等下一帧（最多 100 ms），
-  // 刚点开马上按 Esc 会没反应（电池 e2e 全套跑时偶发卡在「按 Esc 收起」就是这个）
+  // Ative Escape e o fechamento ao clicar fora assim que o painel abrir, usando useLayoutEffect. useEffect esperaria o próximo quadro (até 100 ms),
+  // Para que Escape funcione imediatamente ao abrir, inclusive nos testes ponta a ponta.
   useLayoutEffect(() => {
     if (!open) return undefined;
     const away = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -110,22 +110,22 @@ export function BatteryCell({ b }) {
     : html`<span class="big">${pct ?? '—'}</span><span class="unit">%</span>`;
   const bar = !bench && pct !== null ? html`<span class="bat-bar" aria-hidden="true">
       <i style=${{ width: `${Math.max(0, Math.min(100, pct))}%`, background: color }}></i>
-      ${typeof b.warn_pct === 'number' ? html`<b style=${{ left: `${b.warn_pct}%` }} title="提醒线"></b>` : null}
-      ${typeof b.red_pct === 'number' ? html`<b style=${{ left: `${b.red_pct}%`, background: 'var(--danger)' }} title="红线"></b>` : null}
+      ${typeof b.warn_pct === 'number' ? html`<b style=${{ left: `${b.warn_pct}%` }} title="Limite de alerta"></b>` : null}
+      ${typeof b.red_pct === 'number' ? html`<b style=${{ left: `${b.red_pct}%`, background: 'var(--danger)' }} title="Limite crítico"></b>` : null}
     </span>` : null;
-  const title = bench ? '电源电压' : '电量怎么算的';
+  const title = bench ? 'Tensão da fonte' : 'Como a carga é calculada';
   return html`<div class=${'bat-cell' + (kind ? ` ${kind}` : '')} ref=${ref} data-mode=${b.mode || ''}>
-    <button class="bat-hit" type="button" aria-expanded=${open ? 'true' : 'false'} aria-label=${`电池：${bench ? `${f2(b.volts)} V` : pct ?? '—'}${bench ? '' : '%'}，点开看怎么算的`}
+    <button class="bat-hit" type="button" aria-expanded=${open ? 'true' : 'false'} aria-label=${`Bateria: ${bench ? `${f2(b.volts)} V` : pct ?? '—'}${bench ? '' : '%'}; abra para ver como é calculada`}
       onClick=${() => setOpen((o) => !o)}>
-      <span class="label">电池</span>
+      <span class="label">Bateria</span>
       <span class="num bat-row">${big}${bar}</span>
       <span class="small num">${b.low_volt ? html`<span class="badge bad" aria-hidden="true">×</span>` : null}${smallLine(b)}</span>
     </button>
     ${open ? html`<div class="bat-pop board" role="dialog" aria-label=${title}>
       <h3>${title}</h3>
-      <ul>${(b.detail || ['还没有读数']).map((line) => html`<li>${line}</li>`)}</ul>
-      <div class="bat-foot"><a href="#/settings" onClick=${() => setOpen(false)}>电池设置 ›</a>
-        <a href="#/logs" onClick=${() => setOpen(false)}>看日志</a></div>
+      <ul>${(b.detail || ['Ainda não há leituras']).map((line) => html`<li>${line}</li>`)}</ul>
+      <div class="bat-foot"><a href="#/settings" onClick=${() => setOpen(false)}>Configurações da bateria ›</a>
+        <a href="#/logs" onClick=${() => setOpen(false)}>Ver logs</a></div>
     </div>` : null}
   </div>`;
 }

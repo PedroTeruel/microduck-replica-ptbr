@@ -228,21 +228,21 @@ function EStop({ st, live, open }) {
 function TopBar({ duck, st, live, age, open, hideEStop }) {
   // 顶栏先说现在是什么模式（出厂标定模式 / 写完切运动模式），再带姿势；标定模式没有策略，别写成「调试中」。
   // 连续报启动阶段超过 30 秒（Studio 从这次连上算）：写「一直报启动中」（10-20 真机：旧 fork 的标定模式永远报 configuring_bus）
-  const postureText = st ? ({ starting: st.starting_long ? '一直报启动中' : '启动中', absent: '主程序没在跑', homing: '在站起来',
-    servo_session: '调舵机中' }[st.posture] || WAS[st.posture] || '状态不明') : null;
-  const modeText = !st ? '连接中'
-    : st.mode === 'commissioning' ? (st.posture === 'commissioning' ? '标定模式' : `标定模式 · ${postureText}`)
+  const postureText = st ? ({ starting: st.starting_long ? '一直报启动中' : 'Iniciando', absent: '主程序没在跑', homing: '在站起来',
+    servo_session: 'Ajustando os servos' }[st.posture] || WAS[st.posture] || '状态不明') : null;
+  const modeText = !st ? 'Conectando'
+    : st.mode === 'commissioning' ? (st.posture === 'commissioning' ? 'Modo de calibração' : `标定模式 · ${postureText}`)
     : st.mode === 'motion' && st.posture !== 'absent' && st.posture !== 'servo_session' ? `运动模式 · ${postureText}`
     : postureText;
   const pct = st?.battery?.pct;
   // 鼠标停在名字上看得到现在的 IP 和几个地址（「更多」页有能复制的那一块）
   const net = st?.net;
-  const addrTitle = net?.known ? [`IP ${net.ip_now || '不知道'}`, ...(net.urls || []).map((u) => u.url)].join('\n') : undefined;
+  const addrTitle = net?.known ? [`IP ${net.ip_now || 'Desconhecido'}`, ...(net.urls || []).map((u) => u.url)].join('\n') : undefined;
   return html`<header class="topbar">
     <div class="duckid">
       <span class="dot" style=${{ background: duck?.color || '#0F7C80' }}></span>
       <span class="name" title=${addrTitle}>${duck?.label || '鸭子'}</span>
-      ${st?.servo_session ? html`<span class="sv-badge">调舵机中</span>` : null}
+      ${st?.servo_session ? html`<span class="sv-badge">Ajustando os servos</span>` : null}
       <span class="meta num">${live ? '' : `${Math.round(age / 1000)} 秒前 · `}${modeText}${typeof pct === 'number' ? ` · ${Math.round(pct)}%` : ''}</span>
     </div>
     <span class=${hideEStop ? 'estop-hidden' : ''}><${EStop} st=${st} live=${live} open=${open} /></span>
@@ -261,7 +261,7 @@ function ServoBar({ st, onServos }) {
     const unk = ss.unknown ? ` · ${ss.unknown} 颗读不到扭矩（可能也在保持）` : '';
     return html`<div class="banner warn servo-bar" role="status">
       <b>调舵机中 · ${ss.holding ?? '?'} 颗保持着${unk} · 主程序停着（手柄、遥控、站走都不能用）</b>
-      <span class="sb-acts"><a href="#/servos">回舵机页</a><${HandBackButton} link=${link} /></span>
+      <span class="sb-acts"><a href="#/servos">Voltar à página Servos</a><${HandBackButton} link=${link} /></span>
       <span class="more sb-more">${ss.restored ? 'Studio 重启过，接着上次的会话管着。' : ''}急停用顶上红按钮或空格（手柄 Select 这时不管用）；别手动起 robotd，先点「交还主程序」</span>
       ${st.servo_marker_error ? html`<span class="more sb-more">${st.servo_marker_error}</span>` : null}</div>`;
   }
@@ -294,31 +294,31 @@ function ServoBar({ st, onServos }) {
 
 // 舞台文案，按 review-impl-plan I2 的状态表。站、走、坐的按钮在下面的手柄区块（往下一刷就是遥控：总览重排 §1.2）；
 // 卸力在右上角（顶栏吸顶，任何时候都在屏幕上），遥控卡顶上也有一个。
-const WAS = { holding: '站着', policy: '站着', walking: '在走', limp: '软着', sitting: '坐着', homing: '在站起来' };
+const WAS = { holding: 'Em pé', policy: 'Em pé', walking: 'Caminhando', limp: 'Frouxo', sitting: 'Sentado', homing: '在站起来' };
 function stageCopy(st, live, name, age) {
-  if (!st) return { h: `正在连接${name}…`, sub: '鸭子开着、跟这台设备在同一个 WiFi 里就行。' };
+  if (!st) return { h: `正在连接${name}…`, sub: 'Ligue o Microduck e conecte este dispositivo à mesma rede Wi-Fi.' };
   if (!live && st.posture !== 'absent') {
-    return { h: `${name} ${Math.round(age / 1000)} 秒没响应`, sub: `断线前它${WAS[st.posture] || '的状态不清楚'}。软件现在管不到它。`, stale: true };
+    return { h: `${name} não responde há ${Math.round(age / 1000)} s`, sub: `Antes da desconexão, o estado era ${WAS[st.posture] || 'desconhecido'}. O software não consegue controlá-lo agora.`, stale: true };
   }
   switch (st.posture) {
-    case 'absent': return { h: '鸭子主程序没在跑', sub: '可能正在重启（约 2 秒）。注意：主程序停了不会卸力，舵机可能还顶着。', stale: true };
+    case 'absent': return { h: 'O programa principal do Microduck não está em execução', sub: 'Pode estar reiniciando (cerca de 2 s). Atenção: parar o programa principal não alivia os servos; eles podem continuar aplicando força.', stale: true };
     case 'starting':
       // 连续报启动阶段超过 30 秒：不再说「通常 10 秒内完成」，给「去日志页」（10-20 真机：旧 fork 的标定模式永远报 configuring_bus）
       if (st.starting_long) {
-        return { h: '主程序一直报「启动中」', act: { href: '#/logs', label: '去日志页' },
-          sub: st.start_error ? `已经 ${st.starting_s} 秒了，卡在：${st.start_error}。去日志页看主程序最后说了什么。`
+        return { h: 'O programa principal continua indicando “Iniciando”', act: { href: '#/logs', label: 'Acessar Logs' },
+          sub: st.start_error ? `Já se passaram ${st.starting_s} s; travou em: ${st.start_error}. Consulte em Logs a última mensagem do programa principal.`
             : `已经 ${st.starting_s} 秒了。主程序可能其实起来了、只是状态没更新（旧版主程序的毛病），也可能卡在启动：去日志页看主程序最后说了什么。` };
       }
-      return { h: '主程序正在启动', sub: st.start_error ? `卡在：${st.start_error}` : '通常 10 秒内完成。' };
-    case 'commissioning': return { h: '标定模式', sub: '出厂第一次：先粗校 IMU、再一键中位，第 3 步写进主程序会自动切到运动模式。' };
-    case 'limp': return { h: `${name}软着`, sub: '双手托起它，往下滑到「遥控」点「站起来」（或者按手柄 +）。' };
-    case 'homing': return { h: '正在站起来…', sub: '扶着它，别松手。' };
-    case 'holding': return { h: `${name}站好了`, sub: '往下滑到「遥控」点「开始走」（或者按手柄 +），再推摇杆。' };
-    case 'policy': return { h: `${name}站着，准备好走了`, sub: '推摇杆就走（往下有网页手柄）；点「停下（站好）」或按手柄 + 回到站好。' };
+      return { h: 'O programa principal está iniciando', sub: st.start_error ? `卡在：${st.start_error}` : 'Normalmente termina em até 10 s.' };
+    case 'commissioning': return { h: 'Modo de calibração', sub: '出厂第一次：先粗校 IMU、再一键中位，第 3 步写进主程序会自动切到运动模式。' };
+    case 'limp': return { h: `${name}软着`, sub: 'Segure o robô com as duas mãos, role até “Controle” e toque em “Levantar” (ou pressione + no controle).' };
+    case 'homing': return { h: 'Levantando…', sub: 'Segure-o; não solte.' };
+    case 'holding': return { h: `${name}站好了`, sub: 'Role até “Controle”, toque em “Começar a andar” (ou pressione + no controle) e mova o joystick.' };
+    case 'policy': return { h: `${name}站着，准备好走了`, sub: 'Mova o joystick para caminhar (o controle virtual fica abaixo); toque em “Parar (ficar em pé)” ou pressione + para voltar à postura em pé.' };
     case 'walking': return { h: '正在走', sub: '松开摇杆它会停下、继续站着。' };
-    case 'sitting': return { h: `${name}坐着`, sub: '点遥控里的「站起来」，或者按手柄十字键下。' };
-    case 'servo_session': return { h: '正在调舵机', sub: '主程序停着（手柄、遥控、站走都不能用）。离开舵机页舵机照样保持，点顶上的「交还主程序」才交还。' };
-    default: return { h: name, sub: '读不出它现在的姿势。' };
+    case 'sitting': return { h: `${name}坐着`, sub: 'Toque em “Levantar” no controle ou pressione para baixo no direcional.' };
+    case 'servo_session': return { h: 'Ajustando os servos', sub: 'O programa principal está parado (controle e movimentos ficam indisponíveis). Os servos continuam mantendo a posição ao sair da página; toque em “Devolver ao programa principal” para liberar o controle.' };
+    default: return { h: name, sub: 'Não foi possível identificar a postura atual.' };
   }
 }
 
@@ -373,7 +373,7 @@ function Stage({ st, live, age, name }) {
 // ≥ 80 °C 橙（带回差，77 °C 以下才收），读不到写「—」加原因。我们的 80 °C 是自己定的，所以只用橙色、不当成错误
 function boardCell(cpu) {
   const mhz = (k) => (typeof k === 'number' ? Math.round(k / 1000) : '?');
-  if (typeof cpu?.c !== 'number') return { big: '—', small: cpu?.why || '读不到', kind: null };
+  if (typeof cpu?.c !== 'number') return { big: '—', small: cpu?.why || 'Indisponível', kind: null };
   const studio = cpu.src === 'studio' ? ' · Studio 自己读的' : '';
   if (cpu.throttled) return { big: Math.round(cpu.c), small: `降频了：${mhz(cpu.khz)} / ${mhz(cpu.max_khz)} MHz${studio}`, kind: 'bad' };
   if (cpu.hot) return { big: Math.round(cpu.c), small: `有点热（80 °C 起提醒）${studio}`, kind: 'warn' };
@@ -387,18 +387,18 @@ function boardCell(cpu) {
 function padCell(st, pd) {
   if (!pd) {
     const p = st?.pad || {};
-    return { word: !p.known ? '不知道' : p.connected ? '已连' : '没连',
-      small: !p.known ? '读不到手柄状态' : p.connected ? `${p.name || '手柄'}${p.estop_ok ? ' · 手柄急停有效' : ''}` : '去配对' };
+    return { word: !p.known ? 'Desconhecido' : p.connected ? 'Conectado' : 'Desconectado',
+      small: !p.known ? 'Não foi possível ler o estado do controle' : p.connected ? `${p.name || 'Controle'}${p.estop_ok ? ' · 手柄急停有效' : ''}` : 'Emparelhar' };
   }
   const s = pd.status || {}, lv = pd.live || {}, es = pd.estop || {};
   const attached = lv.state === 'attached';
   const known = !!s.known || attached;
   const connected = !!s.active || attached;
-  const name = s.active?.name || (attached ? lv.device?.name : null) || '手柄';
-  const esw = { ok: '手柄急停有效 ✓', unknown: '手柄急停没核对完', bad: '手柄急停无效' }[es.state] || '';
-  if (!known) return { word: '不知道', small: '读不到手柄状态（configd）' };
-  if (connected) return { word: '已连', small: `${name}${esw ? ` · ${esw}` : ''}` };
-  return { word: '没连', small: (s.pads || []).length ? '配过：打开手柄就会自己连上' : '去配对' };
+  const name = s.active?.name || (attached ? lv.device?.name : null) || 'Controle';
+  const esw = { ok: '手柄急停有效 ✓', unknown: 'Verificação da parada de emergência do controle incompleta', bad: 'Parada de emergência do controle inativa' }[es.state] || '';
+  if (!known) return { word: 'Desconhecido', small: '读不到手柄状态（configd）' };
+  if (connected) return { word: 'Conectado', small: `${name}${esw ? ` · ${esw}` : ''}` };
+  return { word: 'Desconectado', small: (s.pads || []).length ? '配过：打开手柄就会自己连上' : 'Emparelhar' };
 }
 
 // 吸顶的那几层（用户 10-19：往下滑，侧栏和仪表带一直在）量出自己多高，写到根上的 CSS 变量（--bar-h 舵机提示条、--band-h 仪表带）：
@@ -421,7 +421,7 @@ function useStickyHeight(name) {
 function Band({ st, pd, gray, onSame, sensorsActive }) {
   const bandRef = useStickyHeight('--band-h');
   const b = st?.battery || {}, s = st?.servos || {}, imu = st?.imu || {};
-  const imuWord = { ok: '正常', unverified: '方向没确认', frozen: '读数冻住了', missing: '没读到' }[imu.status] || '—';
+  const imuWord = { ok: 'Normal', unverified: 'Orientação não confirmada', frozen: 'Leituras congeladas', missing: 'Sem leitura' }[imu.status] || '—';
   const imuKind = { unverified: 'warn', frozen: 'bad', missing: 'bad' }[imu.status];
   const pct = typeof b.pct === 'number' ? Math.round(b.pct) : null;
   const cpu = boardCell(st?.cpu);
@@ -429,18 +429,18 @@ function Band({ st, pd, gray, onSame, sensorsActive }) {
   return html`<section class=${'band board' + (gray ? ' stale' : '')} aria-label="状态" ref=${bandRef}>
     <${BatteryCell} b=${b} />
     <div>
-      <span class="label">舵机</span>
+      <span class="label">Servos</span>
       <span class="num" style="display:flex;align-items:baseline;gap:4px"><span class="big">${s.online ?? '—'}</span><span class="unit">/ ${s.total ?? 15}</span></span>
       <span class="small">${s.hottest ? `最热 ${Math.round(s.hottest.c)} °C · ${s.hottest.name}` : '—'}</span>
     </div>
     <a href="#/imu">
       <span class="label">IMU</span>
       <span class="word">${imuKind ? html`<${Badge} kind=${imuKind} />` : null}${imuWord}</span>
-      <span class="small">${{ unverified: '先只站着', ok: '方向已确认' }[imu.status] || '去校准'}</span>
+      <span class="small">${{ unverified: '先只站着', ok: '方向已确认' }[imu.status] || 'Calibrar'}</span>
     </a>
     <${SensorBandCells} api=${api} active=${sensorsActive} />
     <a href="#/pad" onClick=${(e) => onSame(e, '#/pad')}>
-      <span class="label">手柄</span>
+      <span class="label">Controle</span>
       <span class="word">${pad.word}</span>
       <span class="small">${pad.small}</span>
     </a>
@@ -461,7 +461,7 @@ function Band({ st, pd, gray, onSame, sensorsActive }) {
 // 全部完成收成一行，能点开看 6 行（每行能重新做），开没开记在 localStorage
 
 const ONB_MARK = { ok: '✓', skip: '↷', todo: '●', no: '○', unk: '?' };
-const ONB_WORD = { ok: '完成', skip: '跳过了', todo: '该做', no: '没做', unk: '读不到' };
+const ONB_WORD = { ok: '完成', skip: '跳过了', todo: 'Pendente', no: 'Não feito', unk: 'Indisponível' };
 const ONB_OPEN_KEY = 'studio.onb.open';
 const ONB_FROZEN = '在调舵机：清单停在调之前的样子；这时标的「已完成」「跳过」要等交还主程序以后才显示';
 function fmtWhen(w) {
@@ -500,14 +500,14 @@ function Onboard({ st, live }) {
         ${job.phase === 'running'
           ? html`<div class="onb-commit-job" role="status"><span class="onb-spin">⋯</span>${job.msg || '在写…'}</div>`
           : html`<div class=${'onb-commit-msg ' + (job.ok ? 'ok' : 'bad')}>${job.reason || job.msg || ''}</div>`}
-        ${job.phase !== 'running' && !job.ok ? html`<p class="onb-tip">小助手会把原来的标定文件和模式换回去；等主程序回来再看第 3 步。</p>` : null}
+        ${job.phase !== 'running' && !job.ok ? html`<p class="onb-tip">O assistente restaurará o arquivo de calibração e o modo anteriores; aguarde o retorno do programa principal para conferir a etapa 3.</p>` : null}
       </div>
     </section>`;
   }
-  if (!live) return html`<section class="onb board"><div class="onb-h"><b>上手清单</b><span class="quiet">断线时不检查</span></div></section>`;
-  if (!ob) return html`<section class="onb board"><div class="onb-h"><b>上手清单</b><span class="quiet">还在判…</span></div></section>`;
+  if (!live) return html`<section class="onb board"><div class="onb-h"><b>Lista de primeiros passos</b><span class="quiet">断线时不检查</span></div></section>`;
+  if (!ob) return html`<section class="onb board"><div class="onb-h"><b>Lista de primeiros passos</b><span class="quiet">还在判…</span></div></section>`;
   const head = ob.header || {};
-  if (head.kind === 'bench') return html`<section class="onb board"><div class="onb-h"><b>上手清单</b><span class="quiet">${head.text}</span></div></section>`;
+  if (head.kind === 'bench') return html`<section class="onb board"><div class="onb-h"><b>Lista de primeiros passos</b><span class="quiet">${head.text}</span></div></section>`;
   const done = ob.all_done && head.ok;
   const n = ob.skipped_n || 0;
   const m = ob.marked_n || 0;
@@ -521,7 +521,7 @@ function Onboard({ st, live }) {
   }
   const op = async (args, okText) => {
     const r = await link.cmd('onboard.op', args, 8000);
-    setMsg(r.ok ? (okText ? { ok: true, text: okText } : null) : { ok: false, text: r.reason || r.error || '没记成' });
+    setMsg(r.ok ? (okText ? { ok: true, text: okText } : null) : { ok: false, text: r.reason || r.error || 'Não registrado' });
   };
   const go = async (a, row) => {
     setMsg(null);
@@ -543,7 +543,7 @@ function Onboard({ st, live }) {
     setCmsg(null);
     const r = await link.cmd('calib.op', { op: 'preview' }, 20000);
     if (r.ok) setCprev(r.data || {});
-    else setCmsg({ ok: false, text: r.reason || r.error || '算不出来' });
+    else setCmsg({ ok: false, text: r.reason || r.error || 'Não foi possível calcular' });
   };
   const commitRun = async () => {
     setCmsg(null);
@@ -569,14 +569,14 @@ function Onboard({ st, live }) {
   };
   const undoBtn = (row) => {
     const args = { op: row.marked === 'skip' ? 'unskip' : 'undone', step: row.key };
-    const label = row.marked === 'skip' ? '取消跳过' : '取消';
+    const label = row.marked === 'skip' ? 'Desfazer ação de pular' : 'Cancelar';
     return frozen ? html`<${TwoStep} label=${label} ask=${fa.undo || '确定取消？'} cls="btn-light onb-unskip" askCls="btn-light onb-skip-arm"
         onConfirm=${() => op({ ...args, confirmed: true })} />`
       : html`<button class="btn-light onb-unskip" onClick=${() => op(args)}>${label}</button>`;
   };
   return html`<section class=${'onb board' + (ob.frozen ? ' onb-frozen' : '')} aria-label="上手清单">
     <div class="onb-h">
-      <b>上手清单</b>
+      <b>Lista de primeiros passos</b>
       ${done ? html`<button class="onb-fold onb-fold-h" aria-expanded="true" onClick=${toggle}><span class="onb-mark onb-ok">✓</span>${doneText}
         <span class="onb-more">收起</span></button>`
         : head.ok ? html`<span class="onb-conn"><span class="onb-mark onb-ok">✓</span>连上鸭子</span>`
@@ -603,10 +603,10 @@ function Onboard({ st, live }) {
           // 三个按钮：去做（这一行自己的动作，没有就去 GO 那一页）、已完成、跳过。测出了问题的行（found：审查 D5）第一个写「重新做」
           const first = (r.actions || []).length ? r.actions : [goA];
           acts = html`${first.map((a, i) => btn(r.found && i === 0 ? { ...a, label: '重新做' }
-            : now && i === 0 ? { ...a, label: '去做' } : a, r, now && i === 0))}${markBtn(r, 'done', '已完成', 'onb-donebtn')}${markBtn(r, 'skip', '跳过', 'onb-skip')}`;
+            : now && i === 0 ? { ...a, label: '去做' } : a, r, now && i === 0))}${markBtn(r, 'done', 'Concluído', 'onb-donebtn')}${markBtn(r, 'skip', 'Pular', 'onb-skip')}`;
         }
         return html`<li class=${'onb-row onb-' + r.state + (now ? ' onb-now' : '')} key=${r.key} data-step=${r.key}>
-          <span class=${'onb-mark onb-' + r.state} aria-label=${ONB_WORD[r.state] || '读不到'}>${ONB_MARK[r.state] || '?'}</span>
+          <span class=${'onb-mark onb-' + r.state} aria-label=${ONB_WORD[r.state] || 'Indisponível'}>${ONB_MARK[r.state] || '?'}</span>
           <span class="onb-body">
             <span class="onb-title"><b>${r.n} ${r.title}</b>${now ? html`<span class="onb-tag">现在该做</span>` : null}${when && !r.marked ? html`<span class="onb-when num">${when}</span>` : null}</span>
             <span class="onb-text">${r.text}${r.marked ? `（${when || '时间不知道'}）` : ''}</span>
@@ -616,7 +616,7 @@ function Onboard({ st, live }) {
               <div class="onb-commit-desc">${r.desc || ''}</div>
               ${(r.commit?.items || []).length ? html`<ul class="onb-checks">
                 ${r.commit.items.map((it) => html`<li class=${it.ok ? 'ok' : 'bad'}>
-                  <span class="onb-check-mark" aria-label=${it.ok ? '好' : '还不行'}>${it.ok ? '✓' : '×'}</span>
+                  <span class="onb-check-mark" aria-label=${it.ok ? 'Pronto' : 'Ainda não funciona'}>${it.ok ? '✓' : '×'}</span>
                   <span class="onb-check-body"><b>${it.label}</b><span>${it.text}</span></span>
                   ${!it.ok && it.action ? html`<button class="btn-light onb-check-go" onClick=${() => go(it.action, r)}>${it.action.label || '去做'}</button>` : null}
                 </li>`)}
@@ -708,7 +708,7 @@ function Logs() {
     `${e.t} [${e.cat}]${e.level === 'info' ? '' : `[${e.level}]`} ${e.msg}${e.step ? ` · ${e.level === 'info' ? '步骤' : '卡在'}：${e.step}` : ''}${e.raw ? ` · 原文：${e.raw}` : ''}${e.hint ? ` · 建议：${e.hint}` : ''}`).join('\n'));
   return html`<div style="display:flex;flex-direction:column;gap:12px">
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
-      <h1 style="margin:0;font-size:28px;font-weight:600;flex:1">日志</h1>
+      <h1 style="margin:0;font-size:28px;font-weight:600;flex:1">Logs</h1>
       <select value=${cat} onChange=${(e) => setCat(e.target.value)} aria-label="按分类看">
         <option value="">全部分类</option>${cats.map((c) => html`<option value=${c}>${c}</option>`)}
       </select>
@@ -771,18 +771,18 @@ function PasswordSettings({ hasPassword }) {
   };
   if (hasPassword == null) {
     return html`<div class="board password-settings" style="padding:16px 20px">
-      <div style="font-size:15px;font-weight:600">登录密码</div>
+      <div style="font-size:15px;font-weight:600">Senha de acesso</div>
       <div style="font-size:13px;color:var(--text-2)">正在读取登录状态…</div></div>`;
   }
   return html`<form class="board password-settings" style="padding:16px 20px;display:flex;flex-direction:column;gap:10px"
     onSubmit=${submit}>
-    <div style="font-size:15px;font-weight:600">${hasPassword ? '登录密码' : '设一个登录密码'}</div>
+    <div style="font-size:15px;font-weight:600">${hasPassword ? 'Senha de acesso' : '设一个登录密码'}</div>
     <div style="font-size:13px;line-height:1.6;color:var(--text-2)">
       热点密码大家都知道；设了登录密码以后，连上热点的人也要先登录才能控制鸭子。至少 6 位。
       ${hasPassword ? '修改后，其他浏览器上的登录会作废，这台还保持登录。' : ''}
     </div>
     <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text-2)">
-      ${hasPassword ? '新密码' : '密码'}
+      ${hasPassword ? 'Nova senha' : 'Senha'}
       <input type="password" name="password" autocomplete="new-password" value=${pw} required minLength="6"
         onInput=${(e) => setPw(e.target.value)} style="height:40px;padding:0 10px;border:1px solid var(--line);border-radius:8px" />
     </label>
@@ -796,7 +796,7 @@ function PasswordSettings({ hasPassword }) {
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
       <button type="submit" disabled=${busy || !pw || !again}
         style="height:40px;padding:0 18px;border:0;border-radius:999px;background:var(--blue);color:#FFF;font-weight:600">
-        ${busy ? '保存中…' : (hasPassword ? '修改登录密码' : '设好登录密码')}</button>
+        ${busy ? 'Salvando…' : (hasPassword ? '修改登录密码' : '设好登录密码')}</button>
       ${hasPassword ? html`<${TwoStep} label="清掉登录密码" ask="真的清掉？" onConfirm=${clear} />` : null}
     </div>
   </form>`;
@@ -914,12 +914,12 @@ function Settings({ st, tune }) {
   const [v, setV] = useState(loadStage());
   const pick = (x) => { setV(x); applyStage(x); try { localStorage.setItem('studio.stage', x); } catch { /* 隐私模式 */ } };
   return html`<div style="display:flex;flex-direction:column;gap:16px;max-width:640px">
-    <h1 style="margin:0;font-size:28px;font-weight:600">设置</h1>
+    <h1 style="margin:0;font-size:28px;font-weight:600">Configurações</h1>
     <${UpdateSettings} api=${api} csrf=${csrf} />
     <${AiSettings} api=${api} />
     <div class="board" style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center">
       <span style="font-size:15px;font-weight:600;flex:1">日志和诊断</span>
-      <a class="settings-logs" href="#/logs" style="font-size:15px">日志</a>
+      <a class="settings-logs" href="#/logs" style="font-size:15px">Logs</a>
       <a class="settings-diag" href="/api/diag" style="font-size:15px" title="含鸭子的序列号和局域网 IP">导出诊断包</a>
     </div>
     <${DuckAddresses} net=${st?.net} />
@@ -962,16 +962,16 @@ function Nav({ route, padInView, onSame }) {
   const a = (href, r, text) => html`<a href=${href} aria-current=${cur(r)} onClick=${(e) => onSame(e, href)}>${text}</a>`;
   return html`<nav class="nav" aria-label="页面">
     <div class="nav-logo"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="7" fill="#1D1D1F"></rect><path d="M6 14.5a7 6 0 0 1 14 0z" fill="#FFFFFF"></path><rect x="6" y="14.5" width="14" height="2.6" rx="1.3" fill="#F5B400"></rect><circle cx="16.2" cy="11.4" r="1.3" fill="#1D1D1F"></circle></svg>Studio</div>
-    ${a('#/', '/', '总览')}
-    ${a('#/pad', '/pad', '手柄')}
-    ${a('#/camera', '/camera', '摄像头')}
+    ${a('#/', '/', 'Visão geral')}
+    ${a('#/pad', '/pad', 'Controle')}
+    ${a('#/camera', '/camera', 'Câmera')}
     ${a('#/tof', '/tof', 'ToF')}
-    ${a('#/servos', '/servos', '舵机')}
+    ${a('#/servos', '/servos', 'Servos')}
     ${a('#/imu', '/imu', 'IMU')}
-    ${a('#/models', '/models', '模型')}
-    ${a('#/logs', '/logs', '日志')}
+    ${a('#/models', '/models', 'Modelos')}
+    ${a('#/logs', '/logs', 'Logs')}
     <span class="spacer"></span>
-    ${a('#/settings', '/settings', '设置')}
+    ${a('#/settings', '/settings', 'Configurações')}
   </nav>`;
 }
 
@@ -980,7 +980,7 @@ function TabBar({ route, padInView, onSame }) {
   const cur = navCur(route, padInView);
   const a = (href, r, text) => html`<a href=${href} aria-current=${cur(r)} onClick=${(e) => onSame(e, href)}>${text}</a>`;
   return html`<nav class="tabbar" aria-label="主导航">
-    ${a('#/', '/', '总览')}${a('#/pad', '/pad', '手柄')}${a('#/camera', '/camera', '摄像头')}${a('#/tof', '/tof', 'ToF')}${a('#/servos', '/servos', '舵机')}${a('#/imu', '/imu', 'IMU')}${a('#/models', '/models', '模型')}${a('#/settings', '/settings', '更多')}
+    ${a('#/', '/', 'Visão geral')}${a('#/pad', '/pad', 'Controle')}${a('#/camera', '/camera', 'Câmera')}${a('#/tof', '/tof', 'ToF')}${a('#/servos', '/servos', 'Servos')}${a('#/imu', '/imu', 'IMU')}${a('#/models', '/models', 'Modelos')}${a('#/settings', '/settings', 'Mais')}
   </nav>`;
 }
 
@@ -1119,16 +1119,16 @@ function Login({ onDone, duck, noPassword }) {
     let r;
     try { r = await api('/api/login', { password: pw, remember }); } catch { r = { error: '连不上鸭子，检查网络后再试' }; }
     setBusy(false);
-    if (r.ok) onDone(); else setErr(r.error || '登录没成功');
+    if (r.ok) onDone(); else setErr(r.error || 'Falha ao entrar');
   };
   return html`<form class="login board" onSubmit=${submit} autocomplete="on">
     <h1>${duck?.label || 'Microduck Studio'}</h1>
     <input type="text" name="username" autocomplete="username" value="admin" hidden readOnly />
-    <label>管理员密码
+    <label>Senha de administrador
       <input type="password" name="password" autocomplete="current-password" value=${pw} onInput=${(e) => setPw(e.target.value)} required autoFocus />
     </label>
     <label class="row"><input type="checkbox" checked=${remember} onChange=${(e) => setRemember(e.target.checked)} /> 记住我（30 天）</label>
-    ${noPassword ? html`<div class="err">还没设管理员密码。在鸭子上运行：<code>python3 -I run.py set-password</code></div>` : null}
+    ${noPassword ? html`<div class="err">还没设Senha de administrador。在鸭子上运行：<code>python3 -I run.py set-password</code></div>` : null}
     ${err ? html`<div class="err" role="alert">${err}</div>` : null}
     <button type="submit" disabled=${busy || !pw}>登录</button>
   </form>`;
