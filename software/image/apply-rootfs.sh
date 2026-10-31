@@ -1,11 +1,11 @@
 #!/bin/sh
-# 在一个已经挂载好的 rootfs 目录上安装 payload、Studio 和 overlay，并做清理。
-# 纯文件操作：不碰 loop 设备，不 chroot。
+# Instala payload, Studio e overlay em um diretório rootfs já montado e faz a limpeza.
+# Executa somente operações com arquivos: não usa dispositivos loop nem chroot.
 set -eu
 LC_ALL=C
 export LC_ALL
 
-STEP=初始化
+STEP=Inicialização
 ERROR_PRINTED=0
 WORK=
 ROOT=
@@ -18,21 +18,21 @@ SYSTEMD=
 DELETE_LIST=
 PAYLOAD_META=
 STUDIO_VERSION=${STUDIO_VERSION:-}
-BASE_IMG_NAME=${BASE_IMG_NAME:-未知}
-BASE_IMG_SHA256=${BASE_IMG_SHA256:-未知}
+BASE_IMG_NAME=${BASE_IMG_NAME:-desconhecido}
+BASE_IMG_SHA256=${BASE_IMG_SHA256:-desconhecido}
 PAYLOAD_SHA256=${PAYLOAD_SHA256:-}
 IMAGE_VERSION=${IMAGE_VERSION:-}
 ALLOW_UNCONFIRMED=${ALLOW_UNCONFIRMED:-0}
 
 usage() {
-    echo "用法：sh apply-rootfs.sh ROOT PAYLOAD_TGZ STUDIO_DIR OVERLAY_DIR" >&2
+    echo "Uso: sh apply-rootfs.sh ROOT PAYLOAD_TGZ STUDIO_DIR OVERLAY_DIR" >&2
 }
 
 fail() {
     ERROR_PRINTED=1
-    echo "错误：卡在「$STEP」：$1" >&2
+    echo "Erro na etapa '$STEP': $1" >&2
     if [ "$#" -ge 2 ]; then
-        echo "怎么办：$2" >&2
+        echo "Como resolver: $2" >&2
     fi
     exit 1
 }
@@ -41,8 +41,8 @@ on_exit() {
     rc=$?
     trap '' 0
     if [ "$rc" -ne 0 ] && [ "$ERROR_PRINTED" -eq 0 ]; then
-        echo "错误：脚本在「$STEP」这一步意外停止（退出码 $rc）。" >&2
-        echo "怎么办：看上面的命令报错；修好后重跑。ROOT 里的文件可能已部分修改。" >&2
+        echo "Erro: o script parou inesperadamente na etapa '$STEP' (código de saída $rc)." >&2
+        echo "Como resolver: confira o erro acima, corrija-o e execute novamente. Alguns arquivos em ROOT podem ter sido parcialmente alterados." >&2
     fi
     if [ -n "$WORK" ] && [ -d "$WORK" ]; then
         rm -rf "$WORK" || true
@@ -73,21 +73,21 @@ add_add() {
 assert_parent_in_root() {
     p=$1
     parent=$(dirname "$p")
-    [ -d "$parent" ] || fail "目标父目录不存在：$parent" "先确认 ROOT 结构完整，或重新挂载镜像。"
+    [ -d "$parent" ] || fail "O diretório pai do destino não existe: $parent" "Confirme se a estrutura de ROOT está completa ou monte a imagem novamente."
     real=$(cd "$parent" && pwd -P)
     case "$real" in
         "$ROOT"|"$ROOT"/*) ;;
-        *) fail "拒绝操作 ROOT 外的路径：$p（实际父目录 $real）" "检查 ROOT 里是否有指向宿主机的符号链接。" ;;
+        *) fail "Operação recusada fora de ROOT: $p (diretório pai real: $real)" "Verifique se há links simbólicos em ROOT apontando para o sistema hospedeiro." ;;
     esac
 }
 
-# 创建目录（含缺失的上级），新目录一律 0755；任何一个已存在或将要创建的
-# 路径解析到 ROOT 外都直接失败，绝不先写再检查。
+# Cria diretórios, inclusive os pais ausentes, sempre com permissão 0755. Se algum caminho
+# existente ou a ser criado resolver para fora de ROOT, falha imediatamente; nunca grava antes de verificar.
 safe_dir() {
     dir=$1
     case "$dir" in
         "$ROOT"|"$ROOT"/*) ;;
-        *) fail "拒绝在 ROOT 外创建目录：$dir" "这是内部错误；停止并检查参数。" ;;
+        *) fail "Criação de diretório recusada fora de ROOT: $dir" "Erro interno; interrompa e confira os argumentos." ;;
     esac
     probe=$dir
     while [ ! -e "$probe" ] && [ ! -L "$probe" ]; do
@@ -95,11 +95,11 @@ safe_dir() {
         [ "$parent" != "$probe" ] || break
         probe=$parent
     done
-    [ -d "$probe" ] || fail "路径上有非目录：$probe" "检查 ROOT 里的文件结构。"
-    real=$(cd "$probe" && pwd -P) || fail "无法解析目录：$probe" "检查权限。"
+    [ -d "$probe" ] || fail "O caminho contém um item que não é diretório: $probe" "Confira a estrutura de arquivos em ROOT."
+    real=$(cd "$probe" && pwd -P) || fail "Não foi possível resolver o diretório: $probe" "Confira as permissões."
     case "$real" in
         "$ROOT"|"$ROOT"/*) ;;
-        *) fail "拒绝写入 ROOT 外：$dir 的上级 $probe 实际是 $real" "ROOT 里有指向镜像外的符号链接；先清理后再重试。" ;;
+        *) fail "Gravação recusada fora de ROOT: o pai $probe de $dir resolve para $real" "Há um link simbólico em ROOT apontando para fora da imagem; remova-o e tente novamente." ;;
     esac
     : > "$WORK/absent-dirs.txt"
     probe=$dir
@@ -107,38 +107,38 @@ safe_dir() {
         printf '%s\n' "$probe" >> "$WORK/absent-dirs.txt"
         probe=$(dirname "$probe")
     done
-    mkdir -p "$dir" || fail "无法创建目录：$dir" "检查 ROOT 是否可写、磁盘空间是否足够。"
+    mkdir -p "$dir" || fail "Não foi possível criar o diretório: $dir" "Confira se ROOT permite gravação e se há espaço em disco suficiente."
     if [ -s "$WORK/absent-dirs.txt" ]; then
         while IFS= read -r d; do
             [ -n "$d" ] || continue
-            chmod 0755 "$d" || fail "无法设置目录权限：$d" "检查 ROOT 是否可写。"
+            chmod 0755 "$d" || fail "Não foi possível definir as permissões do diretório: $d" "Confira se ROOT permite gravação."
         done < "$WORK/absent-dirs.txt"
     fi
-    real=$(cd "$dir" && pwd -P) || fail "无法进入目录：$dir" "检查权限。"
+    real=$(cd "$dir" && pwd -P) || fail "Não foi possível acessar o diretório: $dir" "Confira as permissões."
     case "$real" in
         "$ROOT"|"$ROOT"/*) ;;
-        *) fail "拒绝写入 ROOT 外：$dir 实际是 $real" "ROOT 里有指向镜像外的符号链接；先清理后再重试。" ;;
+        *) fail "Gravação recusada fora de ROOT: $dir resolve para $real" "Há um link simbólico em ROOT apontando para fora da imagem; remova-o e tente novamente." ;;
     esac
 }
 
-# 目标若是符号链接先删掉（只删链接本身），再交给调用者写；父目录走 safe_dir。
+# Se o destino for um link simbólico, remove primeiro apenas o link e então permite a gravação; o diretório pai passa por safe_dir.
 safe_file() {
     file=$1
     case "$file" in
         "$ROOT"/*) ;;
-        *) fail "拒绝写入 ROOT 外：$file" "这是内部错误；停止并检查参数。" ;;
+        *) fail "Gravação recusada fora de ROOT: $file" "Erro interno; interrompa e confira os argumentos." ;;
     esac
     if [ "$file" = "$ROOT" ]; then
-        fail "拒绝写入 ROOT 本身" "脚本只写 ROOT 里的具体文件。"
+        fail "Gravação recusada na própria ROOT" "O script grava somente arquivos específicos dentro de ROOT."
     fi
     safe_dir "$(dirname "$file")"
     if [ -L "$file" ]; then
-        echo "  删除符号链接（避免写到链接目标）：$file"
+        echo "  Removendo link simbólico (para evitar gravar no destino do link): $file"
         add_del "$file"
-        rm -f "$file" || fail "无法删除符号链接：$file" "检查权限。"
+        rm -f "$file" || fail "Não foi possível remover o link simbólico: $file" "Confira as permissões."
     fi
     if [ -d "$file" ]; then
-        fail "目标是目录，不能写成文件：$file" "检查 ROOT 结构。"
+        fail "O destino é um diretório, não pode ser gravado como arquivo: $file" "Confira a estrutura de ROOT."
     fi
 }
 
@@ -149,28 +149,28 @@ remove_path() {
     fi
     case "$p" in
         "$ROOT"/*) ;;
-        *) fail "拒绝删除 ROOT 外路径：$p" "这是内部错误；停止并检查参数。" ;;
+        *) fail "Remoção recusada fora de ROOT: $p" "Erro interno; interrompa e confira os argumentos." ;;
     esac
     if [ "$p" = "$ROOT" ]; then
-        fail "拒绝删除 ROOT 本身" "脚本只删除 ROOT 里的具体路径。"
+        fail "Remoção recusada da própria ROOT" "O script remove somente caminhos específicos dentro de ROOT."
     fi
     assert_parent_in_root "$p"
-    echo "  删除 $p"
+    echo "  Removendo $p"
     add_del "$p"
-    rm -rf "$p" || fail "删除失败：$p" "检查权限；ROOT 可能只读。"
+    rm -rf "$p" || fail "Falha ao remover: $p" "Confira as permissões; ROOT pode estar somente para leitura."
 }
 
 truncate_regular_file() {
     p=$1
     safe_file "$p"
-    : > "$p" || fail "无法清空文件：$p" "检查权限。"
+    : > "$p" || fail "Não foi possível esvaziar o arquivo: $p" "Confira as permissões."
 }
 
 print_list() {
     label=$1
     file=$2
     if [ -s "$file" ]; then
-        echo "    $label（$(wc -l < "$file" | tr -d '[:space:]') 项）："
+        echo "    $label ($(wc -l < "$file" | tr -d '[:space:]') itens):"
         sed 's/^/      - /' "$file"
     fi
 }
@@ -193,10 +193,10 @@ size_of() {
     wc -c < "$1" | tr -d '[:space:]'
 }
 
-# Windows 上的 grep/awk 会吞掉 CR，所以用 Python 按二进制读文件。
-# 含 NUL 或常见二进制后缀的文件跳过（png 等本来就可能含 0x0d）。
+# No Windows, grep/awk podem remover CR; por isso Python lê os arquivos em modo binário.
+# Ignora arquivos com NUL ou extensões binárias comuns (PNG etc. podem conter 0x0d).
 check_crlf_paths() {
-    "$PYTHON" - "$WORK/crlf.txt" "$OVERLAY" "$STUDIO/deploy" "$STUDIO/run.py" <<'PY' || fail "换行检查失败" "检查 overlay 和 Studio 目录是否可读。"
+    "$PYTHON" - "$WORK/crlf.txt" "$OVERLAY" "$STUDIO/deploy" "$STUDIO/run.py" <<'PY' || fail "Falha na verificação de quebras de linha" "Confira se os diretórios overlay e Studio podem ser lidos."
 import sys
 from pathlib import Path
 
@@ -229,10 +229,10 @@ PY
 
 rewrite_radxa_gecos() {
     file=$1
-    [ -e "$file" ] || [ -L "$file" ] || fail "缺少账号文件：$file" "确认底图里有 etc/passwd 和 etc/passwd-。"
+    [ -e "$file" ] || [ -L "$file" ] || fail "Arquivo de contas ausente: $file" "Confirme se a imagem base contém etc/passwd e etc/passwd-."
     safe_file "$file"
-    [ -f "$file" ] || fail "账号文件不是普通文件：$file" "检查 ROOT/etc 的结构。"
-    "$PYTHON" - "$file" "$WORK/passwd.new" <<'PY' || fail "无法只改 radxa 的全名：$file" "确认文件是标准 passwd 格式（7 个冒号分隔字段）。"
+    [ -f "$file" ] || fail "O arquivo de contas não é um arquivo regular: $file" "Confira a estrutura de ROOT/etc."
+    "$PYTHON" - "$file" "$WORK/passwd.new" <<'PY' || fail "Não foi possível alterar somente o nome completo de radxa: $file" "Confirme se o arquivo segue o formato passwd padrão (7 campos separados por dois-pontos)."
 import sys
 from pathlib import Path
 
@@ -249,26 +249,26 @@ for index, line in enumerate(lines):
     if fields and fields[0] == b'radxa':
         seen += 1
         if len(fields) != 7:
-            raise SystemExit('radxa 行不是 7 个字段')
+            raise SystemExit('A linha de radxa não tem 7 campos')
         fields[4] = b'Microduck'
         lines[index] = b':'.join(fields) + cr
 if seen != 1:
-    raise SystemExit(f'radxa 行应恰好 1 条，实际 {seen} 条')
+    raise SystemExit(f'Esperada exatamente uma linha de radxa; encontradas {seen}')
 Path(dst).write_bytes(b'\n'.join(lines))
 PY
-    cat "$WORK/passwd.new" > "$file" || fail "无法写回账号文件：$file" "检查权限。"
-    echo "  已改 $(rel_path "$file") 的 radxa 全名：Microduck"
+    cat "$WORK/passwd.new" > "$file" || fail "Não foi possível gravar o arquivo de contas: $file" "Confira as permissões."
+    echo "  Nome completo de radxa alterado em $(rel_path "$file"): Microduck"
     add_add "$file"
 }
 
-# 只换 radxa 那一行的第 2 个字段（密码哈希），其它字段、其它行、文件属性都不动。
+# Altera somente o segundo campo (hash da senha) da linha de radxa; os demais campos, linhas e atributos do arquivo ficam intactos.
 set_radxa_password_hash() {
     file=$1
     hash=$2
-    [ -e "$file" ] || fail "缺少账号文件：$file" "确认底图里有 etc/shadow（有 shadow- 的话也一起检查）。"
+    [ -e "$file" ] || fail "Arquivo de contas ausente: $file" "Confirme se a imagem base contém etc/shadow (verifique também shadow-, se existir)."
     safe_file "$file"
-    [ -f "$file" ] || fail "账号文件不是普通文件：$file" "检查 ROOT/etc 的结构。"
-    "$PYTHON" - "$file" "$WORK/shadow.new" "$hash" <<'PY' || fail "无法只改 radxa 的密码哈希：$file" "确认文件是标准 shadow 格式（9 个冒号分隔字段），且 radxa 恰好一行。"
+    [ -f "$file" ] || fail "O arquivo de contas não é um arquivo regular: $file" "Confira a estrutura de ROOT/etc."
+    "$PYTHON" - "$file" "$WORK/shadow.new" "$hash" <<'PY' || fail "Não foi possível alterar somente o hash da senha de radxa: $file" "Confirme o formato shadow padrão (9 campos separados por dois-pontos) e uma única linha de radxa."
 import sys
 from pathlib import Path
 
@@ -285,24 +285,24 @@ for index, line in enumerate(lines):
     if fields and fields[0] == b"radxa":
         seen += 1
         if len(fields) != 9:
-            raise SystemExit("radxa 行不是 9 个字段")
+            raise SystemExit("A linha de radxa não tem 9 campos")
         fields[1] = new_hash
         lines[index] = b":".join(fields) + cr
 if seen != 1:
-    raise SystemExit(f"radxa 行应恰好 1 条，实际 {seen} 条")
+    raise SystemExit(f"Esperada exatamente uma linha de radxa; encontradas {seen}")
 Path(dst).write_bytes(b"\n".join(lines))
 PY
-    cat "$WORK/shadow.new" > "$file" || fail "无法写回账号文件：$file" "检查权限。"
-    echo "  已设置 $(rel_path "$file") 里 radxa 的默认密码哈希"
+    cat "$WORK/shadow.new" > "$file" || fail "Não foi possível gravar o arquivo de contas: $file" "Confira as permissões."
+    echo "  Hash de senha padrão de radxa definido em $(rel_path "$file")"
     add_add "$file"
 }
 
 set_updater_dev_keys_false() {
     file=$1
-    [ -e "$file" ] || [ -L "$file" ] || fail "缺少更新器配置：$file" "确认底图里有 etc/robot/updater.toml。"
+    [ -e "$file" ] || [ -L "$file" ] || fail "Configuração do atualizador ausente: $file" "Confirme se a imagem base contém etc/robot/updater.toml."
     safe_file "$file"
-    [ -f "$file" ] || fail "更新器配置不是普通文件：$file" "检查 ROOT/etc/robot 的结构。"
-    "$PYTHON" - "$file" "$WORK/updater.toml.new" <<'PY' || fail "无法只改 allow_dev_keys 的值：$file" "确认配置文件里 allow_dev_keys 只有一行。"
+    [ -f "$file" ] || fail "A configuração do atualizador não é um arquivo regular: $file" "Confira a estrutura de ROOT/etc/robot."
+    "$PYTHON" - "$file" "$WORK/updater.toml.new" <<'PY' || fail "Não foi possível alterar somente o valor de allow_dev_keys: $file" "Confirme se há apenas uma linha allow_dev_keys no arquivo de configuração."
 import re
 import sys
 from pathlib import Path
@@ -321,38 +321,38 @@ for index, line in enumerate(lines):
     if match:
         matches.append((index, match, cr))
 if len(matches) != 1:
-    raise SystemExit(f'allow_dev_keys 应恰好 1 行，实际 {len(matches)} 行')
+    raise SystemExit(f'Esperada exatamente uma linha allow_dev_keys; encontradas {len(matches)}')
 index, match, cr = matches[0]
 lines[index] = match.group(1) + b'false' + match.group(3) + cr
 Path(dst).write_bytes(b'\n'.join(lines))
 PY
     if cmp -s "$file" "$WORK/updater.toml.new"; then
-        echo "  $(rel_path "$file") 已经是 allow_dev_keys = false"
+        echo "  $(rel_path "$file") já está com allow_dev_keys = false"
     else
-        cat "$WORK/updater.toml.new" > "$file" || fail "无法写回更新器配置：$file" "检查权限。"
-        echo "  已改 $(rel_path "$file")：allow_dev_keys = false"
+        cat "$WORK/updater.toml.new" > "$file" || fail "Não foi possível gravar a configuração do atualizador: $file" "Confira as permissões."
+        echo "  Alterado $(rel_path "$file"): allow_dev_keys = false"
         add_add "$file"
     fi
 }
 
 prune_dev_keys() {
     dir=$1
-    [ -d "$dir" ] || fail "缺少更新器公钥目录：$dir" "确认底图里有 etc/robot/trusted_keys。"
+    [ -d "$dir" ] || fail "Diretório de chaves públicas do atualizador ausente: $dir" "Confirme se a imagem base contém etc/robot/trusted_keys."
     dev_keys=$WORK/dev-keys.txt
     find "$dir" -mindepth 1 -maxdepth 1 -name '*.dev.pub' -print | LC_ALL=C sort > "$dev_keys" \
-        || fail "无法列出开发者签名公钥：$dir" "检查目录权限。"
-    print_list "将删除开发者签名公钥" "$dev_keys"
+        || fail "Não foi possível listar as chaves públicas de assinatura de desenvolvimento: $dir" "Confira as permissões do diretório."
+    print_list "Chaves públicas de desenvolvimento a remover" "$dev_keys"
     while IFS= read -r p; do
         [ -n "$p" ] || continue
         remove_path "$p"
     done < "$dev_keys"
     release_keys=$WORK/release-keys.txt
     find "$dir" -mindepth 1 -maxdepth 1 -type f -name 'release-*.pub' -print | LC_ALL=C sort > "$release_keys" \
-        || fail "无法列出官方签名公钥：$dir" "检查目录权限。"
+        || fail "Não foi possível listar as chaves públicas oficiais de assinatura: $dir" "Confira as permissões do diretório."
     if [ ! -s "$release_keys" ]; then
-        fail "信任目录里没有 release-*.pub：$dir" "更新器遇到空的信任目录会起不来；先恢复官方 release 公钥再重试。"
+        fail "Nenhuma release-*.pub encontrada no diretório de confiança: $dir" "O atualizador não inicia com o diretório de confiança vazio; restaure as chaves públicas oficiais de release e tente novamente."
     fi
-    echo "    保留官方签名公钥："
+    echo "    Chaves públicas oficiais de assinatura mantidas:"
     sed 's/^/      - /' "$release_keys"
 }
 
@@ -368,13 +368,13 @@ with open(sys.argv[1], encoding='utf-8') as fh:
     data = json.load(fh)
 files = data.get('files')
 if not isinstance(files, list):
-    raise SystemExit('payload.json 缺少 files 数组')
+    raise SystemExit('payload.json não contém o vetor files')
 for item in files:
     path = item['path']
     digest = item['sha256']
     size = int(item['size'])
     if '\t' in path or '\n' in path:
-        raise SystemExit('payload 路径包含制表符或换行')
+        raise SystemExit('O caminho no payload contém tabulação ou quebra de linha')
     print(f'{path}\t{digest}\t{size}')
 PY
         then
@@ -382,7 +382,7 @@ PY
         fi
     fi
     if [ ! -s "$out" ]; then
-        echo "    提示：python 解析 payload.json 失败，改用 awk 兜底。" >&2
+        echo "    Aviso: falha ao analisar payload.json com Python; usando awk como alternativa." >&2
         awk '
             {
                 line = $0
@@ -407,7 +407,7 @@ PY
             }
         ' "$manifest" > "$out"
     fi
-    [ -s "$out" ] || fail "无法解析 payload.json" "用 capture-payload.sh 重新生成，或安装 python3 后重试。"
+    [ -s "$out" ] || fail "Não foi possível analisar payload.json" "Gere novamente com capture-payload.sh ou instale python3 e tente outra vez."
 }
 
 verify_manifest() {
@@ -415,22 +415,22 @@ verify_manifest() {
     label=$2
     while IFS=$(printf '\t') read -r rel expected size; do
         case "$rel" in
-            ""|/*|*".."*) fail "payload 清单里有不安全路径：$rel" "重新生成 payload。" ;;
+            ""|/*|*".."*) fail "Caminho inseguro no manifesto do payload: $rel" "Gere o payload novamente." ;;
         esac
         target=$base/$rel
         if [ ! -e "$target" ] && [ ! -L "$target" ]; then
-            fail "$label 缺少文件：$rel" "重新运行 capture-payload.sh，或检查 tgz 是否完整。"
+            fail "Arquivo ausente em $label: $rel" "Execute capture-payload.sh novamente ou confira se o tgz está completo."
         fi
         if [ -L "$target" ]; then
-            fail "$label 里有符号链接：$rel" "payload 不允许符号链接；重新生成 payload。"
+            fail "Link simbólico em $label: $rel" "O payload não permite links simbólicos; gere-o novamente."
         fi
         actual=$(sha256_of "$target")
         if [ "$actual" != "$expected" ]; then
-            fail "$label 的 sha256 不符：$rel（期望 $expected，实际 $actual）" "不要继续：重新拉 payload，确认传输没有损坏。"
+            fail "SHA-256 divergente em $label: $rel (esperado $expected, obtido $actual)" "Não continue: baixe o payload novamente e confira se a transferência não foi corrompida."
         fi
         actual_size=$(size_of "$target")
         if [ "$actual_size" != "$size" ]; then
-            fail "$label 的大小不符：$rel（期望 $size，实际 $actual_size）" "重新拉 payload。"
+            fail "Tamanho divergente em $label: $rel (esperado $size, obtido $actual_size)" "Baixe o payload novamente."
         fi
     done < "$WORK/files.tsv"
 }
@@ -439,23 +439,23 @@ put_file() {
     src=$1
     dst=$2
     mode=$3
-    [ -f "$src" ] || fail "缺少源文件：$src" "检查 STUDIO_DIR/deploy 是否完整。"
+    [ -f "$src" ] || fail "Arquivo de origem ausente: $src" "Confira se STUDIO_DIR/deploy está completo."
     safe_file "$dst"
     if [ "$(id -u)" -eq 0 ]; then
-        install -D -m "$mode" -o 0 -g 0 "$src" "$dst" || fail "安装文件失败：$dst" "检查 ROOT 是否可写、磁盘空间是否足够。"
+        install -D -m "$mode" -o 0 -g 0 "$src" "$dst" || fail "Falha ao instalar o arquivo: $dst" "Confira se ROOT permite gravação e se há espaço em disco suficiente."
     else
-        install -D -m "$mode" "$src" "$dst" || fail "安装文件失败：$dst" "检查 ROOT 是否可写、磁盘空间是否足够。"
+        install -D -m "$mode" "$src" "$dst" || fail "Falha ao instalar o arquivo: $dst" "Confira se ROOT permite gravação e se há espaço em disco suficiente."
     fi
     add_add "$dst"
 }
 
-# 出厂让主程序跑标定模式。小助手在上手清单第 3 步成功后删掉这个文件。
-# 文件内容和注释是与小助手的约定，不能改字。
+# Na imagem de fábrica, inicia o programa principal em modo de calibração. O assistente remove este arquivo após concluir a etapa 3 do guia inicial.
+# O conteúdo e os comentários do arquivo fazem parte do contrato com o assistente e não podem ser alterados.
 write_commissioning_dropin() {
     src=$STAGE/etc/systemd/system/robotd.service.d/zzzz-r17-0151.conf
     dst=$SYSTEMD/robotd.service.d/zzzz-zz-microduck-commissioning.conf
-    [ -f "$src" ] || fail "payload 里缺少 robotd 的 drop-in：etc/systemd/system/robotd.service.d/zzzz-r17-0151.conf" "重新运行 capture-payload.sh；payload 不完整。"
-    "$PYTHON" - "$src" "$WORK/commissioning.conf" <<'PY' || fail "无法从 payload 的 zzzz-r17-0151.conf 生成出厂标定模式 drop-in" "检查 payload 里的 drop-in：必须恰好一行非空 ExecStart=，且不能已经带 --commissioning。"
+    [ -f "$src" ] || fail "Drop-in do robotd ausente no payload: etc/systemd/system/robotd.service.d/zzzz-r17-0151.conf" "Execute capture-payload.sh novamente; o payload está incompleto."
+    "$PYTHON" - "$src" "$WORK/commissioning.conf" <<'PY' || fail "Não foi possível gerar o drop-in de calibração de fábrica a partir de zzzz-r17-0151.conf do payload" "Confira o drop-in: deve haver exatamente uma linha ExecStart= não vazia e ela ainda não pode conter --commissioning."
 import re
 import sys
 from pathlib import Path
@@ -471,13 +471,13 @@ for raw in Path(src).read_text(encoding="utf-8", errors="strict").splitlines():
         if value:
             exec_lines.append(value)
 if len(exec_lines) != 1:
-    raise SystemExit("zzzz-r17-0151.conf 里的非空 ExecStart= 应恰好 1 行，实际 %d 行" % len(exec_lines))
+    raise SystemExit("zzzz-r17-0151.conf deve conter exatamente uma linha ExecStart= não vazia; encontradas %d" % len(exec_lines))
 command = exec_lines[0]
 if re.search(r"(^|\s)--commissioning(\s|$)", command):
-    raise SystemExit("zzzz-r17-0151.conf 已经带 --commissioning，payload 不对")
+    raise SystemExit("zzzz-r17-0151.conf já contém --commissioning; payload inválido")
 text = (
-    "# Microduck 复刻镜像：出厂让主程序跑标定模式（--commissioning）。\n"
-    "# 上手清单第 3 步「写进主程序」成功后，root 小助手删掉这个文件，主程序回到运动模式。\n"
+    "# Imagem réplica do Microduck: inicia o programa principal no modo de calibração (--commissioning).\n"
+    "# Após concluir a etapa 3 do guia inicial (gravar o programa principal), o assistente root remove este arquivo e o programa volta ao modo de movimento.\n"
     "[Service]\n"
     "ExecStart=\n"
     "ExecStart=" + command + " --commissioning\n"
@@ -485,13 +485,13 @@ text = (
 Path(dst).write_text(text, encoding="utf-8", newline="\n")
 PY
     safe_file "$dst"
-    cp -f "$WORK/commissioning.conf" "$dst" || fail "无法写入出厂标定模式 drop-in：$dst" "检查 ROOT 是否可写、磁盘空间是否足够。"
-    chmod 0644 "$dst" || fail "无法设置权限：$dst" "检查 ROOT 文件系统权限。"
+    cp -f "$WORK/commissioning.conf" "$dst" || fail "Não foi possível gravar o drop-in do modo de calibração de fábrica: $dst" "Confira se ROOT permite gravação e se há espaço em disco suficiente."
+    chmod 0644 "$dst" || fail "Não foi possível definir as permissões: $dst" "Confira as permissões do sistema de arquivos de ROOT."
     if [ "$(id -u)" -eq 0 ]; then
-        chown 0:0 "$dst" || fail "无法设置属主：$dst（root:root）" "检查 ROOT 文件系统是否支持 chown。"
+        chown 0:0 "$dst" || fail "Não foi possível definir o proprietário: $dst (root:root)" "Confira se o sistema de arquivos de ROOT permite chown."
     fi
     add_add "$dst"
-    echo "    已写出厂标定模式 drop-in：$(rel_path "$dst")"
+    echo "    Drop-in do modo de calibração de fábrica gravado: $(rel_path "$dst")"
 }
 
 make_enable_link() {
@@ -500,11 +500,11 @@ make_enable_link() {
     safe_file "$link"
     if ! ln -s "$target" "$link" 2>/dev/null; then
         source_file=$ROOT$target
-        [ -f "$source_file" ] || fail "单元文件不存在，无法建 enable 链接：$target" "检查 OVERLAY_DIR 或 systemd 单元路径。"
-        cp -f "$source_file" "$link" || fail "无法创建链接：$link" "检查权限。"
-        echo "  警告：本机不能创建符号链接，测试环境改为复制单元文件：$link"
+        [ -f "$source_file" ] || fail "Arquivo da unidade ausente; não é possível criar o link de habilitação: $target" "Confira OVERLAY_DIR ou o caminho da unidade systemd."
+        cp -f "$source_file" "$link" || fail "Não foi possível criar o link: $link" "Confira as permissões."
+        echo "  Aviso: este sistema não cria links simbólicos; no ambiente de teste, copiando o arquivo da unidade: $link"
     fi
-    echo "  创建链接 $link -> $target"
+    echo "  Link criado: $link -> $target"
     add_add "$link"
 }
 
@@ -555,7 +555,7 @@ ssh_audit() {
     : > "$WORK/ssh-records.txt"
     : > "$SSH_WARN"
     if [ ! -f "$main" ]; then
-        echo "  警告：ROOT 里没有 sshd 主配置：$main（请人工确认 SSH 策略）"
+        echo "  Aviso: a configuração principal do sshd não existe em ROOT: $main (confirme manualmente a política SSH)"
         return 0
     fi
     include_line=$(awk '
@@ -576,7 +576,7 @@ ssh_audit() {
         cp "$main" "$WORK/ssh-main-before"
         : > "$WORK/ssh-main-after"
     fi
-    ssh_file_records "$WORK/ssh-main-before" "sshd_config(Include 之前)"
+    ssh_file_records "$WORK/ssh-main-before" "sshd_config (antes de Include)"
     if [ -d "$ROOT/etc/ssh/sshd_config.d" ]; then
         find "$ROOT/etc/ssh/sshd_config.d" -maxdepth 1 -type f -name '*.conf' -print | sort > "$WORK/ssh-dropins.txt" || true
         while IFS= read -r f; do
@@ -584,8 +584,8 @@ ssh_audit() {
             ssh_file_records "$f" "sshd_config.d/$(basename "$f")"
         done < "$WORK/ssh-dropins.txt"
     fi
-    ssh_file_records "$WORK/ssh-main-after" "sshd_config(Include 之后)"
-    # sshd 取每个选项第一次出现的值；10-microduck.conf 之前的 drop-in 才可能翻盘。
+    ssh_file_records "$WORK/ssh-main-after" "sshd_config (depois de Include)"
+    # O sshd usa o primeiro valor encontrado para cada opção; somente drop-ins anteriores a 10-microduck.conf podem alterá-lo.
     awk -F'\t' '!seen[$1]++ && $2 != "no" { print $3 }' "$WORK/ssh-records.txt" > "$SSH_WARN"
 }
 
@@ -595,7 +595,7 @@ clean_log_dir() {
     if [ -d "$dir/journal" ]; then
         find "$dir/journal" -mindepth 1 -maxdepth 1 -print > "$WORK/journal.txt" || true
         if [ -s "$WORK/journal.txt" ]; then
-            echo "    将删除 $dir/journal 的内容："
+            echo "    Conteúdo a remover de $dir/journal:"
             sed 's/^/      - /' "$WORK/journal.txt"
             while IFS= read -r p; do
                 remove_path "$p"
@@ -604,7 +604,7 @@ clean_log_dir() {
     fi
     find "$dir" -type f ! -path "$dir/journal/*" -print > "$WORK/log-files.txt" || true
     if [ -s "$WORK/log-files.txt" ]; then
-        echo "    清空 $(wc -l < "$WORK/log-files.txt" | tr -d '[:space:]') 个日志文件（保留目录结构）：$dir"
+        echo "    Esvaziando $(wc -l < "$WORK/log-files.txt" | tr -d '[:space:]') arquivos de log (mantendo a estrutura de diretórios): $dir"
         while IFS= read -r p; do
             truncate_regular_file "$p"
         done < "$WORK/log-files.txt"
@@ -617,19 +617,19 @@ PAYLOAD_ARG=$2
 STUDIO_ARG=$3
 OVERLAY_ARG=$4
 
-[ -n "$ROOT_ARG" ] || fail "ROOT 不能为空" "传入已经挂载好的 rootfs 目录。"
-[ "$ROOT_ARG" != "/" ] || fail "ROOT 不能是 /" "绝不能对运行脚本的这台机器自己的根目录操作。"
-[ -d "$ROOT_ARG" ] || fail "ROOT 不是目录：$ROOT_ARG" "先挂载镜像的 p1。"
+[ -n "$ROOT_ARG" ] || fail "ROOT não pode estar vazio" "Informe o diretório rootfs já montado."
+[ "$ROOT_ARG" != "/" ] || fail "ROOT não pode ser /" "Nunca opere na raiz da máquina que está executando o script."
+[ -d "$ROOT_ARG" ] || fail "ROOT não é um diretório: $ROOT_ARG" "Monte primeiro a partição p1 da imagem."
 ROOT=$(cd "$ROOT_ARG" && pwd -P)
 case "$ROOT" in
-    /|//|///) fail "ROOT 解析后是根目录：$ROOT" "换成一个独立的挂载目录。" ;;
+    /|//|///) fail "ROOT resolve para o diretório raiz: $ROOT" "Use um diretório de montagem separado." ;;
 esac
 
-[ -f "$PAYLOAD_ARG" ] || fail "payload 文件不存在：$PAYLOAD_ARG" "先运行 capture-payload.sh，并确认路径正确。"
+[ -f "$PAYLOAD_ARG" ] || fail "Arquivo payload não encontrado: $PAYLOAD_ARG" "Execute capture-payload.sh primeiro e confirme o caminho."
 PAYLOAD=$(cd "$(dirname "$PAYLOAD_ARG")" && pwd -P)/$(basename "$PAYLOAD_ARG")
-[ -d "$STUDIO_ARG" ] || fail "STUDIO_DIR 不存在：$STUDIO_ARG" "指向 software/studio 目录。"
+[ -d "$STUDIO_ARG" ] || fail "STUDIO_DIR não existe: $STUDIO_ARG" "Aponte para o diretório software/studio."
 STUDIO=$(cd "$STUDIO_ARG" && pwd -P)
-[ -d "$OVERLAY_ARG" ] || fail "OVERLAY_DIR 不存在：$OVERLAY_ARG" "指向本目录下的 overlay。"
+[ -d "$OVERLAY_ARG" ] || fail "OVERLAY_DIR não existe: $OVERLAY_ARG" "Aponte para o diretório overlay deste projeto."
 OVERLAY=$(cd "$OVERLAY_ARG" && pwd -P)
 HERE=$(cd "$(dirname "$0")" && pwd -P)
 SOFTWARE_COMPONENTS_REQUESTED=0
@@ -637,9 +637,9 @@ if [ -n "${SOFTWARE_UPDATE_PACKAGE:-}${SOFTWARE_UPDATE_PUBLIC_KEY:-}${SOFTWARE_U
     SOFTWARE_COMPONENTS_REQUESTED=1
     [ -f "${SOFTWARE_UPDATE_PACKAGE:-}" ] && [ -f "${SOFTWARE_UPDATE_PUBLIC_KEY:-}" ] && \
         [ -f "${SOFTWARE_UPDATE_ENGINE:-}" ] && [ -f "${VOICE_RESOURCES_DIR:-}/resources-manifest.json" ] || \
-        fail "软件升级组件输入不完整" "同时提供 SOFTWARE_UPDATE_PACKAGE、SOFTWARE_UPDATE_PUBLIC_KEY、SOFTWARE_UPDATE_ENGINE 和 VOICE_RESOURCES_DIR，且文件必须存在。"
+        fail "Entradas incompletas para os componentes de atualização de software" "Informe SOFTWARE_UPDATE_PACKAGE, SOFTWARE_UPDATE_PUBLIC_KEY, SOFTWARE_UPDATE_ENGINE e VOICE_RESOURCES_DIR; todos os arquivos devem existir."
     [ -f "$HERE/software_components.py" ] && [ -f "$HERE/../updater/bootstrap.py" ] || \
-        fail "软件升级组件输入缺少共享安装器" "使用包含 software/updater 与 software/image 的完整冻结源码。"
+        fail "Falta o instalador compartilhado para os componentes de atualização de software" "Use o código-fonte congelado completo, incluindo software/updater e software/image."
 fi
 CAL_SRC=$HERE/calib/hd1910-calibration.option-a.toml
 
@@ -649,31 +649,31 @@ if [ -z "$IMAGE_VERSION" ]; then
             IMAGE_VERSION="$IMAGE_VERSION-dirty"
         fi
     else
-        IMAGE_VERSION=未知
+        IMAGE_VERSION=desconhecido
     fi
 fi
 
-STEP="检查参数和 ROOT 边界"
-echo "==> [0/9] 检查参数和 ROOT 边界"
+STEP="Verificação de argumentos e limites de ROOT"
+echo "==> [0/9] Verificando argumentos e limites de ROOT"
 MISSING_TOOLS=
 for tool in tar sha256sum awk sed find grep cmp cp mkdir chmod chown install ln dirname basename readlink date mktemp rm mv sort tr wc stat openssl; do
     command -v "$tool" >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS $tool"
 done
-    [ -z "$MISSING_TOOLS" ] || fail "缺少命令：$MISSING_TOOLS" "在 WSL / Debian 里安装 coreutils、tar、grep、openssl 后重试。"
+    [ -z "$MISSING_TOOLS" ] || fail "Comandos ausentes:$MISSING_TOOLS" "Instale coreutils, tar, grep e openssl no WSL/Debian e tente novamente."
 PYTHON=$(find_python) || PYTHON=
-[ -n "$PYTHON" ] || fail "找不到带 tomllib 的 python3（需要 3.11+）" "安装 python3（>=3.11）后重试。"
+[ -n "$PYTHON" ] || fail "Não foi encontrado python3 com tomllib (é necessário 3.11 ou superior)" "Instale python3 (>=3.11) e tente novamente."
 
-[ -e "$ROOT/etc" ] || fail "ROOT 不像 rootfs：缺少 etc/" "确认挂载的是 R1 的 p1。"
-[ -e "$ROOT/etc/systemd/system/basic.target.wants/armbian-resize-filesystem.service" ] || [ -L "$ROOT/etc/systemd/system/basic.target.wants/armbian-resize-filesystem.service" ] || fail "缺少 basic.target.wants/armbian-resize-filesystem.service" "第一次开机就不会自动扩容到整张卡；确认底图是 Armbian R1。"
-[ ! -e "$ROOT/root/.no_rootfs_resize" ] || fail "存在 root/.no_rootfs_resize" "这会禁止第一次开机自动扩容；删掉该标记后重试。"
+[ -e "$ROOT/etc" ] || fail "ROOT não parece ser um rootfs: falta etc/" "Confirme se a partição p1 da R1 está montada."
+[ -e "$ROOT/etc/systemd/system/basic.target.wants/armbian-resize-filesystem.service" ] || [ -L "$ROOT/etc/systemd/system/basic.target.wants/armbian-resize-filesystem.service" ] || fail "Falta basic.target.wants/armbian-resize-filesystem.service" "O sistema não expandirá automaticamente para o cartão inteiro no primeiro boot; confirme se a imagem base é Armbian R1."
+[ ! -e "$ROOT/root/.no_rootfs_resize" ] || fail "Existe root/.no_rootfs_resize" "Esse marcador impede a expansão automática no primeiro boot; remova-o e tente novamente."
 
-# 顶层目录若指向 ROOT 外，后面的复制会把宿主机的 /etc 之类写坏。
+# Se um diretório de nível superior apontar para fora de ROOT, as cópias seguintes podem danificar /etc e outros diretórios do sistema hospedeiro.
 for d in etc opt var home usr root tmp boot; do
     if [ -d "$ROOT/$d" ]; then
         real_d=$(cd "$ROOT/$d" && pwd -P)
         case "$real_d" in
             "$ROOT"|"$ROOT"/*) ;;
-            *) fail "ROOT/$d 指向 ROOT 外：$real_d" "检查镜像里的符号链接，不要继续。" ;;
+            *) fail "ROOT/$d aponta para fora de ROOT: $real_d" "Confira os links simbólicos da imagem e não continue." ;;
         esac
     fi
 done
@@ -690,11 +690,11 @@ else
         fi
     fi
     if [ -z "$STUDIO_VERSION" ]; then
-        STUDIO_VERSION="未知"
+        STUDIO_VERSION="desconhecido"
     fi
 fi
 
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/microduck-apply.XXXXXX") || fail "无法创建临时目录" "检查 TMPDIR 和磁盘空间。"
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/microduck-apply.XXXXXX") || fail "Não foi possível criar o diretório temporário" "Confira TMPDIR e o espaço em disco."
 DEL_LOG=$WORK/deleted.txt
 ADD_LOG=$WORK/added.txt
 SSH_WARN=$WORK/ssh-warnings.txt
@@ -707,47 +707,47 @@ SYSTEMD=$ROOT/etc/systemd/system
 STAGE=$WORK/payload
 mkdir -p "$STAGE"
 
-STEP="检查 overlay、Studio 的换行符"
-echo "    检查 overlay、Studio/deploy 和 run.py 是否含 CR（Windows 换行）"
+STEP="Verificação das quebras de linha em overlay e Studio"
+echo "    Verificando se overlay, Studio/deploy e run.py contêm CR (quebras de linha do Windows)"
 : > "$WORK/crlf.txt"
 check_crlf_paths
 if [ -s "$WORK/crlf.txt" ]; then
-    echo "    这些文件含 CR（Windows 换行），装进镜像后脚本会跑不起来："
+    echo "    Estes arquivos contêm CR (quebras de linha do Windows); os scripts podem não funcionar após a instalação na imagem:"
     sed 's/^/      - /' "$WORK/crlf.txt"
-    fail "overlay 或 Studio 里有 CRLF 换行的文本文件" "用 git config core.autocrlf false 重新 clone，或者对这些文件运行 dos2unix。"
+    fail "Há arquivos de texto com quebras CRLF em overlay ou Studio" "Clone novamente com git config core.autocrlf false ou execute dos2unix nesses arquivos."
 fi
 
 if [ -z "$PAYLOAD_SHA256" ]; then
-    PAYLOAD_SHA256=$(sha256_of "$PAYLOAD") || fail "无法计算 payload 的 sha256：$PAYLOAD" "检查文件权限和磁盘。"
+    PAYLOAD_SHA256=$(sha256_of "$PAYLOAD") || fail "Não foi possível calcular o SHA-256 do payload: $PAYLOAD" "Confira as permissões do arquivo e o disco."
 fi
 
-STEP="解包 payload 并逐个核对 sha256"
-echo "==> [1/9] 解包 payload 并逐个核对 sha256"
+STEP="Extração do payload e verificação individual de SHA-256"
+echo "==> [1/9] Extraindo o payload e verificando cada SHA-256"
 PAYLOAD_META=$WORK/payload-meta.tsv
 : > "$PAYLOAD_META"
 for rel in etc/robot/feetech-ft5/robotd.toml etc/robot/feetech-ft5/robotd.saved.toml; do
     if [ -f "$ROOT/$rel" ]; then
-        meta=$(stat -c '%u %g %a' "$ROOT/$rel") || fail "读取底图文件属性失败：$ROOT/$rel" "检查 ROOT 是否可读。"
+        meta=$(stat -c '%u %g %a' "$ROOT/$rel") || fail "Falha ao ler os atributos do arquivo da imagem base: $ROOT/$rel" "Confira se ROOT pode ser lido."
     else
         meta='0 0 644'
     fi
     printf '%s\t%s\n' "$rel" "$meta" >> "$PAYLOAD_META"
 done
 
-tar -xzf "$PAYLOAD" -C "$STAGE" --numeric-owner || fail "payload 解包失败" "检查 tgz 是否完整、磁盘空间是否足够。"
-[ -f "$STAGE/payload.json" ] || fail "payload 里没有 payload.json" "用 capture-payload.sh 重新生成。"
+tar -xzf "$PAYLOAD" -C "$STAGE" --numeric-owner || fail "Falha ao extrair o payload" "Confira se o tgz está completo e se há espaço em disco suficiente."
+[ -f "$STAGE/payload.json" ] || fail "payload.json não foi encontrado no payload" "Gere-o novamente com capture-payload.sh."
 manifest_to_tsv "$STAGE/payload.json" "$WORK/files.tsv"
-verify_manifest "$STAGE" "临时解包"
+verify_manifest "$STAGE" "extração temporária"
 
 if find "$STAGE" -type l -print | grep -q .; then
-    echo "    payload 里的符号链接："
+    echo "    Links simbólicos encontrados no payload:"
     find "$STAGE" -type l -print | sed 's/^/      - /'
-    fail "payload 里有符号链接" "重新生成 payload；镜像不接受符号链接。"
+    fail "Há links simbólicos no payload" "Gere o payload novamente; a imagem não aceita links simbólicos."
 fi
 if find "$STAGE" ! -type d ! -type f ! -path "$STAGE" -print | grep -q .; then
-    echo "    payload 里的非常规文件："
+    echo "    Arquivos não regulares encontrados no payload:"
     find "$STAGE" ! -type d ! -type f ! -path "$STAGE" -print | sed 's/^/      - /'
-    fail "payload 里有非常规文件" "重新生成 payload。"
+    fail "Há arquivos não regulares no payload" "Gere o payload novamente."
 fi
 (
     cd "$STAGE"
@@ -756,9 +756,9 @@ fi
 awk -F'\t' '{print $1}' "$WORK/files.tsv" | sort -u > "$WORK/manifest-files.txt"
 comm -13 "$WORK/manifest-files.txt" "$WORK/stage-files.txt" > "$WORK/extra-files.txt" || true
 if [ -s "$WORK/extra-files.txt" ]; then
-    echo "    payload 里清单外的文件："
+    echo "    Arquivos no payload que não constam no manifesto:"
     sed 's/^/      - /' "$WORK/extra-files.txt"
-    fail "payload 里有清单外的文件" "不要手工往 tgz 里加东西；用 capture-payload.sh 重新生成。"
+    fail "Há arquivos no payload que não constam no manifesto" "Não adicione arquivos manualmente ao tgz; gere-o novamente com capture-payload.sh."
 fi
 
 while IFS=$(printf '\t') read -r rel _expected _size; do
@@ -766,38 +766,38 @@ while IFS=$(printf '\t') read -r rel _expected _size; do
     safe_dir "$ROOT/$(dirname "$rel")"
 done < "$WORK/files.tsv"
 
-tar -cf "$WORK/payload.tar" -C "$STAGE" --numeric-owner --exclude='./payload.json' . || fail "重新打包 payload 失败" "检查临时目录空间。"
+tar -cf "$WORK/payload.tar" -C "$STAGE" --numeric-owner --exclude='./payload.json' . || fail "Falha ao reempacotar o payload" "Confira o espaço disponível no diretório temporário."
 ( cd "$ROOT" && find . -type d ) | sort > "$WORK/dirs-before.txt"
-tar -C "$ROOT" --no-overwrite-dir --numeric-owner -xpf "$WORK/payload.tar" || fail "把 payload 解到 ROOT 失败" "检查 ROOT 是否可写、磁盘空间是否足够。"
+tar -C "$ROOT" --no-overwrite-dir --numeric-owner -xpf "$WORK/payload.tar" || fail "Falha ao extrair o payload em ROOT" "Confira se ROOT permite gravação e se há espaço em disco suficiente."
 ( cd "$ROOT" && find . -type d ) | sort > "$WORK/dirs-after.txt"
 comm -13 "$WORK/dirs-before.txt" "$WORK/dirs-after.txt" > "$WORK/dirs-new.txt" || true
 while IFS= read -r d; do
     [ -n "$d" ] || continue
-    chmod 0755 "$ROOT/$d" || fail "无法设置新目录权限：$ROOT/$d" "检查 ROOT 是否可写。"
+    chmod 0755 "$ROOT/$d" || fail "Não foi possível definir as permissões do novo diretório: $ROOT/$d" "Confira se ROOT permite gravação."
 done < "$WORK/dirs-new.txt"
 while IFS=$(printf '\t') read -r rel meta; do
     [ -n "$rel" ] || continue
     set -- $meta
-    [ "$#" -eq 3 ] || fail "底图文件属性格式不对：$rel（$meta）" "检查 stat 输出。"
+    [ "$#" -eq 3 ] || fail "Formato incorreto dos atributos do arquivo da imagem base: $rel ($meta)" "Confira a saída de stat."
     uid=$1 gid=$2 mode=$3
     dst=$ROOT/$rel
-    [ -f "$dst" ] || fail "payload 安装后缺少文件：$dst" "检查 payload 是否完整。"
-    chown "$uid:$gid" "$dst" || fail "无法设置属主：$dst（$uid:$gid）" "检查 ROOT 文件系统是否支持 chown。"
-    chmod "$mode" "$dst" || fail "无法设置权限：$dst（$mode）" "检查 ROOT 文件系统权限。"
+    [ -f "$dst" ] || fail "Arquivo ausente após instalar o payload: $dst" "Confira se o payload está completo."
+    chown "$uid:$gid" "$dst" || fail "Não foi possível definir o proprietário: $dst ($uid:$gid)" "Confira se o sistema de arquivos de ROOT permite chown."
+    chmod "$mode" "$dst" || fail "Não foi possível definir as permissões: $dst ($mode)" "Confira as permissões do sistema de arquivos de ROOT."
 done < "$PAYLOAD_META"
 verify_manifest "$ROOT" "ROOT"
-STEP="生成出厂标定模式 drop-in"
+STEP="Geração do drop-in do modo de calibração de fábrica"
 write_commissioning_dropin
-STEP="解包 payload 并逐个核对 sha256"
+STEP="Extração do payload e verificação individual de SHA-256"
 cp -f "$STAGE/payload.json" "$WORK/payload.json"
 ROBOTD_SHA=$(awk -F'"' '/"robotd_sha256"/ {for (i=1;i<=NF;i++) if ($i=="robotd_sha256") {print $(i+2); exit}}' "$WORK/payload.json")
 if [ -z "$ROBOTD_SHA" ] && [ -f "$ROOT/opt/robot/feetech-ft5-r5/robotd" ]; then
     ROBOTD_SHA=$(sha256_of "$ROOT/opt/robot/feetech-ft5-r5/robotd")
 fi
-echo "    payload 文件已放进 ROOT，sha256 全部一致。"
+echo "    Arquivos do payload instalados em ROOT; todos os SHA-256 conferem."
 
-STEP="删除另一个作者的服务和名字"
-echo "==> [2/9] 删除另一个作者的服务和名字"
+STEP="Remoção dos serviços e identificadores do outro autor"
+echo "==> [2/9] Removendo serviços e identificadores do outro autor"
 purge_unit microduck-setup.service
 queue_delete "$SYSTEMD/microduck-setup.service.wants"
 queue_delete "$ROOT/usr/local/libexec/microduck-setup-portal.py"
@@ -816,7 +816,7 @@ queue_delete "$ROOT/etc/systemd/system/alsa-state.service.d/microduck-audio.conf
 queue_delete "$ROOT/etc/sudoers.d/microduck-alsa-volume"
 ASOUND_STATE=$ROOT/var/lib/alsa/asound.state
 if [ -e "$ASOUND_STATE" ] || [ -L "$ASOUND_STATE" ]; then
-    echo "    底图鸭子留下的 ALSA 混音状态（开机时会被 alsa-restore 用来盖掉 aic3104-init 的音量）：$(rel_path "$ASOUND_STATE")"
+    echo "    Estado de mixagem ALSA deixado pela imagem base (alsa-restore o usaria no boot para substituir o volume definido por aic3104-init): $(rel_path "$ASOUND_STATE")"
     cat "$ASOUND_STATE" 2>/dev/null | sed 's/^/      /' || true
     remove_path "$ASOUND_STATE"
 fi
@@ -825,11 +825,11 @@ queue_delete "$ROOT/etc/microduck-v112-image.txt"
 queue_delete "$ROOT/home/radxa/microduck-public-image.sh"
 queue_delete "$ROOT/home/radxa/microduck-public-image-R5.sh"
 
-STEP="收紧更新器信任"
-echo "    收紧更新器信任（只信任官方 release 签名）"
+STEP="Restrição da confiança do atualizador"
+echo "    Restringindo a confiança do atualizador (somente assinaturas oficiais de release)"
 set_updater_dev_keys_false "$ROOT/etc/robot/updater.toml"
 prune_dev_keys "$ROOT/etc/robot/trusted_keys"
-STEP="删除另一个作者的服务和名字"
+STEP="Remoção dos serviços e identificadores do outro autor"
 
 if [ -d "$SYSTEMD/padd.service.d" ]; then
     find "$SYSTEMD/padd.service.d" -mindepth 1 -maxdepth 1 -print > "$WORK/padd-dropins.txt" || true
@@ -843,7 +843,7 @@ if [ -d "$SYSTEMD/padd.service.d" ]; then
     done < "$WORK/padd-dropins.txt"
 fi
 
-# 另一个作者留在 opt 目录里的东西（白名单之外）。
+# Arquivos do outro autor deixados no diretório opt, exceto os itens permitidos pela lista de confiança.
 OPT=$ROOT/opt/robot/feetech-ft5-r5
 if [ -d "$OPT" ]; then
     for entry in "$OPT"/* "$OPT"/.[!.]* "$OPT"/..?*; do
@@ -857,14 +857,14 @@ if [ -d "$OPT" ]; then
             *) printf '%s\n' "$entry" >> "$DELETE_LIST" ;;
         esac
     done
-    # models/、roller/、onnxruntime/ 以 payload 为准：底图里多出来的（训练归档、没用上的旧模型）都删。
+    # O payload é a referência para models/, roller/ e onnxruntime/: remove itens extras da imagem base (arquivos de treinamento e modelos antigos não usados).
     LC_ALL=C sort -u "$WORK/manifest-files.txt" > "$WORK/manifest-files.C.txt"
     for sub in models roller onnxruntime; do
         [ -d "$OPT/$sub" ] || continue
         ( cd "$ROOT" && find "opt/robot/feetech-ft5-r5/$sub" ! -type d -print ) | LC_ALL=C sort -u > "$WORK/opt-$sub.txt"
         LC_ALL=C comm -23 "$WORK/opt-$sub.txt" "$WORK/manifest-files.C.txt" | sed "s|^|$ROOT/|" >> "$DELETE_LIST"
     done
-    # 模型作者导出工具生成的 使用说明.md 和图里的实际情况不符；payload 里有也删。
+    # O 使用说明.md gerado pela ferramenta de exportação do autor do modelo não corresponde à imagem; remove mesmo se estiver no payload.
     for sub in models roller; do
         [ -d "$OPT/$sub" ] || continue
         find "$OPT/$sub" -type f -name '使用说明.md' -print >> "$DELETE_LIST" || true
@@ -873,31 +873,31 @@ fi
 
 sort -u "$DELETE_LIST" -o "$DELETE_LIST"
 if [ -s "$DELETE_LIST" ]; then
-    echo "    将删除以下 $(wc -l < "$DELETE_LIST" | tr -d '[:space:]') 项："
+    echo "    Os itens a seguir serão removidos ($(wc -l < "$DELETE_LIST" | tr -d '[:space:]')):"
     sed 's/^/      - /' "$DELETE_LIST"
     while IFS= read -r p; do
         remove_path "$p"
     done < "$DELETE_LIST"
 else
-    echo "    没有找到需要删除的旧服务和文件。"
+    echo "    Nenhum serviço antigo ou arquivo para remover foi encontrado."
 fi
 for sub in models roller onnxruntime; do
     [ -d "$OPT/$sub" ] || continue
-    # 一层层往上删，直到没有空目录。
+    # Remove diretórios vazios subindo na hierarquia até não restar nenhum.
     while :; do
         find "$OPT/$sub" -mindepth 1 -type d -empty -print > "$WORK/opt-empty.txt" || true
         [ -s "$WORK/opt-empty.txt" ] || break
         while IFS= read -r d; do
             [ -n "$d" ] || continue
-            echo "  删除空目录 $d"
+            echo "  Removendo diretório vazio $d"
             add_del "$d"
-            rmdir "$d" || fail "删除空目录失败：$d" "检查权限；ROOT 可能只读。"
+            rmdir "$d" || fail "Falha ao remover o diretório vazio: $d" "Confira as permissões; ROOT pode estar somente para leitura."
         done < "$WORK/opt-empty.txt"
     done
 done
 for d in "$SYSTEMD/alsa-restore.service.d" "$SYSTEMD/alsa-state.service.d"; do
     if [ -d "$d" ] && [ -z "$(ls -A "$d" 2>/dev/null)" ]; then
-        echo "  删除空目录 $d"
+            echo "  Removendo diretório vazio $d"
         add_del "$d"
         rmdir "$d" || true
     fi
@@ -910,40 +910,40 @@ if [ -f "$EXTLINUX" ]; then
         awk 'BEGIN { done=0 }
              /^menu title/ && !done { print "menu title Microduck (Radxa U-Boot)"; done=1; next }
              { print }' "$EXTLINUX" > "$WORK/extlinux.new"
-        cat "$WORK/extlinux.new" > "$EXTLINUX" || fail "无法改写 extlinux.conf" "检查权限。"
-        echo "  已改 extlinux.conf 的第一行菜单标题：Microduck (Radxa U-Boot)"
+        cat "$WORK/extlinux.new" > "$EXTLINUX" || fail "Não foi possível regravar extlinux.conf" "Confira as permissões."
+        echo "  Título do menu de extlinux.conf alterado para: Microduck (Radxa U-Boot)"
         add_add "$EXTLINUX"
     else
-        echo "  提示：extlinux.conf 里没有以 menu title 开头的行，菜单标题未改。"
+        echo "  Aviso: extlinux.conf não contém uma linha iniciada por menu title; o título do menu não foi alterado."
     fi
 fi
 
-STEP="安装 Studio 和 root 小助手"
-echo "==> [3/9] 安装 Studio 和 root 小助手"
+STEP="Instalação do Studio e do assistente root"
+echo "==> [3/9] Instalando o Studio e o assistente root"
 RADXA_LINE=$(awk -F: '$1=="radxa" {print $3 ":" $4; exit}' "$ROOT/etc/passwd")
-[ -n "$RADXA_LINE" ] || fail "ROOT/etc/passwd 里没有 radxa 用户" "确认底图是 R1；Studio 需要 radxa 的 uid/gid。"
+[ -n "$RADXA_LINE" ] || fail "O usuário radxa não consta em ROOT/etc/passwd" "Confirme se a imagem base é R1; o Studio precisa do UID/GID de radxa."
 rewrite_radxa_gecos "$ROOT/etc/passwd"
 rewrite_radxa_gecos "$ROOT/etc/passwd-"
 
-STEP="设置 radxa 默认密码"
-SALT=$(openssl rand -hex 8) || fail "无法生成 radxa 密码盐" "检查 openssl 是否可用。"
-[ "${#SALT}" -eq 16 ] || fail "生成的密码盐长度不对：$SALT" "检查 openssl rand 的输出。"
-RADXA_HASH=$(openssl passwd -6 -salt "$SALT" microduck) || fail "无法生成 radxa 密码哈希" "检查 openssl 版本是否支持 passwd -6。"
+STEP="Configuração da senha padrão de radxa"
+SALT=$(openssl rand -hex 8) || fail "Não foi possível gerar o salt da senha de radxa" "Confira se openssl está disponível."
+[ "${#SALT}" -eq 16 ] || fail "Comprimento incorreto do salt gerado: $SALT" "Confira a saída de openssl rand."
+RADXA_HASH=$(openssl passwd -6 -salt "$SALT" microduck) || fail "Não foi possível gerar o hash da senha de radxa" "Confira se a versão do openssl aceita passwd -6."
 case "$RADXA_HASH" in
     '$6$'*) ;;
-    *) fail "radxa 密码哈希不是 SHA-512 crypt：$RADXA_HASH" "检查 openssl passwd -6 的输出。" ;;
+    *) fail "O hash da senha de radxa não está no formato SHA-512 crypt: $RADXA_HASH" "Confira a saída de openssl passwd -6." ;;
 esac
 set_radxa_password_hash "$ROOT/etc/shadow" "$RADXA_HASH"
 if [ -e "$ROOT/etc/shadow-" ] || [ -L "$ROOT/etc/shadow-" ]; then
     set_radxa_password_hash "$ROOT/etc/shadow-" "$RADXA_HASH"
 else
-    echo "    提示：底图没有 etc/shadow-，只改了 etc/shadow。"
+    echo "    Aviso: a imagem base não contém etc/shadow-; somente etc/shadow foi alterado."
 fi
-STEP="安装 Studio 和 root 小助手"
+STEP="Instalação do Studio e do assistente root"
 
 STUDIO_DEST=$ROOT/home/radxa/studio-dev
 if [ -e "$STUDIO_DEST" ] || [ -L "$STUDIO_DEST" ]; then
-    echo "    清空已有的 $STUDIO_DEST"
+    echo "    Esvaziando o diretório existente $STUDIO_DEST"
     remove_path "$STUDIO_DEST"
 fi
 safe_dir "$STUDIO_DEST"
@@ -954,22 +954,22 @@ for rel in run.py README.md LICENSE studio web deps deploy; do
         STUDIO_MEMBERS="$STUDIO_MEMBERS $rel"
     fi
 done
-[ -f "$STUDIO/run.py" ] || fail "STUDIO_DIR 里缺少 run.py：$STUDIO" "确认指向 software/studio。"
-[ -d "$STUDIO/deploy" ] || fail "STUDIO_DIR 里缺少 deploy/：$STUDIO" "确认 Studio 的运行文件完整。"
+[ -f "$STUDIO/run.py" ] || fail "run.py ausente em STUDIO_DIR: $STUDIO" "Confirme se aponta para software/studio."
+[ -d "$STUDIO/deploy" ] || fail "deploy/ ausente em STUDIO_DIR: $STUDIO" "Confirme se os arquivos necessários para executar o Studio estão completos."
 (
     cd "$STUDIO"
-    # 编译缓存不进镜像：旧的 .pyc 可能是改名之前编出来的，扫描会抓到。
+    # Não inclui cache de compilação na imagem: arquivos .pyc antigos podem ter sido gerados antes da tradução e seriam detectados pela verificação.
     tar -cf "$STUDIO_TAR" --numeric-owner --anchored \
         --exclude='*/__pycache__' --exclude='*.pyc' $STUDIO_MEMBERS
-) || fail "打包 STUDIO_DIR 失败" "检查 STUDIO_DIR 是否可读。"
-tar -xpf "$STUDIO_TAR" -C "$STUDIO_DEST" --numeric-owner || fail "解包 Studio 失败" "检查 ROOT 磁盘空间。"
-find "$STUDIO_DEST" -type d -exec chmod 0755 {} \; || fail "无法设置 Studio 目录权限" "检查 ROOT 是否可写。"
-find "$STUDIO_DEST" -type f -exec chmod 0644 {} \; || fail "无法设置 Studio 文件权限" "检查 ROOT 是否可写。"
+) || fail "Falha ao empacotar STUDIO_DIR" "Confira se STUDIO_DIR pode ser lido."
+tar -xpf "$STUDIO_TAR" -C "$STUDIO_DEST" --numeric-owner || fail "Falha ao extrair o Studio" "Confira o espaço disponível em ROOT."
+find "$STUDIO_DEST" -type d -exec chmod 0755 {} \; || fail "Não foi possível definir as permissões dos diretórios do Studio" "Confira se ROOT permite gravação."
+find "$STUDIO_DEST" -type f -exec chmod 0644 {} \; || fail "Não foi possível definir as permissões dos arquivos do Studio" "Confira se ROOT permite gravação."
 if ! chown -R "$RADXA_LINE" "$STUDIO_DEST" 2>/dev/null; then
     if [ "$(id -u)" -eq 0 ]; then
-        fail "无法把 Studio 的属主改成 radxa($RADXA_LINE)" "确认挂载的 rootfs 支持 chown。"
+        fail "Não foi possível alterar o proprietário do Studio para radxa ($RADXA_LINE)" "Confirme se o rootfs montado aceita chown."
     fi
-    echo "    警告：当前不是 root，未设置 Studio 属主（测试环境可忽略；正式构建会设置成 radxa）。"
+    echo "    Aviso: o processo não é root; o proprietário do Studio não foi definido (pode ser ignorado em testes; a compilação final definirá radxa)."
 fi
 add_add "$STUDIO_DEST"
 
@@ -980,23 +980,23 @@ put_file "$STUDIO/deploy/microduck-studio.service" "$SYSTEMD/microduck-studio.se
 
 if command -v visudo >/dev/null 2>&1; then
     if visudo -cf "$ROOT/etc/sudoers.d/microduck-studio" >/dev/null 2>&1; then
-        echo "    sudoers 已通过 visudo -cf 校验。"
+        echo "    O arquivo sudoers passou pela validação visudo -cf."
     else
         remove_path "$ROOT/etc/sudoers.d/microduck-studio"
-        fail "sudoers 校验失败：$ROOT/etc/sudoers.d/microduck-studio" "检查 deploy/sudoers-microduck-studio 的内容和权限。"
+        fail "Falha na validação do sudoers: $ROOT/etc/sudoers.d/microduck-studio" "Confira o conteúdo e as permissões de deploy/sudoers-microduck-studio."
     fi
 else
-    echo "    提示：本机没有 visudo，未校验 sudoers；正式构建建议在 WSL/Debian 里装 sudo 后重跑。"
+    echo "    Aviso: visudo não está instalado nesta máquina; o sudoers não foi validado. Para a compilação final, instale sudo no WSL/Debian e execute novamente."
 fi
 
 make_enable_link /etc/systemd/system/microduck-studio.service \
     "$SYSTEMD/multi-user.target.wants/microduck-studio.service"
 
-STEP="安装 OVERLAY 并处理 enable.list"
-echo "==> [4/9] 安装 OVERLAY 并处理 enable.list"
+STEP="Instalação do OVERLAY e processamento de enable.list"
+echo "==> [4/9] Instalando OVERLAY e processando enable.list"
 if find "$OVERLAY" -type l -print | grep -q .; then
     find "$OVERLAY" -type l -print | sed 's/^/      - /'
-    fail "OVERLAY_DIR 里有符号链接" "overlay 只放普通文件；删掉链接后重试。"
+    fail "Há links simbólicos em OVERLAY_DIR" "O overlay deve conter somente arquivos regulares; remova os links e tente novamente."
 fi
 : > "$WORK/overlay-modes.tsv"
 if [ -f "$OVERLAY/modes.list" ]; then
@@ -1005,7 +1005,7 @@ if [ -f "$OVERLAY/modes.list" ]; then
         [ -n "$p" ] || continue
         case "$m" in
             [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
-            *) fail "modes.list 里的模式不合法：$p $m" "写成三位或四位八进制，例如 0755。" ;;
+            *) fail "Modo inválido em modes.list: $p $m" "Use três ou quatro dígitos octais, por exemplo 0755." ;;
         esac
     done < "$WORK/overlay-modes.tsv"
 fi
@@ -1020,9 +1020,9 @@ while IFS= read -r rel; do
     dst=$ROOT/$rel
     safe_file "$dst"
     if [ "$(id -u)" -eq 0 ]; then
-        install -D -m "$mode" -o 0 -g 0 "$OVERLAY/$rel" "$dst" || fail "安装 overlay 文件失败：$dst" "检查权限和空间。"
+        install -D -m "$mode" -o 0 -g 0 "$OVERLAY/$rel" "$dst" || fail "Falha ao instalar o arquivo de overlay: $dst" "Confira as permissões e o espaço disponível."
     else
-        install -D -m "$mode" "$OVERLAY/$rel" "$dst" || fail "安装 overlay 文件失败：$dst" "检查权限和空间。"
+        install -D -m "$mode" "$OVERLAY/$rel" "$dst" || fail "Falha ao instalar o arquivo de overlay: $dst" "Confira as permissões e o espaço disponível."
     fi
     add_add "$dst"
 done < "$WORK/overlay-files.txt"
@@ -1038,7 +1038,7 @@ if [ -f "$OVERLAY/enable.list" ]; then
         unit=${unit#etc/systemd/system/}
         case "$unit" in
             */*)
-                echo "    警告：enable.list 里不是单元名，跳过：$line"
+                echo "    Aviso: esta linha de enable.list não é um nome de unidade; ignorando: $line"
                 continue
                 ;;
         esac
@@ -1047,43 +1047,43 @@ if [ -f "$OVERLAY/enable.list" ]; then
         elif [ -f "$ROOT/usr/lib/systemd/system/$unit" ]; then
             target=/usr/lib/systemd/system/$unit
         else
-            fail "enable.list 指定的单元不存在：$unit" "检查 OVERLAY_DIR 里的实际路径。"
+            fail "A unidade especificada em enable.list não existe: $unit" "Confira o caminho correspondente em OVERLAY_DIR."
         fi
         make_enable_link "$target" "$SYSTEMD/multi-user.target.wants/$unit"
-        echo "    已 enable：$unit"
+        echo "    Unidade habilitada: $unit"
     done < "$OVERLAY/enable.list"
 else
-    echo "    OVERLAY 没有 enable.list。"
+    echo "    OVERLAY não contém enable.list."
 fi
 
-# sshd 别名：systemd 里写成镜像内的绝对路径，不是逃逸。
+# Alias de sshd: systemd usa o caminho absoluto dentro da imagem, sem escapar dela.
 if [ -f "$ROOT/usr/lib/systemd/system/ssh.service" ]; then
     make_enable_link /usr/lib/systemd/system/ssh.service "$SYSTEMD/sshd.service"
 fi
 
-STEP="检查 sshd 配置有没有重新打开安全项"
-echo "==> [5/9] 检查 sshd 配置有没有重新打开安全项"
+STEP="Verificação de opções de segurança do sshd"
+echo "==> [5/9] Verificando se a configuração do sshd reativa opções restritas"
 ssh_audit
 if [ -s "$SSH_WARN" ]; then
-    echo "    警告：以下配置可能重新打开了密码登录或 root 登录；没有自动删除："
+    echo "    Aviso: as configurações abaixo podem reativar o login por senha ou como root; elas não foram removidas automaticamente:"
     sed 's/^/      /' "$SSH_WARN"
 else
-    echo "    未发现重新打开 PasswordAuthentication / PermitRootLogin / KbdInteractiveAuthentication 的配置。"
+    echo "    Nenhuma configuração foi encontrada reativando PasswordAuthentication / PermitRootLogin / KbdInteractiveAuthentication."
 fi
 
-STEP="清理机器身份、日志、历史记录和临时文件"
-echo "==> [6/9] 清理机器身份、日志、历史记录和临时文件"
+STEP="Limpeza da identidade da máquina, logs, históricos e arquivos temporários"
+echo "==> [6/9] Limpando identidade da máquina, logs, históricos e arquivos temporários"
 safe_file "$ROOT/etc/machine-id"
 : > "$ROOT/etc/machine-id"
 chmod 0644 "$ROOT/etc/machine-id"
-echo "  清空 $ROOT/etc/machine-id"
+echo "  Arquivo esvaziado: $ROOT/etc/machine-id"
 add_add "$ROOT/etc/machine-id"
 remove_path "$ROOT/var/lib/dbus/machine-id"
 
 if [ -d "$ROOT/etc/ssh" ]; then
     find "$ROOT/etc/ssh" -maxdepth 1 -name 'ssh_host_*' -print > "$WORK/ssh-host-keys.txt" || true
     if [ -s "$WORK/ssh-host-keys.txt" ]; then
-        echo "    将删除 SSH 主机密钥："
+        echo "    Chaves de host SSH a remover:"
         sed 's/^/      - /' "$WORK/ssh-host-keys.txt"
         while IFS= read -r p; do
             remove_path "$p"
@@ -1095,30 +1095,30 @@ for f in root/.ssh/authorized_keys root/.ssh/known_hosts home/radxa/.ssh/authori
     remove_path "$ROOT/$f"
 done
 
-# 只给自己的验收卡用：DEV_AUTHORIZED_KEY（一行 SSH 公钥）写进 radxa 的 authorized_keys，
-# 测出问题能直接远程改，不用重烧卡。正式发布的镜像不要设：那等于给所有用户的鸭子留后门。
+# Use somente em um cartão de validação próprio: grava DEV_AUTHORIZED_KEY (uma chave pública SSH em uma linha) no authorized_keys de radxa,
+# permitindo corrigir problemas remotamente sem regravar o cartão. Não defina para imagens publicadas: isso deixaria uma porta de acesso aberta para todos os usuários.
 DEV_KEY_NOTE=
 if [ -n "${DEV_AUTHORIZED_KEY:-}" ]; then
     case "$DEV_AUTHORIZED_KEY" in
         "ssh-ed25519 "*|"ssh-rsa "*|"ecdsa-sha2-"*) ;;
-        *) fail "DEV_AUTHORIZED_KEY 不像一行 SSH 公钥" "给一行 ssh-ed25519 开头的公钥（.pub 文件的内容）。" ;;
+        *) fail "DEV_AUTHORIZED_KEY não parece conter uma chave pública SSH em uma linha" "Informe uma chave pública começando com ssh-ed25519 (conteúdo de um arquivo .pub)." ;;
     esac
     case "$DEV_AUTHORIZED_KEY" in
         *"
-"*) fail "DEV_AUTHORIZED_KEY 只能是一行" "只给一把公钥。" ;;
+"*) fail "DEV_AUTHORIZED_KEY deve conter apenas uma linha" "Informe somente uma chave pública." ;;
     esac
     RADXA_IDS=$(awk -F: '$1=="radxa" {print $3":"$4; exit}' "$ROOT/etc/passwd")
-    [ -n "$RADXA_IDS" ] || fail "ROOT/etc/passwd 里没有 radxa" "确认底图。"
+    [ -n "$RADXA_IDS" ] || fail "radxa não consta em ROOT/etc/passwd" "Confira a imagem base."
     SSH_DIR=$ROOT/home/radxa/.ssh
     safe_dir "$SSH_DIR"
     safe_file "$SSH_DIR/authorized_keys"
-    printf '%s\n' "$DEV_AUTHORIZED_KEY" > "$SSH_DIR/authorized_keys" || fail "写不进 $SSH_DIR/authorized_keys" "检查权限。"
-    chmod 0700 "$SSH_DIR" && chmod 0600 "$SSH_DIR/authorized_keys" || fail "设不了 .ssh 的权限" "检查 ROOT 文件系统。"
+    printf '%s\n' "$DEV_AUTHORIZED_KEY" > "$SSH_DIR/authorized_keys" || fail "Não foi possível gravar em $SSH_DIR/authorized_keys" "Confira as permissões."
+    chmod 0700 "$SSH_DIR" && chmod 0600 "$SSH_DIR/authorized_keys" || fail "Não foi possível definir as permissões de .ssh" "Confira o sistema de arquivos de ROOT."
     if [ "$(id -u)" -eq 0 ]; then
-        chown "$RADXA_IDS" "$SSH_DIR" "$SSH_DIR/authorized_keys" || fail "设不了 .ssh 的属主 $RADXA_IDS" "检查 ROOT 文件系统。"
+        chown "$RADXA_IDS" "$SSH_DIR" "$SSH_DIR/authorized_keys" || fail "Não foi possível definir o proprietário de .ssh como $RADXA_IDS" "Confira o sistema de arquivos de ROOT."
     fi
     add_add "$SSH_DIR/authorized_keys"
-    DEV_KEY_NOTE="验收卡：radxa 带了一把开发用 SSH 公钥（${DEV_AUTHORIZED_KEY##* }），正式发布的镜像不带。"
+    DEV_KEY_NOTE="Cartão de validação: radxa inclui uma chave pública SSH de desenvolvimento (${DEV_AUTHORIZED_KEY##* }); imagens publicadas não a incluem."
     echo "    $DEV_KEY_NOTE"
 fi
 
@@ -1128,7 +1128,7 @@ if [ -d "$ROOT/home/radxa" ]; then
         \( -name 'microduck-official-init' -o -name 'microduck-official-install-*' \) \
         -print | LC_ALL=C sort > "$WORK/official-install-residue.txt" || true
 fi
-print_list "将删除官方守护进程的安装残留" "$WORK/official-install-residue.txt"
+print_list "Resíduos de instalação do serviço oficial a remover" "$WORK/official-install-residue.txt"
 while IFS= read -r p; do
     [ -n "$p" ] || continue
     remove_path "$p"
@@ -1142,7 +1142,7 @@ for d in "$ROOT/var/lib/bluetooth" "$ROOT/var/lib/NetworkManager"; do
     if [ -d "$d" ]; then
         find "$d" -mindepth 1 -maxdepth 1 -print > "$WORK/state-clean.txt" || true
         if [ -s "$WORK/state-clean.txt" ]; then
-            echo "    清空 $d："
+            echo "    Esvaziando $d:"
             sed 's/^/      - /' "$WORK/state-clean.txt"
             while IFS= read -r p; do
                 remove_path "$p"
@@ -1182,7 +1182,7 @@ if [ -d "$NM_DIR" ]; then
         base=$(basename "$p")
         overlay_nm=$OVERLAY/etc/NetworkManager/system-connections/$base
         if [ -e "$overlay_nm" ] || [ -L "$overlay_nm" ]; then
-            echo "    保留 OVERLAY 带来的 NM 连接：$base"
+            echo "    Mantendo a conexão do NetworkManager fornecida pelo OVERLAY: $base"
         else
             remove_path "$p"
         fi
@@ -1192,7 +1192,7 @@ fi
 if [ -d "$ROOT/tmp" ]; then
     find "$ROOT/tmp" -mindepth 1 -maxdepth 1 -print > "$WORK/tmp.txt" || true
     if [ -s "$WORK/tmp.txt" ]; then
-        echo "    清空 $ROOT/tmp"
+        echo "    Esvaziando $ROOT/tmp"
         while IFS= read -r p; do
             remove_path "$p"
         done < "$WORK/tmp.txt"
@@ -1217,40 +1217,40 @@ else
     BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
 fi
 safe_file "$HWCLOCK"
-printf '%s\n' "$BUILD_TIME" > "$HWCLOCK" || fail "无法写入 etc/fake-hwclock.data" "检查权限。"
+printf '%s\n' "$BUILD_TIME" > "$HWCLOCK" || fail "Não foi possível gravar em etc/fake-hwclock.data" "Confira as permissões."
 chmod 0644 "$HWCLOCK"
-echo "  etc/fake-hwclock.data 写入构建时间（UTC）：$BUILD_TIME"
+echo "  Hora da compilação gravada em etc/fake-hwclock.data (UTC): $BUILD_TIME"
 add_add "$HWCLOCK"
 
-STEP="安装出厂标定并清理旧的标定文件"
-echo "==> [7/9] 安装出厂标定并清理旧的标定文件"
-[ -f "$CAL_SRC" ] || fail "缺少标定源文件：$CAL_SRC" "确认 software/image/calib/hd1910-calibration.option-a.toml 存在。"
+STEP="Instalação da calibração de fábrica e remoção de calibrações antigas"
+echo "==> [7/9] Instalando a calibração de fábrica e removendo calibrações antigas"
+[ -f "$CAL_SRC" ] || fail "Arquivo de origem da calibração ausente: $CAL_SRC" "Confirme se software/image/calib/hd1910-calibration.option-a.toml existe."
 CAL_DIR=$ROOT/etc/robot/feetech-ft5
 CAL_ACTIVE=$CAL_DIR/hd1910-calibration.toml
 safe_dir "$CAL_DIR"
 find "$CAL_DIR" -maxdepth 1 \( -name 'hd1910-calibration.*.toml' -o -name '*.bak-*' -o -name '*.previous' -o -name '*.tmp.*' \) -print | sort > "$WORK/cal-stale.txt" || true
-print_list "将删除旧的标定文件和备份" "$WORK/cal-stale.txt"
+print_list "Arquivos de calibração antigos e backups a remover" "$WORK/cal-stale.txt"
 while IFS= read -r p; do
     [ -n "$p" ] || continue
     remove_path "$p"
 done < "$WORK/cal-stale.txt"
 
 ROBOT_GID=$(awk -F: '$1=="robot" {print $3; exit}' "$ROOT/etc/group")
-[ -n "$ROBOT_GID" ] || fail "ROOT/etc/group 里没有 robot 组" "确认底图里 robotd 的 robot 组存在。"
+[ -n "$ROBOT_GID" ] || fail "O grupo robot não consta em ROOT/etc/group" "Confirme se a imagem base contém o grupo robot do robotd."
 
 safe_file "$CAL_ACTIVE"
-cp -f "$CAL_SRC" "$CAL_ACTIVE" || fail "无法写入标定文件：$CAL_ACTIVE" "检查权限和空间。"
+cp -f "$CAL_SRC" "$CAL_ACTIVE" || fail "Não foi possível gravar o arquivo de calibração: $CAL_ACTIVE" "Confira as permissões e o espaço disponível."
 chmod 0644 "$CAL_ACTIVE"
 if [ "$(id -u)" -eq 0 ]; then
-    chown 0:"$ROBOT_GID" "$CAL_ACTIVE" || fail "无法设置标定文件属主 root:robot($ROBOT_GID)" "检查挂载的 rootfs。"
+    chown 0:"$ROBOT_GID" "$CAL_ACTIVE" || fail "Não foi possível definir o proprietário do arquivo de calibração como root:robot ($ROBOT_GID)" "Confira o rootfs montado."
 fi
 add_add "$CAL_ACTIVE"
-echo "    已安装出厂标定：$CAL_ACTIVE（root:robot，0644）"
+echo "    Calibração de fábrica instalada: $CAL_ACTIVE (root:robot, 0644)"
 
 CAL_COUNT=$(find "$CAL_DIR" -maxdepth 1 -name 'hd1910-calibration*.toml' -print | wc -l | tr -d '[:space:]')
-[ "$CAL_COUNT" = "1" ] || fail "标定目录里还剩 $CAL_COUNT 个 hd1910-calibration*.toml" "清理旧标定文件后重试。"
+[ "$CAL_COUNT" = "1" ] || fail "Restaram $CAL_COUNT arquivos hd1910-calibration*.toml no diretório de calibração" "Remova os arquivos antigos e tente novamente."
 
-"$PYTHON" - "$CAL_ACTIVE" <<'PY' || fail "标定文件自检失败：$CAL_ACTIVE" "不要继续；检查 calib/hd1910-calibration.option-a.toml。"
+"$PYTHON" - "$CAL_ACTIVE" <<'PY' || fail "Falha na autoverificação do arquivo de calibração: $CAL_ACTIVE" "Não continue; confira calib/hd1910-calibration.option-a.toml."
 import sys
 import tomllib
 
@@ -1271,73 +1271,73 @@ top = set(data)
 want_top = {'motion_enabled', 'imu_mount_verified', 'imu_mount_quat',
             'units_verified', 'current_ma_per_count', 'joints'}
 if top != want_top:
-    errors.append(f'顶层键不对：多出 {sorted(top - want_top)}，缺少 {sorted(want_top - top)}')
+    errors.append(f'Chaves de nível superior incorretas: extras {sorted(top - want_top)}, ausentes {sorted(want_top - top)}')
 if data.get('motion_enabled') is not False:
-    errors.append('motion_enabled 必须是 false')
+    errors.append('motion_enabled deve ser false')
 if data.get('imu_mount_verified') is not False:
-    errors.append('imu_mount_verified 必须是 false')
+    errors.append('imu_mount_verified deve ser false')
 if data.get('units_verified') is not False:
-    errors.append('units_verified 必须是 false')
+    errors.append('units_verified deve ser false')
 if data.get('current_ma_per_count') != 0.0:
-    errors.append('current_ma_per_count 必须是 0.0')
+    errors.append('current_ma_per_count deve ser 0.0')
 if data.get('imu_mount_quat') != [0.7071067811865476, 0.0, 0.7071067811865476, 0.0]:
-    errors.append('imu_mount_quat 必须是官方 +90 度绕 Y 的四元数')
+    errors.append('imu_mount_quat deve ser o quaternion oficial de +90 graus em torno de Y')
 joints = data.get('joints')
 if not isinstance(joints, list) or len(joints) != 15:
-    errors.append('joints 必须是 15 个')
+    errors.append('joints deve conter 15 itens')
 else:
     for index, (name, joint_id) in enumerate(expected):
         joint = joints[index]
         if set(joint) != {'name', 'id', 'zero_raw', 'direction', 'calibrated'}:
-            errors.append(f'{name}: 键不对 {sorted(joint)}')
+            errors.append(f'{name}: chaves incorretas {sorted(joint)}')
             continue
         if joint['name'] != name:
-            errors.append(f'第 {index + 1} 个关节名是 {joint["name"]}，应为 {name}')
+            errors.append(f'A junta {index + 1} se chama {joint["name"]}; esperado: {name}')
         if joint['id'] != joint_id:
-            errors.append(f'{name}: id 是 {joint["id"]}，应为 {joint_id}')
+            errors.append(f'{name}: id é {joint["id"]}; esperado: {joint_id}')
         if joint['zero_raw'] != 2048:
-            errors.append(f'{name}: zero_raw 必须是 2048')
+            errors.append(f'{name}: zero_raw deve ser 2048')
         if joint['direction'] != -1:
-            errors.append(f'{name}: direction 必须是 -1')
+            errors.append(f'{name}: direction deve ser -1')
         if joint['calibrated'] is not False:
-            errors.append(f'{name}: calibrated 必须是 false')
+            errors.append(f'{name}: calibrated deve ser false')
 if errors:
-    print('标定文件校验失败：')
+    print('Falha na validação do arquivo de calibração:')
     for item in errors:
         print('  - ' + item)
     raise SystemExit(1)
 PY
 
-# 官方配置 [media] 底图默认用摄像头；没接摄像头的鸭子上 mediad 起不来，每 5 秒重启一次。
-# 镜像默认改成测试画面，接了摄像头的人改回 "camera" 再重启 mediad。
+# A configuração [media] da imagem base oficial usa a câmera por padrão; sem uma câmera conectada, mediad não inicia e reinicia a cada 5 segundos.
+# A imagem passa a usar a tela de teste por padrão; quem tiver câmera conectada pode mudar para "camera" e reiniciar mediad.
 MEDIA_TOML=$ROOT/etc/robot/robotd.toml
-[ -f "$MEDIA_TOML" ] || fail "缺少官方配置：$MEDIA_TOML" "确认底图是 R1-V112。"
+[ -f "$MEDIA_TOML" ] || fail "Configuração oficial ausente: $MEDIA_TOML" "Confirme se a imagem base é R1-V112."
 safe_file "$MEDIA_TOML"
 awk 'BEGIN { sec=""; done=0 }
      /^\[/ { sec=$0 }
      sec=="[media]" && /^#? *source *=/ && !done {
-         print "source = \"test\"   # 复刻镜像默认：没接摄像头也能起。接了摄像头改成 \"camera\"，再 sudo systemctl restart mediad"
+         print "source = \"test\"   # Padrão da imagem réplica: inicia mesmo sem câmera. Com câmera conectada, altere para \"camera\" e execute sudo systemctl restart mediad"
          done=1; next
      }
      { print }
      END { if (!done) exit 3 }' "$MEDIA_TOML" > "$WORK/robotd-media.new" \
-    || fail "官方配置的 [media] 里找不到 source 这一行：$MEDIA_TOML" "底图换过了？先看一下 [media] 段。"
-# 覆盖内容不换文件，属主和权限照旧。
-cat "$WORK/robotd-media.new" > "$MEDIA_TOML" || fail "无法写入 $MEDIA_TOML" "检查权限和空间。"
-echo "    官方配置 [media] source 改成 \"test\"（没接摄像头也能起）"
+    || fail "Não foi encontrada uma linha source na seção [media] da configuração oficial: $MEDIA_TOML" "A imagem base mudou? Confira primeiro a seção [media]."
+# Substitui o conteúdo sem trocar o arquivo; mantém o proprietário e as permissões.
+cat "$WORK/robotd-media.new" > "$MEDIA_TOML" || fail "Não foi possível gravar em $MEDIA_TOML" "Confira as permissões e o espaço disponível."
+echo "    source da seção [media] oficial alterado para \"test\" (inicia mesmo sem câmera)"
 
-STEP="写模型说明和镜像清单"
-echo "==> [8/9] 写模型说明和镜像清单"
+STEP="Geração da documentação de modelos e do manifesto da imagem"
+echo "==> [8/9] Gerando a documentação dos modelos e o manifesto da imagem"
 DOC_DIR=$ROOT/usr/share/doc/microduck
 safe_dir "$DOC_DIR"
 safe_file "$DOC_DIR/payload.json"
-cp -f "$WORK/payload.json" "$DOC_DIR/payload.json" || fail "无法写 payload.json 副本" "检查权限。"
+cp -f "$WORK/payload.json" "$DOC_DIR/payload.json" || fail "Não foi possível copiar payload.json" "Confira as permissões."
 chmod 0644 "$DOC_DIR/payload.json"
 add_add "$DOC_DIR/payload.json"
 
 MODEL_LIST=$WORK/models.txt
 {
-    printf '%-58s %s\n' '模型目录（相对 /opt/robot/feetech-ft5-r5）' 'policy.onnx sha256'
+    printf '%-58s %s\n' 'Diretório do modelo (relativo a /opt/robot/feetech-ft5-r5)' 'SHA-256 de policy.onnx'
     printf '%-58s %s\n' '----------------------------------------------------------' '------------------------------------------------'
     found=0
     : > "$WORK/model-paths.txt"
@@ -1357,7 +1357,7 @@ MODEL_LIST=$WORK/models.txt
         done < "$WORK/model-paths.txt"
     fi
     if [ "$found" -eq 0 ]; then
-        echo "（没有找到 policy.onnx）"
+        echo "(nenhum policy.onnx encontrado)"
     fi
 } > "$MODEL_LIST"
 
@@ -1372,11 +1372,11 @@ if [ -f "$MODEL_DOC" ] && grep -qx '@@MODEL_LIST@@' "$MODEL_DOC"; then
         }
         { print }
     ' "$MODEL_DOC" > "$WORK/model-doc.new"
-    cat "$WORK/model-doc.new" > "$MODEL_DOC" || fail "无法改写模型说明" "检查权限。"
+    cat "$WORK/model-doc.new" > "$MODEL_DOC" || fail "Não foi possível atualizar a documentação dos modelos" "Confira as permissões."
 else
     {
         echo ""
-        echo "模型文件清单（构建时生成）："
+        echo "Manifesto de arquivos de modelo (gerado durante a compilação):"
         cat "$MODEL_LIST"
     } >> "$MODEL_DOC"
 fi
@@ -1390,82 +1390,82 @@ UNCONFIRMED_ALLOWED=0
 for rel in var/lib/robot/config; do
     p=$ROOT/$rel
     if [ -L "$p" ]; then
-        printf '%s  符号链接 -> %s（未跟随，不算普通文件）\n' "$rel" "$(readlink "$p")" >> "$TO_CONFIRM"
+        printf '%s  link simbólico -> %s (não seguido; não é arquivo regular)\n' "$rel" "$(readlink "$p")" >> "$TO_CONFIRM"
     elif [ -d "$p" ]; then
         find "$p" -type f -print | LC_ALL=C sort > "$WORK/confirm-files.txt" || true
         if [ -s "$WORK/confirm-files.txt" ]; then
             while IFS= read -r file; do
                 [ -n "$file" ] || continue
                 file_rel=${file#"$ROOT"/}
-                printf '%s  大小=%s  sha256=%s\n' "$file_rel" "$(size_of "$file")" "$(sha256_of "$file")" >> "$TO_CONFIRM"
+                printf '%s  tamanho=%s  SHA-256=%s\n' "$file_rel" "$(size_of "$file")" "$(sha256_of "$file")" >> "$TO_CONFIRM"
             done < "$WORK/confirm-files.txt"
             CONFIRM_HAS_FILE=1
         else
-            printf '%s  空目录\n' "$rel" >> "$TO_CONFIRM"
+            printf '%s  diretório vazio\n' "$rel" >> "$TO_CONFIRM"
         fi
     elif [ -f "$p" ]; then
-        printf '%s  大小=%s  sha256=%s\n' "$rel" "$(size_of "$p")" "$(sha256_of "$p")" >> "$TO_CONFIRM"
+        printf '%s  tamanho=%s  SHA-256=%s\n' "$rel" "$(size_of "$p")" "$(sha256_of "$p")" >> "$TO_CONFIRM"
         CONFIRM_HAS_FILE=1
     elif [ -e "$p" ]; then
-        printf '%s  （不是普通文件，未计算 sha256，不算待确认）\n' "$rel" >> "$TO_CONFIRM"
+        printf '%s  (não é arquivo regular; SHA-256 não calculado; não requer confirmação)\n' "$rel" >> "$TO_CONFIRM"
     fi
 done
 if [ -s "$TO_CONFIRM" ]; then
-    echo "    待人工确认（没有删除）："
+    echo "    Itens que aguardam confirmação manual (não foram removidos):"
     sed 's/^/      - /' "$TO_CONFIRM"
 fi
 if [ "$CONFIRM_HAS_FILE" -eq 1 ]; then
     if [ "$ALLOW_UNCONFIRMED" = "1" ]; then
         UNCONFIRMED_ALLOWED=1
-        echo "    注意：待确认里还有普通文件，已按 ALLOW_UNCONFIRMED=1 放行。"
+        echo "    Atenção: ainda há arquivos regulares aguardando confirmação; liberados por ALLOW_UNCONFIRMED=1."
     else
-        fail "待人工确认里还有普通文件（见上）" "先确认这些文件是否含个人数据；确认要保留后，用 ALLOW_UNCONFIRMED=1 重新运行放行。"
+        fail "Ainda há arquivos regulares que aguardam confirmação manual (veja acima)" "Confirme se contêm dados pessoais; se devem ser mantidos, execute novamente com ALLOW_UNCONFIRMED=1."
     fi
 fi
 
 safe_file "$MANIFEST"
 {
-    echo "Microduck 复刻镜像清单"
+    echo "Manifesto da imagem réplica do Microduck"
     echo "================================"
-    echo "构建时间（UTC）：$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    echo "底图文件名：$BASE_IMG_NAME"
-    echo "底图 sha256：$BASE_IMG_SHA256"
-    echo "payload sha256：$PAYLOAD_SHA256"
-    echo "镜像脚本版本：$IMAGE_VERSION"
-    echo "payload 的 robotd sha256：$ROBOTD_SHA"
-    echo "Studio 版本：$STUDIO_VERSION"
-    echo "Studio 只装运行文件（不含 tests/dev/docs）。"
-    echo "radxa 默认密码 microduck（只能本机或钥匙登录后 sudo 用；第一次登录请用 passwd 改掉）。"
+    echo "Data da compilação (UTC): $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    echo "Nome do arquivo da imagem base: $BASE_IMG_NAME"
+    echo "SHA-256 da imagem base: $BASE_IMG_SHA256"
+    echo "SHA-256 do payload: $PAYLOAD_SHA256"
+    echo "Versão do script de imagem: $IMAGE_VERSION"
+    echo "SHA-256 do robotd do payload: $ROBOTD_SHA"
+    echo "Versão do Studio: $STUDIO_VERSION"
+    echo "O Studio inclui somente arquivos de execução (sem tests/dev/docs)."
+    echo "Senha padrão de radxa: microduck (uso local ou via sudo após login com chave; altere com passwd no primeiro acesso)."
     [ -z "$DEV_KEY_NOTE" ] || echo "$DEV_KEY_NOTE"
     echo ""
-    echo "删除（路径相对镜像根目录）"
+    echo "Removidos (caminhos relativos à raiz da imagem)"
     echo "--------------------------------"
     if [ -s "$DEL_LOG" ]; then
         sort -u "$DEL_LOG"
     else
-        echo "（无）"
+        echo "(nenhum)"
     fi
     echo ""
-    echo "添加 / 安装（路径相对镜像根目录）"
+    echo "Adicionados / instalados (caminhos relativos à raiz da imagem)"
     echo "--------------------------------"
     if [ -s "$ADD_LOG" ]; then
         sort -u "$ADD_LOG"
     else
-        echo "（无）"
+        echo "(nenhum)"
     fi
     echo ""
-    echo "待人工确认（没有自动删除，请确认是否含个人数据）"
+    echo "Aguardando confirmação manual (não removido automaticamente; confirme se há dados pessoais)"
     echo "--------------------------------"
     if [ -s "$TO_CONFIRM" ]; then
         cat "$TO_CONFIRM"
     else
-        echo "（无）"
+        echo "(nenhum)"
     fi
     if [ "$UNCONFIRMED_ALLOWED" -eq 1 ]; then
-        echo "注意：本次构建用 ALLOW_UNCONFIRMED=1 放行了上面的普通文件。"
+        echo "Atenção: esta compilação liberou os arquivos regulares acima usando ALLOW_UNCONFIRMED=1."
     fi
     echo ""
-    echo "SSH 配置警告（没有自动删除）"
+    echo "Avisos de configuração SSH (não removidos automaticamente)"
     echo "--------------------------------"
     if [ -s "$SSH_WARN" ]; then
         while IFS= read -r line; do
@@ -1475,35 +1475,35 @@ safe_file "$MANIFEST"
             echo "  $line"
         done < "$SSH_WARN"
     else
-        echo "（无）"
+        echo "(nenhum)"
     fi
     echo ""
-    echo "许可与模型说明：同目录下的 开源许可.txt、第三方.txt、模型说明.txt。"
-} > "$MANIFEST" || fail "无法写镜像清单" "检查权限。"
+    echo "Licenças e informações dos modelos: arquivos 开源许可.txt, 第三方.txt e 模型说明.txt no mesmo diretório."
+} > "$MANIFEST" || fail "Não foi possível gravar o manifesto da imagem" "Confira as permissões."
 chmod 0644 "$MANIFEST"
 if [ "$(id -u)" -eq 0 ]; then
-    chown 0:0 "$MANIFEST" || fail "无法设置镜像清单属主" "检查挂载的 rootfs。"
+    chown 0:0 "$MANIFEST" || fail "Não foi possível definir o proprietário do manifesto da imagem" "Confira o rootfs montado."
 fi
 
-STEP="残留扫描"
+STEP="Verificação de resíduos"
 NAME_SCAN='kis''sqy'
-echo "==> [9/9] 残留扫描（第三方作者名、悬空链接、删除后的引用）"
+echo "==> [9/9] Verificando resíduos (nome do autor terceiro, links quebrados e referências a itens removidos)"
 SCAN_START=$(date +%s)
 : > "$WORK/name-leak.txt"
-# 整个 ROOT 的普通文件都扫，包括二进制（-a）；不分大小写，也不用 -w。
+# Examina todos os arquivos regulares em ROOT, inclusive binários (-a), sem diferenciar maiúsculas/minúsculas nem usar -w.
 find "$ROOT" -type f -exec grep -ailE "$NAME_SCAN" {} + >> "$WORK/name-leak.txt" 2>/dev/null || true
 LC_ALL=C sort -u "$WORK/name-leak.txt" -o "$WORK/name-leak.txt"
 if [ -s "$WORK/name-leak.txt" ]; then
     EXCEPT=$ROOT/usr/share/doc/microduck/模型说明.txt
     grep -v -x -F "$EXCEPT" "$WORK/name-leak.txt" > "$WORK/name-leak-left.txt" || true
     if [ -s "$WORK/name-leak-left.txt" ]; then
-        echo "    仍然含第三方作者名的文件："
+        echo "    Arquivos que ainda contêm o nome do autor terceiro:"
         sed 's/^/      - /' "$WORK/name-leak-left.txt"
-        fail "镜像里还有第三方作者名残留" "把上面的文件清掉，或在 apply-rootfs.sh 里加入删除规则。"
+        fail "Ainda há ocorrências do nome do autor terceiro na imagem" "Limpe os arquivos listados acima ou adicione uma regra de remoção em apply-rootfs.sh."
     fi
 fi
 SCAN_END=$(date +%s)
-echo "    第三方作者名扫描用时：$((SCAN_END - SCAN_START)) 秒"
+echo "    Duração da busca pelo nome do autor terceiro: $((SCAN_END - SCAN_START)) segundos"
 
 : > "$WORK/dangling.txt"
 : > "$WORK/link-dirs.txt"
@@ -1523,7 +1523,7 @@ if [ -s "$WORK/link-list.txt" ]; then
         [ -n "$l" ] || continue
         t=$(readlink "$l") || continue
         case "$t" in
-            # systemctl mask 的链接，挂载的 rootfs 里没有 /dev/null，但不是悬空
+            # Links criados por systemctl mask: /dev/null não existe no rootfs montado, mas o link não está quebrado.
             /dev/null) continue ;;
             /*) target="$ROOT$t" ;;
             *) target="$(dirname "$l")/$t" ;;
@@ -1534,21 +1534,21 @@ if [ -s "$WORK/link-list.txt" ]; then
     done < "$WORK/link-list.txt"
 fi
 if [ -s "$WORK/dangling.txt" ]; then
-    echo "    悬空的链接（按 ROOT 解析）："
+    echo "    Links quebrados (resolvidos em relação a ROOT):"
     sed 's/^/      - /' "$WORK/dangling.txt"
-    fail "有指向不存在目标的悬空链接" "删掉上面的链接，或在删除单元/规则时一起清理。"
+    fail "Há links quebrados apontando para destinos inexistentes" "Remova os links acima ou limpe-os junto com as unidades/regras removidas."
 fi
 
 : > "$WORK/deleted-refs.txt"
 if [ -s "$DELETE_LIST" ]; then
-    "$PYTHON" - "$ROOT" "$DELETE_LIST" "$WORK/deleted-refs.txt" <<'PY' || fail "检查删除后的引用失败" "看上面的 Python 报错；修好后重试。"
+    "$PYTHON" - "$ROOT" "$DELETE_LIST" "$WORK/deleted-refs.txt" <<'PY' || fail "Falha ao verificar referências após a remoção" "Confira o erro do Python acima, corrija-o e tente novamente."
 import sys
 from pathlib import Path
 
 root, delete_list, out_path = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
 deleted = {line.strip() for line in delete_list.read_text(encoding="utf-8").splitlines() if line.strip()}
-# 按镜像里的完整路径查（/opt/.../robotctl 删了，不能把 /usr/local/bin/robotctl 的提法也算上）；
-# 只有删掉的是 systemd 单元时才按单元名查（After=xxx.service 写的是名字不是路径）。
+# Procura pelo caminho completo dentro da imagem (/opt/.../robotctl removido não deve corresponder a uma menção em /usr/local/bin/robotctl);
+# somente unidades systemd removidas também são verificadas pelo nome (After=xxx.service usa o nome, não um caminho).
 UNIT_SUFFIXES = (".service", ".socket", ".timer", ".path", ".target", ".mount")
 needles = set()
 for p in deleted:
@@ -1579,66 +1579,66 @@ for directory in dirs:
             continue
         for base in bases:
             if base.encode("utf-8") in data:
-                rows.add("%s 仍引用 %s" % (item.relative_to(root).as_posix(), base))
+                rows.add("%s ainda referencia %s" % (item.relative_to(root).as_posix(), base))
 out_path.write_text("".join(row + "\n" for row in sorted(rows)), encoding="utf-8")
 PY
 fi
 if [ -s "$WORK/deleted-refs.txt" ]; then
-    echo "    以下活文件还引用已删除的文件名："
+    echo "    Os seguintes arquivos ativos ainda referenciam nomes de arquivos removidos:"
     sed 's/^/      - /' "$WORK/deleted-refs.txt"
-    fail "删除清单里的文件名仍在活文件里被引用" "改掉上面的单元/规则，或者把对应文件一起删除后再重试。"
+    fail "Nomes de arquivos removidos ainda são referenciados por arquivos ativos" "Altere as unidades/regras listadas ou remova os arquivos correspondentes e tente novamente."
 fi
 
-STEP="确认 opt 目录没有训练产物"
-echo "    检查 opt/robot/feetech-ft5-r5 下是否还有训练归档和模型说明"
+STEP="Verificação de artefatos de treinamento em opt"
+echo "    Verificando se opt/robot/feetech-ft5-r5 ainda contém arquivos de treinamento e instruções do modelo"
 find "$ROOT/opt/robot/feetech-ft5-r5" \
     \( -name export-data.zip -o -name 'training-*.json' -o -name upstream-params \
        -o -name '*.pt' -o -name '*.ckpt' -o -name '使用说明.md' \) \
     -print | LC_ALL=C sort > "$WORK/training-left.txt" 2>/dev/null || true
 if [ -s "$WORK/training-left.txt" ]; then
-    echo "    还残留这些训练产物："
+    echo "    Ainda restam estes artefatos de treinamento:"
     sed 's/^/      - /' "$WORK/training-left.txt"
-    fail "opt 目录里还有训练产物或模型作者的使用说明" "从 payload 里去掉这些文件，或在 apply-rootfs.sh 里补删除规则。"
+    fail "O diretório opt ainda contém artefatos de treinamento ou instruções do autor do modelo" "Remova esses arquivos do payload ou adicione uma regra de remoção em apply-rootfs.sh."
 fi
 
-STEP="确认官方声卡初始化完整"
-echo "    检查官方声卡初始化文件是否完整"
+STEP="Verificação dos arquivos oficiais de inicialização de áudio"
+echo "    Verificando se os arquivos oficiais de inicialização da placa de som estão completos"
 AIC_UNIT=$ROOT/etc/systemd/system/aic3104-init.service
 AIC_WANTS=$ROOT/etc/systemd/system/multi-user.target.wants/aic3104-init.service
 AIC_SCRIPT=$ROOT/usr/local/bin/aic3104-init.sh
-[ -f "$AIC_UNIT" ] || fail "缺少官方声卡初始化单元：$(rel_path "$AIC_UNIT")" "aic3104-init.service 是官方文件，不能删除。"
-[ -e "$AIC_WANTS" ] || [ -L "$AIC_WANTS" ] || fail "缺少官方声卡初始化的 enable 链接：$(rel_path "$AIC_WANTS")" "multi-user.target.wants/aic3104-init.service 必须保留。"
-[ -f "$AIC_SCRIPT" ] || fail "缺少官方声卡初始化脚本：$(rel_path "$AIC_SCRIPT")" "aic3104-init.sh 是官方文件，不能删除。"
-AIC_MODE=$(stat -c '%a' "$AIC_SCRIPT") || fail "无法读取官方声卡初始化脚本权限：$(rel_path "$AIC_SCRIPT")" "检查 ROOT 是否可读。"
+[ -f "$AIC_UNIT" ] || fail "Unidade oficial de inicialização de áudio ausente: $(rel_path "$AIC_UNIT")" "aic3104-init.service é um arquivo oficial e não deve ser removido."
+[ -e "$AIC_WANTS" ] || [ -L "$AIC_WANTS" ] || fail "Link de habilitação da inicialização oficial de áudio ausente: $(rel_path "$AIC_WANTS")" "multi-user.target.wants/aic3104-init.service deve ser mantido."
+[ -f "$AIC_SCRIPT" ] || fail "Script oficial de inicialização de áudio ausente: $(rel_path "$AIC_SCRIPT")" "aic3104-init.sh é um arquivo oficial e não deve ser removido."
+AIC_MODE=$(stat -c '%a' "$AIC_SCRIPT") || fail "Não foi possível ler as permissões do script oficial de inicialização de áudio: $(rel_path "$AIC_SCRIPT")" "Confira se ROOT pode ser lido."
 if [ "$AIC_MODE" != "755" ]; then
     if [ -n "${MSYS:-}${CYGWIN:-}" ]; then
-        echo "    提示：Git Bash 不保留 Unix 权限位（stat 报 $AIC_MODE），测试环境跳过 0755 精确检查。"
+        echo "    Aviso: Git Bash não preserva os bits de permissão Unix (stat informou $AIC_MODE); o teste ignora a verificação exata de 0755."
     else
-        fail "aic3104-init.sh 权限不是 0755：$AIC_MODE" "chmod 0755 $(rel_path "$AIC_SCRIPT") 后重试；官方文件应为可执行。"
+        fail "As permissões de aic3104-init.sh não são 0755: $AIC_MODE" "Execute chmod 0755 $(rel_path "$AIC_SCRIPT") e tente novamente; o arquivo oficial deve ser executável."
     fi
 fi
-echo "    官方声卡初始化已保留：aic3104-init.service、multi-user.target.wants 链接、aic3104-init.sh（0755）"
+echo "    Arquivos oficiais de inicialização de áudio mantidos: aic3104-init.service, link multi-user.target.wants e aic3104-init.sh (0755)"
 
 if [ "$SOFTWARE_COMPONENTS_REQUESTED" -eq 1 ]; then
-    STEP="安装签名软件包与离线语音资源"
-    echo "==> 安装与在线升级相同的签名组件包"
+    STEP="Instalação do pacote assinado e dos recursos de voz offline"
+    echo "==> Instalando os mesmos componentes assinados usados na atualização online"
     "$PYTHON" "$HERE/software_components.py" --root "$ROOT" \
         --package "$SOFTWARE_UPDATE_PACKAGE" --public-key "$SOFTWARE_UPDATE_PUBLIC_KEY" \
         --engine "$SOFTWARE_UPDATE_ENGINE" --resources "$VOICE_RESOURCES_DIR" \
         --engine-command-json "${SOFTWARE_UPDATE_ENGINE_COMMAND_JSON:-[]}" || \
-        fail "签名软件组件安装失败" "查看共享升级器的签名、资源hash或安装报错；不要绕过验证。"
-    printf '\n软件升级与本地语音：已使用共享签名组件安装器；详情见 software-components.json。\n' >> "$MANIFEST"
-    printf '%s\n' '本地中文坐站语音：Vosk small-cn-0.22（Apache-2.0）；来源 https://alphacephei.com/vosk/models 。' \
-        'ARM64/cp313依赖及许可证随 /opt/microduck/resources/asr-deps 一并保留；资源hash见 resources-manifest.json。' \
-        '默认R3单击开关；监听默认关闭，开启后识别明确坐下/站起口令，不是自由AI对话。' > "$DOC_DIR/语音资源说明.txt"
-    chmod 0644 "$DOC_DIR/语音资源说明.txt"
+        fail "Falha ao instalar componentes de software assinados" "Confira os erros de assinatura, hash dos recursos ou instalação do atualizador compartilhado; não ignore a validação."
+    printf '\nAtualização de software e voz local: instalador compartilhado de componentes assinados; detalhes em software-components.json.\n' >> "$MANIFEST"
+    printf '%s\n' 'Reconhecimento local de fala em mandarim para os comandos sentar/levantar: Vosk small-cn-0.22 (Apache-2.0); origem: https://alphacephei.com/vosk/models .' \
+        'Dependências ARM64/cp313 e licenças mantidas em /opt/microduck/resources/asr-deps; hashes em resources-manifest.json.' \
+        'Controle padrão por clique no botão R3; a escuta começa desativada. Quando ativada, reconhece comandos explícitos para sentar/levantar em mandarim; não é uma conversa livre com IA.' > "$DOC_DIR/speech-resources.txt"
+    chmod 0644 "$DOC_DIR/speech-resources.txt"
 fi
 
-STEP="完成"
-echo "==> 完成"
+STEP="Concluído"
+echo "==> Concluído"
 echo "    ROOT：$ROOT"
-echo "    镜像清单：$MANIFEST"
-echo "    删除了 $(wc -l < "$DEL_LOG" | tr -d '[:space:]') 条记录，添加了 $(wc -l < "$ADD_LOG" | tr -d '[:space:]') 条记录。"
+echo "    Manifesto da imagem: $MANIFEST"
+echo "    Registros removidos: $(wc -l < "$DEL_LOG" | tr -d '[:space:]'); registros adicionados: $(wc -l < "$ADD_LOG" | tr -d '[:space:]')."
 if [ -s "$SSH_WARN" ]; then
-    echo "    注意：有 $(wc -l < "$SSH_WARN" | tr -d '[:space:]') 条 SSH 配置警告，请人工处理。"
+    echo "    Atenção: há $(wc -l < "$SSH_WARN" | tr -d '[:space:]') avisos de configuração SSH; revise-os manualmente."
 fi
