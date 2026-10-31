@@ -1,16 +1,16 @@
-// 总览下面的「运行和调参」（tuning-plan.md v2 §3）三张只读卡 + 设置页的「模型」。
-// 数从后端的调参卡来（studio/tune.py，{t:'tune'} 每秒推一次），这里只画。这一版不能改
-// （cap.can_edit 一直是 false，改动要等鸭子上装好 root 小助手，调参方案 T4/T5）。
-// 只有设置页的重量表单会写东西，写的是 Studio 自己的 state 目录（duck-body.json），不碰鸭子。
+// Três cartões somente leitura de “Estado e ajustes” no painel (tuning-plan.md v2 §3) e a seção “Modelos” nas configurações.
+// Os dados vêm do cartão de ajustes do backend (studio/tune.py, enviado uma vez por segundo como {t:'tune'}); este arquivo só os exibe. Não é possível editar os ajustes aqui.
+// (cap.can_edit permanece false; a edição depende da instalação do assistente root no robô, conforme o plano de ajustes T4/T5.)
+// Apenas o formulário de peso nas configurações grava dados, no diretório de estado do próprio Studio (duck-body.json), sem alterar o robô.
 import { html, useState, useEffect } from './vendor/preact-htm.module.js';
 import { Stepper } from './stepper.js';
 
 const CSS = `
 .tune { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
-/* 宽屏：运行状态占一整行，下面调手感、模型左右两列（用户 10-19：「这块做得不好」——以前三张都铺满整宽、字挤在左边） */
+/* Em telas largas, o estado ocupa uma linha inteira; ajustes de movimento e modelos ficam em duas colunas. */
 @media (min-width: 1100px) { .tune { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .tune > .tn-run { grid-column: 1 / -1; } }
 .tune .card { padding: 14px 16px; }
-/* 三列对齐的表：名字 | 值 | 说明。每格自己画上边线，列间距用右内边距（gap 会把线断开） */
+/* Tabela alinhada em três colunas: nome, valor e descrição. Cada célula desenha sua própria borda superior; o espaçamento usa preenchimento à direita para manter as linhas contínuas. */
 .tune .tbl { display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); font-size: 13.5px; line-height: 1.6; }
 .tune .tbl > * { padding: 7px 18px 7px 0; border-top: 1px solid var(--line); min-width: 0; }
 .tune .tbl > :nth-child(-n+3) { border-top: 0; }
@@ -56,7 +56,7 @@ const CSS = `
 .tune .steps .mk.p { color: var(--blue); }
 .tune .steps .mk.w { color: var(--text-2); }
 .tune .steps .dt { color: var(--text-2); }
-/* 设置页模型 */
+/* Modelos na página de configurações */
 .mmod { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
 .mmod h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .mmod .slot { border-top: 1px solid var(--line); padding-top: 10px; font-size: 13.5px; line-height: 1.7; }
@@ -95,12 +95,12 @@ if (!document.getElementById('tune-css')) {
   document.head.appendChild(s);
 }
 
-// ---- 格式化 ----
+// ---- Formatação ----
 const num = (v, d = 1) => (typeof v === 'number' && isFinite(v) ? v.toFixed(d) : '—');
 const rnd = (v) => (typeof v === 'number' && isFinite(v) ? String(Math.round(v)) : '—');
 const txt = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
 
-// ---- 卡 1 运行状态 ----
+// ---- Cartão 1: estado de execução ----
 function StepMark({ status }) {
   const c = { success: 's', failed: 'f', starting: 'p', waiting: 'w' }[status] || 'w';
   const g = { success: '✓', failed: '✗', starting: '●', waiting: '○' }[status] || '·';
@@ -118,50 +118,50 @@ function RunCard({ run }) {
   const walk = run?.net?.walk_model;
   const actual = run?.scale?.actual;
   const st = run?.startup;
-  return html`<section class="board card tn-run" aria-label="运行状态">
+  return html`<section class="board card tn-run" aria-label="Estado de execução">
     <button style=${'all:unset;display:block;width:100%;cursor:pointer'} onClick=${toggle} aria-expanded=${shown}>
       <div class="summary">
         <span class=${'ph ' + (ph.kind || '')}>${txt(ph.word)}</span>
         <span>·</span>
         <span class="num">${num(hz)} Hz</span>
-        ${can !== null ? html`<span>·</span><span>${can ? '能开始走' : '还不能走'}</span>` : null}
-        ${walk ? html`<span>·</span><span>走路模型 ${walk}</span>` : null}
-        ${actual !== null && actual !== undefined ? html`<span>·</span><span>这一拍倍率 ${num(actual, 2)}</span>` : null}
-        <span style="color:var(--text-2);margin-left:auto">${shown ? '收起 ▲' : '详情 ▼'}</span>
+        ${can !== null ? html`<span>·</span><span>${can ? 'Pode começar a andar' : 'Ainda não pode andar'}</span>` : null}
+        ${walk ? html`<span>·</span><span>Modelo de marcha ${walk}</span>` : null}
+        ${actual !== null && actual !== undefined ? html`<span>·</span><span>Fator deste ciclo ${num(actual, 2)}</span>` : null}
+        <span style="color:var(--text-2);margin-left:auto">${shown ? 'Recolher ▲' : 'Detalhes ▼'}</span>
       </div>
     </button>
     ${shown ? html`
-      ${st && st.known ? html`<div class="group"><b>启动四步</b>
+      ${st && st.known ? html`<div class="group"><b>Quatro etapas de inicialização</b>
         <div class="steps">${(st.rows || []).map((r) => html`<div class="step">
           <${StepMark} status=${r.status} /><span>${r.name}</span>
           ${r.detail ? html`<span class="dt">${r.detail}</span>` : null}
-          ${r.at_s !== null && r.at_s !== undefined ? html`<span class="dt">（开机 ${num(r.at_s)} s）</span>` : null}
+          ${r.at_s !== null && r.at_s !== undefined ? html`<span class="dt">(há ${num(r.at_s)} s desde a inicialização)</span>` : null}
         </div>`)}</div>
         ${st.unsupported ? html`<div class="foot">${st.unsupported}</div>` : null}
       </div>` : null}
-      <div class="group"><b>控制</b>
+      <div class="group"><b>Controle</b>
         <div class="kv">
-          <span>目标 / 实际频率</span><span class="num">${num(run?.loop?.target)} / ${num(hz)} Hz</span>
-          <span>超时拍数</span><span class="num">${rnd(run?.loop?.missed)}${run?.loop?.missed_per_min != null ? `（最近一分钟 +${rnd(run?.loop?.missed_per_min)}）` : ''}</span>
-          <span>最近一拍多久前</span><span class="num">${num(run?.loop?.last_tick_age_ms, 0)} ms</span>
-          <span>在用哪个网络</span><span>${txt(run?.net?.active_model)}${run?.net?.scale_use_cn ? ` · ${run?.net?.scale_use_cn}` : ''}</span>
-          <span>这一拍倍率</span><span class="num">${num(actual, 2)} = 基础 ${num(run?.scale?.base, 2)} × 电压 ${num(run?.scale?.volt_mult, 2)}</span>
+          <span>Frequência desejada / real</span><span class="num">${num(run?.loop?.target)} / ${num(hz)} Hz</span>
+          <span>Ciclos perdidos por tempo esgotado</span><span class="num">${rnd(run?.loop?.missed)}${run?.loop?.missed_per_min != null ? ` (último minuto: +${rnd(run?.loop?.missed_per_min)})` : ''}</span>
+          <span>Tempo desde o último ciclo</span><span class="num">${num(run?.loop?.last_tick_age_ms, 0)} ms</span>
+          <span>Rede em uso</span><span>${txt(run?.net?.active_model)}${run?.net?.scale_use_cn ? ` · ${run?.net?.scale_use_cn}` : ''}</span>
+          <span>Fator deste ciclo</span><span class="num">${num(actual, 2)} = base ${num(run?.scale?.base, 2)} × tensão ${num(run?.scale?.volt_mult, 2)}</span>
         </div>
       </div>
-      ${run?.guard ? html`<div class="group"><b>能不能走</b>
+      ${run?.guard ? html`<div class="group"><b>Condição para andar</b>
         <div class="kv">
-          <span>关节最大偏差</span><span class="num">${num(run.guard.max_joint_error_deg, 2)}° / 容差 ${num(run.guard.joint_tolerance_deg, 2)}°</span>
-          <span>机身倾角</span><span class="num">${num(run.guard.tilt_deg, 2)}° / 容差 ${num(run.guard.tilt_tolerance_deg, 2)}°</span>
-          ${run.guard.reason ? html`<span>原因</span><span>${run.guard.reason}</span>` : null}
-          ${run?.refusal ? html`<span>上次被拒</span><span class="warn">${run.refusal}</span>` : null}
+          <span>Maior desvio articular</span><span class="num">${num(run.guard.max_joint_error_deg, 2)}° / tolerância ${num(run.guard.joint_tolerance_deg, 2)}°</span>
+          <span>Inclinação do corpo</span><span class="num">${num(run.guard.tilt_deg, 2)}° / tolerância ${num(run.guard.tilt_tolerance_deg, 2)}°</span>
+          ${run.guard.reason ? html`<span>Motivo</span><span>${run.guard.reason}</span>` : null}
+          ${run?.refusal ? html`<span>Última recusa</span><span class="warn">${run.refusal}</span>` : null}
         </div>
       </div>` : null}
-      <div class="group"><b>硬件</b>
+      <div class="group"><b>Hardware</b>
         <div class="kv">
-          <span>IMU</span><span>${txt(run?.imu?.source)} · ${run?.imu?.ready === true ? '就绪' : run?.imu?.ready === false ? '没就绪' : '—'}${run?.imu?.age_ms !== undefined ? ` · ${num(run?.imu?.age_ms, 0)} ms 前` : ''}${run?.imu?.fusion?.verdict ? ` · 融合 ${run.imu.fusion.verdict}` : ''}</span>
-          <span>总线</span><span>${rnd(run?.bus?.consecutive_errors)} 次连续失败${run?.bus?.startup_failures ? ` · ${rnd(run?.bus?.startup_failures)} 次启动失败` : ''}</span>
-          ${(run?.bus?.worst || []).length ? html`<span>超时最多的舵机</span><span>${run.bus.worst.map((w) => `${w.name}（超时 ${w.timeout} · 缺包 ${w.missing}）`).join(' · ')}</span>` : null}
-          ${run?.cpu_c !== undefined && run?.cpu_c !== null ? html`<span>主板温度</span><span class="num">${num(run.cpu_c, 0)} °C</span>` : null}
+          <span>IMU</span><span>${txt(run?.imu?.source)} · ${run?.imu?.ready === true ? 'Pronta' : run?.imu?.ready === false ? 'Não pronta' : '—'}${run?.imu?.age_ms !== undefined ? ` · há ${num(run?.imu?.age_ms, 0)} ms` : ''}${run?.imu?.fusion?.verdict ? ` · fusão ${run.imu.fusion.verdict}` : ''}</span>
+          <span>Barramento</span><span>${rnd(run?.bus?.consecutive_errors)} falhas consecutivas${run?.bus?.startup_failures ? ` · ${rnd(run?.bus?.startup_failures)} falhas na inicialização` : ''}</span>
+          ${(run?.bus?.worst || []).length ? html`<span>Servos com mais tempos esgotados</span><span>${run.bus.worst.map((w) => `${w.name} (tempo esgotado ${w.timeout} · pacote ausente ${w.missing})`).join(' · ')}</span>` : null}
+          ${run?.cpu_c !== undefined && run?.cpu_c !== null ? html`<span>Temperatura da placa</span><span class="num">${num(run.cpu_c, 0)} °C</span>` : null}
         </div>
       </div>
       <div class="foot">${txt(run?.infer_note)}</div>
@@ -169,7 +169,7 @@ function RunCard({ run }) {
   </section>`;
 }
 
-// ---- 卡 2 调手感（只读） ----
+// ---- Cartão 2: ajuste do movimento (somente leitura) ----
 function FeelCard({ feel, cap }) {
   const [adv, setAdv] = useState(true);
   const walk = feel?.walk || {};
@@ -179,41 +179,41 @@ function FeelCard({ feel, cap }) {
   const cur = pad.current || {};
   const servo = feel?.servo || {};
   const eff = servo.effective || {};
-  // 一行三格：名字 | 值 | 说明（说明格永远在，空着也占位，表才对得齐）
+  // Três células por linha: nome, valor e descrição. A célula de descrição permanece mesmo vazia para alinhar a tabela.
   const row = (k, v, d, kind) => html`<span class="k">${k}</span><span class="v">${v}</span><span class=${'d ' + (kind || '')}>${d || ''}</span>`;
-  // 走路三项：值 = 主程序在用的（读不到才用文件里的）；文件里写了、又跟在用的不一样，才提醒（文件里没写 = 用默认，不是不一致）
+  // Nos três parâmetros de marcha, use o valor ativo no programa principal; se não estiver disponível, use o valor do arquivo. Avise somente se o arquivo tiver um valor diferente do ativo.
   const wv = (key, label, def) => {
     const x = vals[key] || {};
     const v = x.loaded != null ? x.loaded : x.file;
-    const dflt = def != null ? `默认 ${num(def, 2)}` : '';
+    const dflt = def != null ? `Padrão ${num(def, 2)}` : '';
     if (x.file != null && x.loaded != null && x.file !== x.loaded) {
-      return row(label, num(v, 2), `${dflt ? `${dflt} · ` : ''}文件里改成了 ${num(x.file, 2)}，主程序还在用 ${num(x.loaded, 2)}（重启主程序才生效）`, 'warn');
+      return row(label, num(v, 2), `${dflt ? `${dflt} · ` : ''}o arquivo define ${num(x.file, 2)}, mas o programa principal ainda usa ${num(x.loaded, 2)} (a alteração entra em vigor após reiniciar o programa principal)`, 'warn');
     }
     return row(label, num(v, 2), dflt);
   };
   const pdi = (gs) => (gs || []).map((g) => `P${g.pdi[0]} D${g.pdi[1]} ×${g.n}`).join(' / ') || '—';
-  return html`<section class="board card" aria-label="调手感">
-    <h3>调手感</h3>
-    <p class=${'cap ' + (cap?.can_edit === false ? '' : 'bad')}>${cap?.why || '还在读鸭子的配置…'}</p>
+  return html`<section class="board card" aria-label="Ajuste do movimento">
+    <h3>Ajuste do movimento</h3>
+    <p class=${'cap ' + (cap?.can_edit === false ? '' : 'bad')}>${cap?.why || 'Lendo a configuração do MicroDuck…'}</p>
     <div class="tbl">
-      ${wv('action_scale', '走路幅度', walk.default?.action_scale)}
-      ${wv('head_lowpass', '头平滑', walk.default?.head_lowpass)}
-      ${wv('legs_lowpass', '腿平滑', walk.default?.legs_lowpass)}
-      ${active ? row('这一拍实际用的', `${num(active.action_scale, 2)} · ${num(active.head_lowpass, 2)} · ${num(active.legs_lowpass, 2)}`,
-        `幅度 · 头 · 腿${active.use ? `（${active.use}）` : ''}`) : null}
-      ${row('嘴巴开度', `${num(cur.mouth_percent, 0)}%`,
-        pad.mouth_warn ? '几乎张不开：网页手柄 LT / RT 张嘴会乘这个比例；「张嘴」动作不受影响' : '', pad.mouth_warn ? 'warn' : '')}
-      ${row('头部幅度', `${num(cur.head_rad, 1)} rad`, '')}
+      ${wv('action_scale', 'Amplitude da marcha', walk.default?.action_scale)}
+      ${wv('head_lowpass', 'Suavização da cabeça', walk.default?.head_lowpass)}
+      ${wv('legs_lowpass', 'Suavização das pernas', walk.default?.legs_lowpass)}
+      ${active ? row('Valores usados neste ciclo', `${num(active.action_scale, 2)} · ${num(active.head_lowpass, 2)} · ${num(active.legs_lowpass, 2)}`,
+        `amplitude · cabeça · pernas${active.use ? ` (${active.use})` : ''}`) : null}
+      ${row('Abertura da boca', `${num(cur.mouth_percent, 0)}%`,
+        pad.mouth_warn ? 'Quase não abre: o gatilho LT / RT do controle web multiplica esse percentual; a ação “Abrir a boca” não é afetada.' : '', pad.mouth_warn ? 'warn' : '')}
+      ${row('Amplitude da cabeça', `${num(cur.head_rad, 1)} rad`, '')}
     </div>
     <div class="fold">
-      <button onClick=${() => setAdv(!adv)} aria-expanded=${adv}>${adv ? '▾' : '▸'} 舵机软硬 · 高级</button>
+      <button onClick=${() => setAdv(!adv)} aria-expanded=${adv}>${adv ? '▾' : '▸'} Resposta dos servos · avançado</button>
       ${adv ? html`<div class="tbl" style="margin-top:8px">
-        ${row('P', rnd(eff.kp), servo.src ? `生效来源：${servo.src}` : '')}
+        ${row('P', rnd(eff.kp), servo.src ? `Origem do valor ativo: ${servo.src}` : '')}
         ${row('D', rnd(eff.kd), '')}
-        ${row('限力', rnd(eff.torque_limit), '')}
-        ${servo.written_p ? row('上力时写入的 P', servo.written_p.p != null ? rnd(servo.written_p.p) : '—',
-          `${servo.written_p.src || ''}${servo.written_p.applied ? ' · 已写入' : ''}`) : null}
-        ${servo.regs ? row('上力前舵机里', '', `RAM ${pdi(servo.regs.ram_before_arm)} · EEPROM ${pdi(servo.regs.eeprom)}`) : null}
+        ${row('Limite de torque', rnd(eff.torque_limit), '')}
+        ${servo.written_p ? row('Valor P gravado ao ativar os motores', servo.written_p.p != null ? rnd(servo.written_p.p) : '—',
+          `${servo.written_p.src || ''}${servo.written_p.applied ? ' · gravado' : ''}`) : null}
+        ${servo.regs ? row('Registradores do servo antes de ativar os motores', '', `RAM ${pdi(servo.regs.ram_before_arm)} · EEPROM ${pdi(servo.regs.eeprom)}`) : null}
         ${(servo.warn || []).map((w) => row('', '', w, 'warn'))}
       </div>` : null}
       ${adv && servo.regs_why ? html`<div class="foot">${servo.regs_why}</div>` : null}
@@ -221,35 +221,35 @@ function FeelCard({ feel, cap }) {
   </section>`;
 }
 
-// ---- 卡 3 模型（只读） ----
+// ---- Cartão 3: modelos (somente leitura) ----
 function ModelsCard({ models }) {
   const slots = models?.slots || [];
   const rollers = models?.rollers || [];
-  // 名字读不到（鸭子上模型目录里的说明文件没读到）就照实说，后面跟文件指纹；别只写「没读到」（用户 10-19 看不懂）
-  const what = (s) => (s.name ? `${s.name}${s.rounds ? ` · ${s.rounds} 轮` : ''}` : s.path ? '读不到模型说明' : '没装');
+  // Se não for possível ler a descrição do modelo no robô, informe isso e mostre a impressão digital do arquivo quando disponível.
+  const what = (s) => (s.name ? `${s.name}${s.rounds ? ` · ${s.rounds} ciclos` : ''}` : s.path ? 'Descrição do modelo indisponível' : 'Não instalado');
   const rolOn = rollers.filter((r) => r.installed);
-  return html`<section class="board card" aria-label="模型">
-    <h3>模型 <a href="#/models" aria-label="模型管理" style="font-size:12px;font-weight:400;color:var(--blue);text-decoration:none">管理…</a></h3>
+  return html`<section class="board card" aria-label="Modelos">
+    <h3>Modelos <a href="#/models" aria-label="Gerenciar modelos" style="font-size:12px;font-weight:400;color:var(--blue);text-decoration:none">Gerenciar…</a></h3>
     <div class="tbl">
       ${slots.map((s) => html`<span class="k">${s.label}</span>
-        <span>${s.error ? html`<span class="tn-tag err">没加载</span>` : s.active ? html`<span class="tn-tag on">正在执行</span>`
-          : s.loaded ? html`<span class="tn-tag on">已加载</span>` : html`<span class="tn-tag">${s.path ? '没加载' : '没装'}</span>`}</span>
-        <span class="d">${what(s)}${s.sha12 ? html` · <span title="文件指纹（sha256 前 12 位）">${s.sha12}</span>` : null}
+        <span>${s.error ? html`<span class="tn-tag err">Não carregado</span>` : s.active ? html`<span class="tn-tag on">Em execução</span>`
+          : s.loaded ? html`<span class="tn-tag on">Carregado</span>` : html`<span class="tn-tag">${s.path ? 'Não carregado' : 'Não instalado'}</span>`}</span>
+        <span class="d">${what(s)}${s.sha12 ? html` · <span title="Impressão digital do arquivo (12 primeiros caracteres do SHA-256)">${s.sha12}</span>` : null}
           ${s.error ? html`<br /><span class="bad">${s.error}</span>` : null}
-          ${s.exec ? html`<br />幅度 ${num(s.exec.action_scale, 2)} · 头 ${num(s.exec.head_lowpass, 2)} · 腿 ${num(s.exec.legs_lowpass, 2)}` : null}
-          ${s.buttons?.length ? html`<br />手柄键：${s.buttons.join(' ')}` : null}</span>`)}
-      ${rollers.length ? html`<span class="k">轮滑（${rollers.length} 个）</span>
-        <span><span class=${'tn-tag' + (rolOn.length ? ' on' : '')}>${rolOn.length ? `装了 ${rolOn.length} 个` : '没装'}</span></span>
+          ${s.exec ? html`<br />amplitude ${num(s.exec.action_scale, 2)} · cabeça ${num(s.exec.head_lowpass, 2)} · pernas ${num(s.exec.legs_lowpass, 2)}` : null}
+          ${s.buttons?.length ? html`<br />Botões do controle: ${s.buttons.join(' ')}` : null}</span>`)}
+      ${rollers.length ? html`<span class="k">Rodas ( ${rollers.length} )</span>
+        <span><span class=${'tn-tag' + (rolOn.length ? ' on' : '')}>${rolOn.length ? `${rolOn.length} instaladas` : 'Não instaladas'}</span></span>
         <span class="d">${rolOn.length
-          ? rollers.map((r) => `${r.label.replace(/^滑轮 · /, '')} ${r.installed ? (r.rounds ? `${r.rounds} 轮` : '已装') : '没装'}`).join(' · ')
-          : '装了轮子才用'}</span>` : null}
+          ? rollers.map((r) => `${r.label.replace(/^Roda · /, '')} ${r.installed ? (r.rounds ? `${r.rounds} ciclos` : 'Instalada') : 'Não instalada'}`).join(' · ')
+          : 'Disponível após instalar as rodas'}</span>` : null}
     </div>
   </section>`;
 }
 
-// ---- 总览三张卡 ----
+// ---- Três cartões do painel ----
 export function TuneSection({ tune }) {
-  if (!tune || !tune.ready) return html`<div class="board card tune"><h3>运行和调参</h3><div class="cap">还在读鸭子的配置…</div></div>`;
+  if (!tune || !tune.ready) return html`<div class="board card tune"><h3>Estado e ajustes</h3><div class="cap">Lendo a configuração do MicroDuck…</div></div>`;
   return html`<div class="tune" id="tune-block">
     <${RunCard} run=${tune.run} />
     <${FeelCard} feel=${tune.feel} cap=${tune.cap} />
@@ -257,13 +257,13 @@ export function TuneSection({ tune }) {
   </div>`;
 }
 
-// ---- 设置页 › 模型 ----
+// ---- Configurações › Modelos ----
 const BODY_FIELDS = [
-  ['total_g', '整鸭重量', 'g'],
-  ['trunk_g', '躯干', 'g'],
-  ['head_g', '头', 'g'],
-  ['leg_left_g', '左腿', 'g'],
-  ['leg_right_g', '右腿', 'g'],
+  ['total_g', 'Peso total do robô', 'g'],
+  ['trunk_g', 'Tronco', 'g'],
+  ['head_g', 'Cabeça', 'g'],
+  ['leg_left_g', 'Perna esquerda', 'g'],
+  ['leg_right_g', 'Perna direita', 'g'],
 ];
 
 export function ModelSettings({ tune, link }) {
@@ -280,7 +280,7 @@ export function ModelSettings({ tune, link }) {
       setBody(b);
       setForm(Object.fromEntries(BODY_FIELDS.map(([k]) => [k, b[k] ?? '']).concat([['foot', b.foot ?? ''], ['note', b.note ?? '']])));
     } else {
-      setMsg({ kind: 'bad', text: `读不到重量：${r.reason || r.error}` });
+      setMsg({ kind: 'bad', text: `Não foi possível ler os pesos: ${r.reason || r.error}` });
     }
   };
   useEffect(() => { load(); }, []);
@@ -296,26 +296,26 @@ export function ModelSettings({ tune, link }) {
     b.note = (form.note || '').trim() || null;
     const r = await link.cmd('tune.op', { op: 'save_body', body: b }, 8000);
     setBusy(false);
-    if (r.ok) { setBody(r.data); setMsg({ kind: 'ok', text: '已保存（只存在 Studio 里，导出档案时带上）' }); }
-    else setMsg({ kind: 'bad', text: `没存：${r.reason || r.error}` });
+    if (r.ok) { setBody(r.data); setMsg({ kind: 'ok', text: 'Salvo no Studio. Os dados serão incluídos ao exportar o perfil.' }); }
+    else setMsg({ kind: 'bad', text: `Não foi possível salvar: ${r.reason || r.error}` });
   };
 
   const slots = tune?.models?.slots || [];
   const rollers = tune?.models?.rollers || [];
-  return html`<div class="board mmod" aria-label="模型">
-    <h2>模型与机器档案</h2>
-    <a href="#/models" style="font-size:13px;color:var(--blue)">打开模型管理，导入模型或设置按键 →</a>
+  return html`<div class="board mmod" aria-label="Modelos">
+    <h2>Modelos e perfil do robô</h2>
+    <a href="#/models" style="font-size:13px;color:var(--blue)">Abrir o gerenciamento de modelos para importar modelos ou configurar botões →</a>
     ${slots.map((s) => html`<div class=${'slot' + (s.error ? ' err' : '')}>
-      <div><span class="nm">${s.label}</span>${s.active ? ' · 在用' : s.loaded ? ' · 已加载' : ' · 没装'}${s.rounds ? ` · ${s.rounds} 轮` : ''}</div>
+      <div><span class="nm">${s.label}</span>${s.active ? ' · Em uso' : s.loaded ? ' · Carregado' : ' · Não instalado'}${s.rounds ? ` · ${s.rounds} ciclos` : ''}</div>
       <div class="meta">${s.name ? s.name : '—'}${s.task ? ` · ${s.task}` : ''}${s.sha12 ? ` · ${s.sha12}` : ''}${s.commit ? ` · ${s.commit}` : ''}</div>
-      ${s.exec ? html`<div class="meta">执行配置：幅度 ${num(s.exec.action_scale, 2)} · 头 ${num(s.exec.head_lowpass, 2)} · 腿 ${num(s.exec.legs_lowpass, 2)}</div>` : null}
+      ${s.exec ? html`<div class="meta">Configuração de execução: amplitude ${num(s.exec.action_scale, 2)} · cabeça ${num(s.exec.head_lowpass, 2)} · pernas ${num(s.exec.legs_lowpass, 2)}</div>` : null}
       ${s.error ? html`<div class="meta" style="color:var(--danger)">${s.error}</div>` : null}
     </div>`)}
-    ${rollers.length ? html`<div class="rol">${rollers.map((r) => html`<span>${r.label}：${r.installed ? (r.rounds ? `${r.rounds} 轮` : '已装') : '没装'}</span>`)}</div>` : null}
+    ${rollers.length ? html`<div class="rol">${rollers.map((r) => html`<span>${r.label}: ${r.installed ? (r.rounds ? `${r.rounds} ciclos` : 'Instalada') : 'Não instalada'}</span>`)}</div>` : null}
 
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
-      <a class="btn primary" href="/api/profile" style="display:inline-flex;align-items:center;text-decoration:none">导出鸭子档案（JSON）</a>
-      <span class="msg" style="color:var(--text-2)">给训练用：鸭子的 IMU 方向、舵机零位、P/D/限力、走路模型和下面的重量</span>
+      <a class="btn primary" href="/api/profile" style="display:inline-flex;align-items:center;text-decoration:none">Exportar perfil do MicroDuck (JSON)</a>
+      <span class="msg" style="color:var(--text-2)">Para treinamento: orientação da IMU, posições neutras dos servos, P/D/limite de torque, modelo de marcha e pesos abaixo.</span>
     </div>
 
     <div class="body">
@@ -325,18 +325,18 @@ export function ModelSettings({ tune, link }) {
           <${Stepper} value=${form ? form[k] : ''} min=${0} max=${5000} step=${0.1}
             aria-label=${label} unit=${unit} onChange=${(v) => setForm({ ...form, [k]: v })} />
         </span>`)}
-      <span class="k">脚底材料</span>
-      <span><input type="text" maxlength="40" value=${form ? form.foot : ''} aria-label="脚底材料"
+      <span class="k">Material da sola</span>
+      <span><input type="text" maxlength="40" value=${form ? form.foot : ''} aria-label="Material da sola"
         onInput=${(e) => setForm({ ...form, foot: e.target.value })} /></span>
-      <span class="k">备注</span>
-      <span><input type="text" maxlength="200" value=${form ? form.note : ''} aria-label="备注"
+      <span class="k">Observações</span>
+      <span><input type="text" maxlength="200" value=${form ? form.note : ''} aria-label="Observações"
         onInput=${(e) => setForm({ ...form, note: e.target.value })} /></span>
       <span></span>
-      <div class="note">重量在导出的档案里，读不到就写 null（不写 0）。填个大概就行，训练用。</div>
+      <div class="note">Os pesos são incluídos no perfil exportado. Se um peso for desconhecido, deixe-o como null (não use 0). Uma estimativa é suficiente para o treinamento.</div>
     </div>
 
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
-      <button class="btn primary" type="button" disabled=${!form || busy} onClick=${save}>保存重量</button>
+      <button class="btn primary" type="button" disabled=${!form || busy} onClick=${save}>Salvar pesos</button>
       ${msg ? html`<span class=${'msg ' + msg.kind}>${msg.text}</span>` : null}
     </div>
   </div>`;
