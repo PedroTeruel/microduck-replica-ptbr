@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
-"""从 STL 网格反推孔特征，用于还原紧固件清单。
+"""Infere as características dos furos na malha STL para reconstruir a lista de fixadores.
 
-思路：CAD 导出的网格里，一个孔就是一片圆柱面。
-  1. 焊接顶点，建面片邻接图
-  2. 按二面角切割（锐边处断开），region-grow 出「光滑曲面片」
-  3. 每片拟合圆柱：法向都垂直于轴 -> 轴 = 法向协方差最小特征向量
-  4. 投影到垂直轴的平面上拟合圆 -> 直径
-  5. 法向朝向轴心 = 孔；背离轴心 = 轴/凸台
+Ideia: na malha exportada pelo CAD, cada furo corresponde a uma superfície cilíndrica.
+  1. Soldar os vértices e criar o grafo de adjacência das faces
+  2. Cortar pelos ângulos diedros (separando nas arestas agudas) e agrupar as regiões suaves
+  3. Ajustar um cilindro a cada região: as normais são perpendiculares ao eixo, que é o autovetor mínimo da covariância das normais
+  4. Projetar no plano perpendicular ao eixo e ajustar um círculo para obter o diâmetro
+  5. Normais voltadas para o centro do eixo indicam um furo; voltadas para fora indicam um eixo ou ressalto
 
-用法:
-    python scripts/analyze_holes.py <assets 目录> [输出 json]
+Uso:
+    python scripts/analyze_holes.py <diretório assets> [saída json]
 """
 import sys, os, struct, json, glob
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
-SMOOTH_DEG   = 35.0     # 二面角阈值：小于此角认为同属一个光滑曲面
-AXIS_TOL     = 0.25     # |法向·轴| 上限，超过说明不是圆柱面
-FIT_TOL      = 0.03     # 圆拟合相对残差上限
-MIN_FACES    = 6        # 圆柱面至少要有这么多三角面
-MIN_DIA, MAX_DIA = 0.8, 14.0   # 只关心紧固件量级的孔 (mm)
+SMOOTH_DEG   = 35.0     # Limite do ângulo diedro: abaixo dele, as faces pertencem à mesma superfície suave
+AXIS_TOL     = 0.25     # Limite de |normal·eixo|; acima dele, a superfície não é cilíndrica
+FIT_TOL      = 0.03     # Limite do resíduo relativo do ajuste circular
+MIN_FACES    = 6        # Número mínimo de faces triangulares na superfície cilíndrica
+MIN_DIA, MAX_DIA = 0.8, 14.0   # Considera apenas furos de tamanho compatível com fixadores (mm)
 
 
 def read_stl_mm(path):
-    """读二进制 STL，返回 (N,3,3) 顶点数组，单位 mm。"""
+    """Lê um STL binário e retorna uma matriz de vértices (N,3,3), em mm."""
     b = open(path, 'rb').read()
     n = struct.unpack('<I', b[80:84])[0]
     a = np.frombuffer(b, dtype=np.uint8, count=n * 50, offset=84).reshape(n, 50)
@@ -33,7 +33,7 @@ def read_stl_mm(path):
 
 
 def weld(tris):
-    """合并重复顶点，返回 (顶点表, 面索引)。"""
+    """Mescla vértices duplicados e retorna (lista de vértices, índices das faces)."""
     P = tris.reshape(-1, 3)
     key = np.round(P, 4)
     _, idx, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
@@ -47,14 +47,14 @@ def face_normals(V, F):
 
 
 def smooth_patches(V, F, N):
-    """按二面角切割，把面片聚成光滑曲面片。"""
+    """Separa pelos ângulos diedros e agrupa as faces em regiões suaves."""
     nf = len(F)
     e = np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
     e = np.sort(e, axis=1)
     fid = np.tile(np.arange(nf), 3)
     order = np.lexsort((e[:, 1], e[:, 0]))
     e, fid = e[order], fid[order]
-    same = np.all(e[1:] == e[:-1], axis=1)          # 相邻两条记录是同一条边
+    same = np.all(e[1:] == e[:-1], axis=1)          # Os dois registros adjacentes representam a mesma aresta
     f1, f2 = fid[:-1][same], fid[1:][same]
     if len(f1) == 0:
         return np.zeros(nf, int), 1
@@ -65,7 +65,7 @@ def smooth_patches(V, F, N):
 
 
 def fit_circle(xy):
-    """Kasa 代数圆拟合，返回 (圆心, 半径, 相对残差)。"""
+    """Ajuste algébrico de círculo de Kasa; retorna (centro, raio, resíduo relativo)."""
     x, y = xy[:, 0], xy[:, 1]
     A = np.c_[x, y, np.ones(len(x))]
     b = x ** 2 + y ** 2
@@ -93,7 +93,7 @@ def analyze(path):
         if len(sel) < MIN_FACES:
             continue
         n = N[sel]
-        # 圆柱面的法向都垂直于轴 -> 轴是法向协方差矩阵的最小特征向量
+        # As normais da superfície cilíndrica são perpendiculares ao eixo; o eixo é o autovetor mínimo da matriz de covariância das normais
         w, vec = np.linalg.eigh(n.T @ n)
         axis = vec[:, 0]
         if np.abs(n @ axis).max() > AXIS_TOL:
@@ -111,21 +111,21 @@ def analyze(path):
         dia = 2 * r
         if not (MIN_DIA <= dia <= MAX_DIA):
             continue
-        # 判断凹凸：法向指向轴心 = 孔
+        # Distingue concavidade e convexidade: normal voltada para o eixo = furo
         cen3 = c[0] * e1 + c[1] * e2
         fc = V[F[sel]].mean(1)
         radial = fc - (cen3 + np.outer(fc @ axis, axis))
         radial /= np.maximum(np.linalg.norm(radial, axis=1, keepdims=True), 1e-9)
         inward = (np.einsum('ij,ij->i', n, radial) < 0).mean()
         if inward < 0.7:
-            continue                                  # 凸出去的是轴/凸台，不是孔
+            continue                                  # Projeções para fora são eixos ou ressaltos, não furos
         ang = np.arctan2(xy[:, 1] - c[1], xy[:, 0] - c[0])
         cover = np.degrees(np.ptp(np.sort(ang)))
         depth = float(np.ptp(pts @ axis))
-        holes.append({'直径mm': round(float(dia), 3),
-                      '深度mm': round(depth, 2),
-                      '包角deg': round(float(cover)),
-                      '面数': int(len(sel))})
+        holes.append({'diametro_mm': round(float(dia), 3),
+                      'profundidade_mm': round(depth, 2),
+                      'angulo_coberto_graus': round(float(cover)),
+                      'numero_faces': int(len(sel))})
     return holes
 
 
@@ -134,7 +134,7 @@ def main():
     out = sys.argv[2] if len(sys.argv) > 2 else "docs/hole_analysis.json"
     files = sorted(glob.glob(os.path.join(src, "*.stl")))
     if not files:
-        sys.exit("没找到 STL: " + src)
+        sys.exit("Nenhum arquivo STL encontrado: " + src)
     result = {}
     for f in files:
         name = os.path.basename(f)
@@ -145,10 +145,10 @@ def main():
             continue
         result[name] = h
         if h:
-            print(f"  {name:42s} {len(h):3d} 个孔")
+            print(f"  {name:42s} {len(h):3d} furos")
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     json.dump(result, open(out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
-    print("\n写入", out)
+    print("\nGravado em", out)
 
 
 if __name__ == '__main__':

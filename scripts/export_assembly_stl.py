@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""从 Microduck 的 MJCF 导出「已装配」的 STL。
+"""Exporta um STL montado a partir do MJCF do Microduck.
 
-上游仓库里的 47 个 STL 都是零件自身坐标系的，直接导进 CAD 会全部堆在原点。
-仅用于上游仿真模型分析，不生成最新实物 CAD 的打印件。
-默认输出 analysis-output/cad-upstream/，不写入主仓模型下载入口。
-本脚本读取 MJCF 的运动学树，把每个网格按 world transform 变换到正确位置，
-再按刚体分组导出，得到可以直接在 CAD / 切片软件里打开的装配体。
+Os 47 STL do repositório upstream usam coordenadas locais das peças; importá-los diretamente no CAD sobreporia tudo na origem.
+Este script serve apenas para analisar o modelo de simulação upstream; não gera peças para impressão do CAD físico atual.
+Por padrão, grava em analysis-output/cad-upstream/ e não no diretório de download de modelos do repositório principal.
+O script lê a árvore cinemática do MJCF, aplica a transformação mundial correta a cada malha
+ e exporta os grupos de corpos rígidos como uma montagem que pode ser aberta no CAD ou em um fatiador.
 
-用法:
-    python scripts/export_assembly_stl.py <上游 microduck_rl 路径> [输出目录]
+Uso:
+    python scripts/export_assembly_stl.py <caminho microduck_rl upstream> [diretório de saída]
 """
 import sys, os, struct, json
 import numpy as np
@@ -17,16 +17,16 @@ import mujoco
 MJCF = "src/mjlab_microduck/robot/microduck/robot_allcollisions.xml"
 
 CN = {
-    'trunk_base':'01_躯干主体','yaw2roll':'02_左髋yaw-roll','hip_l':'03_左髋roll',
-    'upper_leg_left':'04_左大腿','leg':'05_左小腿','ankle_left':'06_左踝脚',
-    'neck':'07_颈根','neck_pitch':'08_颈俯仰','yaw_roll_motion':'09_头yaw-roll',
-    'jaw_soft':'10_头部总成','bearing_roll':'11_右髋yaw-roll','hip_l_2':'12_右髋roll',
-    'upper_leg_right':'13_右大腿','leg_2':'14_右小腿','ankle_right':'15_右踝脚',
+    'trunk_base':'01_tronco','yaw2roll':'02_quadril_esquerdo_yaw-roll','hip_l':'03_quadril_esquerdo_roll',
+    'upper_leg_left':'04_coxa_esquerda','leg':'05_perna_esquerda','ankle_left':'06_tornozelo_pe_esquerdo',
+    'neck':'07_base_do_pescoco','neck_pitch':'08_inclinacao_do_pescoco','yaw_roll_motion':'09_cabeca_yaw-roll',
+    'jaw_soft':'10_conjunto_da_cabeca','bearing_roll':'11_quadril_direito_yaw-roll','hip_l_2':'12_quadril_direito_roll',
+    'upper_leg_right':'13_coxa_direita','leg_2':'14_perna_direita','ankle_right':'15_tornozelo_pe_direito',
 }
 
 
 def write_stl(path, tris):
-    """写二进制 STL。tris: (N,3,3) 顶点数组，单位 mm。"""
+    """Grava um STL binário. tris: matriz de vértices (N,3,3), em mm."""
     with open(path, 'wb') as f:
         f.write(b'\0' * 80)
         f.write(struct.pack('<I', len(tris)))
@@ -41,7 +41,7 @@ def write_stl(path, tris):
 
 
 def geom_tris(m, d, g):
-    """取单个 geom 的三角面，变换到世界坐标，单位转 mm。"""
+    """Obtém os triângulos de um geom, transforma para coordenadas mundiais e converte para mm."""
     mid = m.geom_dataid[g]
     if mid < 0:
         return None
@@ -64,12 +64,12 @@ def main():
 
     path = os.path.join(root, MJCF)
     if not os.path.exists(path):
-        sys.exit(f"找不到 MJCF: {path}\n请先运行 scripts/fetch_upstream.sh")
+        sys.exit(f"MJCF não encontrado: {path}\nExecute scripts/fetch_upstream.sh primeiro.")
 
     m = mujoco.MjModel.from_xml_path(path)
     d = mujoco.MjData(m)
     d.qpos[:] = 0
-    d.qpos[3] = 1.0          # 自由关节单位四元数 —— 零位基准姿态
+    d.qpos[3] = 1.0          # Quaternion unitário da junta livre: postura de referência em zero
     mujoco.mj_forward(m, d)
 
     names = [mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_BODY, i) for i in range(m.nbody)]
@@ -78,7 +78,7 @@ def main():
     for b in range(1, m.nbody):
         tris, srcs = [], []
         for g in range(m.ngeom):
-            if m.geom_bodyid[g] != b or m.geom_group[g] != 2:   # group 2 = 视觉网格
+            if m.geom_bodyid[g] != b or m.geom_group[g] != 2:   # grupo 2 = malha visual
                 continue
             t = geom_tris(m, d, g)
             if t is None:
@@ -91,16 +91,16 @@ def main():
         allt.append(T)
         name = CN.get(names[b], names[b])
         write_stl(os.path.join(out, f"{name}.stl"), T)
-        manifest[name] = {'body': names[b], '源STL': srcs, '三角面': len(T)}
-        print(f"  {name:22s} {len(T):7d} tris  <- {len(srcs)} 个源网格")
+        manifest[name] = {'body': names[b], 'stl_origem': srcs, 'faces_triangulares': len(T)}
+        print(f"  {name:22s} {len(T):7d} tris  <- {len(srcs)} malhas de origem")
 
     A = np.concatenate(allt, 0)
-    write_stl(os.path.join(out, "00_Microduck_整机装配体.stl"), A)
+    write_stl(os.path.join(out, "00_Microduck_montagem_completa.stl"), A)
     bb = A.reshape(-1, 3)
-    print(f"\n整机 {len(A)} 三角面")
-    print(f"尺寸 (mm): {bb[:,0].ptp():.1f} x {bb[:,1].ptp():.1f} x {bb[:,2].ptp():.1f}")
+    print(f"\nMontagem completa: {len(A)} faces triangulares")
+    print(f"Dimensões (mm): {bb[:,0].ptp():.1f} x {bb[:,1].ptp():.1f} x {bb[:,2].ptp():.1f}")
 
-    with open(os.path.join(out, "零件对照表.json"), 'w', encoding='utf-8') as f:
+    with open(os.path.join(out, "tabela_de_pecas.json"), 'w', encoding='utf-8') as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
 
