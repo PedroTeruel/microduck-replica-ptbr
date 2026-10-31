@@ -890,11 +890,11 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 pass
 
         async def run_calib_op(cid, args):
-            """上手清单第 3 步：「先看看要写什么」= 小助手 dry_run；「写进主程序」= 校验准备情况后交给小助手写、重启主程序。"""
+            """Etapa 3 do guia inicial: “Ver o que será gravado” executa dry_run no helper; “Gravar no programa principal” valida os pré-requisitos, solicita a gravação ao helper e reinicia o programa principal."""
             from .commit import Refused as CommitRefused
             op = args.get("op") if isinstance(args, dict) else None
             if commit is None:
-                await send({"t": "result", "id": cid, "ok": False, "reason": "这只鸭子没开「写进主程序」"})
+                await send({"t": "result", "id": cid, "ok": False, "reason": "“Gravar no programa principal” não está habilitado neste Microduck"})
                 return
             if op == "preview":
                 try:
@@ -903,32 +903,32 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     await send({"t": "result", "id": cid, "ok": False, "reason": str(e)})
                     return
                 except Exception as e:  # noqa: BLE001
-                    log.error("算「要写什么」时出错", cat="Calibração", raw=f"{type(e).__name__}: {e}", exc=True,
-                              hint="这是 Studio 的问题，导出诊断包发出来")
+                    log.error("Falha ao calcular o que será gravado", cat="Calibração", raw=f"{type(e).__name__}: {e}", exc=True,
+                              hint="É um problema do Studio. Exporte o pacote de diagnóstico e compartilhe.")
                     await send({"t": "result", "id": cid, "ok": False,
-                                "reason": f"Studio 出错：{type(e).__name__}: {e}"})
+                                "reason": f"Erro do Studio: {type(e).__name__}: {e}"})
                     return
                 await send({"t": "result", "id": cid, "ok": True, "data": data})
                 return
             if op != "commit":
-                await send({"t": "result", "id": cid, "ok": False, "reason": f"不认识的写入操作：{op}"})
+                await send({"t": "result", "id": cid, "ok": False, "reason": f"Operação de gravação desconhecida: {op}"})
                 return
             try:
                 view = commit.view(robotd, servo)
             except Exception as e:  # noqa: BLE001
-                log.error("查「写进主程序」的准备情况时出错", cat="Calibração", raw=f"{type(e).__name__}: {e}", exc=True,
-                          hint="这是 Studio 的问题，导出诊断包发出来")
-                await send({"t": "result", "id": cid, "ok": False, "reason": f"Studio 出错：{type(e).__name__}: {e}"})
+                log.error("Falha ao verificar os pré-requisitos para gravar no programa principal", cat="Calibração", raw=f"{type(e).__name__}: {e}", exc=True,
+                          hint="É um problema do Studio. Exporte o pacote de diagnóstico e compartilhe.")
+                await send({"t": "result", "id": cid, "ok": False, "reason": f"Erro do Studio: {type(e).__name__}: {e}"})
                 return
             if not view.get("ready"):
                 missing = [i for i in view.get("items") or [] if not i.get("ok")]
-                reason = "还没准备好：" + "；".join(f"{i.get('label')}：{i.get('text')}" for i in missing[:3])
+                reason = "Ainda não está pronto: " + "; ".join(f"{i.get('label')}: {i.get('text')}" for i in missing[:3])
                 if len(missing) > 3:
                     reason += "…"
                 await send({"t": "result", "id": cid, "ok": False, "reason": reason, "data": {"readiness": view}})
                 return
-            # 先回执「开始写」，后面全在后台线程里：页面不能被 90 秒的重启卡住，卸力也照常能点
-            await send({"t": "commit", "phase": "started", "msg": "开始写进主程序：会重启主程序（约 20 秒），鸭子会先卸力"})
+            # Envia primeiro a confirmação de início; o restante roda em uma thread de segundo plano para que a página não fique bloqueada durante a reinicialização e o comando de relaxamento continue disponível.
+            await send({"t": "commit", "phase": "started", "msg": "Iniciando a gravação no programa principal: ele será reiniciado (cerca de 20 s) e os servos do Microduck serão relaxados."})
             await send({"t": "result", "id": cid, "ok": True, "data": {"started": True, "readiness": view}})
 
             def progress(msg, detail=None):
@@ -937,43 +937,43 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     item["detail"] = detail
                 try:
                     asyncio.run_coroutine_threadsafe(send(item), loop)
-                except Exception:  # noqa: BLE001 —— 页面断了不影响写
+                except Exception:  # noqa: BLE001 — uma desconexão da página não interrompe a gravação.
                     pass
 
             try:
                 res = await asyncio.to_thread(commit.commit, by, progress)
             except Exception as e:  # noqa: BLE001
-                log.error("写进主程序的后台任务出错", cat="Calibração", raw=f"{type(e).__name__}: {e}", exc=True,
-                          hint="看看主程序有没有起来；原来的文件有没有换回去，日志里有")
-                res = {"ok": False, "reason": f"Studio 出错：{type(e).__name__}: {e}", "detail": {}}
+                log.error("Falha na tarefa em segundo plano para gravar no programa principal", cat="Calibração", raw=f"{type(e).__name__}: {e}", exc=True,
+                          hint="Verifique se o programa principal iniciou e se o arquivo original foi restaurado; os detalhes estão nos registros.")
+                res = {"ok": False, "reason": f"Erro do Studio: {type(e).__name__}: {e}", "detail": {}}
             await send({"t": "commit", "phase": "done" if res.get("ok") else "failed", "ok": bool(res.get("ok")),
                         "reason": res.get("reason"), "detail": res.get("detail") or {}})
 
         async def run_tune_op(cid, args):
-            """调参卡 / 设置页模型的操作：这一版只有 save_body（导出档案用的重量，只存在 Studio 里）；改鸭子的一律拒。"""
+            """Operações do painel de calibração/modelos na página de configurações: esta versão aceita apenas save_body (peso usado ao exportar o perfil, armazenado somente no Studio); qualquer alteração no Microduck é rejeitada."""
             from .tune import Refused as TuneRefused
             data, ok, reason = None, True, None
             if tune is None:
-                ok, reason = False, "这只鸭子没开调参卡的后端"
+                ok, reason = False, "O backend do painel de calibração não está habilitado neste Microduck"
             else:
                 try:
                     data = await tune.handle(args, by)
                 except TuneRefused as e:
                     ok, reason = False, str(e)
                 except Exception as e:  # noqa: BLE001
-                    ok, reason = False, f"Studio 出错：{type(e).__name__}: {e}"
-                    log.error(f"调参操作出错：{args.get('op')}", cat="Ajuste", raw=f"{type(e).__name__}: {e}", exc=True,
-                              hint="这是 Studio 的问题，导出诊断包发出来")
+                    ok, reason = False, f"Erro do Studio: {type(e).__name__}: {e}"
+                    log.error(f"Falha na operação de calibração: {args.get('op')}", cat="Ajuste", raw=f"{type(e).__name__}: {e}", exc=True,
+                              hint="É um problema do Studio. Exporte o pacote de diagnóstico e compartilhe.")
             try:
                 await send({"t": "result", "id": cid, "ok": ok, "reason": reason, "data": data})
             except Exception:  # noqa: BLE001
                 pass
 
         async def run_pad_op(cid, args):
-            """手柄页的操作：pad.handle 在线程里跑（搜索、配对、动作自己开后台线程，这里马上回）。"""
+            """Operações da página do controle: pad.handle roda em uma thread (busca, pareamento e movimentos iniciam suas próprias threads e retornam imediatamente)."""
             data, ok, reason = None, True, None
             if pad is None:
-                ok, reason = False, "这只鸭子没开手柄页的后端（台架模式）"
+                ok, reason = False, "O backend da página do controle não está habilitado neste Microduck (modo de bancada)"
             else:
                 try:
                     data = await asyncio.get_running_loop().run_in_executor(
@@ -981,29 +981,29 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 except PadRefused as e:
                     ok, reason = False, str(e)
                 except Exception as e:  # noqa: BLE001
-                    ok, reason = False, f"Studio 出错：{type(e).__name__}: {e}"
-                    log.error(f"手柄操作出错：{args.get('op')}", cat="Controle", raw=f"{type(e).__name__}: {e}", exc=True,
-                              hint="这是 Studio 的问题，导出诊断包发出来")
+                    ok, reason = False, f"Erro do Studio: {type(e).__name__}: {e}"
+                    log.error(f"Falha na operação do controle: {args.get('op')}", cat="Controle", raw=f"{type(e).__name__}: {e}", exc=True,
+                              hint="É um problema do Studio. Exporte o pacote de diagnóstico e compartilhe.")
             try:
                 await send({"t": "result", "id": cid, "ok": ok, "reason": reason, "data": data})
             except Exception:  # noqa: BLE001
                 pass
 
         async def onboard_op(cid, args):
-            """上手清单上的按钮（只记一笔，不碰鸭子）：
-                confirm_servo              舵机零位「已经校过，核对一下」（审查 O4；页面现在用「已完成」，老接口留着）
-                done {step, confirmed}     「已完成」：我以前做过（用户 10-20：「去做、已完成、跳过，有三个也行」）
-                skip {step, confirmed}     「跳过」：先不做（用户 10-18：「应该允许跳过、允许重新做」）
-                undone / unskip {step, confirmed}   取消
-            每一行任何时候都能点；有后果的（主程序明说没做完、读不到、测出了问题、测急停、调舵机时）要点两次，
-            页面第二下才带 confirmed: true，后端按现在的情况再判一遍，没带就拒（不能只靠页面）"""
+            """Botões do guia inicial (apenas registram uma ação; não controlam o Microduck):
+                confirm_servo              posição zero dos servos: “já calibrei; conferir” (revisão O4; a página usa “Concluído”, mas a interface antiga permanece)
+                done {step, confirmed}     “Concluído”: já fiz antes (decisão do usuário em 10-20: oferecer “Fazer”, “Concluído” e “Pular”)
+                skip {step, confirmed}     “Pular”: não fazer agora (decisão do usuário em 10-18: permitir pular e refazer)
+                undone / unskip {step, confirmed}   cancelar
+            Cada linha pode ser selecionada a qualquer momento. Ações com consequências (o programa principal indica pendência, leitura indisponível, problema detectado, teste de parada de emergência ou controle dos servos) exigem dois cliques;
+            somente o segundo clique envia confirmed: true. O backend reavalia a situação atual e rejeita a solicitação sem essa confirmação (não confia apenas na página)."""
             op = args.get("op")
             if onboard is None:
-                return {"t": "result", "id": cid, "ok": False, "reason": "这只鸭子没开上手清单"}
-            what = {"confirm_servo": "「已经校过，核对一下」", "done": "「已完成」", "skip": "跳过", "unskip": "取消跳过",
-                    "undone": "取消「已完成」"}.get(op)
+                return {"t": "result", "id": cid, "ok": False, "reason": "O guia inicial não está habilitado neste Microduck"}
+            what = {"confirm_servo": "“Já calibrei; conferir”", "done": "“Concluído”", "skip": "Pular", "unskip": "Cancelar o pulo",
+                    "undone": "Cancelar “Concluído”"}.get(op)
             if what is None:
-                return {"t": "result", "id": cid, "ok": False, "reason": f"不认识的指令：{op}"}
+                return {"t": "result", "id": cid, "ok": False, "reason": f"Comando desconhecido: {op}"}
             step = str(args.get("step") or "")
             confirmed = args.get("confirmed") is True
             if op == "confirm_servo":
@@ -1013,36 +1013,36 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             else:
                 ok, why = onboard.unmark(step, "skip" if op == "unskip" else "done", by, servo, confirmed)
             if ok:
-                onboard.tick(robotd, pad, servo)               # 马上重判一次，页面不用等下一拍
+                onboard.tick(robotd, pad, servo)               # Reavalia imediatamente, sem esperar o próximo ciclo da página.
                 await asyncio.to_thread(onboard.save)
             else:
-                log.info(f"上手清单{what}没记：{why}", cat="Calibração", step=step or "上手清单")
+                log.info(f"Ação do guia inicial {what} não registrada: {why}", cat="Calibração", step=step or "guia inicial")
             return {"t": "result", "id": cid, "ok": ok, "reason": why}
 
         async def run_battery_op(cid, args):
-            """设置页「电池」一栏：get / set / calibrate（studio/battery_svc.py）。只改 Studio 自己的设置，不碰鸭子。"""
+            """Seção “Bateria” da página de configurações: get / set / calibrate (studio/battery_svc.py). Altera apenas as configurações do Studio, sem controlar o Microduck."""
             data, ok, reason = None, True, None
             if battery is None:
-                ok, reason = False, "这只鸭子没开电量估算"
+                ok, reason = False, "A estimativa de bateria não está habilitada neste Microduck"
             else:
                 try:
                     data = await battery.handle(args, by)
                 except ValueError as e:
                     ok, reason = False, str(e)
                 except Exception as e:  # noqa: BLE001
-                    ok, reason = False, f"Studio 出错：{type(e).__name__}: {e}"
-                    log.error(f"电池设置出错：{args.get('op')}", cat="Bateria", raw=f"{type(e).__name__}: {e}", exc=True,
-                              hint="这是 Studio 的问题，导出诊断包发出来")
+                    ok, reason = False, f"Erro do Studio: {type(e).__name__}: {e}"
+                    log.error(f"Falha na configuração da bateria: {args.get('op')}", cat="Bateria", raw=f"{type(e).__name__}: {e}", exc=True,
+                              hint="É um problema do Studio. Exporte o pacote de diagnóstico e compartilhe.")
             try:
                 await send({"t": "result", "id": cid, "ok": ok, "reason": reason, "data": data})
             except Exception:  # noqa: BLE001
                 pass
 
         async def run_net_op(cid, args):
-            """配网页：scan / connect / forget。connect 先回「开始切换」，真正关热点、连 WiFi 在后台做。"""
+            """Página de configuração de rede: scan / connect / forget. connect confirma primeiro o início da troca; a desativação do ponto de acesso e a conexão Wi-Fi ocorrem em segundo plano."""
             from .net import Refused as NetRefused, validate_connect
             if net is None:
-                await send({"t": "result", "id": cid, "ok": False, "reason": "这只鸭子没开配网"})
+                await send({"t": "result", "id": cid, "ok": False, "reason": "A configuração de rede não está habilitada neste Microduck"})
                 return
             op = args.get("op")
             if op == "scan":
@@ -1052,9 +1052,9 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     await send({"t": "result", "id": cid, "ok": False, "reason": str(e)})
                     return
                 except Exception as e:  # noqa: BLE001
-                    log.error("扫 WiFi 出错", cat="Rede", raw=f"{type(e).__name__}: {e}", exc=True,
-                              hint="这是 Studio 的问题，导出诊断包发出来")
-                    await send({"t": "result", "id": cid, "ok": False, "reason": f"Studio 出错：{type(e).__name__}: {e}"})
+                    log.error("Falha ao buscar redes Wi-Fi", cat="Rede", raw=f"{type(e).__name__}: {e}", exc=True,
+                              hint="É um problema do Studio. Exporte o pacote de diagnóstico e compartilhe.")
+                    await send({"t": "result", "id": cid, "ok": False, "reason": f"Erro do Studio: {type(e).__name__}: {e}"})
                     return
                 await send({"t": "result", "id": cid, "ok": True, "data": data})
                 return
@@ -1066,10 +1066,10 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     await send({"t": "result", "id": cid, "ok": False, "reason": str(e)})
                     return
                 if not started:
-                    await send({"t": "result", "id": cid, "ok": False, "reason": "正在连，等一下"})
+                    await send({"t": "result", "id": cid, "ok": False, "reason": "Conectando; aguarde."})
                     return
-                # 先让页面收到回执（显示「正在切换……」），2 秒后 Net.connect 才动热点
-                await send({"t": "result", "id": cid, "ok": True, "reason": "开始切换",
+                # Confirma primeiro à página (exibe “Trocando…”); Net.connect altera o ponto de acesso após 2 s.
+                await send({"t": "result", "id": cid, "ok": True, "reason": "Iniciando a troca",
                             "data": {"ssid": ssid}})
 
                 async def do_connect():
@@ -1077,10 +1077,10 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                         await net.connect(ssid, psk, by)
                     except Exception as e:  # noqa: BLE001
                         net.busy = None
-                        log.error("连 WiFi 的后台任务出错", cat="Rede", raw=f"{type(e).__name__}: {e}", exc=True,
-                                  hint="这是 Studio 的问题，导出诊断包发出来")
-                # 引用挂在 net 上，不挂在这个页面的 cmd_tasks：手机断开（热点一关就会断）以后页面的处理函数结束，
-                # 后台这一路还要接着连完、写 last-try
+                        log.error("Falha na tarefa em segundo plano de conexão Wi-Fi", cat="Rede", raw=f"{type(e).__name__}: {e}", exc=True,
+                                  hint="É um problema do Studio. Exporte o pacote de diagnóstico e compartilhe.")
+                # Guarda a referência em net, e não no cmd_tasks da página: a página termina quando o celular se desconecta (o ponto de acesso será desligado),
+                # mas esta tarefa em segundo plano ainda precisa concluir a conexão e gravar last-try.
                 net.connect_task = asyncio.create_task(do_connect())
                 return
             if op == "forget":
@@ -1090,21 +1090,21 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     await send({"t": "result", "id": cid, "ok": False, "reason": str(e)})
                     return
                 except Exception as e:  # noqa: BLE001
-                    log.error("忘掉 WiFi 出错", cat="Rede", raw=f"{type(e).__name__}: {e}", exc=True,
-                              hint="这是 Studio 的问题，导出诊断包发出来")
-                    await send({"t": "result", "id": cid, "ok": False, "reason": f"Studio 出错：{type(e).__name__}: {e}"})
+                    log.error("Falha ao esquecer a rede Wi-Fi", cat="Rede", raw=f"{type(e).__name__}: {e}", exc=True,
+                              hint="É um problema do Studio. Exporte o pacote de diagnóstico e compartilhe.")
+                    await send({"t": "result", "id": cid, "ok": False, "reason": f"Erro do Studio: {type(e).__name__}: {e}"})
                     return
                 await send({"t": "result", "id": cid, "ok": True, "data": data})
                 return
-            await send({"t": "result", "id": cid, "ok": False, "reason": f"不认识的配网操作：{op}"})
+            await send({"t": "result", "id": cid, "ok": False, "reason": f"Operação de rede desconhecida: {op}"})
 
         async def run_onboard_op(cid, args):
             try:
                 out = await onboard_op(cid, args)
             except Exception as e:  # noqa: BLE001
-                log.error("上手清单的按钮出错", cat="Sistema", raw=f"{type(e).__name__}: {e}", exc=True,
-                          hint="这是 Studio 的问题，导出诊断包发出来")
-                out = {"t": "result", "id": cid, "ok": False, "reason": f"Studio 出错：{type(e).__name__}"}
+                log.error("Falha no botão do guia inicial", cat="Sistema", raw=f"{type(e).__name__}: {e}", exc=True,
+                          hint="É um problema do Studio. Exporte o pacote de diagnóstico e compartilhe.")
+                out = {"t": "result", "id": cid, "ok": False, "reason": f"Erro do Studio: {type(e).__name__}"}
             try:
                 await send(out)
             except Exception:  # noqa: BLE001
