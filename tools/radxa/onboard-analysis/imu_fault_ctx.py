@@ -1,4 +1,5 @@
-"""IMU 断线时间点 vs 当时机器人在干什么：状态、关节最大转速、机身角速度、舵机电压。"""
+"""Cruza os horários de desconexão da IMU com a atividade do robô: estado, velocidade
+angular máxima das juntas, velocidade angular do corpo e tensão dos servos."""
 import json, glob, subprocess, datetime, math, bisect
 out = subprocess.run(['journalctl','-u','robotd','-b','--no-pager','-o','short-unix'], capture_output=True, text=True).stdout
 faults=[]; idents=[]; events=[]
@@ -8,8 +9,8 @@ for l in out.splitlines():
     if 'trunk IMU reader fault' in l: faults.append(ts)
     elif 'BNO08x identified' in l: idents.append((ts, l.split('reset_cause=')[-1].strip()))
     elif any(k in l for k in ('robot.init: torque on','robot.relax: torque off','fall verdict changed','policy outcome')): events.append((ts, l.split('robotd: ')[-1][:60] if 'robotd: ' in l else l[-60:]))
-print('本次开机：IMU 断线 %d 次，重新认到 %d 次；reset_cause 取值 %s' % (len(faults), len(idents), sorted(set(c for _,c in idents))))
-# 录像（50 Hz）按墙钟时间索引
+print('Nesta inicialização: %d desconexões da IMU, %d reconexões; valores de reset_cause: %s' % (len(faults), len(idents), sorted(set(c for _,c in idents))))
+# Indexa as gravações (50 Hz) pelo horário de relógio de parede.
 R=[]
 for f in sorted(glob.glob('/home/duck/r17/rec/run-*.jsonl'))[-4:]:
     for l in open(f, errors='replace'):
@@ -26,16 +27,16 @@ H.sort(); HW=[w for w,_ in H]
 def ctx(ts):
     i=bisect.bisect_left(W, ts-1.0); j=bisect.bisect_left(W, ts+0.05)
     seg=[r for _,r in R[i:j]]
-    if not seg: return '（无录像）'
+    if not seg: return '(sem gravação)'
     pol=seg[-1].get('policy'); jv=max(max(abs(v) for v in r['velocities']) for r in seg); gy=max(math.sqrt(sum(x*x for x in r['imu']['gyro'])) for r in seg)
     k=bisect.bisect_left(HW, ts-2); hv=[v for w,v in H[k:k+8] if abs(w-ts)<2.5]
-    return '状态=%-7s 前1秒关节最快 %4.1f rad/s 机身角速度最大 %4.2f  电压 %s' % (pol, jv, gy, ('%.2f~%.2f V' % (min(hv), max(hv))) if hv else '—')
-print('\n断线时间            当时情况')
+    return 'estado=%-7s junta mais rápida no segundo anterior %4.1f rad/s; velocidade angular máxima do corpo %4.2f; tensão %s' % (pol, jv, gy, ('%.2f a %.2f V' % (min(hv), max(hv))) if hv else '—')
+print('\nHorário da desconexão  Contexto')
 last=0
 for ts in faults:
     if ts-last < 0.3: continue
     last=ts
     print(datetime.datetime.fromtimestamp(ts).strftime('%H:%M:%S.%f')[:-3], ' ', ctx(ts))
-print('\n同期机器人事件：')
+print('\nEventos do robô no mesmo período:')
 for ts,e in events:
     if faults and faults[0]-60 < ts < faults[-1]+5: print(' ', datetime.datetime.fromtimestamp(ts).strftime('%H:%M:%S'), e)

@@ -1,5 +1,7 @@
-"""把本次开机的系统日志实时抄一份到卡上，每秒 fsync（Armbian 的 /var/log 在内存里，拔电就丢）。
-跳过 robotd 启动时每 20 ms 一条的 IMU settling 刷屏。用法：python3 duck_journal.py 输出文件"""
+"""Copia em tempo real o log do sistema desta inicialização para o cartão e sincroniza
+em disco a cada segundo (o /var/log do Armbian fica na memória e se perde se a energia
+for cortada). Ignora a enxurrada de mensagens de estabilização da IMU, emitidas pelo
+robotd a cada 20 ms durante a inicialização. Uso: python3 duck_journal.py arquivo_de_saida"""
 import os, subprocess, sys, threading, time
 out = sys.argv[1]
 p = subprocess.Popen(['journalctl', '-b', '-f', '-n', 'all', '-o', 'short-precise', '--no-pager'],
