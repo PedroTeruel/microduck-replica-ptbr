@@ -1,6 +1,6 @@
-"""SwdReader（pyOCD：ST-Link / DAPLink）测试。
+"""Testes do SwdReader (pyOCD: ST-Link / DAPLink).
 
-用假的 pyocd 模块，不打开真探针、不接板子。
+Usa um módulo pyocd simulado; não abre uma sonda real nem se conecta a uma placa.
 Run: python -m pytest -q test_imu_swd.py
 """
 import contextlib
@@ -17,7 +17,7 @@ import imu_bridge as bridge
 import server
 from test_imu_bridge import snapshot
 
-IMAGE = bytes(range(64))            # 假固件：64 字节，按字对齐
+IMAGE = bytes(range(64))            # Firmware simulado de 64 bytes, alinhado por palavra.
 SAMPLE, TICK = 0x20000064, 0x20000BE0
 
 
@@ -32,7 +32,7 @@ class FakeProbe:
 
 
 class JLinkProbe(FakeProbe):
-    """类名跟 pyOCD 的 J-Link 探针一样，SwdReader 按类名拒绝。"""
+    """O nome da classe corresponde ao da sonda J-Link do pyOCD; SwdReader a recusa pelo nome da classe."""
 
 
 class FakeTarget:
@@ -69,7 +69,7 @@ class FakeTarget:
 
 
 class FakeLink:
-    """pyOCD 里只有 ST-Link 的 _link 能测目标电压。"""
+    """No pyOCD, somente o _link do ST-Link consegue medir a tensão do alvo."""
     def __init__(self, volts, events=None, error=None):
         self.volts, self.target_voltage, self.error = volts, 0, error
         self.events = events if events is not None else []
@@ -82,7 +82,7 @@ class FakeLink:
 
 
 class Board:
-    """一块假板：所有 Session 共用同一个目标和同一根探针链路。"""
+    """Placa simulada: todas as sessões compartilham o mesmo alvo e a mesma conexão da sonda."""
     def __init__(self, memory=None, volts=3.29, state=FakeState.RUNNING, voltage_api=True,
                  probe_open_error=None, target_open_error=None, voltage_error=None):
         self.events = []
@@ -128,7 +128,7 @@ def board_memory(image=IMAGE, sample=None, tick=1005):
 
 class SwdTestCase(unittest.TestCase):
     def fake_pyocd(self, probes, board):
-        """把假 pyocd 塞进 sys.modules。"""
+        """Insere um pyocd simulado em sys.modules."""
         class ConnectHelper:
             @staticmethod
             def get_all_connected_probes(blocking=False):
@@ -159,27 +159,27 @@ class SwdConnectTests(SwdTestCase):
         reader = self.reader()
         reader.connect()
         options = board.sessions[-1].options
-        self.assertEqual(options["connect_mode"], "attach")        # 不复位、不暂停
-        self.assertFalse(options["resume_on_disconnect"])          # 断开不隐式 Go
-        self.assertTrue(options["no_config"])                      # 不加载 pyocd.yaml / 用户脚本
+        self.assertEqual(options["connect_mode"], "attach")        # Sem reset nem pausa.
+        self.assertFalse(options["resume_on_disconnect"])          # Desconectar não executa Go implicitamente.
+        self.assertTrue(options["no_config"])                      # Não carrega pyocd.yaml nem scripts do usuário.
         self.assertEqual(options["target_override"], "cortex_m")
         self.assertEqual(options["frequency"], bridge.SWD_FREQUENCY_HZ)
         self.assertFalse(options["auto_unlock"])
         self.assertEqual(reader.voltage_mv, 3150)
         self.assertEqual((reader.probe_name, reader.probe_uid), ("STM32 STLink", "ABC123"))
         self.assertEqual(board.target.resumed, 0)
-        self.assertIn(("32", 0x08000000, len(IMAGE)), board.target.reads)  # 比对 Flash 按字读
+        self.assertIn(("32", 0x08000000, len(IMAGE)), board.target.reads)  # Compara o Flash com leitura por palavra.
 
     def test_voltage_is_checked_before_touching_the_chip(self):
         board = self.fake_pyocd([FakeProbe("A1")], Board())
         self.reader().connect()
         kinds = [e[0] if e[0] != "open" else f"open{int(e[1])}" for e in board.events]
-        # 先只开探针（open0）→ 量电压 → 关 → 再 attach（open1）→ 才读内存
+        # Primeiro abre apenas a sonda (open0) → mede a tensão → fecha → conecta (open1) → então lê a memória.
         self.assertEqual(kinds[:4], ["open0", "voltage", "close", "open1"])
         self.assertLess(kinds.index("voltage"), kinds.index("read"))
 
     def test_low_voltage_refuses_without_attaching(self):
-        for volts, hint in ((0.0, "没上电"), (1.8, "3.3 V")):
+        for volts, hint in ((0.0, "apenas 0 mV"), (1.8, "3,3 V")):
             with self.subTest(volts=volts):
                 board = self.fake_pyocd([FakeProbe("A1")], Board(volts=volts))
                 with self.assertRaises(bridge.BridgeError) as ctx:
@@ -195,7 +195,7 @@ class SwdConnectTests(SwdTestCase):
         self.fake_pyocd([FakeProbe("A1")], Board(volts=None))
         with self.assertRaises(bridge.BridgeError):
             self.reader().connect()
-        # DAPLink 经 pyOCD 没有测电压接口：不显示，也不拦
+        # O DAPLink via pyOCD não oferece leitura de tensão: não exibe nem bloqueia a conexão.
         self.fake_pyocd([FakeProbe("A1", "DAPLink")], Board(voltage_api=False))
         reader = self.reader()
         reader.connect()
@@ -208,7 +208,7 @@ class SwdConnectTests(SwdTestCase):
         self.assertIn("--imu-jlink", str(ctx.exception))
         with self.assertRaises(bridge.BridgeError):
             self.reader("J1").connect()
-        # J-Link 和 ST-Link 同时插着：自动模式只看 ST-Link
+        # Com J-Link e ST-Link conectados ao mesmo tempo, o modo automático considera apenas o ST-Link.
         board = self.fake_pyocd([JLinkProbe("J1", "Segger J-Link"), FakeProbe("S1")], Board())
         reader = self.reader()
         reader.connect()
@@ -235,13 +235,13 @@ class SwdConnectTests(SwdTestCase):
         self.fake_pyocd([], Board())
         with self.assertRaises(bridge.BridgeError) as ctx:
             self.reader().connect()
-        self.assertIn("没找到调试器", str(ctx.exception))
+        self.assertIn("Nenhuma sonda encontrada", str(ctx.exception))
 
     def test_probe_busy_and_wiring_failures_have_different_hints(self):
         board = self.fake_pyocd([FakeProbe("A1")], Board(probe_open_error=OSError("busy")))
         with self.assertRaises(bridge.BridgeError) as ctx:
             self.reader().connect()
-        self.assertIn("占用", str(ctx.exception))
+        self.assertIn("ocupada pelo Keil", str(ctx.exception))
         self.assertTrue(all(s.closed for s in board.sessions))
         self.fake_pyocd([FakeProbe("A1")], Board(target_open_error=OSError("no ack")))
         with self.assertRaises(bridge.BridgeError) as ctx:
@@ -286,7 +286,7 @@ class SwdReadTests(SwdTestCase):
         self.assertEqual(frame["voltage_mv"], 3290)
         self.assertEqual(frame["quaternion_xyzw"], [0, 0, 0, 1])
 
-    def test_halted_or_unreachable_cpu_stops_with_chinese_error(self):
+    def test_halted_or_unreachable_cpu_stops_with_clear_error(self):
         reader, board = self.connected()
         board.target.state = FakeState.HALTED
         with self.assertRaises(bridge.BridgeError):
@@ -294,7 +294,7 @@ class SwdReadTests(SwdTestCase):
         board.target.state_error = RuntimeError("Memory transfer fault @0xE000EDF0")
         with self.assertRaises(bridge.BridgeError) as ctx:
             reader.snapshot()
-        self.assertIn("CPU 运行状态", str(ctx.exception))
+        self.assertIn("estado de execução da CPU", str(ctx.exception))
 
     def test_unaligned_uses_bytes_and_errors_are_wrapped(self):
         reader, board = self.connected()
@@ -310,7 +310,7 @@ class SwdReadTests(SwdTestCase):
         reader.close()
         self.assertEqual(session.closed, 1)
         self.assertIsNone(reader.session)
-        # session.close() 没把 USB 放掉（打开到一半失败）时，再兜底关一次探针
+        # Se session.close() não liberar o USB após uma falha durante a abertura, fecha a sonda novamente como alternativa.
         stuck = types.SimpleNamespace(close=lambda: None,
                                       probe=types.SimpleNamespace(is_open=True, closed=0))
         stuck.probe.close = lambda: setattr(stuck.probe, "closed", stuck.probe.closed + 1)
@@ -331,7 +331,7 @@ class BracketedSnapshotTests(unittest.TestCase):
 
 
 class FakeReader:
-    """替换 BridgeService 里的 SwdReader，看重试、关闭和帧字段。"""
+    """Substitui o SwdReader de BridgeService para verificar novas tentativas, encerramento e campos do quadro."""
     instances = []
     fail_first = 0
 
@@ -343,7 +343,7 @@ class FakeReader:
 
     def connect(self):
         if len(FakeReader.instances) <= FakeReader.fail_first:
-            raise bridge.BridgeError("假的连接失败")
+            raise bridge.BridgeError("Falha de conexão simulada")
 
     def read_voltage(self):
         return 3300
@@ -372,7 +372,7 @@ class SwdServiceTests(unittest.TestCase):
             if predicate(status):
                 return status
             time.sleep(0.02)
-        self.fail(f"等不到期望的状态：{service.get_status()}")
+        self.fail(f"Estado esperado não foi atingido: {service.get_status()}")
 
     def test_failed_connect_closes_reader_and_reports_error(self):
         FakeReader.fail_first = 99
@@ -380,9 +380,9 @@ class SwdServiceTests(unittest.TestCase):
         service.start()
         self.addCleanup(service.stop)
         status = self.wait_for(service, lambda s: s["status"] == "error")
-        self.assertIn("假的连接失败", status["message"])
+        self.assertIn("Falha de conexão simulada", status["message"])
         self.assertEqual(status["backend"], "swd")
-        # _run 在 except 里关一次、finally 里再关一次；close 是幂等的，至少关过就行
+        # _run fecha no except e novamente no finally; close é idempotente, basta ter sido chamado ao menos uma vez.
         self.assertEqual(len(FakeReader.instances), 1)
         self.assertGreaterEqual(FakeReader.instances[0].closed, 1)
 
@@ -428,7 +428,7 @@ class SwdCliTests(unittest.TestCase):
             service = server.create_imu_service(args)
             self.assertEqual((service.backend, service.probe_id), ("swd", "auto"))
             self.assertIsNone(service.thread)
-            with self.assertRaises(ValueError):          # --imu-swd "" 不能悄悄关掉 IMU
+            with self.assertRaises(ValueError):          # --imu-swd "" não pode desativar a IMU silenciosamente.
                 server.create_imu_service(server.parse_args(["--fake", "--imu-swd", " "]))
             with patch.object(Path, "is_file", return_value=False), self.assertRaises(ValueError):
                 server.create_imu_service(args)
