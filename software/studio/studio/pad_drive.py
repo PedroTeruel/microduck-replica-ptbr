@@ -561,7 +561,7 @@ class DriveMixin:
                 now = self.clock()
                 self._clears.append({"conn": conn, "why": why, "due": now + delay, "tries": 0})
                 for c in [c for c, x in self._mode_exit.items() if now - x["at"] > 10]:
-                    self._mode_exit.pop(c, None)          # visível para a página por 10 s; depois expira para evitar crescimento contínuo（审查 R9）
+                    self._mode_exit.pop(c, None)          # visível para a página por 10 s; depois expira para evitar crescimento contínuo (revisão R9)
                 for c in list(self._modes):
                     if conn is None or c == conn:
                         m = self._modes.pop(c)
@@ -606,22 +606,22 @@ class DriveMixin:
             for kind, method, params, req, lat in sends:
                 try:
                     self._notify_output(method, dict(params))
-                    self.log.info(("cabeça recentralizada" if kind == "head" else "corpo回到标称 e 退出modo corpo") + f"（{req['why']}）",
+                    self.log.info(("cabeça recentralizada" if kind == "head" else "corpo voltou ao centro e saiu do modo corpo") + f" ({req['why']})",
                                   cat="Controle", raw=f"{method} {json.dumps(params)}", dedup=False)
                 except (Unreachable, Timeout) as e:
                     with self._lk:
                         if self._latch[kind] is None:
-                            self._latch[kind] = lat                 # 还算网页置着：过 1 秒再试，最多 3 次
+                            self._latch[kind] = lat                 # ainda consta como definido pela página: tenta novamente em 1 s, até 3 vezes
                         if req["tries"] < 2:
                             self._clears.append(dict(req, due=self.clock() + 1.0, tries=req["tries"] + 1))
-                    self.log.warn("cabeça/corpo没能回正", cat="Segurança", step=method, raw=str(e),
+                    self.log.warn("Não foi possível recentralizar cabeça/corpo", cat="Segurança", step=method, raw=str(e),
                                   hint=("tente novamente em 1 s" if req["tries"] < 2 else "3 tentativas de envio falharam: ") +
                                   "se o modo corpo continuar ativo, o Microduck não poderá andar; pressione B duas vezes ou relaxe o torque e depois fique em pé")
 
     def _mode_op(self, args, conn, by):
-        """página按了图上的 Y / B（切modo cabeça / modo corpo / voltar ao modo Andar），或者在cabeça / modo corpo时每秒报一次「还在」（三 V6 e V11).
-        进模式不发任何东西（跟 padd 一样）；网页正在走就先发一次停。sair模式清掉这个página置过的cabeça/corpo。
-        策略没在跑也能切（padd 也能），只是quadro do analógico会被丢掉（三 V12)."""
+        """Processa Y/B do controle virtual (alternar entre modo cabeça, modo corpo e modo Andar) e heartbeat a cada segundo nos modos cabeça/corpo (3 V6 e V11).
+        Entrar no modo não envia comandos, como no padd; se a página estiver andando, envia “Parar” uma vez. Ao sair do modo, limpa cabeça/corpo definidos por esta página.
+        É possível alternar mesmo sem a política em execução, como no padd; os quadros dos analógicos serão descartados (3 V12)."""
         mode = args.get("mode")
         if mode not in MODES:
             raise Refused(f"Modo desconhecido: {mode}")
@@ -656,10 +656,10 @@ class DriveMixin:
                 q["mode"] = seq
             ex = self._mode_exit.get(conn)
             if mode == "drive":
-                self._mode_exit.pop(conn, None)         # páginavoltar ao modo Andar = a página sabe que o backend saiu do modo（前端跟着后端回Andar时会发这一句）
+                self._mode_exit.pop(conn, None)         # voltar ao modo Andar indica que a página recebeu a saída do modo pelo backend (o frontend envia isso ao acompanhar o backend)
             elif cur == "drive" and ex is not None:
-                # 后端刚替这个página退出了模式 e página还没回过「Andar」：这时来的「entrar no modo cabeça/corpo」多半是página还没看到退出
-                # （o heartbeat chegou antes da atualização do estado），不能把它要回来（审查 R3 e 三 V6).página跟着voltar ao modo Andar以后再按就进得去
+                # O backend acabou de sair do modo por esta página, mas ela ainda não voltou a “Andar”. Um pedido para entrar no modo cabeça/corpo provavelmente chegou
+                # antes de a página receber a notificação de saída (heartbeat anterior à atualização do estado); não reativa o modo (revisões R3 e 3 V6). Depois que a página voltar a “Andar”, pode entrar novamente.
                 return {"dropped": f"O backend já saiu de {MODE_CN[mode]}（{ex['why']}）：volte ao modo Andar e pressione novamente", "mode": cur}
             note = MODE_IDLE if mode != "drive" and self._posture() not in DRIVING else None
             if mode == cur:
@@ -668,17 +668,17 @@ class DriveMixin:
                 return {"mode": cur, "note": note}
             if cur != "drive":
                 self._modes.pop(conn, None)
-                # 一律排（审查 R1）：这个página第一帧cabeça/corpo可能还在路上，_flush_clears 在 _send_lk 里会等它写完 _latch
-                self._clears.append({"conn": conn, "why": f"退出{MODE_CN[cur]}", "due": now, "tries": 0})
+                # Sempre agenda (revisão R1): o primeiro quadro de cabeça/corpo desta página pode estar em trânsito; _flush_clears aguarda sob _send_lk até ele atualizar _latch
+                self._clears.append({"conn": conn, "why": f"saída do modo {MODE_CN[cur]}", "due": now, "tries": 0})
             if mode != "drive":
                 self._modes[conn] = {"mode": mode, "hb": now}
                 d = self._driver
                 stop_first = self._web_driving and d is not None and d["conn"] == conn
-            q["stop"] = max(q["stop"], q["hi"])            # 换模式之前的quadro do analógico作废
-        self.log.info(f"网页手柄 {'Y' if 'head' in (mode, cur) else 'B'} → {MODE_CN[mode]}（{by or 'página'}）"
+            q["stop"] = max(q["stop"], q["hi"])            # invalida quadros dos analógicos anteriores à troca de modo
+        self.log.info(f"Controle virtual {'Y' if 'head' in (mode, cur) else 'B'} → {MODE_CN[mode]} ({by or 'página'})"
                       + (f"：{note}" if note else ""), cat="Controle", dedup=False)
         if stop_first:
-            self._stop_move({}, conn, by)                  # padd 在cabeça / modo corpo每拍发 move 0（padd:1427-1448）
+            self._stop_move({}, conn, by)                  # padd envia move 0 a cada ciclo nos modos cabeça/corpo (padd:1427-1448)
         self._flush_clears(force=True)
         return {"mode": mode, "note": note}
 
