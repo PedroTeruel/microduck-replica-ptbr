@@ -62,7 +62,7 @@ class CaptureCleanToml(unittest.TestCase):
         expected["audio"]["bank"] = "/var/lib/robot/sounds"
         self.assertEqual(after, expected)
 
-        # 其余段原样：行级比较
+        # Compare the remaining sections line by line; they must stay unchanged.
         for section in ['["bus"]', '["control"]', '["policy"]', '["safety"]', '["pad"]']:
             start_in = text.index(section)
             end_in = text.index("\n[", start_in + 1) if "\n[" in text[start_in + 1:] else len(text)
@@ -98,7 +98,7 @@ class CaptureCleanToml(unittest.TestCase):
 
 
 class CaptureModelSkip(unittest.TestCase):
-    """copy_models 的实际跳过规则：训练产物和作者使用说明都不进 payload。"""
+    """Actual copy_models exclusions: training artifacts and the author's notes stay out of the payload."""
 
     @classmethod
     def setUpClass(cls):

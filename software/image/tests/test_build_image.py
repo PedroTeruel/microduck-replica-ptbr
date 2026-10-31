@@ -16,7 +16,7 @@ class BuildImageSelftest(unittest.TestCase):
     def test_partition_selftest(self):
         result = run_shell([posix_path(SCRIPT_BUILD), "--selftest"])
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("自检通过", result.stdout)
+        self.assertIn("Autoverificação da edição de linha de partição aprovada", result.stdout)
         self.assertIn("GPT", result.stdout)
         self.assertIn("MBR", result.stdout)
 
