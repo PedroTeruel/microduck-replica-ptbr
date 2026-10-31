@@ -26,7 +26,7 @@ class AuthTest(unittest.TestCase):
     def test_no_password_refuses_login(self):
         token, why, _ = self.auth.login("whatever", "1.2.3.4")
         self.assertIsNone(token)
-        self.assertIn("还没设", why)
+        self.assertIn("ainda não foi definida", why)
 
     def test_set_and_login(self):
         self.auth.set_password("duck-123456")
@@ -57,7 +57,7 @@ class AuthTest(unittest.TestCase):
         token, why, wait = self.auth.login("duck-123456", "9.9.9.9")
         self.assertIsNone(token)
         self.assertGreater(wait, 0)
-        self.assertIn("秒后再试", why)
+        self.assertIn("segundos", why)
         token, _, _ = self.auth.login("duck-123456", "8.8.8.8")
         self.assertIsNotNone(token)
 
