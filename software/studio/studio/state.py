@@ -380,7 +380,7 @@ def todo(health, bus, servos, imu_status, cpu, loop, battery, pose, health_age=N
                       "hint": "O cabo pode estar frouxo ou sem alimentação."})
     khz, mk = cpu.get("khz"), cpu.get("max_khz")
     if cpu.get("throttled"):
-        mhz = f"：{khz // 1000} / {mk // 1000} MHz" if isinstance(khz, int) and isinstance(mk, int) and mk else ""
+        mhz = f": {khz // 1000} / {mk // 1000} MHz" if isinstance(khz, int) and isinstance(mk, int) and mk else ""
         items.append({"key": "cpu", "level": "warn", "msg": f"A placa reduziu a frequência por superaquecimento{mhz}", "hint": "O controle ficará mais lento; instale um dissipador ou uma ventoinha pequena."})
     elif cpu.get("hot") and isinstance(cpu.get("c"), (int, float)):
         # Usa a mesma histerese do indicador da placa (acende a ≥ 80 °C e apaga abaixo de 77 °C; revisão O8), evitando oscilações em repouso entre 78 e 80 °C.

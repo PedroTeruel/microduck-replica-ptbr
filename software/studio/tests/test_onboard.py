@@ -1,10 +1,4 @@
-"""总览重排（overview-merge-plan.md §5、审查 overview-merge-review.md）的后端：上手清单（studio/onboard.py）、
-主板温度格（state.cpu_view）、标定状态只认这次 hello 之后的（robotd.fresh_calib）、IMU 页的「核对过」记录。
-
-清单的判法照审查末尾「清单每一步的最终判法」表（§5 O14 改成 6 行，任务 11 加了「写进主程序」）；每一步测四种状态：✓ ok · ● todo · ○ no · ? unk。
-跑法（studio 目录下）：
-    py -3.13 -I -c "import sys;sys.path[:0]=['deps','.','dev'];import unittest;unittest.main(module=None,argv=['x','-v','tests.test_onboard'])"
-"""
+"""Testes do cartão de integração, temperatura da placa, estado da calibração e verificação da IMU."""
 import asyncio
 import copy
 import json
@@ -51,7 +45,7 @@ def calib_with(dirs=None, **joint_zero):
 def pad_view(known=True, pads=(), attached=False, device=None, estop="ok", checks=None):
     pads = [dict(p) for p in pads]
     active = next((p for p in pads if p.get("connected")), None)
-    return {"known": known, "error": None if known else "读不到", "pads": pads, "active": active, "attached": attached,
+    return {"known": known, "error": None if known else "unavailable", "pads": pads, "active": active, "attached": attached,
             "device": device, "estop": {"state": estop, "checks": checks or []}}
 
 
@@ -71,7 +65,7 @@ def row(view, key):
 
 
 class FakeRd:
-    """robotd.Robotd 的样子（onboard / summarize 只读这些）。"""
+    """Substituto de robotd.Robotd com os campos lidos por onboard e summarize."""
 
     def __init__(self, bus=None, calib="rec", health="rec", present=True):
         self.addr = "tcp:x"
@@ -89,7 +83,7 @@ class FakeRd:
         self.estop = EStop()
 
 
-# ---------------- 清单每一步 ----------------
+# ---------------- Etapas da lista ----------------
 
 class RowTest(unittest.TestCase):
     def test_header(self):
@@ -98,90 +92,85 @@ class RowTest(unittest.TestCase):
         stuck = {"build": BUILD, "mode": "motion", "phase": "waiting_for_bus", "error": "motion requires all 15 calibrated joints, measured limits and verified IMU mounting for the lsm6dsv16x IMU"}
         h = O.header_of(inp(bus=stuck, calib=None))
         self.assertEqual(h["kind"], "stuck_calib")
-        self.assertIn("标定或 IMU 方向没过", h["text"])
+        self.assertIn("calibração ou orientação da IMU incompleta", h["text"])
         self.assertIn("verified IMU mounting", h["raw"])
         h = O.header_of(inp(bus=dict(stuck, error="Feetech Sync Read timeout; missing IDs [21]"), calib=None))
         self.assertEqual(h["kind"], "starting")
-        self.assertIn("舵机没上电", h["text"])
+        self.assertIn("servos (eles podem estar sem energia)", h["text"])
         self.assertEqual(O.header_of(inp(bus={"mode": "commissioning", "phase": "ready"}))["kind"], "commissioning")
         self.assertEqual(O.header_of(inp(servo_session=True))["kind"], "servo")
 
     def test_header_commissioning_boot_report_and_snapshot(self):
-        """任务 16：标定模式没读成功之前 busStatus 是启动报告（starting）；读成功以后的实时快照都算主程序起来了。
-        连续报启动阶段超过 30 秒，卡片头不再说「还在启动」（10-20 真机：旧 fork 永远报 configuring_bus）。"""
+        """Verifica as mensagens do cabeçalho durante a inicialização e no modo de calibração."""
         boot = {"build": BUILD, "mode": "commissioning", "phase": "configuring_bus", "port": "/dev/ttyS2"}
         h = O.header_of(inp(bus=boot))
-        self.assertEqual((h["kind"], h["text"]), ("starting", "主程序还在启动"))
+        self.assertEqual((h["kind"], h["text"]), ("starting", "O programa principal ainda está iniciando"))
         h = O.header_of(inp(bus=boot, starting_s=31))
         self.assertEqual(h["kind"], "starting")
-        self.assertIn("O programa principal continua inicializando", h["text"])
-        self.assertIn("problema de versões antigas", h["text"])
-        self.assertIn("página de logs", h["text"])
-        self.assertNotIn("10 秒", h["text"])
+        self.assertIn("continua informando", h["text"])
+        self.assertNotIn("10 segundos", h["text"])
         h = O.header_of(inp(bus=dict(boot, phase="waiting_for_bus", error="Feetech Sync Read timeout"), starting_s=40))
-        self.assertIn("舵机没上电", h["text"])                               # 有原话的等总线照旧说清楚是什么
+        self.assertIn("servos (eles podem estar sem energia)", h["text"])
         for phase in ("ready", "moving", "stop_unconfirmed", "power_pending", "read_error"):
             with self.subTest(phase=phase):
                 self.assertEqual(O.header_of(inp(bus={"mode": "commissioning", "phase": phase}))["kind"], "commissioning")
         h = O.header_of(inp(bus={"mode": "commissioning", "phase": "read_error", "last_cycle_error": "missing IDs [21]"}))
-        self.assertIn("读舵机出错", h["text"])
-        self.assertEqual(h["raw"], "missing IDs [21]")                         # 照原样带主程序的原话
+        self.assertIn("houve erro ao ler os servos", h["text"])
+        self.assertEqual(h["raw"], "missing IDs [21]")
 
     def test_servo_four_states(self):
         rec = {}
-        # ● 主程序文件里 15 颗都是 2048，但 Studio 这边没记录（可能是随包的种子值、手改的）：去舵机页 +「已完成」「跳过」
-        # （以前的第二个按钮「已经校过，核对一下」就是现在的「已完成」：用户 10-20）
+        # Os 15 pontos zero estão no arquivo principal, mas o Studio não tem um registro local.
         r = row(O.evaluate(inp(), rec), "servo")
         self.assertEqual(r["state"], "todo")
         self.assertEqual([a["do"] for a in r["actions"]], ["servos"])
         self.assertEqual(r["mark"]["done"], {"confirm": False, "ask": None})
-        self.assertIn("已完成", r["text"])
-        # ● zero_raw 不是 2048：两套零位会打架，列出是哪颗、差多少度
+        self.assertIn("Marque como concluído", r["text"])
+        # Valores zero_raw diferentes de 2048 devem mostrar os servos e as diferenças.
         r = row(O.evaluate(inp(calib=calib_with(left_knee=1990)), rec), "servo")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("两套零位会打架", r["text"])
-        self.assertIn("左膝 1990（差 -5.1°）", r["text"])
-        # ✓ Studio 舵机页标过 15 颗，而且记下的关节指纹没变（代码审查 C9-3：判法表「并且指纹没变」）
+        self.assertIn("Os pontos zero divergem", r["text"])
+        self.assertIn("left_knee 1990 (diferença de -5.1°)", r["text"])
+        # Calibração registrada no Studio e impressão digital dos servos inalterada.
         stu = {"ids": set(O.SERVO_IDS), "time": "2026-10-18 03:12:00"}
         ss = {"servo_studio": {"at": 1.7e9, "fp": O.joints_fp(CALIB), "src": stu["time"]}}
         r = row(O.evaluate(inp(studio=stu), ss), "servo")
         self.assertEqual((r["state"], r["when"]), ("ok", "2026-10-18 03:12:00"))
         r = row(O.evaluate(inp(studio=stu), {"servo_studio": dict(ss["servo_studio"], fp="old")}), "servo")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("舵机页标过以后", r["text"])
-        # ✓ 点过「已经校过，核对一下」，指纹没变；指纹变了 → ●
+        self.assertIn("arquivo de calibração mudou", r["text"])
         fp = O.joints_fp(CALIB)
         self.assertEqual(row(O.evaluate(inp(), {"confirm_servo": {"at": 1.7e9, "fp": fp}}), "servo")["state"], "ok")
         r = row(O.evaluate(inp(), {"confirm_servo": {"at": 1.7e9, "fp": "old"}}), "servo")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("改过了", r["text"])
-        # ○ 主程序说有没标的 / 卡在标定报错上
+        self.assertIn("mudou", r["text"])
+        # Etapa pendente quando o programa principal informa juntas não calibradas.
         c = copy.deepcopy(CALIB)
         c["uncalibrated_joints"] = ["left_knee"]
         self.assertEqual(row(O.evaluate(inp(calib=c), rec), "servo")["state"], "no")
         stuck = {"build": BUILD, "mode": "motion", "phase": "waiting_for_bus", "error": "motion requires all 15 calibrated joints"}
         r = row(O.evaluate(inp(bus=stuck, calib=None), rec), "servo")
         self.assertEqual(r["state"], "no")
-        self.assertIn("同一句话", r["text"])
+        self.assertIn("calibração ou orientação da IMU incompleta", r["text"])
         self.assertEqual(row(O.evaluate(inp(bus={"mode": "commissioning", "phase": "ready", "calibrated": False}, calib=None), rec),
                              "servo")["state"], "no")
-        # ? 这次连上以后没读到标定文件
+        # Arquivo de calibração indisponível.
         self.assertEqual(row(O.evaluate(inp(calib=None), rec), "servo")["state"], "unk")
 
     def test_imu_four_states(self):
         src, mount = "lsm6dsv16x", CALIB["imu_mount"]["quat"]
         mfp = O.mount_fp(src, mount)
         r = row(O.evaluate(inp(), {}), "imu")
-        self.assertEqual(r["state"], "todo")                                  # 文件里写着已确认，Studio 没核过
+        self.assertEqual(r["state"], "todo")
         self.assertIn("8.5°", r["text"])
         ok = {"at": 1.7e9, "source": src, "mount_fp": mfp, "diff_deg": 0.8, "tilt_deg": 1.2, "ok": True}
         self.assertEqual(row(O.evaluate(inp(), {"imu_check": ok}), "imu")["state"], "ok")
         r = row(O.evaluate(inp(), {"imu_check": dict(ok, diff_deg=3.4, ok=False)}), "imu")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("差 3.4°", r["text"])
-        r = row(O.evaluate(inp(), {"imu_check": dict(ok, mount_fp="other")}), "imu")      # 方向改过以后还没核
+        self.assertIn("diferença de 3.4°", r["text"])
+        r = row(O.evaluate(inp(), {"imu_check": dict(ok, mount_fp="other")}), "imu")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("改过了", r["text"])
+        self.assertIn("mudou", r["text"])
         c = copy.deepcopy(CALIB)
         c["imu_mount"]["verified"] = False
         self.assertEqual(row(O.evaluate(inp(calib=c), {"imu_check": ok}), "imu")["state"], "no")
@@ -190,11 +179,11 @@ class RowTest(unittest.TestCase):
         self.assertEqual(row(O.evaluate(inp(calib=None), {"imu_check": ok}), "imu")["state"], "unk")
 
     def test_stuck_calib_distinguishes_servo_and_imu(self):
-        """F5：主程序那句分不出是哪一项；只有 IMU 明说没确认才拦 IMU，只有关节没标才拦舵机。"""
+        """O erro de inicialização não identifica sozinho se a causa é servo ou IMU."""
         stuck = {"build": BUILD, "mode": "motion", "phase": "waiting_for_bus",
                  "error": "motion requires all 15 calibrated joints, measured limits and verified IMU mounting"}
 
-        # 只有舵机没标，IMU 已确认：IMU 行不 hard（能跳过），舵机行照旧 hard
+        # Servos não calibrados e IMU confirmada.
         c = copy.deepcopy(CALIB)
         c["uncalibrated_joints"] = ["left_knee"]
         bus = copy.deepcopy(stuck)
@@ -205,7 +194,7 @@ class RowTest(unittest.TestCase):
         self.assertTrue(r_servo["hard"])
         self.assertIsNone(r_imu["hard"])
 
-        # IMU 明说没确认、关节都标了（uncalibrated_joints 是空列表）：IMU 行 hard，舵机行不 hard
+        # IMU não confirmada e todos os servos calibrados.
         c = copy.deepcopy(CALIB)
         c["uncalibrated_joints"] = []
         c["imu_mount"]["verified"] = False
@@ -217,7 +206,7 @@ class RowTest(unittest.TestCase):
         self.assertTrue(r_imu["hard"])
         self.assertEqual(r_imu["state"], "no")
 
-        # 两者都不知道：IMU 行不 hard（unk，能跳过），舵机行照旧 hard
+        # Estado de servo e IMU indisponível.
         bus = copy.deepcopy(stuck)
         r_servo = row(O.evaluate(inp(bus=bus, calib=None), {}), "servo")
         r_imu = row(O.evaluate(inp(bus=bus, calib=None), {}), "imu")
@@ -229,17 +218,17 @@ class RowTest(unittest.TestCase):
         self.assertEqual(row(O.evaluate(inp(pad=pad_view(pads=[XPAD])), {}), "pad")["state"], "ok")
         r = row(O.evaluate(inp(pad=pad_view(pads=[dict(XPAD, connected=False)])), {}), "pad")
         self.assertEqual(r["state"], "ok")
-        self.assertIn("没连", r["text"])
+        self.assertIn("desconectado", r["text"])
         r = row(O.evaluate(inp(pad=pad_view(pads=[dict(XPAD, trusted=False)])), {}), "pad")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("修复", r["text"])
+        self.assertIn("Reparar", r["text"])
         self.assertEqual(row(O.evaluate(inp(pad=pad_view()), {}), "pad")["state"], "no")
         r = row(O.evaluate(inp(pad=pad_view(known=False)), {"pads_seen": {XBOX: "Xbox Wireless Controller"}}), "pad")
-        self.assertEqual(r["state"], "unk")                                    # 读不到 configd：不能写「还没配」
-        self.assertIn("以前配过 Xbox", r["text"])
+        self.assertEqual(r["state"], "unk")
+        self.assertIn("controles pareados antes", r["text"])
         r = row(O.evaluate(inp(pad=pad_view(known=False, attached=True, device={"name": "Pro Controller"})), {}), "pad")
-        self.assertEqual(r["state"], "ok")                                     # 旁路看到 attached 当证据
-        self.assertEqual(row(O.evaluate(dict(inp(), pad=None), {}), "pad")["state"], "unk")   # 台架模式没有手柄后端
+        self.assertEqual(r["state"], "ok")
+        self.assertEqual(row(O.evaluate(dict(inp(), pad=None), {}), "pad")["state"], "unk")
 
     def test_estop_four_states(self):
         rec = {"estop": {"at": 1.7e9, "ms": 180, "mac": XBOX, "name": "Xbox", "build": BUILD}}
@@ -250,16 +239,16 @@ class RowTest(unittest.TestCase):
         self.assertIn("180 ms", r["text"])
         other = dict(XPAD, mac="98:B6:E9:28:06:09", name="Pro Controller")
         r = row(O.evaluate(inp(pad=pad_view(pads=[other])), rec), "estop")
-        self.assertEqual((r["state"], r["text"]), ("todo", "换了手柄：再测一次"))
+        self.assertEqual((r["state"], r["text"]), ("todo", "O controle mudou: teste novamente"))
         r = row(O.evaluate(inp(pad=p, bus=dict(copy.deepcopy(BUS), build="new-build")), rec), "estop")
-        self.assertEqual((r["state"], r["text"]), ("todo", "主程序升级过：再测一次"))
-        bad = pad_view(pads=[XPAD], estop="bad", checks=[{"key": "netpad", "label": "没开 UDP 手柄（netpad）", "ok": False, "why": "开着 [netpad]"}])
+        self.assertEqual((r["state"], r["text"]), ("todo", "O programa principal foi atualizado: teste novamente"))
+        bad = pad_view(pads=[XPAD], estop="bad", checks=[{"key": "netpad", "label": "netpad UDP", "ok": False, "why": "enabled [netpad]"}])
         r = row(O.evaluate(inp(pad=bad), rec), "estop")
         self.assertEqual(r["state"], "todo")
         self.assertIn("netpad", r["text"])
-        r = row(O.evaluate(inp(pad=pad_view(known=False)), rec), "estop")      # 测过，现在核对不了
+        r = row(O.evaluate(inp(pad=pad_view(known=False)), rec), "estop")
         self.assertEqual(r["state"], "unk")
-        # 没连着时：唯一配过的那只也算「现在的手柄」
+        # O único controle pareado também é identificado quando está desconectado.
         self.assertEqual(row(O.evaluate(inp(pad=pad_view(pads=[dict(XPAD, connected=False)])), rec), "estop")["state"], "ok")
 
     def test_walk_four_states(self):
@@ -267,20 +256,20 @@ class RowTest(unittest.TestCase):
         self.assertEqual(row(O.evaluate(inp(), {}), "walk")["state"], "no")
         r = row(O.evaluate(inp(), {"stood": {"at": 1.7e9, "fp": fp}}), "walk")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("还没走过", r["text"])
+        self.assertIn("ainda não caminhou", r["text"])
         self.assertEqual(row(O.evaluate(inp(), {"stood": {"at": 1.7e9, "fp": fp}, "walked": {"at": 1.7e9, "fp": fp}}),
                              "walk")["state"], "ok")
         r = row(O.evaluate(inp(), {"stood": {"at": 1.7e9, "fp": "old"}, "walked": {"at": 1.7e9, "fp": "old"}}), "walk")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("标定改过以后还没站过、走过", r["text"])
+        self.assertIn("ainda não ficou em pé nem caminhou", r["text"])
         r = row(O.evaluate(inp(calib=None), {"stood": {"at": 1.7e9, "fp": fp}}), "walk")
         self.assertEqual(r["state"], "unk")
-        self.assertIn("没法核对", r["text"])
+        self.assertIn("não é possível verificar", r["text"])
 
     def test_next_points_at_first_not_done_and_not_unknown(self):
         v = O.evaluate(inp(calib=None, pad=pad_view(pads=[XPAD])), {})
         self.assertEqual([r["state"] for r in v["rows"]][:2], ["unk", "unk"])
-        self.assertEqual(v["next"], "estop")                                   # ? 的跳过，指到第一个 ● / ○
+        self.assertEqual(v["next"], "estop")
         self.assertFalse(v["all_done"])
         fp, mfp = O.full_fp(BUS, CALIB), O.mount_fp("lsm6dsv16x", CALIB["imu_mount"]["quat"])
         rec = {"confirm_servo": {"at": 1.7e9, "fp": O.joints_fp(CALIB)},
@@ -290,10 +279,10 @@ class RowTest(unittest.TestCase):
         v = O.evaluate(inp(pad=pad_view(pads=[XPAD])), rec)
         self.assertTrue(v["all_done"])
         self.assertIsNone(v["next"])
-        json.dumps(v)                                                          # 能直接推给页面
+        json.dumps(v)
 
 
-# ---------------- 记录、文件 ----------------
+# ---------------- Registros e arquivos ----------------
 
 class OnboardingTest(unittest.TestCase):
     def setUp(self):
@@ -306,32 +295,32 @@ class OnboardingTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_bad_file_is_moved_aside_and_does_not_crash(self):
-        (self.dir / "onboarding.json").write_text("{坏了", encoding="utf-8")
+        (self.dir / "onboarding.json").write_text("{invalid", encoding="utf-8")
         ob = O.Onboarding(str(self.dir), self.log)
         self.assertEqual(ob.rec, {})
         self.assertTrue((self.dir / "onboarding.json.bad").exists())
-        self.assertTrue(any("读不出来" in e["msg"] for e in self.log.recent(20)))
-        ob.tick(FakeRd())                                                     # 照样能判
+        self.assertTrue(any("Não foi possível ler o arquivo" in e["msg"] for e in self.log.recent(20)))
+        ob.tick(FakeRd())
         self.assertEqual(len(ob.view()["rows"]), 6)
-        (self.dir / "onboarding.json").write_text("[1, 2]", encoding="utf-8")  # 顶层不是对象也一样
+        (self.dir / "onboarding.json").write_text("[1, 2]", encoding="utf-8")
         self.assertEqual(O.Onboarding(str(self.dir), self.log).rec, {})
 
     def test_save_is_atomic_and_reloads(self):
         ob = O.Onboarding(str(self.dir), self.log)
         self.assertTrue(ob.note_estop({"ms": 120, "mac": XBOX.lower(), "name": "Xbox", "build": BUILD}))
         self.assertTrue(ob.save())
-        self.assertFalse(ob.save())                                           # 没变就不写
+        self.assertFalse(ob.save())
         data = json.loads((self.dir / "onboarding.json").read_text(encoding="utf-8"))
-        self.assertEqual(data["estop"]["mac"], XBOX)                          # MAC 统一大写
+        self.assertEqual(data["estop"]["mac"], XBOX)
         self.assertEqual(data["v"], 1)
-        self.assertFalse([f for f in os.listdir(self.dir) if f.startswith(".onboarding-")])   # 临时文件没留下
+        self.assertFalse([f for f in os.listdir(self.dir) if f.startswith(".onboarding-")])
         self.assertEqual(O.Onboarding(str(self.dir), self.log).rec["estop"]["ms"], 120)
 
     def test_stood_and_walked_are_recorded_with_fingerprint(self):
         ob = O.Onboarding(str(self.dir), self.log)
         rd = FakeRd()
         t = 1000.0
-        for _ in range(8):                                                    # 站着保持 3.5 秒
+        for _ in range(8):
             ob.tick(rd, now=t)
             t += 0.5
         self.assertEqual(ob.rec["stood"]["fp"], O.full_fp(BUS, CALIB))
@@ -340,13 +329,13 @@ class OnboardingTest(unittest.TestCase):
         walking["policy_enabled"] = True
         rd.bus.set(walking)
         rd.state.set({"move": {"applied": [0.2, 0, 0]}})
-        for _ in range(6):                                                    # 在走 2.5 秒
+        for _ in range(6):
             rd.state.set({"move": {"applied": [0.2, 0, 0]}})
             ob.tick(rd, now=t)
             t += 0.5
         self.assertIn("walked", ob.rec)
         self.assertEqual(row(ob.view(), "walk")["state"], "ok")
-        # 舵机零位改了（指纹变了）：要重做
+        # Alterar os pontos zero invalida o registro de movimento.
         rd.calib.set(calib_with(left_knee=2000))
         ob.tick(rd, now=t)
         self.assertEqual(row(ob.view(), "walk")["state"], "todo")
@@ -368,12 +357,12 @@ class OnboardingTest(unittest.TestCase):
 
     def test_confirm_servo_checks_the_file(self):
         ob = O.Onboarding(str(self.dir), self.log)
-        ok, why = ob.confirm_servo(FakeRd(calib=calib_with(left_knee=1990)), "电脑")
+        ok, why = ob.confirm_servo(FakeRd(calib=calib_with(left_knee=1990)), "Computador")
         self.assertFalse(ok)
         self.assertIn("2048", why)
-        ok, why = ob.confirm_servo(FakeRd(calib=None), "电脑")
+        ok, why = ob.confirm_servo(FakeRd(calib=None), "Computador")
         self.assertFalse(ok)
-        ok, why = ob.confirm_servo(FakeRd(), "电脑")
+        ok, why = ob.confirm_servo(FakeRd(), "Computador")
         self.assertTrue(ok, why)
         self.assertEqual(ob.rec["confirm_servo"]["fp"], O.joints_fp(CALIB))
         ob.tick(FakeRd())
@@ -383,14 +372,14 @@ class OnboardingTest(unittest.TestCase):
         d = self.dir / "servo-calib"
         d.mkdir()
         (d / "eeprom-20261018-031200001.json").write_text(json.dumps(
-            {"time": "2026-10-18 03:12:00", "targets": {str(i): 2048 for i in O.SERVO_IDS}, "bad": {"23": "读不到"}, "sim": False}),
+            {"time": "2026-10-18 03:12:00", "targets": {str(i): 2048 for i in O.SERVO_IDS}, "bad": {"23": "indisponível"}, "sim": False}),
             encoding="utf-8")
         (d / "eeprom-20261018-031300001.json").write_text(json.dumps(
             {"time": "2026-10-18 03:13:00", "targets": {"23": 2048}, "bad": {}, "sim": False}), encoding="utf-8")
         (d / "eeprom-20261018-031400001.json").write_text(json.dumps(
-            {"time": "2026-10-18 03:14:00", "targets": {"99": 2048}, "sim": True}), encoding="utf-8")       # 模拟的不算
-        (d / "undone-eeprom-20261018-031500001.json").write_text("{}", encoding="utf-8")                   # 撤销的不算
-        (d / "eeprom-broken.json").write_text("{坏", encoding="utf-8")
+            {"time": "2026-10-18 03:14:00", "targets": {"99": 2048}, "sim": True}), encoding="utf-8")
+        (d / "undone-eeprom-20261018-031500001.json").write_text("{}", encoding="utf-8")
+        (d / "eeprom-broken.json").write_text("{invalid", encoding="utf-8")
         r = O.studio_servo_record(str(self.dir))
         self.assertEqual(r["ids"], set(O.SERVO_IDS))
         self.assertEqual(r["time"], "2026-10-18 03:13:00")
@@ -403,7 +392,7 @@ class OnboardingTest(unittest.TestCase):
             rd.health.set(dict(HEALTH, cpu_temp_c=c))
             ob.tick(rd)
             self.assertEqual(ob.cpu_hot, hot, c)
-            # 待办跟主板格用同一个带回差的 hot：78 °C 时也还在
+            # A lista usa a mesma histerese do indicador de temperatura da placa.
             v = cpu_view(rd.health.value, 0.1, BUS, True, None, ob)
             items = todo(rd.health.value, BUS, {"stale": []}, "ok", v, {}, {"pct": 60}, "holding")
             self.assertEqual(any(i["key"] == "cpu" for i in items), hot, c)
@@ -421,16 +410,16 @@ class OnboardingTest(unittest.TestCase):
         (cf / "policy0" / "scaling_max_freq").write_text("1008000")
         (cf / "policy0" / "cpuinfo_max_freq").write_text("1800000")
         b = O.read_board(str(th), str(cf))
-        self.assertEqual(b["c"], 81.25)                                        # 最热的那个；≤ 0 的跳过
-        self.assertEqual(b["throttle"], {"khz": 1008000, "max_khz": 1800000, "level": 3, "max_level": 6})   # GPU 的不算
+        self.assertEqual(b["c"], 81.25)
+        self.assertEqual(b["throttle"], {"khz": 1008000, "max_khz": 1800000, "level": 3, "max_level": 6})
         self.assertIsNone(O.read_board(str(self.dir / "nope"), str(self.dir / "nope2")))
 
 
-# ---------------- 主板温度格 ----------------
+# ---------------- Indicador de temperatura da placa ----------------
 
 class CpuViewTest(unittest.TestCase):
     def test_health_stale_is_not_normal(self):
-        """审查 O5：health 过期时不能写「正常」：c、throttled 都给 None，格子写「—」加原因。"""
+        """Health desatualizado deve produzir valores indisponíveis em vez de indicar normalidade."""
         v = cpu_view(None, 12.4, BUS, True)
         self.assertIsNone(v["c"])
         self.assertIsNone(v["throttled"])
@@ -450,10 +439,10 @@ class CpuViewTest(unittest.TestCase):
         self.assertEqual((v["c"], v["throttled"], v["limited"], v["src"]), (92.4, True, False, "robotd"))
         self.assertTrue(v["hot"])
         items = todo(h, BUS, {"stale": []}, "ok", v, {}, {"pct": 60}, "holding")
-        self.assertIn("降频了：1008 / 1800 MHz", next(i for i in items if i["key"] == "cpu")["msg"])
+        self.assertIn("reduziu a frequência por superaquecimento: 1008 / 1800 MHz", next(i for i in items if i["key"] == "cpu")["msg"])
         h = dict(HEALTH, cpu_throttle={"level": 0, "max_level": 6, "khz": 1200000, "max_khz": 1800000})
         v = cpu_view(h, 0.5, BUS, True)
-        self.assertEqual((v["throttled"], v["limited"]), (False, True))       # 被限频，不是热的
+        self.assertEqual((v["throttled"], v["limited"]), (False, True))
         v = cpu_view(HEALTH, 0.5, BUS, True)
         self.assertEqual((v["c"], v["throttled"], v["limited"], v["hot"]), (76.9, False, False, False))
 
@@ -475,7 +464,7 @@ class CpuViewTest(unittest.TestCase):
             self.assertEqual(len(s["onboarding"]["rows"]), 6)
             self.assertEqual(s["cpu"]["c"], 76.9)
             self.assertTrue(all("key" in t for t in s["todo"]))
-            rd.health = Sample()                                               # health 读不到
+            rd.health = Sample()
             s = summarize(rd, {}, ob=ob)
             self.assertIsNone(s["cpu"]["c"])
             self.assertIsNone(s["cpu"]["throttled"])
@@ -484,7 +473,7 @@ class CpuViewTest(unittest.TestCase):
             tmp.cleanup()
 
 
-# ---------------- 标定状态只认这次 hello 之后的（审查 O5） ----------------
+# ---------------- Estado de calibração após a conexão atual ----------------
 
 class CalibFreshTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -514,14 +503,13 @@ class CalibFreshTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_old_calib_does_not_count_after_restart(self):
         self.assertTrue(await self.wait_for(lambda: self.rd.calib_fresh() is not None))
-        # robotd 重启以后卡在等总线（标定 / IMU 没过）：旧的「15 颗都标了」不算数
+        # Após reiniciar o robotd, a calibração anterior não deve ser considerada atual.
         self.fake.set_posture("stuck_calib")
         self.fake.restart(0.2)
         self.assertTrue(await self.wait_for(lambda: self.rd.calib_valid_after is not None and self.rd.calib.at < self.rd.calib_valid_after
                                             and (self.rd.bus.value or {}).get("phase") == "waiting_for_bus"))
         self.assertIsNone(self.rd.calib_fresh())
-        self.assertIsNotNone(self.rd.calib.value)                              # 旧值还在，只是不认
-        # 开了总线（phase 变成 control）：再问一次
+        self.assertIsNotNone(self.rd.calib.value)
         n = self.calib_asks()
         self.fake.set_posture("holding")
         self.assertTrue(await self.wait_for(lambda: self.calib_asks() > n and self.rd.calib_fresh() is not None, 6.0))
@@ -534,12 +522,12 @@ class FreshCalibTest(unittest.TestCase):
         r = R()
         self.assertIsNone(fresh_calib(r))
         r.calib.set({"x": 1})
-        self.assertEqual(fresh_calib(r), {"x": 1})                             # 假对象没有 calib_valid_after：不挡
+        self.assertEqual(fresh_calib(r), {"x": 1})
         r.calib_valid_after = time.monotonic() + 1
         self.assertIsNone(fresh_calib(r))
 
 
-# ---------------- IMU 页的「核对过」（审查 O4：只是记一笔，不往鸭子写） ----------------
+# ---------------- Registro da verificação da IMU ----------------
 
 class ImuCheckTest(unittest.TestCase):
     def setUp(self):
@@ -558,7 +546,7 @@ class ImuCheckTest(unittest.TestCase):
         return {"ok": True, "parts": {"total_deg": diff, "stand_tilt_deg": tilt}}
 
     def test_close_enough_is_recorded(self):
-        c = self.imu._check(self.res(0.9, 1.5), self.view, self.old, True, "电脑")
+        c = self.imu._check(self.res(0.9, 1.5), self.view, self.old, True, "Computador")
         self.assertTrue(c["ok"] and c["recorded"])
         rec = self.ob.rec["imu_check"]
         self.assertEqual(rec["mount_fp"], O.mount_fp("lsm6dsv16x", self.old))
@@ -566,20 +554,20 @@ class ImuCheckTest(unittest.TestCase):
         self.assertEqual(row(self.ob.view(), "imu")["state"], "ok")
 
     def test_far_or_tilted_is_recorded_but_not_ok(self):
-        c = self.imu._check(self.res(3.2, 1.0), self.view, self.old, True, "电脑")
+        c = self.imu._check(self.res(3.2, 1.0), self.view, self.old, True, "Computador")
         self.assertFalse(c["ok"])
-        self.assertIn("差 3.2°", c["why"])
+        self.assertIn("3.2°", c["why"])
         self.assertFalse(self.ob.rec["imu_check"]["ok"])
-        c = self.imu._check(self.res(0.5, 7.0), self.view, self.old, True, "电脑")
-        self.assertIn("站姿倾斜", c["why"])
+        c = self.imu._check(self.res(0.5, 7.0), self.view, self.old, True, "Computador")
+        self.assertIn("inclinação", c["why"])
 
     def test_unverified_mount_is_not_recorded(self):
-        c = self.imu._check(self.res(0.5, 1.0), self.view, self.old, False, "电脑")
+        c = self.imu._check(self.res(0.5, 1.0), self.view, self.old, False, "Computador")
         self.assertFalse(c["ok"] or c["recorded"])
         self.assertNotIn("imu_check", self.ob.rec)
 
 
-# ---------------- 代码审查 C1–C9（scratchpad console/overviewreview/repro_onboard.py 的几种情况） ----------------
+# ---------------- Casos adicionais de integridade e sincronização ----------------
 
 class ReviewFixTest(unittest.TestCase):
     def setUp(self):
@@ -595,17 +583,16 @@ class ReviewFixTest(unittest.TestCase):
         (self.dir / "onboarding.json").write_text(json.dumps(data), encoding="utf-8")
 
     def test_c1_bad_single_records_are_dropped_and_hot_still_works(self):
-        """C1：合法 JSON、但单条类型不对（diff_deg 是 null、walked 是空对象）：那一条丢掉、记一行 warn，清单照判；
-        85 °C 时主板「有点热」照样亮。"""
+        """Descarta registros inválidos individualmente e continua avaliando as demais etapas."""
         src, m = "lsm6dsv16x", CALIB["imu_mount"]["quat"]
         self.write({"v": 1, "imu_check": {"source": src, "mount_fp": O.mount_fp(src, m), "ok": True, "diff_deg": None},
                     "walked": {}, "stood": {"at": 1.7e9, "fp": O.full_fp(BUS, CALIB)}, "future_key": {"x": 1}})
         ob = O.Onboarding(str(self.dir), self.log)
         self.assertNotIn("imu_check", ob.rec)
         self.assertNotIn("walked", ob.rec)
-        self.assertIn("stood", ob.rec)                                     # 好的那几条照用
-        self.assertIn("future_key", ob.rec)                                # 不认识的键原样留着
-        warns = [e["msg"] for e in self.log.recent(30) if "格式不对" in e["msg"]]
+        self.assertIn("stood", ob.rec)
+        self.assertIn("future_key", ob.rec)
+        warns = [e["msg"] for e in self.log.recent(30) if "Registro inválido" in e["msg"]]
         self.assertEqual(len(warns), 2)
         rd = FakeRd()
         rd.health.set(dict(HEALTH, cpu_temp_c=85.0))
@@ -613,10 +600,10 @@ class ReviewFixTest(unittest.TestCase):
         self.assertTrue(ob.cpu_hot)
         self.assertEqual(row(ob.view(), "imu")["state"], "todo")
         self.assertEqual(row(ob.view(), "walk")["state"], "todo")
-        # 记录里的数字是 null 也不抛（直接给 evaluate，不经过校验）
+        # Valores nulos não interrompem a avaliação direta.
         v = O.evaluate(inp(), {"imu_check": {"source": src, "mount_fp": O.mount_fp(src, m), "ok": False, "diff_deg": None},
                                "estop": {"at": 1.7e9, "ms": None, "mac": XBOX, "build": BUILD}})
-        self.assertIn("差 ?°", row(v, "imu")["text"])
+        self.assertIn("?°", row(v, "imu")["text"])
 
     def test_c1_evaluate_error_shows_question_marks_and_hysteresis_keeps_going(self):
         ob = O.Onboarding(str(self.dir), self.log)
@@ -633,18 +620,18 @@ class ReviewFixTest(unittest.TestCase):
         self.assertEqual(v["header"]["kind"], "error")
         self.assertEqual([r["state"] for r in v["rows"]], ["unk"] * 6)
         self.assertIn("ZeroDivisionError", v["rows"][0]["text"])
-        self.assertTrue(ob.cpu_hot)                                        # 回差不受清单出错影响
-        self.assertEqual(sum(1 for e in self.log.recent(30) if "上手清单判的时候出错" in e["msg"]), 1)   # 同一种错只记一次
+        self.assertTrue(ob.cpu_hot)
+        self.assertEqual(sum(1 for e in self.log.recent(30) if "Erro ao avaliar a lista de integração" in e["msg"]), 1)
         ob.tick(rd)
-        self.assertEqual(ob.view()["header"]["kind"], "ok")                # 好了就恢复
+        self.assertEqual(ob.view()["header"]["kind"], "ok")
 
     def test_c2_no_fingerprint_does_not_overwrite_records(self):
-        """C2：robotd 刚重启、标定还没读回来（指纹 None）时站满 3 秒：不写、不覆盖带指纹的旧记录。"""
+        """A leitura da calibração pode atrasar após reiniciar o robotd sem sobrescrever registros existentes."""
         ob = O.Onboarding(str(self.dir), self.log)
         fp = O.full_fp(BUS, CALIB)
         ob.rec = {"stood": {"at": 1.7e9, "fp": fp}, "walked": {"at": 1.7e9, "fp": fp}}
         rd = FakeRd()
-        rd.calib_valid_after = rd.calib.at + 1.0                           # 这次 hello 之后还没读到标定
+        rd.calib_valid_after = rd.calib.at + 1.0
         walking = copy.deepcopy(BUS)
         walking["policy_enabled"] = True
         rd.bus.set(walking)
@@ -655,34 +642,34 @@ class ReviewFixTest(unittest.TestCase):
             t += 0.5
         self.assertEqual(ob.rec["stood"]["fp"], fp)
         self.assertEqual(ob.rec["walked"]["fp"], fp)
-        rd.calib.set(copy.deepcopy(CALIB))                                 # 读回来了，内容没变
+        rd.calib.set(copy.deepcopy(CALIB))
         rd.calib_valid_after = rd.calib.at - 0.001
         ob.tick(rd, now=t)
         self.assertEqual(row(ob.view(), "walk")["state"], "ok")
 
     def test_c4_native_says_unverified_is_not_unknown(self):
-        """C4：busStatus 明说 IMU 方向没确认，标定状态读不到：第 2 步是 ○，不是 ?。"""
+        """Uma orientação da IMU explicitamente não confirmada aparece como pendente."""
         bus = copy.deepcopy(BUS)
         bus["native"]["imu_mount_verified"] = False
         r = row(O.evaluate(inp(bus=bus, calib=None), {}), "imu")
         self.assertEqual(r["state"], "no")
-        self.assertIn("还没确认", r["text"])
+        self.assertIn("não foi confirmada", r["text"])
         ob = O.Onboarding(str(self.dir), self.log)
         rd = FakeRd(bus=bus, calib=None)
         ob.tick(rd)
         s = summarize(rd, {}, ob=ob)
-        self.assertIn("imu_unverified", [t["key"] for t in s["todo"]])    # 待办照样有（前端按清单这一行是 ○ 才去重）
+        self.assertIn("imu_unverified", [t["key"] for t in s["todo"]])
         self.assertEqual(row(s["onboarding"], "imu")["state"], "no")
 
     def test_c9_tick_does_not_touch_files(self):
-        """C9-1：读 servo-calib 目录、/sys/class/thermal 在 io()（线程里）做；tick 只用缓存。"""
+        """A pasta servo-calib e a temperatura são lidas em uma thread; tick usa o cache."""
         ob = O.Onboarding(str(self.dir), self.log)
         calls = []
         real_scan, real_board = O.studio_servo_record, O.read_board
         O.studio_servo_record = lambda d: calls.append("scan") or {"ids": set(O.SERVO_IDS), "time": "2026-10-18 03:12:00"}
         O.read_board = lambda *a: calls.append("board") or {"c": 83.0, "throttle": None}
         try:
-            rd = FakeRd(health=None)                                       # robotd 不报温度
+            rd = FakeRd(health=None)
             ob._board_ok = True
             for _ in range(3):
                 ob.tick(rd)
@@ -690,15 +677,15 @@ class ReviewFixTest(unittest.TestCase):
             self.assertTrue(ob.need_board(rd))
             ob.io(board=True, now=0.0)
             self.assertEqual(calls, ["scan", "board"])
-            ob.io(board=False, now=1.0)                                    # 目录没变、没到 10 秒：不重读
+            ob.io(board=False, now=1.0)
             self.assertEqual(calls, ["scan", "board"])
             ob.io(board=False, now=20.0)
             self.assertEqual(calls.count("scan"), 2)
             ob.tick(rd)
-            self.assertEqual(row(ob.view(), "servo")["state"], "ok")       # 缓存里的 Studio 记录照样用上
-            self.assertIn("servo_studio", ob.rec)                          # 第一次对上：记下指纹（C9-3）
+            self.assertEqual(row(ob.view(), "servo")["state"], "ok")
+            self.assertIn("servo_studio", ob.rec)
             self.assertFalse(rd.health.value)
-            self.assertFalse(ob.need_board(FakeRd()))                      # robotd 报温度：不用自己读
+            self.assertFalse(ob.need_board(FakeRd()))
         finally:
             O.studio_servo_record, O.read_board = real_scan, real_board
 
@@ -710,14 +697,14 @@ class ReviewFixTest(unittest.TestCase):
         self.assertEqual(row(ob.view(), "servo")["state"], "ok")
         rd.calib.set(calib_with(left_knee=2048, mouth=2048))
         js = rd.calib.value["calibration"]["joints"]
-        js[0]["direction"] = 1                                             # 方向改了：关节指纹变了，零位还是 2048
+        js[0]["direction"] = 1
         ob.tick(rd)
         r = row(ob.view(), "servo")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("改过了", r["text"])
+        self.assertIn("mudou", r["text"])
 
     def test_c9_concurrent_saves_keep_the_newest(self):
-        """C9-2：两处同时存（0.5 秒的小任务、「核对一下」按钮），旧的不能后落盘把新的盖掉。"""
+        """Gravações concorrentes não devem substituir um registro mais recente."""
         import threading
         ob = O.Onboarding(str(self.dir), self.log)
         real = O.os.replace
@@ -746,7 +733,7 @@ class ReviewFixTest(unittest.TestCase):
 
 
 class PollReconnectTest(unittest.IsolatedAsyncioTestCase):
-    """C8：轮询连接超时重连过、或者 robotd 离开了 control：已经读到的标定不作数，重新 hello、重读。"""
+    """Uma reconexão ou saída do modo de controle exige nova leitura da calibração."""
 
     async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -777,25 +764,25 @@ class PollReconnectTest(unittest.IsolatedAsyncioTestCase):
     async def test_timeout_reconnect_is_a_new_hello(self):
         self.assertTrue(await self.wait_for(lambda: self.rd.calib_fresh() is not None))
         n, after0 = self.hellos(), self.rd.calib_valid_after
-        self.fake.delays["robot.busStatus"] = 2.6                          # robotd 卡住 > 2 秒：轮询超时、关连接
+        self.fake.delays["robot.busStatus"] = 2.6
         self.assertTrue(await self.wait_for(lambda: self.rd.poll.reconnects > 0, 8.0))
         self.fake.delays.pop("robot.busStatus", None)
         self.assertTrue(await self.wait_for(lambda: self.hellos() > n, 8.0))
-        # 假 robotd 记下 hello 的时候，Studio 还没收到回包：等它收到、把以前读到的作废
+        # Aguarde a resposta do hello e invalide a leitura anterior.
         self.assertTrue(await self.wait_for(lambda: self.rd.calib_valid_after > after0, 4.0))
         self.assertTrue(await self.wait_for(lambda: self.rd.calib_fresh() is not None and self.rd.calib.at > self.rd.calib_valid_after))
 
     async def test_leaving_control_invalidates_calib(self):
         self.assertTrue(await self.wait_for(lambda: self.rd.calib_fresh() is not None
                                             and (self.rd.bus.value or {}).get("phase") == "control"))
-        self.fake.set_posture("starting")                                  # 没重启、卡回了等总线
+        self.fake.set_posture("starting")
         self.assertTrue(await self.wait_for(lambda: (self.rd.bus.value or {}).get("phase") == "waiting_for_bus"))
         self.assertIsNone(self.rd.calib_fresh())
         self.fake.set_posture("holding")
         self.assertTrue(await self.wait_for(lambda: self.rd.calib_fresh() is not None))
 
 
-# ---------------- 跳过 / 重新做（用户 10-18 在二号鸭上：「应该允许跳过、允许重新做」） ----------------
+# ---------------- Ignorar e refazer etapas ----------------
 
 class FakePad:
     def __init__(self, view):
@@ -806,7 +793,7 @@ class FakePad:
 
 
 class SkipTest(unittest.TestCase):
-    """每一行任何时候都能「已完成」「跳过」（用户 10-20）；有后果的要点两次，后端没收到 confirmed 就拒。"""
+    """Cada etapa pode ser concluída ou ignorada; ações com consequências exigem confirmação do servidor."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -831,38 +818,38 @@ class SkipTest(unittest.TestCase):
             with self.subTest(step=key):
                 r = row(v, key)
                 if r["state"] in ("todo", "no"):
-                    self.assertEqual(r["mark"]["skip"]["confirm"], key == "estop")   # 测急停要点两次；这几步别的没有后果
+                    self.assertEqual(r["mark"]["skip"]["confirm"], key == "estop")
                     if key == "estop":
-                        ok, why = self.ob.skip(key, self.rd, self.pad, by="电脑 1.2.3.4")
-                        self.assertFalse(ok)                                         # 页面的两步确认不能只靠前端
-                        self.assertIn("要点两次确认：确定跳过？没测过", why)
-                    ok, why = self.ob.skip(key, self.rd, self.pad, by="电脑 1.2.3.4", confirmed=key == "estop")
+                        ok, why = self.ob.skip(key, self.rd, self.pad, by="Computador 1.2.3.4")
+                        self.assertFalse(ok)
+                        self.assertIn("Confirmação em duas etapas necessária: Confirma ignorar? Ainda não foi testado", why)
+                    ok, why = self.ob.skip(key, self.rd, self.pad, by="Computador 1.2.3.4", confirmed=key == "estop")
                     self.assertTrue(ok, why)
                     self.assertEqual(self.ob.rec["skipped"][key]["fp"], rec_fp[key])
-                    self.assertEqual(self.ob.rec["skipped"][key]["by"], "电脑 1.2.3.4")
+                    self.assertEqual(self.ob.rec["skipped"][key]["by"], "Computador 1.2.3.4")
                     r = row(self.tick(), key)
                     self.assertEqual((r["state"], r["marked"]), ("skip", "skip"))
-                    self.assertIn("跳过了（先不做）", r["text"])
-                    self.assertEqual(r["go"], O.GO[key])                       # 「去做」/「重新做」去哪
-                    ok, _ = self.ob.unskip(key, by="电脑 1.2.3.4")
+                    self.assertIn("Ignorado (não fazer agora)", r["text"])
+                    self.assertEqual(r["go"], O.GO[key])
+                    ok, _ = self.ob.unskip(key, by="Computador 1.2.3.4")
                     self.assertTrue(ok)
                     self.assertNotIn(key, self.ob.rec["skipped"])
                     self.assertIn(row(self.tick(), key)["state"], ("todo", "no"))
-        # 配手柄：没配时能跳，不绑指纹
+        # Parear controle pode ser ignorado sem impressão digital.
         self.pad.view = pad_view()
         self.assertEqual(row(self.tick(), "pad")["state"], "no")
-        self.assertTrue(self.ob.skip("pad", self.rd, self.pad, by="手机")[0])
+        self.assertTrue(self.ob.skip("pad", self.rd, self.pad, by="Celular")[0])
         self.assertIsNone(self.ob.rec["skipped"]["pad"]["fp"])
         self.assertEqual(row(self.tick(), "pad")["state"], "skip")
         msgs = [e["msg"] for e in self.log.recent(50)]
-        self.assertIn("上手清单：IMU 方向 跳过（电脑 1.2.3.4）", msgs)
-        self.assertIn("上手清单：IMU 方向 取消跳过（电脑 1.2.3.4）", msgs)
-        self.assertTrue(any(e["cat"] == "校准" for e in self.log.recent(50) if "跳过" in e["msg"]))
-        self.assertTrue(self.ob.save())                                       # 原子写，读回来一样
+        self.assertIn("Lista de integração: etapa Orientação da IMU ignorada (Computador 1.2.3.4)", msgs)
+        self.assertIn("Lista de integração: marcação de ignorada removida para Orientação da IMU (Computador 1.2.3.4)", msgs)
+        self.assertTrue(any(e["cat"] == "Calibração" for e in self.log.recent(50) if "ignorada" in e["msg"]))
+        self.assertTrue(self.ob.save())
         self.assertEqual(O.Onboarding(self.tmp.name, self.log).rec["skipped"], self.ob.rec["skipped"])
 
     def test_every_row_offers_done_and_skip(self):
-        """三个按钮：没完成的每一行（● ○ ?）都带「已完成」「跳过」（mark）；Studio 自己有记录的 ✓ 不带（只给重新做）。"""
+        """Etapas pendentes incluem ações de concluir e ignorar; etapas concluídas no Studio podem ser refeitas."""
         self.ob.rec["walked"] = {"at": 1.7e9, "fp": O.full_fp(BUS, CALIB)}
         v = self.tick()
         for r in v["rows"]:
@@ -873,74 +860,74 @@ class SkipTest(unittest.TestCase):
                     self.assertEqual(set(r["mark"]), {"done", "skip", "ack"})
         ok, why = self.ob.skip("walk", self.rd, self.pad)
         self.assertFalse(ok)
-        self.assertIn("已经完成", why)
+        self.assertIn("O Studio já tem um registro", why)
         self.assertFalse(self.ob.skip("nope", self.rd)[0])
         self.assertFalse(self.ob.mark("imu", "bogus", self.rd)[0])
 
     def test_unknown_row_needs_two_clicks_and_binds_fingerprint_later(self):
-        """读不到（?）的行以前不让跳：现在能点，要点两次；指纹读不到先记 null，读到以后 tick 绑上（之后变了照样作废）。"""
-        self.rd.calib_valid_after = self.rd.calib.at + 1                       # 这次 hello 之后还没读到标定
+        """Etapas desconhecidas exigem confirmação e recebem a impressão digital quando os dados ficam disponíveis."""
+        self.rd.calib_valid_after = self.rd.calib.at + 1
         r = row(self.tick(), "imu")
         self.assertEqual(r["state"], "unk")
         self.assertTrue(r["mark"]["skip"]["confirm"])
-        self.assertIn("确定跳过？这一步现在读不到", r["mark"]["skip"]["ask"])
-        self.assertIn("确定标成已完成？这一步现在读不到", r["mark"]["done"]["ask"])
+        self.assertIn("Confirma ignorar? Não foi possível ler este item", r["mark"]["skip"]["ask"])
+        self.assertIn("Confirma marcar como concluído? Não foi possível ler este item", r["mark"]["done"]["ask"])
         ok, why = self.ob.skip("imu", self.rd, self.pad)
         self.assertFalse(ok)
-        self.assertIn("要点两次确认", why)
-        self.assertTrue(self.ob.skip("imu", self.rd, self.pad, by="电脑", confirmed=True)[0])
+        self.assertIn("Confirmação em duas etapas necessária", why)
+        self.assertTrue(self.ob.skip("imu", self.rd, self.pad, by="Computador", confirmed=True)[0])
         rec = self.ob.rec["skipped"]["imu"]
         self.assertIsNone(rec["fp"])
         self.assertIn("unk", rec["ack"])
         self.assertEqual(row(self.tick(), "imu")["state"], "skip")
-        # 读回来了：绑上现在的指纹、记一行
+        # Os dados chegaram: vincule a impressão digital atual.
         self.rd.calib_valid_after = self.rd.calib.at - 0.001
         self.assertEqual(row(self.tick(), "imu")["state"], "skip")
         self.assertEqual(self.ob.rec["skipped"]["imu"]["fp"], O.mount_fp("lsm6dsv16x", CALIB["imu_mount"]["quat"]))
-        self.assertTrue(any("现在读到了、绑上" in e["msg"] for e in self.log.recent(30)))
+        self.assertTrue(any("impressão digital vinculada" in e["msg"] for e in self.log.recent(30)))
         self.assertTrue(self.ob.save())
-        self.assertEqual(O.Onboarding(self.tmp.name, self.log).rec["skipped"]["imu"]["ack"], ["unk", "fp"])   # ack 存得下、读得回
+        self.assertEqual(O.Onboarding(self.tmp.name, self.log).rec["skipped"]["imu"]["ack"], ["unk", "fp"])
 
     def test_imu_native_unverified_needs_two_clicks(self):
-        """主程序明说 IMU 方向没确认（hard）：以前按钮灰着、后端拒；现在能点，第二下写后果，没 confirmed 后端拒。"""
+        """A orientação da IMU não confirmada exige uma confirmação que o servidor valida."""
         bus = copy.deepcopy(BUS)
         bus["native"]["imu_mount_verified"] = False
         self.rd.bus.set(bus)
         r = row(self.tick(), "imu")
         self.assertEqual(r["state"], "no")
         self.assertTrue(r["mark"]["skip"]["confirm"])
-        self.assertEqual(r["mark"]["skip"]["ask"], "确定跳过？主程序没确认 IMU 方向：跳过了鸭子也站不起来")
-        self.assertEqual(r["mark"]["done"]["ask"], "确定标成已完成？主程序没确认 IMU 方向：标成已完成鸭子也站不起来")
-        ok, why = self.ob.skip("imu", self.rd, self.pad, by="电脑")
+        self.assertIn("Confirma ignorar? A orientação da IMU não foi confirmada", r["mark"]["skip"]["ask"])
+        self.assertIn("Confirma marcar como concluído? A orientação da IMU não foi confirmada", r["mark"]["done"]["ask"])
+        ok, why = self.ob.skip("imu", self.rd, self.pad, by="Computador")
         self.assertFalse(ok)
-        self.assertIn("跳过了鸭子也站不起来", why)
+        self.assertIn("não ficará em pé", why)
         self.assertNotIn("imu", self.ob.rec.get("skipped") or {})
-        # 以前跳过的（没确认过这个问题）：主程序明说没确认时不算数
+        # Uma marcação sem confirmação não vale quando o programa principal informa que a IMU não foi confirmada.
         self.ob.rec["skipped"] = {"imu": {"at": 1.7e9, "by": "x", "fp": O.mount_fp("lsm6dsv16x", CALIB["imu_mount"]["quat"])}}
         r = row(self.tick(), "imu")
         self.assertEqual(r["state"], "no")
-        self.assertIn("跳过不管用", r["note"])
-        # 点两次确认过的：算数（ack 里有 hard），底下真实的情况写进 note
+        self.assertIn("a marcação não vale", r["note"])
+        # Uma marcação confirmada permanece válida e a situação atual aparece na nota.
         self.ob.rec["skipped"] = {}
-        self.assertTrue(self.ob.skip("imu", self.rd, self.pad, by="电脑", confirmed=True)[0])
+        self.assertTrue(self.ob.skip("imu", self.rd, self.pad, by="Computador", confirmed=True)[0])
         self.assertIn("hard", self.ob.rec["skipped"]["imu"]["ack"])
         r = row(self.tick(), "imu")
         self.assertEqual(r["state"], "skip")
-        self.assertIn("还没确认", r["note"])
-        bus["native"]["imu_mount_verified"] = True                             # 主程序确认了：照样跳过着
+        self.assertIn("não foi confirmada", r["note"])
+        bus["native"]["imu_mount_verified"] = True
         self.rd.bus.set(bus)
         self.assertEqual(row(self.tick(), "imu")["state"], "skip")
 
     def test_fingerprint_change_voids_skip_but_none_does_not(self):
         self.assertTrue(self.ob.skip("servo", self.rd, self.pad)[0])
         self.assertTrue(self.ob.skip("estop", self.rd, self.pad, confirmed=True)[0])
-        # 读不到（指纹 None）：不作废
+        # Dados indisponíveis não invalidam a marcação.
         self.rd.calib_valid_after = self.rd.calib.at + 1
         self.pad.view = pad_view(known=False)
         v = self.tick()
         self.assertEqual(row(v, "servo")["state"], "skip")
         self.assertEqual(row(v, "estop")["state"], "skip")
-        # 读回来、标定改过了（方向改了，零位还是 2048）/ 换了手柄：作废、回 ●，写清是什么改过了
+        # Alteração na calibração ou no controle invalida a marcação.
         self.rd.calib.set(calib_with(dirs={"left_knee": 1}))
         self.rd.calib_valid_after = self.rd.calib.at - 0.001
         other = dict(XPAD, mac="98:B6:E9:28:06:09", name="Pro Controller")
@@ -948,20 +935,20 @@ class SkipTest(unittest.TestCase):
         v = self.tick()
         r = row(v, "servo")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("跳过以后舵机零位改过了", r["text"])
+        self.assertIn("O item foi ignorado, mas o ponto zero dos servos mudou", r["text"])
         r = row(v, "estop")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("跳过以后手柄（或主程序版本）改过了", r["text"])
-        self.assertTrue(r["mark"]["skip"]["confirm"])                         # 能再跳一次（绑新的），照样点两次
+        self.assertIn("O item foi ignorado, mas o controle (ou a versão do programa principal) mudou", r["text"])
+        self.assertTrue(r["mark"]["skip"]["confirm"])
         self.assertTrue(self.ob.skip("estop", self.rd, self.pad, confirmed=True)[0])
         self.assertEqual(row(self.tick(), "estop")["state"], "skip")
 
     def test_fingerprint_unknown_can_still_be_marked(self):
-        """测急停配过两只手柄、一只都没连，读不出是哪只（指纹 None）：以前不让跳；现在点两次能跳，指纹等连上一只再绑。"""
+        """Teste de parada de emergência com vários controles pareados e nenhum conectado."""
         two = [dict(XPAD, connected=False), dict(XPAD, mac="98:B6:E9:28:06:09", connected=False)]
         self.pad.view = pad_view(pads=two)
         r = row(self.tick(), "estop")
-        self.assertIn("先连上一只手柄再测", r["text"])                     # 审查 D11：写清楚要做什么
+        self.assertIn("conecte um antes do teste", r["text"])
         self.assertTrue(r["mark"]["skip"]["confirm"])
         self.assertIn("fp", r["mark"]["ack"])
         self.assertFalse(self.ob.skip("estop", self.rd, self.pad)[0])
@@ -972,10 +959,10 @@ class SkipTest(unittest.TestCase):
         self.assertEqual(self.ob.rec["skipped"]["estop"]["fp"], O._hash([XBOX, BUILD]))
 
     def test_web_only_estop_can_be_skipped(self):
-        """只用网页（确定没有实体手柄）：测急停那行写「空格就是急停……可以跳过这步」，能跳；之后配上手柄，跳过作废。"""
+        """O controle web permite ignorar o teste até que um controle físico seja pareado."""
         self.pad.view = pad_view()
         r = row(self.tick(), "estop")
-        self.assertIn("空格就是急停", r["text"])
+        self.assertIn("Espaço e o botão vermelho superior", r["text"])
         self.assertTrue(self.ob.skip("estop", self.rd, self.pad, confirmed=True)[0])
         self.assertEqual(row(self.tick(), "estop")["state"], "skip")
         self.pad.view = pad_view(pads=[XPAD])
@@ -987,7 +974,7 @@ class SkipTest(unittest.TestCase):
         self.assertEqual(v["next"], "imu")
         self.assertTrue(self.ob.skip("imu", self.rd, self.pad)[0])
         v = self.tick()
-        self.assertEqual(v["next"], "estop")                                   # 配手柄这一行是 ✓（XPAD 连着）：往下走到测急停
+        self.assertEqual(v["next"], "estop")
         self.assertEqual(v["skipped_n"], 1)
         self.assertTrue(self.ob.skip("estop", self.rd, self.pad, confirmed=True)[0])
         self.ob.rec["walked"] = {"at": 1.7e9, "fp": O.full_fp(BUS, CALIB)}
@@ -999,13 +986,13 @@ class SkipTest(unittest.TestCase):
 
     def test_bad_skipped_records_are_dropped(self):
         Path(self.tmp.name, "onboarding.json").write_text(json.dumps({"v": 1, "skipped": {
-            "imu": {"at": 1.7e9, "by": "x", "fp": "abc"}, "servo": {"at": "昨天"}, "nope": {"at": 1}, "pad": [1]}}), encoding="utf-8")
+            "imu": {"at": 1.7e9, "by": "x", "fp": "abc"}, "servo": {"at": "ontem"}, "nope": {"at": 1}, "pad": [1]}}), encoding="utf-8")
         ob = O.Onboarding(self.tmp.name, self.log)
         self.assertEqual(list(ob.rec["skipped"]), ["imu"])
         self.assertEqual(sum(1 for e in self.log.recent(30) if "skipped." in e["msg"]), 3)
-        Path(self.tmp.name, "onboarding.json").write_text(json.dumps({"v": 1, "skipped": "全跳"}), encoding="utf-8")
+        Path(self.tmp.name, "onboarding.json").write_text(json.dumps({"v": 1, "skipped": "all-skipped"}), encoding="utf-8")
         self.assertNotIn("skipped", O.Onboarding(self.tmp.name, self.log).rec)
-        ob.tick(self.rd, self.pad)                                             # 照样能判
+        ob.tick(self.rd, self.pad)
         self.assertEqual(len(ob.view()["rows"]), 6)
 
     def test_hard_block_servo_needs_two_clicks(self):
@@ -1013,39 +1000,39 @@ class SkipTest(unittest.TestCase):
         c["uncalibrated_joints"] = ["left_knee"]
         self.rd.calib.set(c)
         r = row(self.tick(), "servo")
-        self.assertEqual(r["mark"]["skip"]["ask"], "确定跳过？主程序说标定没做完：跳过了鸭子也站不起来")
+        self.assertEqual(r["mark"]["skip"]["ask"], "Confirma ignorar? O programa principal informa que a calibração está incompleta: o robô não ficará em pé mesmo se for ignorado")
         self.assertFalse(self.ob.skip("servo", self.rd, self.pad)[0])
         self.assertTrue(self.ob.skip("servo", self.rd, self.pad, confirmed=True)[0])
         r = row(self.tick(), "servo")
         self.assertEqual(r["state"], "skip")
-        self.assertIn("1 颗还没标", r["note"])
+        self.assertIn("servos não foram calibrados", r["note"])
 
 
 class DoneTest(unittest.TestCase):
-    """「已完成」= 我以前做过（用户 10-20：「可能有人之前做过重新走一遍」）：done.<步>，✓「你标了已完成」，指纹规则跟跳过一样。"""
+    """Marcações de conclusão são armazenadas em done.<etapa> e vinculadas à mesma impressão digital das etapas ignoradas."""
     setUp, tearDown, tick = SkipTest.setUp, SkipTest.tearDown, SkipTest.tick
 
     def test_done_marks_ok_and_cancel(self):
         before = row(self.tick(), "servo")
         self.assertEqual(before["state"], "todo")
-        ok, why = self.ob.mark_done("servo", self.rd, self.pad, by="电脑 1.2.3.4")
+        ok, why = self.ob.mark_done("servo", self.rd, self.pad, by="Computador 1.2.3.4")
         self.assertTrue(ok, why)
         self.assertEqual(self.ob.rec["done"]["servo"]["fp"], O.joints_fp(CALIB))
         r = row(self.tick(), "servo")
-        self.assertEqual((r["state"], r["marked"], r["text"]), ("ok", "done", "你标了已完成"))
-        self.assertEqual(r["note"], before["text"])                          # 底下真实的情况，页面小字写「现在：…」
+        self.assertEqual((r["state"], r["marked"], r["text"]), ("ok", "done", "Você marcou como concluído"))
+        self.assertEqual(r["note"], before["text"])
         self.assertIsNotNone(r["when"])
         self.assertEqual(self.ob.view()["marked_n"], 1)
-        self.assertTrue(self.ob.mark_done("servo", self.rd, self.pad)[0])     # 再点一次：已经标了
+        self.assertTrue(self.ob.mark_done("servo", self.rd, self.pad)[0])
         ok, why = self.ob.skip("servo", self.rd, self.pad)
-        self.assertFalse(ok)                                                  # 两种互斥：先取消
-        self.assertIn("先点「取消」", why)
-        self.assertTrue(self.ob.unmark("servo", "done", by="电脑 1.2.3.4")[0])
+        self.assertFalse(ok)
+        self.assertIn("cancele essa marcação", why)
+        self.assertTrue(self.ob.unmark("servo", "done", by="Computador 1.2.3.4")[0])
         self.assertNotIn("servo", self.ob.rec["done"])
         self.assertEqual(row(self.tick(), "servo")["state"], "todo")
         msgs = [e["msg"] for e in self.log.recent(30)]
-        self.assertIn("上手清单：舵机零位 标了已完成（电脑 1.2.3.4）", msgs)
-        self.assertIn("上手清单：舵机零位 取消已完成（电脑 1.2.3.4）", msgs)
+        self.assertIn("Lista de integração: etapa Ponto zero dos servos marcada como concluída (Computador 1.2.3.4)", msgs)
+        self.assertIn("Lista de integração: marcação de conclusão removida para Ponto zero dos servos (Computador 1.2.3.4)", msgs)
 
     def test_done_wins_over_skip_and_marking_removes_the_other(self):
         fp = O.joints_fp(CALIB)
@@ -1053,44 +1040,43 @@ class DoneTest(unittest.TestCase):
         self.assertEqual(row(self.tick(), "servo")["marked"], "done")
         self.ob.rec["done"] = {}
         self.assertTrue(self.ob.unskip("servo")[0])
-        self.ob.rec["skipped"] = {"servo": {"at": 1.0, "by": "x", "fp": "old"}}    # 作废的跳过（指纹变了）还留在记录里
+        self.ob.rec["skipped"] = {"servo": {"at": 1.0, "by": "x", "fp": "old"}}
         self.assertEqual(row(self.tick(), "servo")["state"], "todo")
         self.assertTrue(self.ob.mark_done("servo", self.rd, self.pad)[0])
-        self.assertNotIn("servo", self.ob.rec["skipped"])                       # 标了已完成：旧的跳过记录删掉
+        self.assertNotIn("servo", self.ob.rec["skipped"])
 
     def test_done_voided_by_fingerprint_change(self):
         self.assertTrue(self.ob.mark_done("servo", self.rd, self.pad)[0])
         self.rd.calib.set(calib_with(dirs={"left_knee": 1}))
         r = row(self.tick(), "servo")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("标了已完成以后舵机零位改过了", r["text"])
-        self.assertIn("servo", self.ob.rec["done"])                             # 记录留着（指纹变回来又算）
+        self.assertIn("A conclusão foi marcada, mas o ponto zero dos servos mudou", r["text"])
+        self.assertIn("servo", self.ob.rec["done"])
 
     def test_found_problem_with_and_without_ack(self):
-        """IMU 站着核过差 8.5°（found）：点两次确认过的「已完成」留着；之前没确认过的作废、从记录里删掉。"""
+        """Uma verificação da IMU com erro invalida marcações antigas sem confirmação."""
         src, mount = "lsm6dsv16x", CALIB["imu_mount"]
         mfp = O.mount_fp(src, mount["quat"])
         self.ob.rec["imu_check"] = {"at": 1.7e9, "source": src, "mount_fp": mfp, "diff_deg": 8.5, "tilt_deg": 1.0, "ok": False}
         r = row(self.tick(), "imu")
-        self.assertEqual(r["mark"]["done"]["ask"],
-                         "确定标成已完成？站着核过，方向差 8.5°：标成已完成走路也会往前冲（一号鸭 10-12 就是装歪 8.5°）")
+        self.assertIn("Confirma marcar como concluído? Verificação em pé encontrou diferença de 8.5°", r["mark"]["done"]["ask"])
         ok, why = self.ob.mark_done("imu", self.rd, self.pad)
         self.assertFalse(ok)
-        self.assertIn("差 8.5°", why)
+        self.assertIn("8.5°", why)
         self.assertTrue(self.ob.mark_done("imu", self.rd, self.pad, confirmed=True)[0])
         self.assertIn("found", self.ob.rec["done"]["imu"]["ack"])
         for _ in range(2):
             self.assertEqual(row(self.tick(), "imu")["state"], "ok")
         self.assertIn("imu", self.ob.rec["done"])
-        self.ob.rec["done"] = {"imu": {"at": 1.7e9, "by": "x", "fp": mfp}}          # 测出问题之前标的
+        self.ob.rec["done"] = {"imu": {"at": 1.7e9, "by": "x", "fp": mfp}}
         r = row(self.tick(), "imu")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("标的不算了", r["note"])
+        self.assertIn("a marcação não vale", r["note"])
         self.assertEqual(self.ob.rec["done"], {})
-        self.assertTrue(any("「已完成」作废" in e["msg"] for e in self.log.recent(30)))
+        self.assertTrue(any("marcada como concluída" in e["msg"] and "invalidada" in e["msg"] for e in self.log.recent(30)))
 
     def test_frozen_during_servo_session_needs_two_clicks(self):
-        """调舵机时清单冻着（审查 D11）：以前跳过、取消都不收；现在都能点，要点两次（标了要交还以后才显示）。"""
+        """Ações durante o ajuste dos servos exigem confirmação em duas etapas."""
         self.assertTrue(self.ob.skip("imu", self.rd, self.pad)[0])
         self.tick()
 
@@ -1099,21 +1085,21 @@ class DoneTest(unittest.TestCase):
         self.ob.tick(self.rd, self.pad, Sess())
         v = self.ob.view()
         self.assertTrue(v["frozen"])
-        self.assertIn("要等交还主程序以后才显示", v["frozen_ask"]["skip"])
-        self.assertIn("确定取消？", v["frozen_ask"]["undo"])
+        self.assertIn("quando o controle voltar ao programa principal", v["frozen_ask"]["skip"])
+        self.assertIn("Confirma o cancelamento?", v["frozen_ask"]["undo"])
         ok, why = self.ob.skip("walk", self.rd, self.pad, Sess())
         self.assertFalse(ok)
-        self.assertIn("确定跳过？在调舵机", why)
+        self.assertIn("Confirmação em duas etapas necessária: Confirma ignorar?", why)
         self.assertTrue(self.ob.skip("walk", self.rd, self.pad, Sess(), confirmed=True)[0])
         ok, why = self.ob.unskip("imu", servo=Sess())
         self.assertFalse(ok)
-        self.assertIn("交还主程序以后", why)
+        self.assertIn("voltar ao programa principal", why)
         self.assertIn("imu", self.ob.rec["skipped"])
-        self.assertFalse(self.ob.unskip("imu")[0])        # 没传会话：看最近见到的那个（还开着）——照样要确认（审查 R6）
+        self.assertFalse(self.ob.unskip("imu")[0])
         self.assertTrue(self.ob.unskip("imu", confirmed=True)[0])
         self.ob.tick(self.rd, self.pad, Sess())
-        self.assertEqual([r["state"] for r in self.ob.view()["rows"]], [r["state"] for r in v["rows"]])   # 冻着：显示不变
-        Sess.state = "closed"                             # 交还了：马上按新的判
+        self.assertEqual([r["state"] for r in self.ob.view()["rows"]], [r["state"] for r in v["rows"]])
+        Sess.state = "closed"
         self.assertEqual(row(self.tick(), "walk")["state"], "skip")
         self.assertEqual(row(self.tick(), "imu")["state"], "todo")
 
@@ -1126,11 +1112,11 @@ class DoneTest(unittest.TestCase):
 
 
 class Batch3SkipTest(unittest.TestCase):
-    """第三批代码审查 D5、D10、D11（复现脚本 repro_onboard.py 的 R1–R7），按 10-20 的新规矩（不再锁，点两次）改过。"""
+    """Casos adicionais de problemas encontrados, validação de registros e confirmação da parada de emergência."""
     setUp, tearDown, tick = SkipTest.setUp, SkipTest.tearDown, SkipTest.tick
 
     def test_found_problems_need_two_clicks_and_old_skips_are_voided(self):
-        """D5：IMU 核过差 8.5°、急停测过但现在不管用、两套零位打架——第二下写后果；以前跳过的（没确认过这个问题）作废、删掉。"""
+        """Problemas encontrados exigem confirmação e invalidam marcações anteriores sem confirmação."""
         src, mount = "lsm6dsv16x", CALIB["imu_mount"]
         mfp = O.mount_fp(src, mount["quat"])
         efp = O._hash([XBOX, BUILD])
@@ -1141,28 +1127,28 @@ class Batch3SkipTest(unittest.TestCase):
                         "servo": {"at": 1.7e9, "by": "x", "fp": O.joints_fp(calib_with(left_knee=1990))}}})
         self.rd.calib.set(calib_with(left_knee=1990))
         self.rd.calib_valid_after = self.rd.calib.at - 0.001
-        self.pad.view = pad_view(pads=[XPAD], estop="bad", checks=[{"label": "padd 在跑", "ok": False, "why": "padd 没在跑"}])
+        self.pad.view = pad_view(pads=[XPAD], estop="bad", checks=[{"label": "padd running", "ok": False, "why": "padd stopped"}])
         v = self.tick()
-        for key, word in (("imu", "差 8.5°"), ("estop", "急停不管用"), ("servo", "两套零位")):
+        for key, word in (("imu", "8.5°"), ("estop", "não funciona"), ("servo", "Os pontos zero divergem")):
             with self.subTest(step=key):
                 r = row(v, key)
-                self.assertEqual(r["state"], "todo", r)                         # 以测出的问题为准，不再是「跳过了」
+                self.assertEqual(r["state"], "todo", r)
                 self.assertTrue(r["mark"]["skip"]["confirm"])
                 self.assertIn(word, r["mark"]["skip"]["ask"])
                 self.assertNotIn("{v}", r["mark"]["skip"]["ask"])
-                self.assertIn("跳过不算了", r["note"])
+                self.assertIn("marcação não vale", r["note"])
                 self.assertTrue(r["found"])
                 ok, why = self.ob.skip(key, self.rd, self.pad)
                 self.assertFalse(ok)
                 self.assertIn(word, why)
-        self.assertEqual(self.ob.rec["skipped"], {})                           # 作废的从记录里删了
-        self.assertTrue(any("跳过作废" in e["msg"] for e in self.log.recent(50)))
-        self.assertTrue(self.ob.skip("servo", self.rd, self.pad, confirmed=True)[0])   # 点两次：知道后果也要跳，就跳
+        self.assertEqual(self.ob.rec["skipped"], {})
+        self.assertTrue(any("marcação ignorada" in e["msg"] and "invalidada" in e["msg"] for e in self.log.recent(50)))
+        self.assertTrue(self.ob.skip("servo", self.rd, self.pad, confirmed=True)[0])
         self.assertEqual(row(self.tick(), "servo")["state"], "skip")
-        self.assertIn("servo", self.ob.rec["skipped"])                         # 确认过的问题不再作废它
+        self.assertIn("servo", self.ob.rec["skipped"])
 
     def test_skip_records_need_number_at(self):
-        """D10：at 不是数字 → 丢掉并记 warn。fp 可以是 null（标的时候读不到，tick 读到以后绑上：照 C2），不是字符串也不是 null 的丢掉。"""
+        """Valida o campo at e permite fp nulo até que os dados estejam disponíveis."""
         good, bad = O.clean_records({"skipped": {
             "imu": {}, "servo": {"x": 1}, "walk": {"at": None, "fp": "abc"}, "estop": {"at": 1.7e9, "fp": None},
             "pad": {"at": 1.7e9, "by": "x", "fp": None}, "servo2": {"at": 1.7e9, "fp": "a"}, "commit": {"at": 1.7e9, "fp": 3}}})
@@ -1172,31 +1158,31 @@ class Batch3SkipTest(unittest.TestCase):
         p.write_text(json.dumps({"skipped": {"servo": {"at": 1.7e9, "by": "x", "fp": None}}}), encoding="utf-8")
         ob = O.Onboarding(self.tmp.name, self.log)
         self.assertEqual(ob.rec["skipped"]["servo"]["fp"], None)
-        ob.tick(self.rd, self.pad)                                             # 读得到指纹：绑上
+        ob.tick(self.rd, self.pad)
         self.assertEqual(ob.rec["skipped"]["servo"]["fp"], O.joints_fp(CALIB))
 
     def test_estop_ask_text_by_situation(self):
-        """D11：测急停的确认那句按情况写：没测过 / 换了手柄 / 主程序升级过 / 急停现在不管用 / 只用网页；「已完成」也一样点两次。"""
+        """A confirmação do teste da parada de emergência depende do estado do controle e do programa."""
         self.pad.view = pad_view(pads=[XPAD])
         m = row(self.tick(), "estop")["mark"]
-        self.assertIn("确定跳过？没测过", m["skip"]["ask"])
-        self.assertIn("确定标成已完成？没测过", m["done"]["ask"])
-        self.pad.view = pad_view(pads=[XPAD], estop="bad", checks=[{"label": "padd 在跑", "ok": False, "why": "padd 没在跑"}])
+        self.assertIn("Confirma ignorar? Ainda não foi testado", m["skip"]["ask"])
+        self.assertIn("Confirma marcar como concluído? Ainda não foi testado", m["done"]["ask"])
+        self.pad.view = pad_view(pads=[XPAD], estop="bad", checks=[{"label": "padd running", "ok": False, "why": "padd stopped"}])
         r = row(self.tick(), "estop")
-        self.assertIn("急停现在不管用（padd 在跑：padd 没在跑）：跳过了也不会变好用", r["mark"]["skip"]["ask"])
-        self.assertNotIn("found", r["mark"]["ack"])                            # 没测过的：不是测出来的问题
+        self.assertIn("A parada de emergência não está funcionando", r["mark"]["skip"]["ask"])
+        self.assertNotIn("found", r["mark"]["ack"])
         self.pad.view = pad_view()
-        self.assertIn("只用网页", row(self.tick(), "estop")["mark"]["skip"]["ask"])
+        self.assertIn("controle web", row(self.tick(), "estop")["mark"]["skip"]["ask"])
         self.ob.rec["estop"] = {"at": 1.7e9, "ms": 180, "mac": "98:B6:E9:28:06:09", "name": "Pro", "build": BUILD}
         self.pad.view = pad_view(pads=[XPAD])
         r = row(self.tick(), "estop")
-        self.assertIn("换了手柄", r["mark"]["skip"]["ask"])
+        self.assertIn("controle mudou", r["mark"]["skip"]["ask"])
         self.ob.rec["estop"] = {"at": 1.7e9, "ms": 180, "mac": XBOX, "name": "Xbox", "build": "old-build"}
-        self.assertIn("主程序升级过", row(self.tick(), "estop")["mark"]["skip"]["ask"])
+        self.assertIn("programa principal foi atualizado", row(self.tick(), "estop")["mark"]["skip"]["ask"])
 
 
 class StartingTooLongTest(unittest.TestCase):
-    """任务 16：主程序连续报启动阶段超过 30 秒（Studio 从这次连上算）：总览头图、待办、清单头不再说「通常 10 秒」。"""
+    """Mensagens exibidas quando o programa principal permanece em inicialização por mais de 30 segundos."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -1212,7 +1198,7 @@ class StartingTooLongTest(unittest.TestCase):
         rd.starting_since = now - 5
         s = summarize(rd, {}, now=now)
         self.assertEqual((s["posture"], s["starting_s"], s["starting_long"]), ("starting", 5, False))
-        self.assertEqual(next(t for t in s["todo"] if t["key"] == "starting")["hint"], "通常 10 秒内完成")
+        self.assertEqual(next(t for t in s["todo"] if t["key"] == "starting")["hint"], "Normalmente leva até 10 segundos")
         rd.starting_since = now - 31
         s = summarize(rd, {}, now=now)
         self.assertTrue(s["starting_long"])
@@ -1221,31 +1207,31 @@ class StartingTooLongTest(unittest.TestCase):
         self.assertEqual(t["msg"], "O programa principal continua inicializando")
         self.assertIn("Já se passaram 31 s", t["hint"])
         self.assertIn("problema de versões antigas", t["hint"])
-        self.assertNotIn("10 秒", t["hint"])
+        self.assertNotIn("10 segundos", t["hint"])
         ob = O.Onboarding(self.tmp.name, self.log)
         ob.tick(rd)
-        self.assertIn("一直报「启动中」", ob.view()["header"]["text"])
-        rd.bus.set(dict(boot, phase="ready"))                                 # 起来了（实时快照）：不再算启动中
+        self.assertIn("continua informando", ob.view()["header"]["text"])
+        rd.bus.set(dict(boot, phase="ready"))
         s = summarize(rd, {}, now=now)
         self.assertEqual((s["posture"], s["starting_s"], s["starting_long"]), ("commissioning", None, False))
 
 
 class BatteryWordingTest(unittest.TestCase):
-    """电量低的待办：没电了会不会自己坐下关机，照 robotd 配置的 [safety] battery_empty_shutdown 说（二号鸭真机是 false）。"""
+    """A mensagem de bateria baixa segue a configuração battery_empty_shutdown do robotd."""
 
     def test_read_setting_and_wording(self):
         tmp = tempfile.TemporaryDirectory()
         try:
             d = Path(tmp.name)
             fork, official = d / "fork.toml", d / "official.toml"
-            self.assertIsNone(O.read_battery_shutdown([str(fork), str(official)]))          # 都没有：读不到
+            self.assertIsNone(O.read_battery_shutdown([str(fork), str(official)]))
             official.write_text("[safety]\nbattery_empty_shutdown = true\n", encoding="utf-8")
             self.assertIs(O.read_battery_shutdown([str(fork), str(official)]), True)
             fork.write_text("[safety]\nlimp_fall = false\nbattery_empty_shutdown = false\n", encoding="utf-8")
-            self.assertIs(O.read_battery_shutdown([str(fork), str(official)]), False)        # fork 的在前
+            self.assertIs(O.read_battery_shutdown([str(fork), str(official)]), False)
             fork.write_text("[safety]\nlimp_fall = false\n", encoding="utf-8")
-            self.assertIsNone(O.read_battery_shutdown([str(fork)]))                         # 没写这一项：按读不到
-            fork.write_text("坏[", encoding="utf-8")
+            self.assertIsNone(O.read_battery_shutdown([str(fork)]))
+            fork.write_text("invalid[", encoding="utf-8")
             self.assertIsNone(O.read_battery_shutdown([str(fork)]))
         finally:
             tmp.cleanup()
@@ -1254,12 +1240,12 @@ class BatteryWordingTest(unittest.TestCase):
         def hint(v):
             return next(i for i in todo(HEALTH, BUS, {"stale": []}, "ok", {}, {}, low, "holding", battery_shutdown=v)
                         if i["key"] == "battery")["hint"]
-        self.assertEqual(hint(True), "该充电了；到 6.6 V 它会自己坐下关机")
-        self.assertEqual(hint(False), "该充电了；没电时它不会自己坐下，先停下、坐下再充")
-        self.assertEqual(hint(None), "该充电了；没电时它不会自己坐下，先停下、坐下再充")
+        self.assertEqual(hint(True), "Recarregue; A 6,6 V, o robô se sentará e desligará sozinho")
+        self.assertEqual(hint(False), "Recarregue; O robô não se sentará sozinho quando a bateria acabar; pare-o, coloque-o sentado e recarregue")
+        self.assertEqual(hint(None), "Recarregue; O robô não se sentará sozinho quando a bateria acabar; pare-o, coloque-o sentado e recarregue")
 
 
-# ---------------- 第 3 步「写进主程序」（任务 11） ----------------
+# ---------------- Etapa 3: gravar no programa principal ----------------
 
 def factory_calib():
     c = copy.deepcopy(CALIB)
@@ -1275,12 +1261,12 @@ def factory_calib():
 
 def commit_view(ready=False):
     return {"ready": ready, "items": [
-        {"key": "servo", "label": "舵机零位", "ok": False, "text": "还有 15 颗没在 Studio 校过零位",
-         "action": {"do": "servos", "label": "去舵机页"}},
-        {"key": "directions", "label": "方向", "ok": True, "text": "15 颗都用默认方向（−1）"},
-        {"key": "imu", "label": "IMU 方向", "ok": True, "text": "IMU 页站着校过了"},
-        {"key": "bus", "label": "舵机总线", "ok": True, "text": "舵机页没开着总线"},
-        {"key": "robotd", "label": "主程序", "ok": True, "text": "主程序在线"},
+        {"key": "servo", "label": "Ponto zero dos servos", "ok": False, "text": "15 servos ainda não foram calibrados no Studio",
+         "action": {"do": "servos", "label": "Abrir servos"}},
+        {"key": "directions", "label": "Orientação", "ok": True, "text": "Os 15 servos usam a orientação padrão (−1)"},
+        {"key": "imu", "label": "Orientação da IMU", "ok": True, "text": "IMU verificada com o robô em pé"},
+        {"key": "bus", "label": "Barramento dos servos", "ok": True, "text": "O barramento não está aberto na página de servos"},
+        {"key": "robotd", "label": "Programa principal", "ok": True, "text": "Programa principal conectado"},
     ], "job": None}
 
 
@@ -1290,19 +1276,19 @@ class CommitStepTest(unittest.TestCase):
         self.assertEqual([r["key"] for r in v["rows"]], ["servo", "imu", "commit", "pad", "estop", "walk"])
         r = row(v, "commit")
         self.assertEqual(r["n"], 3)
-        self.assertEqual(r["title"], "写进主程序")
+        self.assertEqual(r["title"], "Gravar no programa")
         self.assertEqual(r["desc"], O.COMMIT_TEXT)
 
     def test_committed_calibration_is_done(self):
         r = row(O.evaluate(inp(), {}), "commit")
         self.assertEqual(r["state"], "ok")
-        self.assertIn("写进主程序了", r["text"])
+        self.assertIn("Gravado no programa principal", r["text"])
 
     def test_factory_shows_readiness_and_action(self):
         cv = commit_view()
         r = row(O.evaluate(inp(calib=factory_calib(), commit=cv), {}), "commit")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("还差舵机零位", r["text"])
+        self.assertIn("Faltam Ponto zero dos servos", r["text"])
         self.assertEqual(r["commit"], cv)
         self.assertEqual(r["actions"][0]["do"], "commit")
 
@@ -1311,15 +1297,15 @@ class CommitStepTest(unittest.TestCase):
         self.assertEqual(r["state"], "unk")
 
     def test_calib_read_fallback_is_not_unknown(self):
-        """运动模式卡 waiting_for_bus：calibration-status 没有，但 calib-read 读到了文件。"""
+        """O arquivo de calibração pode estar disponível mesmo quando calibration-status não está."""
         cv = commit_view()
         cv.update({"preview_ok": True, "from_file": True,
-                   "note": "主程序现在没在用这份标定，下面是文件里的内容"})
+                   "note": "O programa principal não está usando esta calibração; veja abaixo os dados do arquivo"})
         bus = {"build": BUILD, "mode": "motion", "phase": "waiting_for_bus",
                "error": "torque readback at register 40: Feetech Sync Read timeout; missing IDs [21]"}
         r = row(O.evaluate(inp(bus=bus, calib=None, commit=cv), {}), "commit")
         self.assertEqual(r["state"], "todo")
-        self.assertIn("主程序现在没在用这份标定", r["desc"])
+        self.assertIn("O programa principal não está usando esta calibração", r["desc"])
 
     def test_skip_is_bound_to_calibration_fingerprint(self):
         bound, fp = O.step_fp("commit", inp())
@@ -1327,8 +1313,7 @@ class CommitStepTest(unittest.TestCase):
         self.assertEqual(fp, O.full_fp(BUS, CALIB))
 
     def test_marked_steps_and_commit_readiness(self):
-        """任务 16：第 1 步标了已完成（出厂时主程序说没标：要点两次）→ 第 3 步准备情况「舵机零位」算满足；
-        任务 17：第 2 步标了已完成、主程序里方向没确认、也没新校准 →「IMU 方向」按默认装法写，第 3 步准备齐了。"""
+        """Marcações de etapas de servo e IMU contam para os itens de preparação da gravação."""
         from studio.commit import CommitService
         tmp = tempfile.TemporaryDirectory()
         try:
@@ -1350,30 +1335,30 @@ class CommitStepTest(unittest.TestCase):
             self.assertFalse(item("servo")["ok"])
             r = row(ob.view(), "servo")
             self.assertEqual(r["state"], "no")
-            self.assertTrue(r["mark"]["done"]["confirm"])                         # 主程序说没标（hard）：要点两次
+            self.assertTrue(r["mark"]["done"]["confirm"])
             self.assertFalse(ob.mark_done("servo", rd)[0])
             self.assertTrue(ob.mark_done("servo", rd, confirmed=True)[0])
             ob.tick(rd)
             self.assertEqual(row(ob.view(), "servo")["state"], "ok")
             s = item("servo")
             self.assertTrue(s["ok"])
-            self.assertEqual(s["text"], "你标了第 1 步已完成：15 颗按 2048 写零位（零位要是用 Studio 的舵机页校过的才对）")
+            self.assertEqual(s["text"], "Marcado como concluído: 15 servos com ponto zero 2048 (calibrados na página de servos do Studio)")
             self.assertIsNone(s["action"])
             self.assertFalse(item("imu")["ok"])
             ob.tick(rd)
-            self.assertIn("IMU 方向", row(ob.view(), "commit")["text"])           # 第 2 步没标：第 3 步还差 IMU 方向
-            self.assertFalse(ob.mark_done("imu", rd)[0])                          # 主程序说方向没确认（hard）：要点两次
+            self.assertIn("Orientação da IMU", row(ob.view(), "commit")["text"])
+            self.assertFalse(ob.mark_done("imu", rd)[0])
             self.assertTrue(ob.mark_done("imu", rd, confirmed=True)[0])
             ob.tick(rd)
             m = item("imu")
             self.assertTrue(m["ok"], m)
-            self.assertIn("你标了第 2 步已完成：IMU 按默认装法写（LSM6DSV16X（I²C）：复刻推荐装法", m["text"])
+            self.assertIn("Marcado como concluído: IMU gravada na orientação padrão", m["text"])
             self.assertEqual(svc.view(rd)["imu_default"]["quat"], [0.7071067811865476, 0.0, 0.7071067811865476, 0.0])
             ob.tick(rd)
             text = row(ob.view(), "commit")["text"]
-            self.assertNotIn("IMU 方向", text)
-            self.assertNotIn("舵机零位", text)
-            self.assertIn("准备齐了", text)                                        # 跳过第 1、2 步也能写进主程序
+            self.assertNotIn("Orientação da IMU", text)
+            self.assertNotIn("Ponto zero dos servos", text)
+            self.assertIn("Tudo pronto", text)
         finally:
             tmp.cleanup()
 
