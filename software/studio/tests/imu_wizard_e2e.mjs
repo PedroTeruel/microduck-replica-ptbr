@@ -1,8 +1,8 @@
-// IMU 页采集的端到端：把模拟的 robot.state 一帧一帧喂给 web/imu.js 的采集逻辑（真代码，不是抄的），
-// 看它记下了哪几步、走到哪、采到了什么，结果用 JSON 打到 stdout，由 tests/test_imu_wizard_e2e.py 交给 Python 的 imu_calib.solve 算。
+// Teste ponta a ponta da coleta do IMU: fornece quadros simulados de robot.state à lógica real de web/imu.js,
+// registra etapas e leituras e imprime o resultado em JSON. tests/test_imu_wizard_e2e.py passa os dados ao imu_calib.solve.
 //
-// 单独跑：node tests/imu_wizard_e2e.mjs   （Node ≥ 20.6；不需要装任何包）
-// 3D（duck3d.js → three.js）在这里用不到，换成一个空壳。
+// Execução independente: node tests/imu_wizard_e2e.mjs (Node >= 20.6; não requer pacotes adicionais).
+// O módulo 3D (duck3d.js -> three.js) não é necessário aqui e é substituído por uma implementação vazia.
 import { register } from 'node:module';
 
 register('data:text/javascript,' + encodeURIComponent(
@@ -16,9 +16,10 @@ performance.now = () => NOW;
 let seed = 7;
 const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
 
-// ---- 一只模拟鸭子：机身系 x 前 y 左 z 上；读数 = 鸭子上现在存的方向下的重力（装歪了 3° 前倾 + 4° 偏航） ----
+// ---- Robô simulado: no referencial do corpo, x aponta para a frente, y para a esquerda e z para cima.
+// A leitura usa a orientação atualmente armazenada no robô, com erro de montagem de 3° para a frente e 4° de yaw. ----
 const rad = (d) => d * Math.PI / 180;
-const rot = (axis, d) => {                                   // 绕单位轴转 d 度（Rodrigues）
+const rot = (axis, d) => {                                   // Rotaciona d graus em torno de um eixo unitário (fórmula de Rodrigues).
   const [x, y, z] = axis, c = Math.cos(rad(d)), s = Math.sin(rad(d)), C = 1 - c;
   return [[c + x * x * C, x * y * C - z * s, x * z * C + y * s], [y * x * C + z * s, c + y * y * C, y * z * C - x * s],
     [z * x * C - y * s, z * y * C + x * s, c + z * z * C]];
@@ -27,20 +28,21 @@ const mv = (m, v) => m.map((r) => r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
 const mm = (a, b) => a.map((r) => [0, 1, 2].map((j) => r[0] * b[0][j] + r[1] * b[1][j] + r[2] * b[2][j]));
 const tr = (m) => [0, 1, 2].map((i) => [0, 1, 2].map((j) => m[j][i]));
 const I = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
-const ERR = mm(rot([0, 0, 1], 4), rot([0, 1, 0], -3));        // 旧方向的错：读数 = ERR · 真机身重力
-const AX = { fwd: [0, 1, 0], back: [0, -1, 0], left: [-1, 0, 0], right: [1, 0, 0] };   // 前倾 = 绕 +y 转（头往下）
+const ERR = mm(rot([0, 0, 1], 4), rot([0, 1, 0], -3));        // Erro da orientação anterior: leitura = ERR · gravidade real no corpo.
+const AX = { fwd: [0, 1, 0], back: [0, -1, 0], left: [-1, 0, 0], right: [1, 0, 0] };   // Inclinar para a frente gira em +y (abaixa o lado da cabeça).
 const reading = (R_wb, noise = 0.1) => mv(ERR, mv(tr(R_wb), [0, 0, -1])).map((x) => x + rnd() * rad(noise) * 2);
 const tilted = (k, d, hand = I, twist = 0) => mm(rot(mv(rot([0, 0, 1], twist), AX[k]), d), hand);
 const hand = (d, dir) => rot([Math.cos(rad(dir)), Math.sin(rad(dir)), 0], d);
 
-/** 一段一段的「姿态 × 帧数」→ 读数序列 */
+/** Converte trechos de “postura × número de quadros” em uma sequência de leituras. */
 function script(parts) {
   const out = [];
   for (const [R, n, extra] of parts) for (let i = 0; i < n; i++) out.push({ g: reading(R), ...(extra || {}) });
   return out;
 }
 
-/** 一次倾斜：提起来端平停 0.8 s（手的零点偏几度）→ 0.8 s 倾过去 →（冲过头）→ 停 1.5 s（可以夹一帧乱跳）→ 0.8 s 放回 */
+/** Uma inclinação: levante e nivele por 0,8 s (a mão pode ter alguns graus de desvio), incline por 0,8 s,
+ * talvez ultrapasse o ponto, mantenha por 1,5 s (pode haver um quadro instável) e volte em 0,8 s. */
 function tiltParts(k, { tilt = 16, handDeg = 3, handDir = 40, overshoot = 0, spike = false, twist = 0 } = {}) {
   const H = hand(handDeg, handDir), parts = [[H, 8]];
   for (let j = 1; j <= 8; j++) parts.push([tilted(k, tilt * j / 8, H, twist), 1]);
@@ -55,7 +57,8 @@ const stillParts = (spikes = false) => (spikes ? [[I, 8], [tilted('left', 12), 1
 const session = (order = ['fwd', 'back', 'left', 'right'], opts = {}, stillSpike = false) =>
   [...stillParts(stillSpike), ...order.flatMap((k, i) => tiltParts(opts.as?.[k] || k, { handDir: 40 + 90 * i, ...opts }))];
 
-/** 新开一遍，把读数喂进去。opts.dup：每帧推两次（同一个 state_t_ns）；opts.noKey：不带 state_t_ns、同一读数的「生成时间」一样。 */
+/** Inicia uma coleta e fornece as leituras. opts.dup envia cada quadro duas vezes com o mesmo state_t_ns;
+ * opts.noKey omite state_t_ns, fazendo com que os envios da mesma leitura tenham o mesmo horário de geração. */
 function drive(frames, opts = {}, W = null) {
   if (!W) { W = T.freshWizard(); NOW = 0; T.startCollect(W, 0); }
   feedAll(W, frames, opts);
@@ -71,7 +74,7 @@ function feedAll(W, frames, opts = {}) {
     T.feed(W, st, f.live);
     W.pushed = (W.pushed || 0) + 1;
     if (opts.dup) {
-      NOW += 30;                                                    // 30 ms 后 Studio 又推了一次同一个读数
+      NOW += 30;                                                    // O Studio envia novamente a mesma leitura após 30 ms.
       T.feed(W, opts.noKey ? { gravity: f.g, joints_age_ms: 50 } : { ...st }, f.live);
       NOW -= 30;
     }
@@ -89,12 +92,13 @@ out.any_order = report(drive(script(session(['right', 'back', 'left', 'fwd']))))
 out.overshoot = report(drive(script(session(undefined, { overshoot: 5 }))));
 out.spike = report(drive(script(session(undefined, { spike: true }))));
 out.still_spike = report(drive(script(session(undefined, {}, true))));
-// 手的零点偏 4.5°（端平只要求离桌上 5° 以内；再偏就记不上零点，页面会说「先端平停一下」）
+// O nivelamento feito à mão tem desvio de 4,5° (a tolerância é de 5° em relação à mesa; acima disso, a página pede para nivelar e aguardar).
 out.hand_offset = report(drive(script(session(undefined, { handDeg: 4.5, tilt: 13 }))));
 out.too_small = report(drive(script(session(undefined, { tilt: 9 }))));
 out.offline = report(drive(script([[I, 35, { live: false }]])));
 
-// 后倾那步其实又往前倾了：前倾已经记下，这一下不算；左右照记；点结束 → 缺后倾 → 接着采、补一个后倾 → 齐了
+// Na etapa para trás, incline novamente para a frente: não conta, pois a etapa para a frente já foi registrada.
+// Registre os lados, encerre para ver a etapa ausente e depois colete corretamente para trás.
 {
   const W = drive(script(session(undefined, { as: { back: 'fwd' } })));
   const before = report(W);
@@ -104,13 +108,13 @@ out.offline = report(drive(script([[I, 35, { live: false }]])));
   feedAll(W, script(tiltParts('back')));
   out.back_wrong = { before, short, after: report(W) };
 }
-// 只做了静止和前倾就点结束：缺后、左、右
+// Encerra depois de registrar apenas repouso e inclinação para a frente: faltam trás, esquerda e direita.
 {
   const W = drive(script([...stillParts(), ...tiltParts('fwd')]));
   T.endCollect(W);
   out.short = report(W);
 }
-// 算完了只补做左倾（后端回 redo: ["left"]）：其它留着，补完自动又齐了
+// Refaz somente a inclinação para a esquerda (redo: ["left"] do backend); preserva as demais e completa a coleta.
 {
   const W = drive(script(session()));
   const fwdBefore = JSON.stringify(W.buf.fwd);

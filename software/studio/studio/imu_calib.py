@@ -1,80 +1,68 @@
-"""IMU 安装方向校准（站着做）：纯计算。不碰硬件、不碰网络，只用标准库 math。
+"""Calibração da orientação de montagem do IMU (feita com o robô em pé): apenas cálculos, sem acesso ao hardware ou à rede; usa somente math da biblioteca padrão.
 
-页面采一串重力读数：静止站好 → 前倾 → 后倾 → 左倾 → 右倾，交给 solve()，回来安装方向、站姿补偿、
-每一步合不合格、质量指标。写不写进鸭子、怎么写，不归这里管（见 imu-page-plan.md）。
+A página coleta leituras de gravidade nesta ordem: repouso em pé → inclinar para a frente → para trás → para a esquerda → para a direita. solve() retorna a orientação de montagem, a compensação da postura, o resultado de cada etapa e indicadores de qualidade. Gravar os dados no robô e decidir como fazê-lo fica fora deste módulo (veja imu-page-plan.md).
 
-## 约定（都核对过真机数据，见方案「事实」一节）
-- 机身系 B：x 朝前（头那边）、y 朝左、z 朝上。robot.state.safety.gravity 就在这个系里，
-  站直时约 (0, 0, -1)（tests/fixtures/now-20261018.jsonl 第 10 行：[0.044, 0.016, -0.999]）。
-- 四元数一律 [w, x, y, z]（robot.state.imu.quat、verify-imu 的 mount_wxyz 都是这个顺序）。
-- 姿态四元数 q（机身 → 世界）换重力：g = R(q)ᵀ·(0, 0, -1)。robotd 的 safety.gravity 就是这么来的（再取 3 点中值）。
-- 安装方向 q_mount：芯片系 → 机身系，v_机身 = q_mount ⊗ v_芯片 ⊗ q_mount*；robotd 算机身姿态是
-  q_机身 = q_芯片 ⊗ q_mount⁻¹（fork 固件 duck-control/src/imu.rs:137-151）。
+## Convenções (confirmadas com dados do robô; consulte a seção “Fatos” do plano)
+- Referencial do corpo B: x aponta para a frente (lado da cabeça), y para a esquerda e z para cima. robot.state.safety.gravity usa esse referencial; em pé, fica aproximadamente em (0, 0, -1) (linha 10 de tests/fixtures/now-20261018.jsonl: [0.044, 0.016, -0.999]).
+- Todos os quaternions usam [w, x, y, z] (ordem de robot.state.imu.quat e mount_wxyz do verify-imu).
+- Para obter a gravidade do quaternion de orientação q (corpo → mundo): g = R(q)ᵀ·(0, 0, -1). É assim que robotd calcula safety.gravity (depois usa a mediana de 3 pontos).
+- A orientação de montagem q_mount transforma o referencial do sensor no referencial do corpo: v_corpo = q_mount ⊗ v_sensor ⊗ q_mount*; robotd calcula a orientação do corpo como q_corpo = q_sensor ⊗ q_mount⁻¹ (firmware do fork duck-control/src/imu.rs:137-151).
 
-## 采样格式
-每个采样是一个 dict（也可以直接给 [gx, gy, gz]），三种给法任选一种：
-    {"g": [gx, gy, gz]}       重力方向（只取方向，长度无所谓）——robot.state.safety.gravity
-    {"acc": [ax, ay, az]}     加速度计读数：静止时读到的是向上的 1 g，取反才是重力
-    {"quat": [w, x, y, z]}    姿态（机身 → 世界）
-可以带 "t"（秒）、"step"（平铺列表时按它分步）。有 inf / nan 的读数直接丢掉。
+## Formato das amostras
+Cada amostra é um dict (ou diretamente [gx, gy, gz]); escolha uma das opções:
+    {"g": [gx, gy, gz]}       direção da gravidade (o módulo é ignorado) — robot.state.safety.gravity
+    {"acc": [ax, ay, az]}     leitura do acelerômetro: em repouso, aponta para cima com 1 g; inverta o sinal para obter gravidade
+    {"quat": [w, x, y, z]}    orientação (corpo → mundo)
+Pode incluir "t" (segundos) e "step" (para agrupar etapas em uma lista plana). Leituras inf/nan são descartadas.
 
-## frame
-- "body"（默认）：读数已经按鸭子上**存的**安装方向换算到机身系。运动模式的 robot.state、调试模式的
-  busStatus.last_sample.imu（gravity、quaternion_wxyz，fork 固件 robotd/src/feetech_commissioning.rs:1236-1255）
-  都是这样。算出来的是「修正」，新方向 = 修正 ∘ 旧方向，所以要给 old_mount（存的那个方向）。
-- "sensor"：读数是芯片原始轴（现在 robotd 不给这种数据，留给以后直接读芯片用）。算出来的就是安装方向本身。
+Referencial (frame):
+- "body" (padrão): as leituras já foram convertidas para o referencial do corpo usando a orientação de montagem salva no robô. robot.state no modo de movimento e busStatus.last_sample.imu no modo de depuração (gravity, quaternion_wxyz; firmware do fork robotd/src/feetech_commissioning.rs:1236-1255) já usam esse referencial. O resultado é uma correção; nova orientação = correção ∘ orientação anterior. Por isso, informe old_mount.
+- "sensor": leituras nos eixos brutos do sensor (robotd ainda não fornece esse formato; fica reservado para leitura direta futura). O resultado é a própria orientação de montagem.
 
-## 每一步怎么取读数（页面 web/imu.js 照同一套规则判「停住了，下一步」，两边参数见 RULES）
-- 停住段：从这一步最后一个读数往回数，跟最后一个读数差 ≤ hold_band_deg 的连续读数；中间夹着的单个乱跳读数跳过
-  （BNO085 偶尔一帧乱跳）。冲过头再回来停住，只算回来以后停住的那段。
-- 端平基准：停住段之前，最后一段「离桌上静止 ≤ level_deg、自己晃 ≤ ref_spread_deg、连续 ≥ ref_min_n 个」的读数。
-  人把鸭子提起来时手不可能正好水平，每一步都以它自己端平的那一下为零点，手偏几度不会被算成「斜着倾」。
-  找不到就用桌上静止那一刻。
-- 倾了多少、往哪倾：停住段的平均方向相对端平基准。「最少 / 最多」都按停住段判。
+## Seleção das leituras por etapa (web/imu.js usa a mesma regra para detectar “estabilizou, próxima etapa”; parâmetros em RULES)
+- Trecho estável: percorre para trás desde a última leitura e agrupa as leituras consecutivas cuja diferença para a última é ≤ hold_band_deg; ignora saltos isolados (o BNO085 às vezes produz um quadro com salto). Se o movimento passar do ponto e depois estabilizar, considera apenas o trecho estável após retornar.
+- Referência nivelada: antes do trecho estável, procura o trecho mais recente de leituras a ≤ level_deg do repouso na mesa, com oscilação ≤ ref_spread_deg e pelo menos ref_min_n amostras consecutivas. Ao levantar o robô, é improvável manter a mão perfeitamente nivelada. Cada etapa usa seu próprio instante nivelado como zero; alguns graus de inclinação da mão não são confundidos com uma inclinação do robô. Se não encontrar esse trecho, usa o instante de repouso na mesa.
+- Inclinação e direção: compara a direção média do trecho estável com a referência nivelada. Os limites mínimo/máximo são avaliados no trecho estável.
 
-## 原理
-1. 静止站好（桌上、手不碰）：重力反过来就是「上」。
-2. 四步各自的倾斜方向 d = 水平分量(停住 − 端平)，它在水平面里的方位角减去这一步该有的方位（前 0°、左 90°、
-   后 180°、右 −90°），就是这一步认为的「前」的朝向 c。
-3. 前后两步的 c 应该相同（不同 → 两次往同一边倾了）；左右同理；前后那对和左右那对也应该相同（差 ~180° →
-   有一对做反了；差十几度 → 斜着倾了，叫 cross）。四个 c 取圆平均当「前」，每步离它多远就是这一步「斜了多少」。
-4. 「上」+「前」正交化成三根轴。
-5. 站姿补偿：「上」不硬取竖直，而是官方 HOME 姿势下机身该有的重力 home_gravity（默认 (0,0,-1)，
-   官方训练 HOME 机身水平，见方案）。站着读到的偏差——不管是芯片装歪还是腿让机身歪了——一起折进
-   安装方向。校完以后，站好时的读数 = 官方 HOME 的读数。光靠重力分不开这两种原因，所以超过 5° 要人确认。
-6. 前后、左右**同时**做反（鸭子转了个身）自检查不出来，只能跟旧方向比：朝向改了 90° 以上就要人确认。
+## Princípio
+1. Repouso em pé (na mesa, sem tocar): o sentido oposto à gravidade define “cima”.
+2. Para cada uma das quatro inclinações, d = componente horizontal (estável − nivelada). O azimute de d no plano horizontal menos o azimute esperado (frente 0°, esquerda 90°, trás 180°, direita −90°) define para onde a etapa considera que fica a “frente”, c.
+3. As etapas para a frente e para trás devem obter o mesmo c (se diferirem, as duas inclinações foram feitas para o mesmo lado); o mesmo vale para esquerda e direita. Os dois pares também devem concordar (diferença próxima a 180° indica que um par foi invertido; diferença de alguns graus indica inclinação diagonal, chamada cross). A média circular dos quatro c define a frente; o desvio de cada etapa indica o quanto ela ficou inclinada para o lado.
+4. Ortogonaliza “cima” e “frente” para obter os três eixos.
+5. Compensação da postura: “cima” não é forçado a ficar vertical; usa home_gravity, gravidade esperada do corpo na postura HOME oficial (padrão (0,0,-1); o corpo fica nivelado no HOME do treinamento oficial, veja o plano). A diferença observada em pé — seja por montagem inclinada do sensor ou pelas pernas — é incorporada à orientação de montagem. Após calibrar, a leitura em pé coincide com a leitura do HOME oficial. A gravidade sozinha não distingue essas causas; por isso, diferenças acima de 5° exigem confirmação.
+6. A autoverificação não detecta se frente/trás e esquerda/direita foram invertidos ao mesmo tempo (como se o robô tivesse girado). Só é possível comparar com a orientação antiga; mudanças de direção acima de 90° exigem confirmação.
 """
 import math
 
 DOWN = (0.0, 0.0, -1.0)
 STEPS = ("still", "fwd", "back", "left", "right")
-STEP_CN = {"still": "静止站好", "fwd": "前倾", "back": "后倾", "left": "左倾", "right": "右倾"}
+STEP_CN = {"still": "Repouso em pé", "fwd": "Inclinação para a frente", "back": "Inclinação para trás", "left": "Inclinação para a esquerda", "right": "Inclinação para a direita"}
 TILTS = ("fwd", "back", "left", "right")
-EXPECT_DIR = {"fwd": 0.0, "left": 90.0, "back": 180.0, "right": -90.0}   # 往这边倾时重力偏向哪（从 +x 逆时针，度）
+EXPECT_DIR = {"fwd": 0.0, "left": 90.0, "back": 180.0, "right": -90.0}   # Direção da gravidade ao inclinar para este lado (graus, anti-horário a partir de +x)
 
-# 判据。页面 web/imu.js 的 RULES 用同一套名字：前端略严（倾 ≥12°、≤30°、停 1 秒），前端放行的这里一定收。
+# Critérios compartilhados com RULES em web/imu.js. O frontend é um pouco mais estrito (inclinação ≥12°, ≤30°, estabilizar por 1 s); este módulo aceita o que o frontend aprovar.
 RULES = {
-    "still_min_n": 15,              # 静止至少这么多个读数（10 Hz 下 1.5 秒；页面采 3 秒）
-    "still_max_spread_deg": 1.5,    # 静止时读数最多晃这么多（按 90% 分位：一两帧乱跳不算，一直在晃才算）
-    "level_deg": 5.0,               # 端平：离桌上静止这么多以内
-    "ref_min_n": 5,                 # 端平那一下至少这么多个连续读数（0.5 秒）
-    "ref_spread_deg": 1.5,          # 端平时自己最多晃这么多
-    "hold_band_deg": 1.8,           # 停住段：跟这一步最后一个读数差这么多以内
-    "hold_min_n": 5,                # 停住段至少这么多个读数（页面要求停满 1 秒、≥8 个）
-    "tilt_min_deg": 10.0,           # 停住段相对端平至少倾这么多：倾得少，手抖占比大，「前」定不准
-    "tilt_max_deg": 35.0,           # 最多倾这么多：再多脚会滑、读数也不稳
-    "pair_max_deg": 60.0,           # 前倾、后倾认为的「前」差这么多以上：两次往同一边倾了（左右同理）
-    "skew_max_deg": 20.0,           # 每一步离大家公认的方向最多斜这么多
-    "cross_max_deg": 12.0,          # 前后那对和左右那对最多差这么多（差 Δ，朝向大约就错 Δ/2）
-    "good_skew_deg": 10.0,          # 每步斜 ≤10°、两对差 ≤6° 评「好」
+    "still_min_n": 15,              # Mínimo de leituras em repouso (1,5 s a 10 Hz; a página coleta por 3 s)
+    "still_max_spread_deg": 1.5,    # Oscilação máxima em repouso (percentil 90: ignora saltos isolados, mas detecta oscilação contínua)
+    "level_deg": 5.0,               # Diferença máxima do repouso na mesa para considerar nivelado
+    "ref_min_n": 5,                 # Mínimo de leituras consecutivas para a referência nivelada (0,5 s)
+    "ref_spread_deg": 1.5,          # Oscilação máxima na referência nivelada
+    "hold_band_deg": 1.8,           # Diferença máxima para a última leitura do trecho estável
+    "hold_min_n": 5,                # Mínimo de leituras estáveis (a página exige 1 s e pelo menos 8 amostras)
+    "tilt_min_deg": 10.0,           # Inclinação mínima em relação à referência nivelada; abaixo disso, a mão impede determinar a frente com precisão
+    "tilt_max_deg": 35.0,           # Inclinação máxima; acima disso, os pés podem escorregar e as leituras ficam instáveis
+    "pair_max_deg": 60.0,           # Diferença máxima entre as direções da frente nas etapas para a frente e para trás; acima disso, inclinaram para o mesmo lado (idem para esquerda/direita)
+    "skew_max_deg": 20.0,           # Desvio máximo de cada etapa em relação à direção consensual
+    "cross_max_deg": 12.0,          # Diferença máxima entre os pares frente/trás e esquerda/direita (a direção fica errada em cerca de Δ/2)
+    "good_skew_deg": 10.0,          # Classifica como boa se cada etapa desviar ≤10° e a diferença entre os pares for ≤6°
     "good_cross_deg": 6.0,
-    "big_change_deg": 8.0,          # 跟旧方向比改了这么多：提醒「模块可能装歪了 / 换过装法」
-    "stand_confirm_deg": 5.0,       # 站姿补偿超过这么多要人确认（robotd 自己验方向时直立只放 5°）
-    "flip_deg": 90.0,               # 朝向改了这么多：多半是前后、左右都做反了（鸭子转了个身），要人确认
+    "big_change_deg": 8.0,          # Mudança em relação à orientação anterior que avisa sobre possível montagem inclinada ou diferente
+    "stand_confirm_deg": 5.0,       # Compensação da postura acima desse limite exige confirmação (robotd tolera apenas 5° em pé)
+    "flip_deg": 90.0,               # Mudança de direção que exige confirmação; provavelmente frente/trás e esquerda/direita foram invertidos
 }
 
 
-# ---------------- 向量 ----------------
+# ---------------- Vetores ----------------
 
 def _v(x):
     return (float(x[0]), float(x[1]), float(x[2]))
@@ -105,7 +93,7 @@ def norm(a):
 
 
 def unit(a):
-    """单位向量；零向量、有 inf / nan 的回 None。"""
+    """Normaliza um vetor; retorna None para vetor nulo ou com inf/nan."""
     n = norm(a)
     if not (math.isfinite(n) and n > 1e-9):
         return None
@@ -113,7 +101,7 @@ def unit(a):
 
 
 def angle_deg(a, b):
-    """两个向量的夹角（度），任意一个算不出方向就回 None。"""
+    """Ângulo entre dois vetores em graus; retorna None se não for possível determinar uma direção."""
     ua, ub = unit(a), unit(b)
     if ua is None or ub is None:
         return None
@@ -121,12 +109,12 @@ def angle_deg(a, b):
 
 
 def horiz(v, up):
-    """v 去掉沿 up 的分量（up 是单位向量）。"""
+    """Remove de v a componente ao longo de up (que deve ser unitário)."""
     return sub(v, scale(up, dot(v, up)))
 
 
 def signed_angle_deg(a, b, axis):
-    """绕 axis 从 a 转到 b 的有向角（度，右手定则为正）。a、b 先投到垂直 axis 的平面上。"""
+    """Ângulo orientado em graus para girar de a até b ao redor de axis (positivo pela regra da mão direita). Primeiro projeta a e b no plano perpendicular a axis."""
     ha, hb = unit(horiz(a, axis)), unit(horiz(b, axis))
     if ha is None or hb is None:
         return None
@@ -145,7 +133,7 @@ def circ_mean_deg(ds):
     return math.degrees(math.atan2(s, c))
 
 
-# ---------------- 矩阵（行优先，3×3 嵌套元组） ----------------
+# ---------------- Matrizes (tuplas aninhadas 3×3, ordenadas por linha) ----------------
 
 def mat_mul(a, b):
     return tuple(tuple(sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3)) for i in range(3))
@@ -159,16 +147,16 @@ def mat_t(m):
     return tuple(tuple(m[j][i] for j in range(3)) for i in range(3))
 
 
-# ---------------- 四元数 [w, x, y, z] ----------------
+# ---------------- Quaternions [w, x, y, z] ----------------
 
 def q_normalize(q):
     if len(q) != 4 or not all(math.isfinite(float(c)) for c in q):
-        raise ValueError("四元数要 4 个有限的数")
+        raise ValueError("O quaternion deve conter 4 números finitos")
     n = math.sqrt(sum(float(c) * float(c) for c in q))
     if not n > 1e-12:
-        raise ValueError("四元数长度是 0")
+        raise ValueError("O módulo do quaternion é zero")
     q = tuple(float(c) / n for c in q)
-    return q if q[0] >= 0 else tuple(-c for c in q)     # 统一成 w ≥ 0（q 和 −q 是同一个转动）
+    return q if q[0] >= 0 else tuple(-c for c in q)     # Normaliza para w ≥ 0 (q e −q representam a mesma rotação)
 
 
 def q_mul(a, b):
@@ -196,7 +184,7 @@ def mat_from_q(q):
 
 
 def q_from_mat(m):
-    """旋转矩阵 → 四元数（Shepperd，数值稳）。"""
+    """Converte uma matriz de rotação em quaternion (método de Shepperd, numericamente estável)."""
     tr = m[0][0] + m[1][1] + m[2][2]
     if tr > 0:
         s = math.sqrt(tr + 1.0) * 2
@@ -214,17 +202,17 @@ def q_from_mat(m):
 
 
 def q_angle_deg(q):
-    """这个转动转了多少度（0–180）。"""
+    """Retorna o ângulo desta rotação (0–180°)."""
     w = abs(q_normalize(q)[0])
     return math.degrees(2 * math.acos(min(1.0, w)))
 
 
 def q_between(a, b):
-    """把单位向量 a 转到 b 的最短转动。"""
+    """Retorna a rotação mais curta que leva o vetor unitário a até b."""
     a, b = unit(a), unit(b)
     c = dot(a, b)
     if c < -0.999999:
-        # 正好反向：随便找一根跟 a 垂直的轴转 180°
+        # Direções exatamente opostas: escolhe qualquer eixo perpendicular a a e gira 180°.
         axis = unit(cross(a, (1.0, 0.0, 0.0))) or unit(cross(a, (0.0, 1.0, 0.0)))
         return (0.0, axis[0], axis[1], axis[2])
     x = cross(a, b)
@@ -232,20 +220,20 @@ def q_between(a, b):
 
 
 def gravity_from_quat(q):
-    """姿态（机身 → 世界）→ 机身系里的重力方向，跟 robotd 的 safety.gravity 同一个算法。"""
+    """Converte a orientação (corpo → mundo) em direção da gravidade no referencial do corpo, usando o algoritmo de robotd safety.gravity."""
     r = mat_from_q(q)
     return (-r[2][0], -r[2][1], -r[2][2])
 
 
 def compose_mount(correction, old_mount):
-    """新安装方向 = 修正 ∘ 旧方向（都是 芯片 → 机身 的约定）：
-    v_新机身 = R修正 · v_旧机身 = R修正 · R旧 · v_芯片。"""
+    """Nova orientação de montagem = correção ∘ orientação anterior (ambas sensor → corpo):
+    v_corpo_novo = R_correção · v_corpo_anterior = R_correção · R_anterior · v_sensor."""
     return q_normalize(q_mul(correction, old_mount))
 
 
-# ---------------- 标准装法（芯片轴跟机身轴对齐的 24 种） ----------------
+# ---------------- Montagens padrão (24 alinhamentos dos eixos do sensor com o corpo) ----------------
 
-_AXIS_CN = {(1, 0): "前", (1, 1): "左", (1, 2): "上", (-1, 0): "后", (-1, 1): "右", (-1, 2): "下"}
+_AXIS_CN = {(1, 0): "frente", (1, 1): "esquerda", (1, 2): "cima", (-1, 0): "trás", (-1, 1): "direita", (-1, 2): "baixo"}
 
 
 def _standard_mounts():
@@ -257,7 +245,7 @@ def _standard_mounts():
                 for sz in (1, -1):
                     m = [[0.0] * 3 for _ in range(3)]
                     for col, (row, s) in enumerate(zip(p, (sx, sy, sz))):
-                        m[row][col] = float(s)      # 芯片第 col 根轴 → 机身第 row 根轴
+                        m[row][col] = float(s)      # Eixo col do sensor → eixo row do corpo
                     m = tuple(tuple(r) for r in m)
                     det = (m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
                            - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
@@ -271,7 +259,7 @@ STANDARD_MOUNTS = _standard_mounts()
 
 
 def describe_mount(q):
-    """安装方向说成人话：芯片的 x / y / z 各朝机身哪边（取最接近的标准装法），再给偏了多少度。"""
+    """Descreve a montagem em linguagem simples: para que lado do corpo apontam x/y/z do sensor (montagem padrão mais próxima) e o desvio angular."""
     best, best_deg = None, None
     for m in STANDARD_MOUNTS:
         d = q_angle_deg(q_mul(q_conj(q_from_mat(m)), q))
@@ -280,11 +268,11 @@ def describe_mount(q):
     words = []
     for col, name in enumerate("xyz"):
         row = next(r for r in range(3) if best[r][col] != 0)
-        words.append(f"芯片 {name} 朝{_AXIS_CN[(int(best[row][col]), row)]}")
-    return {"text": "，".join(words), "off_deg": round(best_deg, 2), "quat": list(q_from_mat(best))}
+        words.append(f"Eixo {name} do sensor aponta para {_AXIS_CN[(int(best[row][col]), row)]}")
+    return {"text": "; ".join(words), "off_deg": round(best_deg, 2), "quat": list(q_from_mat(best))}
 
 
-# ---------------- 采样 ----------------
+# ---------------- Amostragem ----------------
 
 def _finite3(x):
     if not isinstance(x, (list, tuple)) or len(x) != 3:
@@ -297,7 +285,7 @@ def _finite3(x):
 
 
 def sample_gravity(s):
-    """一个采样 → 机身（或芯片）系里的重力单位向量；认不出、有 inf / nan 就回 None（这个读数丢掉）。"""
+    """Converte uma amostra em vetor unitário da gravidade no referencial do corpo (ou do sensor); retorna None e descarta a leitura se não reconhecida ou com inf/nan."""
     try:
         if isinstance(s, (list, tuple)):
             v = _finite3(s)
@@ -334,13 +322,13 @@ def spread_deg(vs, m):
 
 
 def spread_p90_deg(vs, m):
-    """离 m 的角度的 90% 分位（排序后第 ⌊0.9·(n−1)⌋ 个）：静止那一步用它，个别乱跳的读数不算晃。页面 spreadP90 同一个算法。"""
+    """Percentil 90 dos ângulos até m (índice ⌊0,9·(n−1)⌋ após ordenar). Usado no repouso para ignorar saltos isolados. A página usa o mesmo algoritmo spreadP90."""
     ds = sorted(angle_deg(v, m) or 0.0 for v in vs)
     return ds[int(0.9 * (len(ds) - 1))] if ds else 0.0
 
 
 def trimmed_mean_dir(vs):
-    """先平均，去掉离平均最远的那 10%（超过 90% 分位的），再平均：个别乱跳的读数拉不偏「上」。页面 trimmedMeanDir 同一个算法。"""
+    """Calcula a média, remove os 10% mais distantes (acima do percentil 90) e calcula a média novamente. Saltos isolados não desviam “cima”. A página usa trimmedMeanDir."""
     m = mean_dir(vs)
     if m is None:
         return None
@@ -350,7 +338,7 @@ def trimmed_mean_dir(vs):
 
 
 def group_steps(samples):
-    """{"still": [...], ...} 原样用；一个平铺的列表就按每个采样的 "step" 分组。"""
+    """Usa dict {"still": [...], ...} como está; agrupa uma lista plana pelo campo "step" de cada amostra."""
     if isinstance(samples, dict):
         return {k: list(samples.get(k) or []) for k in STEPS}
     out = {k: [] for k in STEPS}
@@ -361,18 +349,18 @@ def group_steps(samples):
 
 
 def tilt_of(g0, g):
-    """相对 g0 倾了多少度，以及往哪边倾（在 g0 定的水平面里，从 +x 量起的方位角，度）。
-    页面上的倾角圈用同一个算法（web/imu.js 的 tiltOf）。"""
+    """Calcula o ângulo de inclinação em relação a g0 e a direção (azimute, em graus, no plano horizontal definido por g0, a partir de +x).
+    O indicador circular da página usa o mesmo algoritmo (tiltOf em web/imu.js)."""
     t = angle_deg(g0, g)
     up = scale(g0, -1.0)
     d = signed_angle_deg((1.0, 0.0, 0.0), sub(g, g0), up) if unit(horiz(sub(g, g0), up)) else None
     return t, d
 
 
-# ---------------- 停住段、端平基准（页面 web/imu.js 的 findHold / findRef 照这里一句一句写） ----------------
+# ---------------- Trecho estável e referência nivelada (findHold/findRef em web/imu.js seguem esta implementação) ----------------
 
 def _run_back(gs, end, band):
-    """从 gs[end] 往回数：跟 gs[end] 差 ≤ band 的连续读数；中间夹着的单个乱跳读数跳过。回 (下标列表, 跳过几个)。"""
+    """Percorre gs[end] para trás, agrupando leituras consecutivas com diferença ≤ band; ignora saltos isolados no meio. Retorna (índices, quantidade ignorada)."""
     last = gs[end]
     idx, skipped, j = [end], 0, end - 1
     while j >= 0:
@@ -380,7 +368,7 @@ def _run_back(gs, end, band):
             idx.append(j)
             j -= 1
         elif j - 1 >= 0 and angle_deg(gs[j - 1], last) <= band:
-            skipped += 1                  # 单个乱跳：跳过它，接着往回数
+            skipped += 1                  # Salto isolado: ignora e continua percorrendo para trás.
             j -= 1
         else:
             break
@@ -388,7 +376,7 @@ def _run_back(gs, end, band):
 
 
 def find_hold(gs, rules=RULES):
-    """停住段：从最后一个读数往回数（最后一个本身乱跳的话，从倒数第二个数），取长的那段。"""
+    """Trecho estável: percorre a partir da última leitura (ou da penúltima, se a última tiver um salto) e seleciona a sequência mais longa."""
     if not gs:
         return [], 0
     best = _run_back(gs, len(gs) - 1, rules["hold_band_deg"])
@@ -400,8 +388,8 @@ def find_hold(gs, rules=RULES):
 
 
 def find_ref(gs, g0, before, rules=RULES):
-    """端平基准：gs[:before] 里最后一段「离 g0 ≤ level_deg、自己晃 ≤ ref_spread_deg、连续 ≥ ref_min_n 个」的读数，
-    回平均方向；找不到回 None。"""
+    """Referência nivelada: encontra em gs[:before] o trecho mais recente com leituras a ≤ level_deg de g0, oscilação ≤ ref_spread_deg e pelo menos ref_min_n amostras consecutivas.
+    Retorna a direção média ou None se não encontrar."""
     n = rules["ref_min_n"]
     for end in range(before, n - 1, -1):
         win = gs[end - n:end]
@@ -412,7 +400,7 @@ def find_ref(gs, g0, before, rules=RULES):
     return None
 
 
-# ---------------- 每一步 ----------------
+# ---------------- Etapas ----------------
 
 def _r(x, nd=2):
     return None if x is None else round(x, nd)
@@ -426,89 +414,93 @@ def check_still(samples, rules=RULES):
     gs = _gs(samples)
     out = {"step": "still", "name": STEP_CN["still"], "n": len(gs), "dropped": len(samples) - len(gs), "ok": False}
     if len(gs) < rules["still_min_n"]:
-        out["msg"] = f"静止的读数只有 {len(gs)} 个（至少 {rules['still_min_n']} 个）：数据断了，或者采得太短"
+        out["msg"] = f"Há apenas {len(gs)} leituras em repouso (mínimo de {rules['still_min_n']}): os dados foram interrompidos ou a coleta foi curta demais"
         return out, None
     g0 = trimmed_mean_dir(gs)
     if g0 is None:
-        out["msg"] = "静止的读数加起来是 0，算不出方向"
+        out["msg"] = "A soma das leituras em repouso é zero; não foi possível calcular a direção"
         return out, None
     spread = spread_p90_deg(gs, g0)
     out["spread_deg"] = _r(spread)
     out["max_dev_deg"] = _r(spread_deg(gs, g0))
     if spread > rules["still_max_spread_deg"]:
-        out["msg"] = f"静止时读数晃了 {spread:.1f}°（最多 {rules['still_max_spread_deg']}°）：扶稳、别碰桌子，再来"
+        out["msg"] = f"As leituras oscilaram {spread:.1f}° em repouso (máximo de {rules['still_max_spread_deg']}°): segure firme, não toque na mesa e tente novamente"
         return out, None
-    out.update(ok=True, msg="稳")
+    out.update(ok=True, msg="Estável")
     return out, g0
 
 
 def check_tilt(step, samples, g0, rules=RULES):
-    """回 (这一步的说明, 停住段的平均重力, 端平基准)。"""
+    """Retorna (descrição da etapa, gravidade média do trecho estável, referência nivelada)."""
     gs = _gs(samples)
     name = STEP_CN[step]
     out = {"step": step, "name": name, "n": len(gs), "dropped": len(samples) - len(gs), "ok": False}
     if not gs:
-        out["msg"] = f"「{name}」没有读数"
+        out["msg"] = f"Não há leituras para “{name}”"
         return out, None, None
     idx, skipped = find_hold(gs, rules)
     hold = [gs[i] for i in idx]
     ref = find_ref(gs, g0, idx[0], rules)
-    out["ref"] = "端平那一下" if ref is not None else "桌上静止"
+    out["ref"] = "Posição nivelada" if ref is not None else "Repouso na mesa"
     ref = ref or g0
     out["ref_offset_deg"] = _r(angle_deg(g0, ref))
     g = mean_dir(hold)
     tilt = angle_deg(ref, g) if g is not None else None
-    tmax = max(angle_deg(ref, v) for v in hold)       # 「最多」按停住段里倾得最多的那个读数判，不按平均
+    tmax = max(angle_deg(ref, v) for v in hold)       # O máximo considera a maior inclinação no trecho estável, não a média.
     out.update(n_used=len(hold), skipped=skipped, tilt_deg=_r(tilt), max_tilt_deg=_r(tmax),
                spread_deg=_r(spread_deg(hold, g) if g else None))
     if len(hold) < rules["hold_min_n"] or g is None:
-        out["msg"] = f"「{name}」倾到位以后没停住（停住的读数只有 {len(hold)} 个）：倾到位停 1 秒"
+        out["msg"] = f"“{name}” não ficou parado depois de inclinar (apenas {len(hold)} leituras estáveis): mantenha a inclinação por 1 segundo"
         return out, None, None
     if tilt < rules["tilt_min_deg"]:
-        out["msg"] = f"「{name}」只倾了 {tilt:.1f}°，至少要 {rules['tilt_min_deg']:.0f}°"
+        out["msg"] = f"“{name}” inclinou apenas {tilt:.1f}°; o mínimo é {rules['tilt_min_deg']:.0f}°"
         return out, None, None
     if tmax > rules["tilt_max_deg"]:
-        out["msg"] = f"「{name}」倾了 {tmax:.0f}°，太多了（最多 {rules['tilt_max_deg']:.0f}°）：脚会滑，读数也不稳"
+        out["msg"] = f"“{name}” inclinou {tmax:.0f}°, acima do máximo de {rules['tilt_max_deg']:.0f}°: as patas podem escorregar e as leituras ficar instáveis"
         return out, None, None
-    out.update(ok=True, msg=f"倾了 {tilt:.0f}°")
+    out.update(ok=True, msg=f"Inclinação de {tilt:.0f}°")
     return out, g, ref
 
 
-# ---------------- 主函数 ----------------
+# ---------------- Função principal ----------------
 
 def solve(samples, frame="body", old_mount=None, home_gravity=DOWN, rules=None, mode="full", old_verified=True,
           old_source=None):
-    """算安装方向。samples 见模块说明；回一个 dict（全是 JSON 能直接发的类型）。
+    """Calcula a orientação de montagem. Veja o formato de samples na documentação do módulo.
+    Retorna um dict com valores que podem ser enviados diretamente em JSON.
 
-    mode="full"：五步（站着精校）。mode="coarse"：只要「静止」和「前倾」两步（「后倾」有就一起用），
-    给方向一次都没确认过、站不起来的鸭子用：软着、双手托起来做，算出来交给 robotd 的 verify-imu 再验一遍。
-    粗校没有左右两步，自检少，站姿补偿也不准（托着不是站着），所以之后还要站着精校；结果里要人对照模块
-    实际装法勾一下（方案 S1）。
-    old_verified=False：旧方向只是默认值（没验过），不拿它判断「改得太多 / 转了个身」。
-    old_source="coarse"：旧方向是上次粗校写的，「转了个身」的提示改成「上次粗校可能做反了」。
+    mode="full": cinco etapas para calibração precisa com o robô em pé.
+    mode="coarse": exige repouso e inclinação para a frente; usa a inclinação para trás se disponível.
+    Serve para robôs cuja orientação ainda não foi confirmada e que não conseguem ficar em pé: apoie-os com as mãos.
+    O resultado deve ser verificado por verify-imu do robotd. Como a calibração aproximada não verifica os lados e
+    a compensação da postura é menos precisa, faça depois a calibração completa com o robô em pé. Confira a montagem
+    física do módulo antes de confirmar o resultado (plano S1).
+    old_verified=False: a orientação anterior é apenas um valor padrão não verificado; não a use para detectar
+    mudanças grandes ou uma rotação de 180 graus.
+    old_source="coarse": a orientação anterior veio de uma calibração aproximada; ajuste o aviso de inversão
+    para informar que a calibração anterior pode ter sido feita ao contrário.
 
-    回的字段：
+    Campos retornados:
         ok         True / False
-        reason     不 ok 时一句人话（第一个出问题的地方）
-        redo       不 ok 时要补做哪几步（页面照这个让人只补那几步，不用全部重来）
-        steps      每一步：{step, name, ok, msg, n, n_used, tilt_deg, spread_deg, skew_deg, ref, ...}
-        correction [w,x,y,z]：「现在的读数系」→ 机身系（frame="sensor" 时就是安装方向）
-        mount      [w,x,y,z]：新的安装方向（frame="body" 时要给 old_mount 才有）
-        parts      修正拆开说（frame="body" 才有前四项）：pitch_deg（+ = 站着时读数比 HOME 前倾）、
-                   roll_deg（+ = 左倾）、yaw_deg（+ = 真正的前方在现在读数的「前」的左边，从上往下看逆时针），
-                   stand_tilt_deg（站着时读数离 HOME 多少度），total_deg（修正一共转了多少度）
-        quality    fb_pair_deg、lr_pair_deg、cross_deg、max_skew_deg（越小越好）、grade（good / ok / coarse）、yaw_uncert_deg
-        standard   新方向最接近哪种标准装法、偏了多少度
-        notes      要知道的事；confirm：要人确认才能写的事（页面每条要打勾）
+        reason     explicação do primeiro problema, quando ok=False
+        redo       etapas que precisam ser refeitas
+        steps      dados de cada etapa: {step, name, ok, msg, n, n_used, tilt_deg, spread_deg, skew_deg, ref, ...}
+        correction [w,x,y,z]: transforma as leituras atuais no referencial do corpo
+                   (quando frame="sensor", corresponde à orientação de montagem)
+        mount      [w,x,y,z]: nova orientação de montagem (em frame="body", requer old_mount)
+        parts      decomposição da correção: pitch_deg, roll_deg, yaw_deg, stand_tilt_deg e total_deg
+        quality    métricas de qualidade, grade (good / ok / coarse) e incerteza do yaw
+        standard   montagem padrão mais próxima da nova orientação e seu desvio angular
+        notes      observações; confirm lista os itens que precisam ser confirmados antes de gravar
     """
     rules = dict(RULES, **(rules or {}))
     if frame not in ("body", "sensor"):
-        raise ValueError("frame 只能是 body 或 sensor")
+        raise ValueError("frame deve ser body ou sensor")
     if mode not in ("full", "coarse"):
-        raise ValueError("mode 只能是 full 或 coarse")
+        raise ValueError("mode deve ser full ou coarse")
     hg = unit(_v(home_gravity))
     if hg is None:
-        raise ValueError("home_gravity 是零向量")
+        raise ValueError("home_gravity é um vetor nulo")
     steps = group_steps(samples)
     res = {"ok": False, "reason": None, "redo": [], "steps": {}, "frame": frame, "mode": mode, "rules": rules,
            "notes": [], "confirm": []}
@@ -520,7 +512,7 @@ def solve(samples, frame="body", old_mount=None, home_gravity=DOWN, rules=None, 
     gs, refs = {}, {}
     for k in need + optional:
         if g0 is None:
-            res["steps"][k] = {"step": k, "name": STEP_CN[k], "ok": False, "msg": "先要静止那一步合格"}
+            res["steps"][k] = {"step": k, "name": STEP_CN[k], "ok": False, "msg": "Primeiro, conclua corretamente a etapa de repouso"}
             continue
         if k in optional and not steps[k]:
             continue
@@ -531,22 +523,22 @@ def solve(samples, frame="body", old_mount=None, home_gravity=DOWN, rules=None, 
     bad += [res["steps"][k] for k in optional if k in res["steps"] and not res["steps"][k]["ok"]]
     if bad:
         res["reason"] = bad[0]["msg"]
-        # 静止那步不合格时，倾的几步只是「先要静止合格」：补静止就行，倾的读数留着重算
+        # Se o repouso falhar, basta refazer essa etapa; as inclinações podem ser recalculadas com as leituras existentes.
         res["redo"] = ["still"] if g0 is None else [b["step"] for b in bad]
         return res
 
     up = scale(g0, -1.0)
-    # 方位角的零点：现在读数系的 +x 投到水平面（芯片原始轴时 x 可能正好竖着，就换 +y）
+    # Origem do azimute: eixo +x projetado no plano horizontal; se estiver vertical, use +y.
     axis0 = unit(horiz((1.0, 0.0, 0.0), up)) or unit(horiz((0.0, 1.0, 0.0), up))
     c = {}
     for k in gs:
         d = horiz(sub(gs[k], refs[k]), up)
         az = signed_angle_deg(axis0, d, up)
         if az is None:
-            res["reason"] = f"「{STEP_CN[k]}」倾的方向算不出来：重做这一步"
+            res["reason"] = f"Não foi possível calcular a direção de {STEP_CN[k].lower()}; refaça esta etapa"
             res["redo"] = [k]
             return res
-        c[k] = wrap180(az - EXPECT_DIR[k])      # 这一步认为「前」朝哪
+        c[k] = wrap180(az - EXPECT_DIR[k])      # Direção para a qual esta etapa considera que fica a frente.
     q = {}
     res["quality"] = q
 
@@ -555,8 +547,9 @@ def solve(samples, frame="body", old_mount=None, home_gravity=DOWN, rules=None, 
             d = abs(wrap180(c[a] - c[b]))
             q[f"{'fb' if a == 'fwd' else 'lr'}_pair_deg"] = _r(d)
             if d > rules["pair_max_deg"]:
-                res["reason"] = (f"{STEP_CN[a]}和{STEP_CN[b]}的方向对不上（差了 {d:.0f}°，应该正好相反）："
-                                 "是不是两次往同一边倾了？")
+                res["reason"] = (f"As direções de {STEP_CN[a].lower()} e {STEP_CN[b].lower()} não coincidem "
+                                 f"(diferença de {d:.0f}°; deveriam ser opostas): as inclinações foram feitas "
+                                 "para o mesmo lado?")
                 res["redo"] = [a, b]
                 return False
         return True
@@ -578,15 +571,16 @@ def solve(samples, frame="body", old_mount=None, home_gravity=DOWN, rules=None, 
     worst = max(skews, key=lambda k: abs(skews[k]))
     q["max_skew_deg"] = _r(abs(skews[worst]))
     if abs(skews[worst]) > rules["skew_max_deg"]:
-        res["reason"] = (f"「{STEP_CN[worst]}」斜了 {abs(skews[worst]):.0f}°（应该正{STEP_CN[worst][0]}方）："
-                         "照 3D 上箭头指的方向倾，手别拧")
+        res["reason"] = (f"“{STEP_CN[worst]}” desviou {abs(skews[worst]):.0f}° (a inclinação deve seguir "
+                         f"exatamente para {STEP_CN[worst].lower()}): siga a seta 3D e não gire a mão")
         res["redo"] = [worst]
         return res
     if mode == "full":
         if crs > rules["cross_max_deg"]:
-            res["reason"] = (f"前后和左右不垂直（差了 {crs:.0f}°，朝向会错一半那么多）："
-                             "倾的时候手拧着了？照 3D 上的箭头，正前、正后、正左、正右")
-            # 旧方向可信时，离现在的「前」远的那一对多半是拧着的；不可信就四步都补
+            res["reason"] = (f"As inclinações para a frente/trás e para os lados não estão perpendiculares "
+                             f"(diferença de {crs:.0f}°; a direção terá metade desse erro): talvez sua mão tenha girado "
+                             "durante a inclinação. Siga as setas 3D para frente, trás, esquerda e direita.")
+            # Com orientação anterior confiável, refaça o par mais distante da frente atual; caso contrário, refaça as quatro etapas.
             if frame == "body" and old_verified:
                 res["redo"] = ["left", "right"] if abs(wrap180(psi_lr)) > abs(wrap180(psi_fb)) else ["fwd", "back"]
             else:
@@ -596,33 +590,37 @@ def solve(samples, frame="body", old_mount=None, home_gravity=DOWN, rules=None, 
         q["yaw_uncert_deg"] = _r(max(crs / 2, 0.5))
     else:
         q["grade"] = "coarse"
-        res["notes"].append("粗校：只用了静止和前倾，左右没验；托着做的，站姿补偿不准。能站以后再站着精校一次")
+        res["notes"].append("Calibração aproximada: foram usadas apenas as etapas de repouso e inclinação para a frente; "
+                            "os lados não foram verificados e a compensação da postura é imprecisa porque o robô foi "
+                            "apoiado. Faça a calibração completa quando ele conseguir ficar em pé.")
     p = math.radians(psi)
     x_dir = add(scale(axis0, math.cos(p)), scale(cross(up, axis0), math.sin(p)))
     return _finish(res, g0, up, x_dir, hg, frame, old_mount, old_verified, old_source, rules)
 
 
 def _swapped_reason(psi_fb, psi_lr, trust_old):
-    """前后那对和左右那对差了 ~180°：有一对做反了。旧方向可信时，离现在的「前」远的那对就是做反的。回 (原因, 要补做的步)。"""
+    """Os pares frente/trás e esquerda/direita diferem cerca de 180°: um foi invertido.
+    Se a orientação anterior for confiável, o par mais distante da frente atual é o invertido.
+    Retorna (motivo, etapas a refazer)."""
     if trust_old:
         if abs(wrap180(psi_lr)) > abs(wrap180(psi_fb)):
-            return "左倾、右倾做反了：左右以鸭子自己的为准（鸭子面对你时，它的左边在你右手边）", ["left", "right"]
-        return "前倾、后倾做反了：头那边往下是前倾", ["fwd", "back"]
-    return ("前后、左右里有一对做反了：前倾是头那边往下；左右以鸭子自己的为准（鸭子面对你时，它的左边在你右手边）",
+            return "As inclinações para a esquerda e para a direita foram invertidas: use os lados do robô como referência (de frente para ele, a esquerda dele fica à sua direita).", ["left", "right"]
+        return "As inclinações para a frente e para trás foram invertidas: para inclinar para a frente, abaixe o lado da cabeça.", ["fwd", "back"]
+    return ("Um dos pares frente/trás ou esquerda/direita foi invertido. Para inclinar para a frente, abaixe o lado da cabeça; use os lados do robô como referência (de frente para ele, a esquerda dele fica à sua direita).",
             list(TILTS))
 
 
 def _finish(res, g0, up, x_dir, hg, frame, old_mount, old_verified, old_source, rules):
-    """「上」+「前」→ 三根轴 → 修正 / 新方向；再拆开说、查要人确认的事。"""
+    """Usa “cima” e “frente” para obter os três eixos, calcular correção e nova orientação, e verificar confirmações."""
     y = unit(cross(up, x_dir))
     x = cross(y, up)
-    r_lm = (x, y, up)                        # 行 = 水平系 L 的三根轴：v_L = R_LM · v_M
-    r_bl = mat_from_q(q_between(DOWN, hg))   # HOME 时机身相对水平系的姿态（偏航取 0）
+    r_lm = (x, y, up)                        # Linhas: eixos do referencial horizontal L; v_L = R_LM · v_M
+    r_bl = mat_from_q(q_between(DOWN, hg))   # Postura do corpo no HOME em relação ao referencial horizontal (yaw = 0)
     r_bm = mat_mul(r_bl, r_lm)
     corr = q_from_mat(r_bm)
     res["correction"] = [round(c, 9) for c in corr]
 
-    # 拆开说：站姿那部分（俯仰、横滚）、朝向那部分（偏航）
+    # Decompõe a postura (pitch e roll) e a direção (yaw).
     hp = math.degrees(math.atan2(hg[0], -hg[2]))
     hroll = math.degrees(math.atan2(hg[1], -hg[2]))
     parts = {"total_deg": _r(q_angle_deg(corr))}
@@ -633,48 +631,51 @@ def _finish(res, g0, up, x_dir, hg, frame, old_mount, old_verified, old_source, 
         parts["stand_tilt_deg"] = _r(angle_deg(g0, hg))
     res["parts"] = parts
 
-    # 新方向
+    # Nova orientação.
     if frame == "sensor":
         mount = corr
     elif old_mount is not None:
         mount = compose_mount(corr, q_normalize(old_mount))
     else:
         mount = None
-        res["notes"].append("没给旧的安装方向，只能给出修正量，算不出新方向")
+        res["notes"].append("A orientação de montagem anterior não foi informada; só é possível calcular a correção, não a nova orientação.")
     if mount is not None:
         res["mount"] = [round(c, 9) for c in mount]
         res["standard"] = describe_mount(mount)
 
-    # 要知道 / 要确认的事
+    # Observações e confirmações necessárias.
     full = res["mode"] == "full"
     if frame == "body" and old_verified and parts.get("yaw_deg") is not None:
         tot = q_angle_deg(corr)
         if abs(parts["yaw_deg"]) > rules["flip_deg"]:
             if old_source == "coarse":
                 res["confirm"].append(
-                    f"朝向要改 {parts['yaw_deg']:+.0f}°：上次粗校可能做反了（那次只验了「前」，没验左右）。"
-                    "对照模块实际装法，确认现在这次是对的再写")
+                    f"A direção precisa mudar {parts['yaw_deg']:+.0f}°: a calibração aproximada anterior pode ter sido invertida "
+                    "(ela verificou apenas a frente, não os lados). Confira a montagem física do módulo e confirme o resultado antes de gravar.")
             else:
                 res["confirm"].append(
-                    f"朝向要改 {parts['yaw_deg']:+.0f}°。多半是前后、左右都做反了（相当于鸭子转了个身）。"
-                    "只有确实把 IMU 模块转着装过，才照这个写")
+                    f"A direção precisa mudar {parts['yaw_deg']:+.0f}°. Provavelmente os pares frente/trás e esquerda/direita foram invertidos "
+                    "(como se o robô tivesse girado). Grave assim somente se o módulo IMU realmente foi instalado girado.")
         elif tot > rules["big_change_deg"]:
-            res["confirm"].append(f"跟现在的方向差了 {tot:.1f}°，比较多：模块是不是装歪了、换过装法？确认了再写")
+            res["confirm"].append(f"A orientação difere {tot:.1f}° da atual, uma mudança considerável. O módulo foi inclinado ou montado de outro jeito? Confirme antes de gravar.")
     if frame == "body" and full:
         st = parts["stand_tilt_deg"]
         if st is not None and st > rules["stand_confirm_deg"]:
             res["confirm"].append(
-                f"站着时读数离官方 HOME 差 {st:.1f}°（主程序自己验方向时直立只放 {rules['stand_confirm_deg']:.0f}°）："
-                "多半是腿的零位没校好、桌子不平，或者静止那 3 秒手碰着鸭子了。确认是模块装歪了再写")
+                f"Em pé, a leitura difere {st:.1f}° do HOME oficial (o programa principal tolera apenas "
+                f"{rules['stand_confirm_deg']:.0f}° ao verificar a orientação): talvez o zero das patas não esteja calibrado, "
+                "a mesa esteja desnivelada ou alguém tenha tocado no robô durante os 3 segundos de repouso. Grave somente se confirmar que o módulo está inclinado.")
         res["notes"].append(
-            f"站着时读数比官方 HOME 前倾 {parts['pitch_deg']:+.1f}°、左倾 {parts['roll_deg']:+.1f}°，会一起折进安装方向"
-            "（光靠 IMU 分不清是模块装歪还是腿让机身歪了；腿的零位先校好）")
+            f"Em pé, a leitura tem inclinação de {parts['pitch_deg']:+.1f}° para a frente e {parts['roll_deg']:+.1f}° para a esquerda "
+            "em relação ao HOME oficial; essa diferença será incorporada à orientação de montagem "
+            "(o IMU sozinho não distingue um módulo inclinado de uma postura causada pelas patas; calibre primeiro o zero delas).")
     if not full and res.get("standard"):
         s = res["standard"]
         res["confirm"].append(
-            f"粗校算出来：{s['text']}" + (f"（再偏 {s['off_deg']:.0f}°）" if s["off_deg"] >= 1 else "")
-            + "。对照模块实际怎么装的，对得上再写（做反了主程序验不出左右）")
+            f"Resultado da calibração aproximada: {s['text']}" + (f" (desvio de {s['off_deg']:.0f}°)" if s["off_deg"] >= 1 else "")
+            + ". Compare com a montagem física do módulo e grave somente se corresponder (se estiver invertida, o programa principal não consegue verificar os lados).")
     if res.get("standard") and res["standard"]["off_deg"] > 20:
-        res["notes"].append(f"新方向离最近的标准装法（{res['standard']['text']}）也差 {res['standard']['off_deg']:.0f}°：模块是斜着装的？")
+        res["notes"].append(f"A nova orientação difere {res['standard']['off_deg']:.0f}° da montagem padrão mais próxima "
+                            f"({res['standard']['text']}); o módulo foi instalado inclinado?")
     res["ok"] = True
     return res

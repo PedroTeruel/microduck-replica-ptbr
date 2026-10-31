@@ -110,12 +110,12 @@ class Helpers(unittest.TestCase):
 
     def test_describe_standard_mounts(self):
         d = ic.describe_mount((1, 0, 0, 0))
-        self.assertEqual(d["text"], "芯片 x 朝前，芯片 y 朝左，芯片 z 朝上")
+        self.assertEqual(d["text"], "Eixo x do sensor aponta para frente; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para cima")
         self.assertLess(d["off_deg"], 1e-6)
         self.assertEqual(len(ic.STANDARD_MOUNTS), 24)
         # 绕 y 转 90°：芯片 x → 机身下、z → 机身前
         d = ic.describe_mount(q_axis((0, 1, 0), 90))
-        self.assertEqual(d["text"], "芯片 x 朝下，芯片 y 朝左，芯片 z 朝前")
+        self.assertEqual(d["text"], "Eixo x do sensor aponta para baixo; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para frente")
         d = ic.describe_mount(ic.q_mul(q_axis((0, 1, 0), 90), q_axis((1, 0, 0), 7)))
         self.assertAlmostEqual(d["off_deg"], 7.0, places=3)
 
@@ -216,7 +216,7 @@ class Solve(unittest.TestCase):
         self.assertAlmostEqual(res["parts"]["pitch_deg"], 8.5, delta=0.05)
         self.assertAlmostEqual(res["parts"]["yaw_deg"], 0.0, delta=0.05)
         self.assertTrue(res["confirm"])                    # 8.5° > 8°：要人确认
-        self.assertEqual(res["standard"]["text"], "芯片 x 朝下，芯片 y 朝左，芯片 z 朝前")
+        self.assertEqual(res["standard"]["text"], "Eixo x do sensor aponta para baixo; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para frente")
 
     def test_small_correction_needs_no_confirm(self):
         mount = q_axis((0, 1, 0), 90)
@@ -278,13 +278,13 @@ class Fails(unittest.TestCase):
         res = self.solve(Duck(self.mount).run(tilts={"fwd": 6}))
         self.assertFalse(res["ok"])
         self.assertFalse(res["steps"]["fwd"]["ok"])
-        self.assertIn("前倾", res["reason"])
-        self.assertIn("至少", res["reason"])
+        self.assertIn("inclinação para a frente", res["reason"])
+        self.assertIn("mínimo", res["reason"])
 
     def test_tilt_too_big(self):
         res = self.solve(Duck(self.mount).run(tilts={"left": 45}))
         self.assertFalse(res["ok"])
-        self.assertIn("太多", res["steps"]["left"]["msg"])
+        self.assertIn("acima do máximo", res["steps"]["left"]["msg"])
 
     def test_still_not_still(self):
         duck = Duck(self.mount)
@@ -292,7 +292,7 @@ class Fails(unittest.TestCase):
         data["still"] = duck.samples("still", noise=2.0)
         res = self.solve(data)
         self.assertFalse(res["ok"])
-        self.assertIn("晃", res["reason"])
+        self.assertIn("oscilaram", res["reason"])
 
     def test_still_too_short(self):
         duck = Duck(self.mount)
@@ -305,7 +305,7 @@ class Fails(unittest.TestCase):
         data["right"] = []
         res = self.solve(data)
         self.assertFalse(res["ok"])
-        self.assertIn("右倾", res["reason"])
+        self.assertIn("direita", res["reason"])
 
     def test_not_held_still(self):
         """倾到 18° 马上回来、没停住：最大倾角附近只有一两个读数。"""
@@ -315,7 +315,7 @@ class Fails(unittest.TestCase):
         data["back"] = [{"g": list(duck.reading(duck.pose("back", d)))} for d in swing]
         res = self.solve(data)
         self.assertFalse(res["ok"])
-        self.assertIn("没停住", res["steps"]["back"]["msg"])
+        self.assertIn("não ficou parado", res["steps"]["back"]["msg"])
 
     def test_circling_not_held(self):
         """倾角一直 15°，但方向在转圈：倾角够、停住的读数也够，方向晃得太厉害。"""
@@ -324,7 +324,7 @@ class Fails(unittest.TestCase):
         data["fwd"] = [{"g": list(duck.reading(duck.pose("fwd", 15, skew=s)))} for s in range(-30, 31, 5)]
         res = self.solve(data)
         self.assertFalse(res["ok"])
-        self.assertIn("没停住", res["steps"]["fwd"]["msg"])
+        self.assertIn("não ficou parado", res["steps"]["fwd"]["msg"])
 
     def test_same_side_twice(self):
         """「后倾」那步其实又往前倾了。"""
@@ -333,7 +333,7 @@ class Fails(unittest.TestCase):
         data["back"] = duck.samples("fwd")
         res = self.solve(data)
         self.assertFalse(res["ok"])
-        self.assertIn("前倾和后倾", res["reason"])
+        self.assertIn("inclinação para a frente e inclinação para trás", res["reason"])
 
     def test_left_right_swapped(self):
         duck = Duck(self.mount)
@@ -341,20 +341,20 @@ class Fails(unittest.TestCase):
         data["left"], data["right"] = duck.samples("right"), duck.samples("left")
         res = self.solve(data)
         self.assertFalse(res["ok"])
-        self.assertIn("做反了", res["reason"])
+        self.assertIn("invertido", res["reason"])
         # 旧方向可信（frame=body）时能说出是哪一对做反了
         duck = Duck(self.mount, old_mount=self.mount)
         data = duck.run()
         data["left"], data["right"] = duck.samples("right"), duck.samples("left")
         res = ic.solve(data, frame="body", old_mount=self.mount)
         self.assertFalse(res["ok"])
-        self.assertIn("左倾、右倾做反了", res["reason"])
+        self.assertIn("As inclinações para a esquerda e para a direita foram invertidas", res["reason"])
 
     def test_tilted_diagonally(self):
         """左倾、右倾都斜了 30°（每步只斜 15°，但两对差 30°）：前后和左右不垂直。"""
         res = self.solve(Duck(self.mount).run(skews={"left": 30, "right": 30}))
         self.assertFalse(res["ok"])
-        self.assertIn("不垂直", res["reason"])
+        self.assertIn("não estão perpendiculares", res["reason"])
 
     def test_turned_around_needs_confirm(self):
         """前后、左右都做反了（鸭子转了个身）：自检查不出来，但跟旧方向比朝向改了 180°，要人确认。"""
@@ -365,7 +365,7 @@ class Fails(unittest.TestCase):
         res = ic.solve(data, frame="body", old_mount=self.mount)
         self.assertTrue(res["ok"], res.get("reason"))
         self.assertGreater(abs(res["parts"]["yaw_deg"]), 170)
-        self.assertTrue(any("转了个身" in c for c in res["confirm"]))
+        self.assertTrue(any("tivesse girado" in c for c in res["confirm"]))
 
     def test_body_frame_without_old_mount(self):
         res = ic.solve(Duck(self.mount, old_mount=self.mount).run(), frame="body")
@@ -442,13 +442,13 @@ class RobotdFormula(unittest.TestCase):
 
     def test_default_mounts_in_words(self):
         # BNO08x 默认：trunk_imu.rs:63「mounted sensor X left, Y up, Z forward」
-        self.assertEqual(ic.describe_mount([0.5, 0.5, 0.5, 0.5])["text"], "芯片 x 朝左，芯片 y 朝上，芯片 z 朝前")
+        self.assertEqual(ic.describe_mount([0.5, 0.5, 0.5, 0.5])["text"], "Eixo x do sensor aponta para esquerda; Eixo y do sensor aponta para cima; Eixo z do sensor aponta para frente")
         # 总线小板默认：官方 imu.rs:76「trunk = [+raw_z, +raw_y, −raw_x]」
         r = math.sqrt(0.5)
-        self.assertEqual(ic.describe_mount([r, 0, r, 0])["text"], "芯片 x 朝下，芯片 y 朝左，芯片 z 朝前")
+        self.assertEqual(ic.describe_mount([r, 0, r, 0])["text"], "Eixo x do sensor aponta para baixo; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para frente")
         # 二号鸭现在存的（fixture 第 6 行）：标准装法再偏 6°
         d = ic.describe_mount([0.698208849, 0.036261753, 0.714055021, 0.036261753])
-        self.assertEqual(d["text"], "芯片 x 朝下，芯片 y 朝左，芯片 z 朝前")
+        self.assertEqual(d["text"], "Eixo x do sensor aponta para baixo; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para frente")
         self.assertAlmostEqual(d["off_deg"], 6.0, delta=0.1)
 
 
@@ -497,7 +497,7 @@ class HumanHandling(unittest.TestCase):
             duck = Duck(mount, noise_deg=0.0, seed=i, hand=hand)
             res = ic.solve(duck.run(tilts={"fwd": 13, "back": 13, "left": 13, "right": 13}, pause=0.8), frame="sensor")
             self.assertTrue(res["ok"], res.get("reason"))
-            self.assertEqual(res["steps"]["fwd"]["ref"], "端平那一下")
+            self.assertEqual(res["steps"]["fwd"]["ref"], "Posição nivelada")
             self.assertAlmostEqual(res["steps"]["fwd"]["ref_offset_deg"], 4.9, delta=0.3)   # 端平窗口可能带上爬坡第一个读数（沿倾的方向，不影响朝向）
             self.assertLess(q_diff_deg(res["mount"], mount), 0.3)
             self.assertLess(res["quality"]["max_skew_deg"], 1.0)      # 零点偏 4.9° 只剩二阶的一点点
@@ -506,7 +506,7 @@ class HumanHandling(unittest.TestCase):
         """前倾、后倾都拧着 15°（审查员 probe3：以前「相反差 0」能过、朝向错 7.5°）：前后和左右差 15° → 判失败。"""
         res = ic.solve(Duck(self.mount, noise_deg=0.0).run(skews={"fwd": 15, "back": 15}), frame="sensor")
         self.assertFalse(res["ok"])
-        self.assertIn("不垂直", res["reason"])
+        self.assertIn("não estão perpendiculares", res["reason"])
         res = ic.solve(Duck(self.mount, noise_deg=0.0).run(skews={"fwd": 5, "back": 5}), frame="sensor")
         self.assertTrue(res["ok"], res.get("reason"))           # 拧 5° 还能用，朝向大约准到 ±2.5°
         self.assertAlmostEqual(res["quality"]["yaw_uncert_deg"], 2.5, delta=0.1)
@@ -520,7 +520,7 @@ class HumanHandling(unittest.TestCase):
                 "back": step((0, -1, 0), 17), "left": step((-1, 0, 0), 17), "right": step((1, 0, 0), 17)}
         res = ic.solve(data, frame="body", old_mount=(1, 0, 0, 0))
         self.assertFalse(res["ok"])
-        self.assertIn("太多", res["reason"])
+        self.assertIn("acima do máximo", res["reason"])
         self.assertAlmostEqual(res["steps"]["fwd"]["max_tilt_deg"], 36, delta=0.01)
 
     def test_bad_numbers_dropped(self):
@@ -540,7 +540,7 @@ class HumanHandling(unittest.TestCase):
         data["still"] = [{"g": [float("inf"), 0, 0]}] * 30
         res = ic.solve(data, frame="sensor")
         self.assertFalse(res["ok"])
-        self.assertIn("静止的读数只有 0 个", res["reason"])
+        self.assertIn("Há apenas 0 leituras em repouso", res["reason"])
 
     def test_still_spikes_tolerated(self):
         """静止那 3 秒里乱跳两帧（30 帧里不到 10%）：不算晃；一直晃 2° 才算。"""
@@ -560,10 +560,10 @@ class HumanHandling(unittest.TestCase):
         res = ic.solve(duck.run(), frame="body", old_mount=self.mount)
         self.assertTrue(res["ok"], res.get("reason"))
         self.assertAlmostEqual(res["parts"]["stand_tilt_deg"], 6.0, delta=0.01)
-        self.assertTrue(any("离官方 HOME 差 6.0°" in c for c in res["confirm"]))
+        self.assertTrue(any("difere 6.0° do HOME oficial" in c for c in res["confirm"]))
         duck = Duck(self.mount, stance=q_axis((0, 1, 0), 4.0), old_mount=self.mount, noise_deg=0.0)
         res = ic.solve(duck.run(), frame="body", old_mount=self.mount)
-        self.assertFalse(any("离官方 HOME" in c for c in res["confirm"]))
+        self.assertFalse(any("difere" in c for c in res["confirm"]))
 
     def test_flip_after_coarse(self):
         """旧方向是上次粗校写的：转了个身的提示改成「上次粗校可能做反了」。"""
@@ -572,7 +572,7 @@ class HumanHandling(unittest.TestCase):
         data["fwd"], data["back"] = duck.samples("back"), duck.samples("fwd")
         data["left"], data["right"] = duck.samples("right"), duck.samples("left")
         res = ic.solve(data, frame="body", old_mount=self.mount, old_source="coarse")
-        self.assertTrue(any("上次粗校可能做反了" in c for c in res["confirm"]))
+        self.assertTrue(any("calibração aproximada anterior pode ter sido invertida" in c for c in res["confirm"]))
 
 
 class Redo(unittest.TestCase):
@@ -604,7 +604,7 @@ class Redo(unittest.TestCase):
         self.assertEqual(ic.solve(data, frame="body", old_mount=self.mount, old_verified=False)["redo"], list(ic.TILTS))
         twisted = Duck(self.mount, old_mount=self.mount, noise_deg=0.0).run(skews={"fwd": 15, "back": 15})
         res = ic.solve(twisted, frame="body", old_mount=self.mount)
-        self.assertIn("不垂直", res["reason"])
+        self.assertIn("não estão perpendiculares", res["reason"])
         self.assertEqual(res["redo"], ["fwd", "back"])
         self.assertEqual(ic.solve(twisted, frame="body", old_mount=self.mount, old_verified=False)["redo"], list(ic.TILTS))
 
@@ -621,7 +621,7 @@ class Coarse(unittest.TestCase):
             self.assertTrue(res["ok"], res.get("reason"))
             self.assertLess(q_diff_deg(res["mount"], mount), 0.01)
             self.assertEqual(res["quality"]["grade"], "coarse")
-            self.assertTrue(any("粗校" in n for n in res["notes"]))
+            self.assertTrue(any("Calibração aproximada" in n for n in res["notes"]))
 
     def test_with_back_and_default_old_mount(self):
         """LSM6DSV16X 的默认方向是单位四元数（trunk_imu.rs:56-58），跟真方向差很多：没验过就不要人确认「改太多」。"""
@@ -634,7 +634,7 @@ class Coarse(unittest.TestCase):
         self.assertLess(q_diff_deg(res["mount"], mount), 1.0)
         # 不拿没验过的默认值比「改太多」，但一定要人对照模块实际装法勾一下（做反了 robotd 验不出左右，方案 S1）
         self.assertEqual(len(res["confirm"]), 1)
-        self.assertIn("芯片 x 朝下，芯片 y 朝左，芯片 z 朝前", res["confirm"][0])
+        self.assertIn("Eixo x do sensor aponta para baixo; Eixo y do sensor aponta para esquerda; Eixo z do sensor aponta para frente", res["confirm"][0])
         res2 = ic.solve(part, frame="body", old_mount=old, mode="coarse", old_verified=True)
         self.assertEqual(len(res2["confirm"]), 2)
 
@@ -642,14 +642,14 @@ class Coarse(unittest.TestCase):
         data = Duck(q_axis((0, 1, 0), 90)).run()
         res = ic.solve({"still": data["still"]}, frame="sensor", mode="coarse")
         self.assertFalse(res["ok"])
-        self.assertIn("前倾", res["reason"])
+        self.assertIn("inclinação para a frente", res["reason"])
 
     def test_back_same_side_fails(self):
         duck = Duck(q_axis((0, 1, 0), 90))
         res = ic.solve({"still": duck.samples("still"), "fwd": duck.samples("fwd"), "back": duck.samples("fwd")},
                        frame="sensor", mode="coarse")
         self.assertFalse(res["ok"])
-        self.assertIn("前倾和后倾", res["reason"])
+        self.assertIn("inclinação para a frente e inclinação para trás", res["reason"])
 
 
 if __name__ == "__main__":
