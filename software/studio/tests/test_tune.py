@@ -186,7 +186,7 @@ class TuneViewTest(unittest.TestCase):
         self.assertEqual(w["default"], T.BUNDLED_WALK_DEFAULT)
         g = t.view()["feel"]["global"]
         self.assertEqual(g["action_scale"], 0.7)
-        self.assertIn("只有起坐用", g["note"])
+        self.assertIn("suavização só se aplica ao sentar e levantar", g["note"])
 
     def test_file_differs_from_what_main_program_uses(self):
         t, _, _ = self.make(exec_walk={"legs_lowpass": 0.6})
@@ -207,7 +207,7 @@ class TuneViewTest(unittest.TestCase):
             T.BUNDLED_WALK = "0" * 32                                    # 假装走路模型不是随包那个
             t, _, _ = self.make(orig=True)
             w = t.view()["feel"]["walk"]
-            self.assertEqual(w["default_src"], "第一次改之前的（.orig）")
+            self.assertEqual(w["default_src"], "Valores anteriores à primeira alteração (.orig)")
             t2, _, _ = self.make(orig=False)
             self.assertIsNone(t2.view()["feel"]["walk"]["default"])        # 没有 .orig：不给默认（审查 T-R17）
         finally:
@@ -248,12 +248,12 @@ class TuneViewTest(unittest.TestCase):
         s = t.view()["feel"]["servo"]
         self.assertTrue(s["file_vs_loaded"])
         self.assertEqual(s["effective"], p)
-        self.assertEqual(s["written_p"]["src"], "参数文件")
+        self.assertEqual(s["written_p"]["src"], "Arquivo de parâmetros")
         self.assertEqual(len(s["warn"]), 3)                                # P > 10、限力 < 500、D > 0
 
     def test_servo_bad_file(self):
         t, _, _ = self.make(bad_servo='{"kp": "5", "kd": 0, "torque_limit": 1000}')
-        self.assertIn("格式不对", t.view()["feel"]["servo"]["file_error"])
+        self.assertIn("Formato inválido", t.view()["feel"]["servo"]["file_error"])
         t2, _, _ = self.make(bad_servo="not json")
         self.assertTrue(t2.view()["feel"]["servo"]["file_error"])
 
@@ -261,17 +261,17 @@ class TuneViewTest(unittest.TestCase):
         t, _, _ = self.make(fake_set={"servo_parameters": "absent"})
         v = t.view()
         self.assertIs(v["cap"]["fork"], False)
-        self.assertIn("不支持改", v["cap"]["why"])
+        self.assertIn("não permite alterações", v["cap"]["why"])
         self.assertFalse(v["cap"]["can_edit"])
         t2, _, _ = self.make()
         self.assertFalse(t2.view()["cap"]["can_edit"])                     # 这一版谁都不能改
-        self.assertIn("只看不改", t2.view()["cap"]["why"])
+        self.assertIn("somente leitura", t2.view()["cap"]["why"])
 
     def test_regs_only_after_arm(self):
         t, _, _ = self.make(fake_set={"regs": None})
         s = t.view()["feel"]["servo"]
         self.assertIsNone(s["regs"])
-        self.assertIn("站起来", s["regs_why"])
+        self.assertIn("ficar em pé", s["regs_why"])
 
     def test_pad_mouth_zero_is_flagged(self):
         t, _, _ = self.make()
@@ -299,9 +299,9 @@ class TuneViewTest(unittest.TestCase):
         rows = {r["slot"]: r for r in m["slots"]}
         self.assertEqual(rows["walk"]["rounds"], 9600)
         self.assertEqual(rows["sitstand"]["rounds"], 10000)                # 老 manifest：检查点是个文件路径
-        self.assertEqual(rows["sitstand"]["buttons"], ["十字下"])
+        self.assertEqual(rows["sitstand"]["buttons"], ["Direcional para baixo"])
         self.assertEqual(rows["kick_left"]["buttons"], ["LB"])
-        self.assertEqual(rows["sitstand"]["name"], "坐下 / 站起 10000 轮")   # 没有 model-info：取 management-profile
+        self.assertEqual(rows["sitstand"]["name"], "Sentar / levantar, 10.000 iterações")   # Usa management-profile quando não há model-info.
         self.assertIsNone(rows["stand"]["path"])
         self.assertTrue(rows["walk"]["loaded"])
         self.assertTrue(rows["ground_pick"]["unfiltered"])
@@ -319,13 +319,13 @@ class TuneViewTest(unittest.TestCase):
 
     def test_phase_words(self):
         t, rd, _ = self.make("commissioning")
-        self.assertEqual(t.view()["run"]["phase"]["word"], "调试模式")
+        self.assertEqual(t.view()["run"]["phase"]["word"], "Modo de depuração")
         t, rd, _ = self.make("starting")
-        self.assertEqual(t.view()["run"]["phase"]["word"], "在等舵机总线")
+        self.assertEqual(t.view()["run"]["phase"]["word"], "Aguardando o barramento dos servos")
         rd.present = False
-        self.assertEqual(t.view()["run"]["phase"]["word"], "主程序没在跑")
+        self.assertEqual(t.view()["run"]["phase"]["word"], "Programa principal parado")
         rd.present, rd.paused = True, "调舵机"
-        self.assertEqual(t.view()["run"]["phase"]["word"], "在调舵机")
+        self.assertEqual(t.view()["run"]["phase"]["word"], "Ajuste dos servos")
 
     def test_run_card_bits(self):
         t, _, _ = self.make()
@@ -334,7 +334,7 @@ class TuneViewTest(unittest.TestCase):
         self.assertEqual(r["guard"]["joint_tolerance_deg"], 5.0)
         self.assertEqual([w["id"] for w in r["bus"]["worst"]], [11, 10, 13])
         self.assertEqual(r["imu"]["source"], "lsm6dsv16x")
-        self.assertIn("不报", r["infer_note"])
+        self.assertIn("não informa", r["infer_note"])
         t2, _, _ = self.make("walk_unloaded")
         self.assertFalse(t2.view()["run"]["can_walk"])
         self.assertTrue(t2.view()["run"]["walk_unloaded"])
@@ -391,15 +391,15 @@ class TuneViewTest(unittest.TestCase):
             with self.subTest(bad=bad):
                 with self.assertRaises(T.Refused):
                     t.save_body(bad)
-        out = t.save_body({"total_g": "806", "trunk_g": 300, "head_g": None, "foot": "硅胶"}, by="电脑 127.0.0.1")
+        out = t.save_body({"total_g": "806", "trunk_g": 300, "head_g": None, "foot": "silicone"}, by="computer 127.0.0.1")
         self.assertEqual(out["total_g"], 806.0)
-        self.assertEqual(t.profile()["body"]["foot"], "硅胶")
+        self.assertEqual(t.profile()["body"]["foot"], "silicone")
         saved = json.loads((Path(self.tmp.name) / T.BODY_FILE).read_text(encoding="utf-8"))
         self.assertEqual(saved["trunk_g"], 300.0)
         self.assertIsNone(saved["head_g"])
         # 只读的 body 指令：给设置页重量表单预填
         got = asyncio.run(t.handle({"op": "body"}))
-        self.assertEqual((got["total_g"], got["foot"], got["head_g"]), (806.0, "硅胶", None))
+        self.assertEqual((got["total_g"], got["foot"], got["head_g"]), (806.0, "silicone", None))
 
     def test_view_without_files(self):
         """鸭子上读不到任何文件（还没装 / 路径不对）：照样出一份，不抛。"""
@@ -533,7 +533,7 @@ class TuneHttpTest(unittest.IsolatedAsyncioTestCase):
         res = {m["id"]: m for m in c.msgs if m.get("t") == "result"}
         self.assertTrue(res["b1"]["ok"], res)
         self.assertFalse(res["b2"]["ok"])
-        self.assertIn("只看不改", res["b2"]["reason"])
+        self.assertIn("somente leitura", res["b2"]["reason"])
         c.close()
         await asyncio.sleep(2.5)                                       # 等 hello、calibration-status、读完一次文件
         st, h, body = await asyncio.to_thread(http_call, self.port, "GET", "/api/profile")
@@ -547,7 +547,7 @@ class TuneHttpTest(unittest.IsolatedAsyncioTestCase):
         import io
         raw = json.loads(zipfile.ZipFile(io.BytesIO(z)).read("robotd-raw.json"))
         self.assertIn("tune", raw)
-        self.assertEqual(raw["tune"]["files"]["pad_file"], "有")
+        self.assertEqual(raw["tune"]["files"]["pad_file"], "presente")
 
 
 if __name__ == "__main__":
