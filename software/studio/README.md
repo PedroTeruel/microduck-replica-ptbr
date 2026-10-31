@@ -235,79 +235,77 @@ Página跟鸭子 de Conexão断了（WebSocket 断了，ou 5 秒没收到消息�
 
 Página判断「连不Superior」只看收到消息 de 间隔（1 秒变灰、3 秒报警），不看两边 de 钟（鸭子 de 钟可能是 1970 年）。
 
-## 日志
+## Logs
 
-`logs/studio-YYYY-MM-DD.log`，留 14 天、总共不超过 50 MB。一行一件事：
+Os registros ficam em `logs/studio-YYYY-MM-DD.log`, são mantidos por 14 dias e não excedem 50 MB no total. Cada linha registra uma ação:
 
 ```
-2026-10-18T00:41:56.194+09:00 [命令] → 卸力（电脑 127.0.0.1） · 步骤：robot.relax
-2026-10-18T00:41:56.197+09:00 [命令] ← 卸力 成功 · 3 ms · 已发出，等回读确认 · 步骤：robot.relax · 原文：{"accepted": true}
+2026-10-18T00:41:56.194+09:00 [comando] → liberar torque (computador 127.0.0.1) · etapa: robot.relax
+2026-10-18T00:41:56.197+09:00 [comando] ← liberar torque: sucesso · 3 ms · enviado, aguardando confirmação de leitura · etapa: robot.relax · resposta original: {"accepted": true}
 ```
 
-出错时写明「卡在：哪一步 · 原文：… · 建议：… · 现场：{…}」。密码、令牌自动打码。同一句话 1 分钟内重复只记一次，并注明合并了几次。
-Página「日志」页能看最近 500 条，也能导出诊断包（日志 + 当时 de 状态 + robotd original回包 + Versão + robotd  de 系统日志），发群里求助用。
+Em caso de erro, o registro informa “parou em: etapa · resposta original: … · sugestão: … · estado atual: {…}”. Senhas e tokens são ocultados automaticamente. Mensagens idênticas dentro de um minuto são registradas uma vez, com a quantidade de ocorrências agrupadas.
 
-日志里每条Comando都记发出e回执、带耗时e现场，代码是我们自己写 de 。
+A página “Logs” mostra os 500 registros mais recentes e permite exportar um pacote de diagnóstico com logs, estado naquele momento, respostas originais do robotd, versões e logs de sistema do robotd. Use-o ao pedir ajuda nos grupos.
 
-## Teste
+Cada comando registra envio e resposta, duração e estado atual. O código dessa funcionalidade é original deste projeto.
+
+## Testes
 
 ```bash
-py -3.13 -I run_tests.py               # 电脑
-python3 -I run_tests.py                # 鸭子
+py -3.13 -I run_tests.py               # computador
+python3 -I run_tests.py                # robô
 ```
 
-总线 IMU 集成 de 定向回归（含无头 Edge Página；无 Edge / Node >=22 时浏览器项跳过）：
+Regressão direcionada da integração do barramento com a IMU (inclui página Edge sem interface gráfica; os testes de navegador são ignorados se Edge não estiver disponível ou Node for anterior à versão 22):
 
 ```bash
 py -3.13 -I -c "import sys;sys.path[:0]=['deps','.','dev'];import unittest;unittest.main(module=None,argv=['x','tests.test_imu_backend','tests.test_commit','tests.test_helper_calib','tests.test_helper_imu_redo','tests.test_imu_bus_ui','tests.test_imu_wizard_e2e'])"
 ```
 
-覆盖：
-- 登录：会话、密码错 5 次退避、退出要 CSRF；Host 421、Origin 矩阵；没登录 de  WebSocket 收到 4401；
-- 日志：格式、脱敏、去重、按天清理（钟停在 1970 也能清）；
-- JSON-RPC：半行、超长行、乱码e非对象 JSON、超时重连；
-- 卸力：不被慢查询挡住、回读确认、hd1910 标志没清不算确认、标定模式、robotd 重启后第一次就Sucesso、确认后别人再Superior力不会自动补发；
-- 轮询：一项出错不挡别 de 项；只在有人看时订阅，没心跳当没人看；robotd 掉线又回来；
-- 姿势判定（用真机录 de Dados）；por meio de WebSocket 发卸力 de Completo来回；
-- 手柄配对：小助手 `pad-pair` / `pad-forget` 的参数校验、robotctl 成功 / 失败 / 超时解析；向导的主路、旧小助手回退、bluetoothctl 代理注册失败重试、padd 30 秒等待、配对后有限补连、实际输入先于状态服务、超时边界和取消、迟到的同一手柄输入恢复状态。
-- 配网：小助手Ponto de acesso动词、Conexão窗口Arquivo；net.json 缺失 / 损坏 / 各模式；扫描缓存；Conexão顺序、Falha原因（bad_key 先 forget 再开Ponto de acesso）、Ponto de acesso恢复、同时只连一个；密码不进日志 / state / last-try / 诊断包。
-- 登录密码：网页首次设置、登录后才改、清掉；改密码保留当前浏览器会话；root 运行 `set-password` 被拒；热点模式且没密码时的卡片提示。
-- 标定模式的状态：假 robotd 先回启动报告（四个键）、读成功后回 fork 字段的实时快照、`--commissioning-stuck-status` 永远回启动报告；实时快照算主程序起来了（总览、准备情况、小助手交还都是），旧 fork 一直 `configuring_bus` 时交还照旧判没起来、话照实说；连续 30 秒报启动阶段改口「一直报启动中」。
-- 上手清单的三个按钮：每种原来锁着的情况都能「已完成」/「跳过」（两步确认、第二下的话对、后端没确认也拒）、「已完成」的记录和作废、指纹读不到先记再绑、第 1 步标了 → 第 3 步舵机零位满足、第 2 步标了但方向没确认 → 按默认装法写 IMU（总线小板 / BNO085 / LSM6DSV16X 各一条：准备情况满足、交给小助手的四元数对、读回过得了运动模式校验）、有 `imu-pending.json` 用它、主程序已确认用主程序的、芯片对不上照旧挡住。
-- IMU 页的「站姿使能 / 失能」：标定模式下点了弹确认、发 `imu.op hold`，主程序收到的是 15 个方向 + 3000 ms 的 `hold-home`，站住以后写「标定模式（站着）」，失能走 `relax` 回软着；运动模式下发的命令跟遥控卡「站起来」、顶上「卸力」一模一样（浏览器端到端）。
-- 地址：Ponto de acesso / WiFi 模式 de 地址列表、扫描Resultado滤掉鸭子自己 de Ponto de acesso、切换提示里三种地址。
-- 连 WiFi 以后找鸭子：`probe.svg` 不用登录、两种主机名都给、不缓存；探测逻辑（Node 跑 `web/wifi.js` 的真代码，假时钟）每 2 秒探两个地址、先通的就跳、3 分钟放弃、热点回来就停、挂着不回的不重复探；浏览器端到端看断线后的卡片、热点回来停下、探到了跳过去。
-- 写进主程序：小助手 `calib-read` 只读 / 不拿锁、`calib-commit` 先拿锁再查旗、标定模式删 drop-in 后切运动模式、`mode=motion` + `phase=control` + `calibration-status` 逐项读回一致才算成功、`waiting_for_bus` 的标定错误 / 总线错误分开报、读回不一致 / `.saved.toml` 写失败 / 重启失败都回滚（文件和模式分开报，回滚后起不来如实写）、策略在跑拒绝、`ExecStart` 里有 `--commissioning` 但 drop-in 不在拒绝、备份按序号留 10 组；Studio 两种模式的准备情况、`calib-read` 兜底、超时读 `last-result.json`、pending / centered 变化让第 3 步变「该做」、撤销中位校准删记录；两份组 TOML 代码输出一致。
+Cobertura:
 
-## 现状（第一版）
+- Login: sessões, espera após cinco senhas incorretas, CSRF ao sair, matriz Host 421/Origin e fechamento com 4401 do WebSocket sem autenticação.
+- Logs: formatação, ocultação de dados, deduplicação e limpeza por dia, mesmo com o relógio parado em 1970.
+- JSON-RPC: linhas incompletas ou muito longas, JSON inválido ou que não seja objeto e reconexão após timeout.
+- Liberação de torque: não fica bloqueada por consultas lentas; confirma pela leitura; a ausência do sinalizador HD1910 não conta como confirmação; cobre modo de calibração, sucesso na primeira tentativa após reinício do robotd e não reenvia automaticamente um comando de torque aplicado por outro processo após a confirmação.
+- Polling: erro em um item não bloqueia os demais; assina o fluxo em tempo real somente enquanto há alguém observando; heartbeat ausente significa que não há observador; cobre queda e retorno do robotd.
+- Detecção de postura com dados gravados no robô; ida e volta completa do comando de liberação pelo WebSocket.
+- Pareamento do controle: valida argumentos do auxiliar `pad-pair`/`pad-forget`; interpreta sucesso, falha e timeout do robotctl; fluxo principal do assistente, fallback para o auxiliar antigo, nova tentativa após falha de registro do proxy bluetoothctl, espera de 30 s do padd, reconexão limitada após parear, entrada real antes do serviço de estado, limites de timeout e cancelamento e recuperação de estado quando chega tarde uma entrada do mesmo controle.
+- Configuração de rede: verbos do ponto de acesso no auxiliar e arquivo de janela de conexão; net.json ausente, inválido ou em cada modo; cache de busca; ordem de conexão e causas de falha (bad_key remove a configuração antes de reativar o ponto de acesso); restauração do ponto de acesso; somente uma conexão por vez; senha ausente de logs, state, last-try e pacote de diagnóstico.
+- Senha de login: configuração inicial pela página, alteração somente após login, remoção, manutenção da sessão atual após alterar a senha, recusa de `set-password` como root e orientação do cartão quando estiver no modo de ponto de acesso sem senha.
+- Estado de calibração: fake robotd envia primeiro o relatório de inicialização com quatro campos e depois do primeiro read retorna o snapshot do fork; `--commissioning-stuck-status` mantém o relatório inicial. O snapshot real indica que o controlador iniciou (resumo, requisitos e entrega ao auxiliar); se um fork antigo continuar em `configuring_bus`, a entrega considera que ele não iniciou e explica o estado real. Depois de 30 s contínuos no estado inicial, a interface informa que continua mostrando “iniciando”.
+- Os três botões da lista inicial: “concluído”/“pular” em todos os casos antes bloqueados, confirmação em duas etapas com texto correto e recusa do backend sem confirmação; registro e invalidação de conclusão; associação posterior da impressão digital quando não foi possível lê-la; item 1 concluído satisfaz a verificação do zero dos servos no item 3; item 2 concluído sem direção confirmada grava a orientação padrão da IMU (placa do barramento, BNO085 ou LSM6DSV16X), verifica quaternion do auxiliar e passa na validação do modo de movimento; usa `imu-pending.json` quando existe, usa a orientação confirmada pelo controlador e mantém o bloqueio quando o chip não corresponde.
+- Botões “ativar postura”/“desativar” da página da IMU: no modo de calibração, solicita confirmação e envia `imu.op hold`; o controlador recebe 15 direções e 3000 ms em `hold-home`; depois de ficar em pé, a página informa “modo de calibração (em pé)”; desativar usa `relax`. No modo de movimento, o comando é igual a “levantar” no controle e a “liberar torque” no topo, verificado de ponta a ponta no navegador.
+- Endereços nos modos de ponto de acesso/Wi-Fi, exclusão do ponto de acesso do robô dos resultados da busca e apresentação dos três tipos de endereço no aviso de troca de rede.
+- Localização do robô após conectar ao Wi-Fi: `probe.svg` não exige login e não fica em cache; apresenta os dois nomes de host; lógica exercitada no código real de `web/wifi.js` com relógio falso, duas buscas a cada 2 s, redirecionamento pelo primeiro endereço disponível, desistência após 3 minutos, parada quando o ponto de acesso retorna e sem repetir uma sondagem pendente; teste do aviso de desconexão, retorno do ponto de acesso e redirecionamento no navegador.
+- Gravação no controlador: `calib-read` do auxiliar é somente leitura e não adquire bloqueio; `calib-commit` adquire o bloqueio e verifica os sinalizadores; sai do modo de calibração removendo drop-in; só confirma após ler de volta `mode=motion`, `phase=control` e todos os campos de `calibration-status`; erros de `waiting_for_bus` e do barramento são separados; divergência de leitura, falha em `.saved.toml` e falha de reinício provocam rollback, com erros de arquivo e modo separados; recusa enquanto a política está ativa ou quando `ExecStart` contém `--commissioning` mas falta o drop-in; mantém os dez backups mais recentes em ordem. Testa o estado de prontidão nos dois modos, fallback para `calib-read`, leitura de `last-result.json` após timeout, atualização do item 3 quando pending/centered muda, remoção do registro ao desfazer calibração de centro e saída de código idêntica dos dois TOMLs de grupo.
+- Comando “gravar no controlador”: o auxiliar `calib-read` é somente leitura e não obtém o lock; `calib-commit` obtém o lock antes de verificar os sinalizadores; remove o drop-in de calibração antes de trocar para modo de movimento; sucesso exige leitura de `mode=motion`, `phase=control` e igualdade campo a campo de `calibration-status`; distingue erro de calibração `waiting_for_bus` de erro do barramento; divergência de leitura, falha de gravação `.saved.toml` e falha de reinício causam rollback com mensagens separadas para arquivo e modo; recusa se a política estiver rodando ou se `ExecStart` tiver `--commissioning` sem drop-in; mantém dez backups numerados. O Studio testa prontidão nos dois modos, fallback de `calib-read`, consulta de `last-result.json` após timeout, alteração do item 3 quando pending/centered muda, remoção do registro ao desfazer calibração central e saída igual dos dois arquivos TOML de grupo.
 
-能用 de ：
-- **总览**：实时状态、3D 鸭子、Bateria、Placa principal温度、一键卸力（空格也行）。
-- **Servo页**：扫描、单颗或全部 em 位校准（直接写进Servo）、方向、姿势、P/D/限力。
-- **IMU 页**：出厂标定模式下粗校（托起摆正 + 往前低头，交给主程序 `verify-imu` 自己验），能站以后站着精校。
-  「站着校准」上面有「站姿使能」和「失能（卸力）」（走顶上「卸力」同一条路：`relax`），旁边一行写现在站着 / 软着 / 正在站起来。
-  运动模式下「站姿使能」走遥控卡「站起来」同一条路（`pad.op stand`，后端按姿势再判一遍）；
-  **标定模式下也能站**（10-21 用户：「咱标定也能站姿不就好了吗？非要切到运动模式」）：发 `imu.op hold` → fork 标定模式的 `hold-home`，
-  15 颗从现在 de 位置一起 3 秒转到 HOME 锁住，IMU 照常读；方向跟第 3 步写进主程序 de 同一套，零位用主程序Arquivo里 de （出厂 2048）。
-  标定模式下 Studio 每 0.1 秒读一次 `busStatus`，`last_sample.imu` 当实时读数：「现在」那块的倾角、站着校准都能用，方向没确认过也能站着校（算出整份新方向，第 3 步写进去）。
-  站着 de 时候第 3 步挡住（「先点失能」），因为写进主程序要重启主程序，鸭子会直接塌。软着时开始站着校准，提示先点「站姿使能」。
-- **SSH 远程登录**（「更多」页，10-21 用户：「出了问题他们 SSH 自己修，不用重新烧卡」）：镜像出厂只认钥匙、不带任何人的钥匙，也没有能远程登录的默认密码。用户先设网页登录密码（没设时后端拒绝：不然连上热点的人都能打开网页、顺手打开 SSH），再自己定一个 SSH 密码（8–64 位，不能是 microduck 这类大家都猜得到的），`POST /api/ssh {action: on}` → 小助手 `ssh-password`：`chpasswd` 从 stdin 设 radxa 的密码，写 `/etc/ssh/sshd_config.d/05-microduck-ssh-password.conf`（排在镜像的 `10-microduck.conf` 前面），`sshd -t`、`sshd -T` 读回密码登录真开了才 `reload`，哪一步不对就删掉文件退回去。关掉 = 删这个文件再 reload。**密码只走小助手的 stdin，不进命令行、日志、结果文件**（测试逐项核对）。卡片上给出 `ssh radxa@<现在这个地址>` 的登录命令。
-  「办法二：登记钥匙」（`studio/sshkeys.py`）：Studio 本来就以 radxa 身份跑，`~/.ssh/authorized_keys` 是它自己的文件，不经过小助手。只收一整行公钥（ed25519 / rsa / ecdsa / sk-*），base64 里的类型要跟开头写的一致，前面不能带 `command=` 这类选项；贴私钥会被认出来拦下。同一把（按 SHA256 指纹，跟 `ssh-keygen -l` 一样）不重复写；删掉按指纹删。目录 700、文件 600，`~/.ssh` 或文件是软链接就拒绝。跟打开密码登录一样，要先设网页登录密码。
-- **写进主程序**：上手清单第 3 步把舵机零位、方向、IMU 方向一次写进 robotd 的标定。出厂镜像是标定模式；写成功后小助手删掉 commissioning drop-in、重启主程序切运动模式。成功不只看重启：还要 `mode=motion`、`phase=control`，并且 `calibration-status` 读回逐项一致；不成就把文件和模式换回去。Studio 重启后会读 `last-result.json` 把上次结果放回第 3 步卡片。
-- **手柄**：配对（走官方 `robotctl pad pair`）、网页手柄、测急停。
-- **遥控**：Levantar / 开始走 / Sentar、技能、动作e组合动作。
-- **调手感**：只看。**Modelo管理**：导入部署包、改名、选择Modelo、恢复内置、设置动作键e删除导入Modelo；具体格式见 [Modelo导入Instruções](MODEL_IMPORT.md)。
-- **日志**：日志页e诊断包；手机底栏从「更多」也能进日志、导出诊断包。
-- **连 WiFi**：鸭子开Ponto de acesso时用手机选家里 de  WiFi、填密码；切过去以后Página自己找鸭子 de 新地址、找到就跳过去；设置里能看AtualRede、换网、忘掉已保存 de Rede。
-- **登录密码**：在「更多 → 登录密码」设置、修改或清掉；Ponto de acesso模式又没密码时，总览 de 连 WiFi 卡片会提示先设密码。
+## Estado atual (primeira versão)
 
-还不能 de （Inferior一版）：
-- 在WebSuperior**改**调手感Parâmetros（走路幅度、平滑、P/D/限力）。
+Disponível:
 
-## 参考
+- **Visão geral:** estado em tempo real, pato 3D, bateria, temperatura da placa e liberação de torque em um toque (também pela barra de espaço).
+- **Servos:** busca, calibração de zero individual ou de todos (grava diretamente nos servos), direção, postura, P/D e limite de torque.
+- **IMU:** calibração inicial no modo de fábrica (segurar o robô alinhado e incliná-lo para a frente; o controlador valida com `verify-imu`) e calibração fina em pé quando possível. Os botões “ativar postura” e “desativar (liberar torque)” aparecem acima de “calibração em pé”, com indicação de postura atual, relaxada ou em processo de levantar. No modo de movimento, “ativar postura” usa o mesmo comando `pad.op stand` do controle remoto, com nova validação do estado pelo backend. No modo de calibração também é possível ficar em pé, conforme solicitação do usuário de 21/10: envia `imu.op hold` para o comando `hold-home` do fork; os 15 servos giram juntos da posição atual até HOME por 3 s e mantêm torque, enquanto a IMU continua sendo lida. A direção segue a usada no item 3 e o zero vem do arquivo do controlador (2048 de fábrica). No modo de calibração, o Studio consulta `busStatus` a cada 0,1 s; `last_sample.imu` alimenta a leitura em tempo real, a inclinação da área “agora” e a calibração em pé. Também é possível calibrar em pé antes de confirmar a direção, calculando a orientação completa nova que será gravada no item 3. A gravação no controlador fica bloqueada enquanto o robô está em pé, pois reiniciar o controlador faria o robô cair; se estiver relaxado, a calibração em pé orienta ativar a postura primeiro.
+- **Acesso remoto por SSH** (página “Mais”, pedido em 21/10 para permitir reparos sem regravar o cartão): a imagem de fábrica aceita somente chaves e não contém chaves de usuários nem senha remota padrão. O usuário configura primeiro a senha da página (sem ela o backend recusa, para impedir que qualquer pessoa conectada ao ponto de acesso habilite SSH) e depois define uma senha SSH própria de 8–64 caracteres, que não seja fácil de adivinhar. `POST /api/ssh {action: on}` chama `ssh-password` no auxiliar: define a senha de radxa com `chpasswd` via stdin, grava `/etc/ssh/sshd_config.d/05-microduck-ssh-password.conf` antes de `10-microduck.conf`, valida com `sshd -t` e `sshd -T` se login por senha está realmente habilitado e só então recarrega o serviço. Se algo falhar, remove o arquivo e reverte. Desativar remove esse arquivo e recarrega o serviço. **A senha só passa pelo stdin do auxiliar; não aparece na linha de comando, nos logs nem nos arquivos de resultado**, conferido nos testes. O cartão mostra o comando `ssh radxa@<endereco-atual>`. Alternativa: cadastrar uma chave pela página usando `studio/sshkeys.py`. Como o Studio já roda como radxa, grava diretamente no próprio `~/.ssh/authorized_keys`, sem o auxiliar. Aceita uma chave pública completa de uma linha (ed25519/rsa/ecdsa/sk-*), verifica que o tipo em base64 corresponde ao prefixo e rejeita opções como `command=` e chaves privadas. Não duplica fingerprints SHA256; a remoção é por fingerprint. Recusa links simbólicos e aplica permissões 700 ao diretório e 600 ao arquivo. Assim como para senha SSH, exige primeiro definir a senha de login da página.
+- **Gravar no controlador:** o item 3 da lista inicial grava de uma vez o zero dos servos, a direção e a orientação da IMU na calibração do robotd. A imagem de fábrica usa modo de calibração; após sucesso, o auxiliar remove o drop-in de commissioning e reinicia o controlador em modo de movimento. Não basta o reinício: também exige `mode=motion`, `phase=control` e leitura de volta igual campo a campo de `calibration-status`; caso contrário, restaura arquivos e modo. Após reiniciar o Studio, o resultado anterior é recuperado de `last-result.json` no cartão do item 3.
+- **Controle:** pareamento pelo comando oficial `robotctl pad pair`, controle pelo navegador e teste de emergência.
+- **Controle remoto:** levantar, iniciar caminhada, sentar, habilidades, ações e sequências.
+- **Ajuste de movimento:** somente leitura. **Gerenciamento de modelos:** importar pacote de implantação, renomear, selecionar modelo, restaurar o integrado, configurar teclas de ação e remover modelos importados. Consulte [Importação de modelos](MODEL_IMPORT.md) para o formato.
+- **Logs:** página de logs e pacote de diagnóstico; no celular, ambos também ficam acessíveis em “Mais”.
+- **Conectar ao Wi-Fi:** quando o robô está em modo de ponto de acesso, o celular pode selecionar a rede doméstica e informar a senha. Depois da troca, a página localiza o novo endereço do robô e redireciona; as configurações também mostram a rede atual e permitem trocar de rede ou esquecer uma salva.
+- **Senha de login:** configurar, alterar ou remover em “Mais → Senha de login”. No modo de ponto de acesso sem senha, o cartão de Wi-Fi na visão geral orienta configurá-la primeiro.
 
-este projeto基于OficialCódigo aberto de  Microduck，开发 em 参考了Comunidade多个Código aberto项目 de 思路；代码由我们自己编写，开发 em 使用了 AI 辅助编程。
+Ainda não disponível nesta versão:
+
+- Alterar pela web os parâmetros de movimento (amplitude da caminhada, suavização, P/D e limites de torque).
+
+## Referências
+
+Este projeto se baseia no código aberto oficial do Microduck e considera ideias de vários projetos abertos da comunidade. O código foi escrito pelos autores deste repositório, com auxílio de ferramentas de IA durante o desenvolvimento.
 
 ## Licença
 
-Apache-2.0（跟仓库一致）。`web/vendor/` 下的 Preact、htm、three.js 都是 MIT，许可证在 `web/vendor/licenses/`；3D 模型的来源见 `web/model/NOTICE.md`；`deps/` 下各包的许可证在各自的 dist-info 里。
+Apache-2.0, conforme o restante do repositório. Preact, htm e three.js em `web/vendor/` usam MIT; as licenças estão em `web/vendor/licenses/`. A origem dos modelos 3D está em `web/model/NOTICE.md`. As licenças dos pacotes em `deps/` estão nos respectivos diretórios `dist-info`.
