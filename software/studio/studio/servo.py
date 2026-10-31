@@ -168,7 +168,7 @@ class ServoSession:
                     raise RuntimeError("主程序 robotd 还在用舵机总线。先停主程序（下一步做成网页上一键接管）")
                 self.bus = feetech.FeetechBus(self.port, self.baud)
                 where = f"{self.port} @ {self.baud}"
-            self.log.info(f"打开舵机总线：{where}", cat="总线", raw=f"by={by}")
+            self.log.info(f"打开舵机总线：{where}", cat="Barramento", raw=f"by={by}")
             found = [i for i in IDS if self.bus.ping(i) is not None]
             missing = [i for i in IDS if i not in found]
             self._read_static(found)
@@ -184,13 +184,13 @@ class ServoSession:
             self._thread.start()
             msg = f"舵机总线打开了：{len(found)}/15 颗有应答"
             if missing:
-                self.log.warn(msg, cat="总线", raw=f"没应答：{missing}", hint="看那颗的线有没有插好、有没有电")
+                self.log.warn(msg, cat="Barramento", raw=f"没应答：{missing}", hint="看那颗的线有没有插好、有没有电")
             else:
-                self.log.info(msg, cat="总线")
+                self.log.info(msg, cat="Barramento")
             return True, None
         except Exception as e:  # noqa: BLE001
             self.state, self.error = "error", f"{type(e).__name__}: {e}"
-            self.log.error("打不开舵机总线", cat="总线", raw=self.error,
+            self.log.error("打不开舵机总线", cat="Barramento", raw=self.error,
                            hint="鸭子上要先停主程序；电脑上要接好 USB 转 TTL；端口写对了吗")
             self._close_bus()
             return False, self.error
@@ -269,7 +269,7 @@ class ServoSession:
         try:
             got = self._read_torque()
         except Exception as e:  # noqa: BLE001
-            self.log.warn("当场读扭矩没读到", cat="总线", raw=f"{type(e).__name__}: {e}")
+            self.log.warn("当场读扭矩没读到", cat="Barramento", raw=f"{type(e).__name__}: {e}")
             return {i: None for i in IDS}
         return {i: (v[1][0] if v else None) for i, v in ((i, got.get(i)) for i in IDS)}
 
@@ -297,12 +297,12 @@ class ServoSession:
                 return "kept", {"why": "、".join(parts), "holding": len(on), "unknown": len(unk)}
             ok, reason = self.relax_all(why)
             if not ok:
-                self.log.warn("交还前卸力没全部确认", cat="安全", raw=reason, hint="主程序启动时还会再卸一次；不放心就关电源")
+                self.log.warn("交还前卸力没全部确认", cat="Segurança", raw=reason, hint="主程序启动时还会再卸一次；不放心就关电源")
             bad, _unknown = self._restore_baseline()
             if bad:
                 ids = "、".join(f"#{i}" for i in bad)
                 msg = f"{len(bad)} 颗加速度/速度没写回（{ids}）：没交还。舵机已经松了；再点一次「交还主程序」重试"
-                self.log.error("41/46 基线没写回：没交还", cat="安全", raw=ids, dedup=False, hint=msg)
+                self.log.error("41/46 基线没写回：没交还", cat="Segurança", raw=ids, dedup=False, hint=msg)
                 return "kept", {"why": msg, "holding": self.holding(), "unknown": self.unknown()}
             if before_close is not None:
                 before_close()          # 关总线前把「调舵机」的暂停一起清掉：外面看到 closed 时状态已经完整（审查 D1/D2 同一个时序要求）
@@ -328,12 +328,12 @@ class ServoSession:
                 return False, f"还有舵机操作没做完（{names}），等了 {wait_s:.0f} 秒：没交还。等它做完再点「交还主程序」"
             ok, reason = self.relax_all(why)
             if not ok:
-                self.log.warn("交还前卸力没全部确认", cat="安全", raw=reason, hint="主程序启动时还会再卸一次；不放心就关电源")
+                self.log.warn("交还前卸力没全部确认", cat="Segurança", raw=reason, hint="主程序启动时还会再卸一次；不放心就关电源")
             bad, unknown = self._restore_baseline()
             if bad:
                 ids = "、".join(f"#{i}" for i in bad)
                 msg = f"{len(bad)} 颗加速度/速度没写回（{ids}）：没交还。舵机已经松了；再点一次「交还主程序」重试"
-                self.log.error("41/46 基线没写回：没交还", cat="安全", raw=ids, dedup=False, hint=msg)
+                self.log.error("41/46 基线没写回：没交还", cat="Segurança", raw=ids, dedup=False, hint=msg)
                 return False, msg
             relax_bad = list((self.last_relax or {}).get("bad") or [])
             note_ids = sorted(set(relax_bad) | set(unknown), key=IDS.index)
@@ -359,7 +359,7 @@ class ServoSession:
         self._close_bus()
         self.ops = None
         if self.state != "closed":
-            self.log.info("关掉舵机总线", cat="总线", dedup=False)
+            self.log.info("关掉舵机总线", cat="Barramento", dedup=False)
         self.state = "closed"
         self.rows, self.torque = {}, {}
         self.restored = False
@@ -425,7 +425,7 @@ class ServoSession:
                 json.dump(data, f, ensure_ascii=False)
             os.replace(tmp, path)
         except OSError as e:
-            self.log.warn("41/46 基线没写进文件（这次进程里还记着）", cat="总线", step=path,
+            self.log.warn("41/46 基线没写进文件（这次进程里还记着）", cat="Barramento", step=path,
                           raw=f"{type(e).__name__}: {e}", hint="看看 state 目录满没满、有没有权限")
 
     def _record_baseline(self, found):
@@ -458,7 +458,7 @@ class ServoSession:
             try:
                 regs[sid] = {"41": self.bus.read_u8(sid, 41), "46": self.bus.read_u16(sid, 46)}
             except feetech.BusError as e:
-                self.log.warn(f"41/46 基线：#{sid} 读不到，跳过", cat="总线", step="读 41/46 基线",
+                self.log.warn(f"41/46 基线：#{sid} 读不到，跳过", cat="Barramento", step="读 41/46 基线",
                               raw=f"{type(e).__name__}: {e}", hint="这颗这次可能不在总线上")
                 continue
             added = True
@@ -474,7 +474,7 @@ class ServoSession:
         base = getattr(self, "baseline", None) or {}
         missing = [i for i in IDS if i not in base]
         if missing:
-            self.log.info(f"交接：{len(missing)} 颗没有 41/46 基线（这次开机接管时没应答），跳过", cat="总线",
+            self.log.info(f"交接：{len(missing)} 颗没有 41/46 基线（这次开机接管时没应答），跳过", cat="Barramento",
                           raw=f"没有基线：{missing}", dedup=False)
         bad, unknown = [], []
         for sid in IDS:
@@ -499,11 +499,11 @@ class ServoSession:
                 continue
             if outcome == "bad":
                 bad.append(sid)
-                self.log.error(f"41/46 基线写回没对上：#{sid}", cat="安全", step="回读 41/46",
+                self.log.error(f"41/46 基线写回没对上：#{sid}", cat="Segurança", step="回读 41/46",
                                raw=str(last), hint="回读不对就不交还，再点一次「交还主程序」")
             else:
                 unknown.append(sid)
-                self.log.warn(f"41/46 基线写回：#{sid} 没应答，没确认", cat="安全", step="写/回读 41/46",
+                self.log.warn(f"41/46 基线写回：#{sid} 没应答，没确认", cat="Segurança", step="写/回读 41/46",
                               raw=f"{type(last).__name__}: {last}", hint="主程序起来时也管不了它")
         return bad, unknown
 
@@ -539,7 +539,7 @@ class ServoSession:
                     self._read_torque()
                     next_torque = now + TORQUE_EVERY_S
             except Exception as e:  # noqa: BLE001 —— 串口拔了之类：记一次、等一会儿再试
-                self.log.error("读舵机出错", cat="总线", raw=f"{type(e).__name__}: {e}", dedup=True)
+                self.log.error("读舵机出错", cat="Barramento", raw=f"{type(e).__name__}: {e}", dedup=True)
                 time.sleep(0.5)
             n += 1
             if time.monotonic() - t_rate >= 1.0:
@@ -590,18 +590,18 @@ class ServoSession:
                     except feetech.BusError:
                         pass
         except Exception as e:  # noqa: BLE001
-            self.log.error("总线卸力出错", cat="安全", raw=f"{type(e).__name__}: {e}", exc=True,
+            self.log.error("总线卸力出错", cat="Segurança", raw=f"{type(e).__name__}: {e}", exc=True,
                            hint="用手捏住鸭子，关电源")
         finally:
             self.relaxing = False
         ms = round((time.monotonic() - t0) * 1000)
         self.last_relax = {"ok": not bad, "ms": ms, "bad": bad, "at": time.monotonic()}
         if bad:
-            self.log.error(f"总线卸力：{len(bad)} 颗没确认", cat="安全", step="sync_read 40 回读",
+            self.log.error(f"总线卸力：{len(bad)} 颗没确认", cat="Segurança", step="sync_read 40 回读",
                            raw=f"没确认：{bad}", ctx={"by": by, "ms": ms}, hint="可能是线松了没应答；关电源最保险", dedup=False)
             return False, f"{len(bad)} 颗没确认：{bad}"
         # 状态变化的日志每次都记（审查 D13：1 分钟去重会把第二次交还、第二次卸力吞掉，事后对不上）
-        self.log.info(f"总线卸力：15 颗全部确认（{ms} ms）", cat="安全", step="sync_read 40 回读", raw=f"by={by}", dedup=False)
+        self.log.info(f"总线卸力：15 颗全部确认（{ms} ms）", cat="Segurança", step="sync_read 40 回读", raw=f"by={by}", dedup=False)
         return True, None
 
     # ---- 给网页的 ----

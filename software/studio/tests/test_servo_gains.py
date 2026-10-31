@@ -86,7 +86,7 @@ class MainGainsTest(unittest.TestCase):
 
     def mg(self, tomls=None):
         return MainGains(params_path=str(self.params), robotd_tomls=tomls if tomls is not None else (str(self.toml),),
-                         log=lambda msg, cat="总线", level="info": self.warns.append((cat, level, msg)))
+                         log=lambda msg, cat="Barramento", level="info": self.warns.append((cat, level, msg)))
 
     def test_no_files_is_v167_default_5_0_1000(self):
         g = MainGains(params_path=str(self.dir / "nope" / "servo-test-parameters.json"), robotd_tomls=()).get()
@@ -261,7 +261,7 @@ class GainsOnBusTest(SimBase):
         s = self.open(params={"kp": 0, "kd": 0, "torque_limit": 681})       # 旧版允许 kp=0，fork 不收
         s.ops.handle({"op": "torque", "on": 1, "ids": [22]})
         self.assertEqual(run_gains(self.sim(s, 22)), (5, 0, 1000))
-        warns = s.log.recent(cats=["总线"], min_level="warn")
+        warns = s.log.recent(cats=["Barramento"], min_level="warn")
         self.assertTrue(any("不合法" in e["msg"] for e in warns), warns)
         self.assertIn("不合法", s.snapshot()["gains"]["warn"])
 
@@ -275,7 +275,7 @@ class GainsOnBusTest(SimBase):
         self.assertEqual(self.sim(s, 21).r[40], 1)
         self.assertIn("50（P）写 5 读回 32", r["bad"]["22"])
         self.assertIsNone(rec.first_torque_on(22))
-        errs = s.log.recent(cats=["总线"], min_level="error")
+        errs = s.log.recent(cats=["Barramento"], min_level="error")
         self.assertTrue(any("#22" in e["msg"] and "50（P）" in e["msg"] for e in errs), errs)
 
     def test_no_reply_refuses_torque(self):
@@ -315,7 +315,7 @@ class GainsOnBusTest(SimBase):
         g = s.snapshot()["gains"]
         self.assertEqual([(m["id"], m["addr"], m["value"]) for m in g["manual"]], [(20, 50, 10)])
         self.assertEqual(g["differ_on"], [20])
-        self.assertTrue(any("手动改了" in e["msg"] for e in s.log.recent(cats=["总线"], min_level="warn")))
+        self.assertTrue(any("手动改了" in e["msg"] for e in s.log.recent(cats=["Barramento"], min_level="warn")))
         s.ops.handle({"op": "torque", "on": 1, "ids": [20]})                  # 上着力再点保持：只核对，不改回
         self.assertEqual(self.sim(s, 20).r[50], 10)
         s.ops.handle({"op": "torque", "on": 0, "ids": [20]})
@@ -410,7 +410,7 @@ class EveryTorquePathTest(SimBase):
                 act(self, s)
                 self.assertEqual(sv.r[40], 0, f"{name}：P 写不进去，不该上力")
                 self.assertIsNone(rec.first_torque_on(sid), name)
-                errs = s.log.recent(cats=["总线"], min_level="error")
+                errs = s.log.recent(cats=["Barramento"], min_level="error")
                 self.assertTrue(any(f"#{sid}" in e["msg"] and "50（P）" in e["msg"] for e in errs), (name, errs))
 
     def test_all_torque_writes_go_through_gains(self):

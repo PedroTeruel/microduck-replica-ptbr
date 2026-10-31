@@ -429,7 +429,7 @@ class DriveMixin:
         self._driver = {"conn": conn, "by": by, "since": now, "seen": now}
         if d is not None and d["conn"] != conn and held is None:
             self.log.info(f"网页遥控换人：{by or '页面'}（原来的 {d['by'] or '页面'} {now - d['seen']:.0f} 秒没动静，已自动松开）",
-                          cat="安全", dedup=False)
+                          cat="Segurança", dedup=False)
             self._request_clear(d["conn"], "方向盘 6 秒没动静，换了人")
         return held or d
 
@@ -466,7 +466,7 @@ class DriveMixin:
                     q["life"] = seq
                 prev = self._take_lease(conn, by, now, force=bool(args.get("force")), reopen=True)
             if prev is not None and prev.get("conn") != conn:
-                self.log.warn(f"{by or '一个页面'}接管了遥控（原来是 {prev.get('by') or '另一个页面'}）", cat="安全",
+                self.log.warn(f"{by or '一个页面'}接管了遥控（原来是 {prev.get('by') or '另一个页面'}）", cat="Segurança",
                               hint="原来那个页面的摇杆、按键、动作马上就不管用了", dedup=False)
                 self._halt(f"被 {by or '另一个页面'} 接管了", prev.get("conn"))
             return {"driver": by}
@@ -497,7 +497,7 @@ class DriveMixin:
         # 页面说为什么离开（切到了别的页 / 滚出了手柄这一块 / 转到后台：总览重排审查 O1）。同一句 1 分钟内只记一次（日志去重），
         # 来回滚不会刷屏；原因是页面给的，截短了只用来记日志
         why = str(args.get("why") or "")[:40]
-        self.log.info(f"{by or '页面'}离开了手柄区：{why or '没说原因'}", cat="手柄")
+        self.log.info(f"{by or '页面'}离开了手柄区：{why or '没说原因'}", cat="Controle")
         return {}
 
     def mark_gone(self, conn):
@@ -535,7 +535,7 @@ class DriveMixin:
             with self._lk:
                 need = self._halt_after_gone.pop(conn, False)
         if need:
-            self.log.info(f"页面断了（{by or conn}）：网页遥控松开、发一次「停」", cat="安全", dedup=False)
+            self.log.info(f"页面断了（{by or conn}）：网页遥控松开、发一次「停」", cat="Segurança", dedup=False)
             self._halt("页面断了", conn)
         else:
             self._flush_clears(force=True)
@@ -567,11 +567,11 @@ class DriveMixin:
                 try:
                     self._notify_output("robot.move", {"vx": 0.0, "vy": 0.0, "vyaw": 0.0})
                 except (Unreachable, Timeout) as e:
-                    self.log.warn("「停」没发出去", cat="安全", step="robot.move", raw=str(e),
+                    self.log.warn("「停」没发出去", cat="Segurança", step="robot.move", raw=str(e),
                                   hint="鸭子 0.5 秒收不到指令也会自己停（robotd 的 deadman）")
         self._flush_clears(force=True)
         if was:
-            self.log.info(f"网页遥控松开了（{why}）", cat="手柄")
+            self.log.info(f"网页遥控松开了（{why}）", cat="Controle")
 
     # ================= 头 / 身体的清理（三 V1）、模式 =================
 
@@ -596,7 +596,7 @@ class DriveMixin:
                         m = self._modes.pop(c)
                         self._mode_exit[c] = {"why": why, "at": now}
                         if say:
-                            self.log.info(f"退出{MODE_CN[m['mode']]}（{why}）", cat="手柄", dedup=False)
+                            self.log.info(f"退出{MODE_CN[m['mode']]}（{why}）", cat="Controle", dedup=False)
                 for c, st in self._keys.items():
                     if conn is None or c == conn:
                         st["end"] = st.get("end") or why
@@ -636,14 +636,14 @@ class DriveMixin:
                 try:
                     self._notify_output(method, dict(params))
                     self.log.info(("头回正" if kind == "head" else "身体回到标称、退出身体模式") + f"（{req['why']}）",
-                                  cat="手柄", raw=f"{method} {json.dumps(params)}", dedup=False)
+                                  cat="Controle", raw=f"{method} {json.dumps(params)}", dedup=False)
                 except (Unreachable, Timeout) as e:
                     with self._lk:
                         if self._latch[kind] is None:
                             self._latch[kind] = lat                 # 还算网页置着：过 1 秒再试，最多 3 次
                         if req["tries"] < 2:
                             self._clears.append(dict(req, due=self.clock() + 1.0, tries=req["tries"] + 1))
-                    self.log.warn("头 / 身体没能回正", cat="安全", step=method, raw=str(e),
+                    self.log.warn("头 / 身体没能回正", cat="Segurança", step=method, raw=str(e),
                                   hint=("1 秒后再试" if req["tries"] < 2 else "试了 3 次都没发出去：") +
                                   "身体模式留着的话鸭子推不走，按一下手柄 B 两次、或者卸力再站起来")
 
@@ -705,7 +705,7 @@ class DriveMixin:
                 stop_first = self._web_driving and d is not None and d["conn"] == conn
             q["stop"] = max(q["stop"], q["hi"])            # 换模式之前的摇杆帧作废
         self.log.info(f"网页手柄 {'Y' if 'head' in (mode, cur) else 'B'} → {MODE_CN[mode]}（{by or '页面'}）"
-                      + (f"：{note}" if note else ""), cat="手柄", dedup=False)
+                      + (f"：{note}" if note else ""), cat="Controle", dedup=False)
         if stop_first:
             self._stop_move({}, conn, by)                  # padd 在头 / 身体模式每拍发 move 0（padd:1427-1448）
         self._flush_clears(force=True)
@@ -840,7 +840,7 @@ class DriveMixin:
         if attached:
             if not self._pad_said:
                 self._pad_said = True
-                self.log.info("实体手柄连着，网页摇杆只跟着它动、不发指令", cat="手柄")
+                self.log.info("实体手柄连着，网页摇杆只跟着它动、不发指令", cat="Controle")
             raise Refused("实体手柄连着：网页摇杆现在只跟着它动、不发指令（padd 哪怕没人碰也每 0.1 秒发一次「停」，"
                           "网页的会被盖掉）。要用网页遥控，先把手柄关掉")
         self._pad_said = False
@@ -923,7 +923,7 @@ class DriveMixin:
             self._web_driving = any((vx, vy, vyaw))
             self.virtual.update(last=[vx, vy, vyaw], at=self.clock())
         if start:
-            self.log.info(f"网页遥控开始开（{by or '页面'}，robot.move）", cat="手柄")
+            self.log.info(f"网页遥控开始开（{by or '页面'}，robot.move）", cat="Controle")
         return {"sent": [vx, vy, vyaw], "merged": r["merged"]}
 
     def _sticks(self, args, conn=None, by=None):
@@ -1017,7 +1017,7 @@ class DriveMixin:
                     self._web_driving = False
                     self.virtual.update(last=[0.0, 0.0, 0.0], at=self.clock())
         if was:
-            self.log.info("网页遥控松开了", cat="手柄")
+            self.log.info("网页遥控松开了", cat="Controle")
         return {"sent": send, **({"centered": True} if center is not None else {})}
 
     # ================= 按住的键：LT / RT / X（三 V4） =================
@@ -1077,9 +1077,9 @@ class DriveMixin:
             if keep:
                 self._touch_lease(conn, now)
         for k in sorted(pressed):
-            self.log.info(f"网页手柄 {KEY_CN[k]} 按下（{by or '页面'}）", cat="手柄", dedup=False)
+            self.log.info(f"网页手柄 {KEY_CN[k]} 按下（{by or '页面'}）", cat="Controle", dedup=False)
         for k in sorted(released):
-            self.log.info(f"网页手柄 {KEY_CN[k]} 松开了", cat="手柄", dedup=False)
+            self.log.info(f"网页手柄 {KEY_CN[k]} 松开了", cat="Controle", dedup=False)
         self._tick_evt.set()
         return {"held": sorted(keep), "ended": ended}
 
@@ -1153,9 +1153,9 @@ class DriveMixin:
         row = mv["keys"][key]
         name = KEY_CN[key]
         if not row["ok"]:
-            self.log.info(f"网页手柄 {name}：不能按（{row['why']}）", cat="手柄")
+            self.log.info(f"网页手柄 {name}：不能按（{row['why']}）", cat="Controle")
             raise Refused(row["why"])
-        self.log.info(f"网页手柄 {name} → {row['does']}（{by or '页面'}）", cat="手柄", dedup=False)
+        self.log.info(f"网页手柄 {name} → {row['does']}（{by or '页面'}）", cat="Controle", dedup=False)
         label = f"网页手柄 {name} → {row['does']}"
         if row["op"] == "skill":
             with self._lk:
@@ -1185,12 +1185,12 @@ class DriveMixin:
             st = self._motion_view(now)["start"]
         expect = args.get("expect")
         if expect is not None and expect != st["op"]:
-            self.log.info(f"网页手柄 Start：页面以为是「{expect}」，后端判的是「{st['label']}」，没发", cat="手柄")
+            self.log.info(f"网页手柄 Start：页面以为是「{expect}」，后端判的是「{st['label']}」，没发", cat="Controle")
             raise Refused(f"状态刚变了，再按一次（现在按 Start 会「{st['label']}」）")
         if not st["ok"]:
-            self.log.info(f"网页手柄 Start：不能按（{st['why']}）", cat="手柄")
+            self.log.info(f"网页手柄 Start：不能按（{st['why']}）", cat="Controle")
             raise Refused(st["why"])
-        self.log.info(f"网页手柄 Start → {st['label']}（{by or '页面'}）", cat="手柄", dedup=False)
+        self.log.info(f"网页手柄 Start → {st['label']}（{by or '页面'}）", cat="Controle", dedup=False)
         return self._motion_cmd(st["op"], {}, conn, by, label=f"网页手柄 Start → {st['label']}")
 
     def _reboot(self, args, conn, by):
@@ -1204,11 +1204,11 @@ class DriveMixin:
         row = mv["reboot"]
         what = "网页手柄 十字右 → 重启全部舵机"
         if not row["ok"]:
-            self.log.info(f"网页手柄 十字右：不能按（{row['why']}）", cat="手柄")
+            self.log.info(f"网页手柄 十字右：不能按（{row['why']}）", cat="Controle")
             with self._lk:
                 self._last_cmd = {"what": what, "by": by, "ok": False, "reason": row["why"], "at": now}
             raise Refused(row["why"])
-        self.log.info(f"{what}（{by or '页面'}）", cat="手柄", dedup=False)
+        self.log.info(f"{what}（{by or '页面'}）", cat="Controle", dedup=False)
         try:
             r = self._call(what, "robot.rebootMotors", {"ids": []}, by, {"posture": mv["posture"]})
         except Refused as e:
@@ -1248,9 +1248,9 @@ class DriveMixin:
             else:
                 self._cmd_busy = True
         if why is not None:
-            self.log.info(f"网页手柄 十字上：不能切（{why}）", cat="手柄")
+            self.log.info(f"网页手柄 十字上：不能切（{why}）", cat="Controle")
             raise Refused(why)
-        self.log.info(f"{what}（{by or '页面'}）", cat="手柄", dedup=False)
+        self.log.info(f"{what}（{by or '页面'}）", cat="Controle", dedup=False)
         try:
             r = self._call(what, "robot.setMode", {"mode": target}, by, {"posture": mv["posture"], "mode": row["current"]})
         except Refused as e:
@@ -1281,7 +1281,7 @@ class DriveMixin:
                 key = f"{type(e).__name__}: {e}"[:200]
                 if key not in self._tick_said:
                     self._tick_said.add(key)
-                    self.log.error("手柄页的后台线程出错（按住的键、看门狗）", cat="手柄", raw=key, exc=True,
+                    self.log.error("手柄页的后台线程出错（按住的键、看门狗）", cat="Controle", raw=key, exc=True,
                                    hint="这是 Studio 的问题，导出诊断包发出来；线程会接着跑")
             with self._lk:
                 busy = self._tick_work()
@@ -1332,7 +1332,7 @@ class DriveMixin:
                             self._pose_reset = "pending" if self._pose_reset_tries < 3 else "failed"
                     if method not in self._tick_said:
                         self._tick_said.add(method)
-                        self.log.warn(f"网页手柄的 {method} 没发出去", cat="手柄", step=method, raw=str(e),
+                        self.log.warn(f"网页手柄的 {method} 没发出去", cat="Controle", step=method, raw=str(e),
                                       hint="主程序 robotd 不在？嘴、头没收到也不危险：robotd 自己不动")
                     continue
                 self._tick_said.discard(method)
@@ -1340,7 +1340,7 @@ class DriveMixin:
                     with self._lk:
                         self._pose_reset = "done"
                     self.log.info("Studio 连上主程序：发了一次 robot.pose {\"active\": false}（清掉上一次可能留下的身体模式）",
-                                  cat="手柄")
+                                  cat="Controle")
         for cat, msg in logs:
             self.log.write(msg, cat=cat, level="info", dedup=False)
 
@@ -1868,7 +1868,7 @@ class DriveMixin:
                  "stop": threading.Event(), "why": None, "step": 0, "steps": list(combo["steps"]),
                  "motion_epoch": self.motion_studio.epoch}
             self._action = a
-        self.log.info(f"开始做动作「{combo['name']}」（{by or '页面'}）", cat="手柄", raw=C.describe(combo["steps"]), dedup=False)
+        self.log.info(f"开始做动作「{combo['name']}」（{by or '页面'}）", cat="Controle", raw=C.describe(combo["steps"]), dedup=False)
         threading.Thread(target=self._run_action, args=(a,), name="pad-action", daemon=True).start()
         return {"started": cid, "seconds": round(C.duration(combo["steps"]), 1)}
 
@@ -1986,7 +1986,7 @@ class DriveMixin:
             result, level = f"没做完：发不出去（{e}）", "warn"
         except Exception as e:  # noqa: BLE001 —— 不该发生；发生了也要回正、合嘴、说清楚
             result, level = f"Studio 出错：{type(e).__name__}: {e}", "error"
-            self.log.error(f"动作「{a['name']}」出错", cat="手柄", raw=f"{type(e).__name__}: {e}", exc=True,
+            self.log.error(f"动作「{a['name']}」出错", cat="Controle", raw=f"{type(e).__name__}: {e}", exc=True,
                            hint="这是 Studio 的问题，导出诊断包发出来")
         finally:
             # 头的目标没有过期、嘴不带时间戳：不回正、不合上就会一直留着（pad_combo.py 文件头）。
@@ -1997,14 +1997,14 @@ class DriveMixin:
                     try:
                         self._notify_quiet(method, params, action=a, cleanup=True)
                     except (Unreachable, Timeout) as e:
-                        self.log.warn("动作结束时没能回正 / 合嘴", cat="手柄", step=method, raw=str(e),
+                        self.log.warn("动作结束时没能回正 / 合嘴", cat="Controle", step=method, raw=str(e),
                                       hint="头可能还歪着、嘴可能还张着：再按一次那个动作，或者让它坐下再站起来")
             with self._lk:
                 if self._action is a:
                     self._action = None
                 self._last_action = {"id": a["id"], "name": a["name"], "by": a["by"], "result": result,
                                      "ok": result == "做完了", "at": self.clock()}
-            cat = "安全" if ("卸力" in result or "没说" in result or "软了" in result) else "手柄"
+            cat = "Segurança" if ("卸力" in result or "没说" in result or "软了" in result) else "手柄"
             self.log.write(f"动作「{a['name']}」{result}", cat=cat, level=level, step=f"第 {a['step'] + 1}/{len(steps)} 步",
                            dedup=False)
 
@@ -2021,7 +2021,7 @@ class DriveMixin:
         path = C.save_user_combos(self.state_dir, new)
         with self._lk:
             self._user_combos = new
-        self.log.info(f"存了组合动作「{combo['name']}」", cat="手柄", step=path, raw=C.describe(combo["steps"]))
+        self.log.info(f"存了组合动作「{combo['name']}」", cat="Controle", step=path, raw=C.describe(combo["steps"]))
         return {"saved": combo["id"]}
 
     def _combo_delete(self, args):
@@ -2033,5 +2033,5 @@ class DriveMixin:
         C.save_user_combos(self.state_dir, new)
         with self._lk:
             self._user_combos = new
-        self.log.info(f"删了组合动作 {cid}", cat="手柄")
+        self.log.info(f"删了组合动作 {cid}", cat="Controle")
         return {"deleted": cid}

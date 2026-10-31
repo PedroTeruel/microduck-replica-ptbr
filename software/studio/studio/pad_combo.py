@@ -259,7 +259,7 @@ def load_user_combos(state_dir, log=None):
         return []
     except (OSError, ValueError) as e:
         if log:
-            log.warn("自己编的组合动作读不出来，先不用", cat="手柄", step=path, raw=f"{type(e).__name__}: {e}",
+            log.warn("自己编的组合动作读不出来，先不用", cat="Controle", step=path, raw=f"{type(e).__name__}: {e}",
                      hint="文件坏了的话删掉它，重新编")
         return []
     builtin = {c["id"] for c in BUILTIN_COMBOS + ACTIONS}
@@ -269,7 +269,7 @@ def load_user_combos(state_dir, log=None):
             out.append(clean_combo(raw, builtin))
         except Refused as e:
             if log:
-                log.warn("跳过一条不对的组合动作", cat="手柄", step=path, raw=f"{raw!r:.200}：{e}")
+                log.warn("跳过一条不对的组合动作", cat="Controle", step=path, raw=f"{raw!r:.200}：{e}")
     return out[:MAX_USER_COMBOS]
 
 

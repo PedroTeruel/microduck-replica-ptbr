@@ -949,7 +949,7 @@ class CommitService:
             _write_json(_path(self.state_dir, COMMIT_LAST), row)
             self._mt["commit-last"] = self._sig(_path(self.state_dir, COMMIT_LAST))
         except OSError as e:
-            self.log.warn("写成功记录写不下来（不影响主程序里的标定）", cat="校准", raw=f"{type(e).__name__}: {e}")
+            self.log.warn("写成功记录写不下来（不影响主程序里的标定）", cat="Calibração", raw=f"{type(e).__name__}: {e}")
 
     @staticmethod
     def _job_from_result(row):
@@ -989,7 +989,7 @@ class CommitService:
             if payload.get("imu_default"):
                 src = payload["imu"]["source"]
                 self.log.info(f"IMU 按默认装法写（{CHIP_CN.get(src, src)}：{payload['imu_default']}）：第 2 步标了已完成 / 跳过，"
-                              "主程序里方向没确认、IMU 页也没校过", cat="校准", raw=json.dumps(payload["imu"]),
+                              "主程序里方向没确认、IMU 页也没校过", cat="Calibração", raw=json.dumps(payload["imu"]),
                               hint="装得不一样的站起来会往一边倒：写完在 IMU 页站着校一次，再写一次主程序")
             if self.simulate:
                 cal, _ = self._calibration(rd)
@@ -1003,12 +1003,12 @@ class CommitService:
                 done = time.time()
                 self.job.update({"phase": "done", "ok": True, "reason": "电脑演示：写好了（没有真的改文件）",
                                  "toml": toml, "finished": done})
-                self.log.info("写进主程序（电脑演示，没有真的写）", cat="校准", raw=toml[:2000])
+                self.log.info("写进主程序（电脑演示，没有真的写）", cat="Calibração", raw=toml[:2000])
                 return {"ok": True, "reason": self.job["reason"], "detail": {"simulate": True}}
             if not helper.available():
                 reason = "电脑上不能写主程序"
                 self.job.update({"phase": "failed", "ok": False, "reason": reason, "finished": time.time()})
-                self.log.warn(reason, cat="校准", hint="写进主程序要在鸭子上做（装 deploy 里的小助手）")
+                self.log.warn(reason, cat="Calibração", hint="写进主程序要在鸭子上做（装 deploy 里的小助手）")
                 return {"ok": False, "reason": reason, "detail": {"rolled_back": False}}
 
             def on_line(obj):
@@ -1031,7 +1031,7 @@ class CommitService:
                 else:
                     reason = "等了 180 秒小助手还没回最终结果；它可能还在独立单元里跑。过一会儿看日志页或重新打开 Studio"
                     self.job.update({"phase": "failed", "ok": False, "reason": reason, "finished": time.time()})
-                    self.log.warn(reason, cat="校准", hint="小助手的结果会写进 /run/microduck-helper/last-result.json")
+                    self.log.warn(reason, cat="Calibração", hint="小助手的结果会写进 /run/microduck-helper/last-result.json")
                     return {"ok": False, "reason": reason, "detail": {"rolled_back": False}}
             if ok:
                 clear_pending(self.state_dir)
@@ -1040,26 +1040,26 @@ class CommitService:
                 reason = "写进主程序了，主程序进了运动模式"
                 self.job.update({"phase": "done", "ok": True, "reason": reason, "finished": time.time(),
                                  "from_last_result": from_last, "detail": detail or {}})
-                self.log.info(reason, cat="校准", raw=json.dumps(detail or {}, ensure_ascii=False)[:2000])
+                self.log.info(reason, cat="Calibração", raw=json.dumps(detail or {}, ensure_ascii=False)[:2000])
                 return {"ok": True, "reason": reason, "detail": detail or {}}
             reason = helper.friendly(result, detail, "calib-commit")
             rolled = bool((detail or {}).get("rolled_back"))
             self.job.update({"phase": "failed", "ok": False, "reason": reason, "rolled_back": rolled,
                              "finished": time.time(), "from_last_result": from_last, "detail": detail or {}})
-            self.log.error(f"写进主程序没成：{reason}", cat="校准", raw=json.dumps(detail or {}, ensure_ascii=False)[:4000],
+            self.log.error(f"写进主程序没成：{reason}", cat="Calibração", raw=json.dumps(detail or {}, ensure_ascii=False)[:4000],
                            hint="看日志里小助手附的主程序最后几行；原来的文件已经换回去了" if rolled else "看日志里小助手的话")
             return {"ok": False, "reason": reason, "detail": detail or {}}
         except (Refused, CalibError) as e:
             reason = str(e)
             self.job = {"phase": "failed", "msg": reason, "ok": False, "reason": reason,
                         "started": started_wall, "finished": time.time()}
-            self.log.warn(f"写进主程序没开始：{reason}", cat="校准")
+            self.log.warn(f"写进主程序没开始：{reason}", cat="Calibração")
             return {"ok": False, "reason": reason, "detail": {"rolled_back": False}}
         except Exception as e:  # noqa: BLE001
             reason = f"Studio 出错：{type(e).__name__}: {e}"
             self.job = {"phase": "failed", "msg": reason, "ok": False, "reason": reason,
                         "started": started_wall, "finished": time.time()}
-            self.log.error("写进主程序时 Studio 出错", cat="校准", raw=reason, exc=True,
+            self.log.error("写进主程序时 Studio 出错", cat="Calibração", raw=reason, exc=True,
                            hint="原来的文件没动；导出诊断包发出来")
             return {"ok": False, "reason": reason, "detail": {"rolled_back": False}}
         finally:

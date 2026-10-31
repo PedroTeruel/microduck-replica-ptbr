@@ -26,7 +26,7 @@ class FakeLog:
     def __init__(self):
         self.lines = []
 
-    def write(self, msg, cat="系统", level="info", **kw):
+    def write(self, msg, cat="Sistema", level="info", **kw):
         self.lines.append((level, cat, msg, kw))
 
     def warn(self, msg, **kw):

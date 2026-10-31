@@ -187,7 +187,7 @@ class Net:
                 await asyncio.to_thread(self._read_once)
             except Exception as e:  # noqa: BLE001 —— 读状态文件出错不能让整个 Studio 停
                 if self.log:
-                    self.log.warn("读配网状态文件时出错", cat="网络", step=str(self.state_file),
+                    self.log.warn("读配网状态文件时出错", cat="Rede", step=str(self.state_file),
                                   raw=f"{type(e).__name__}: {e}", dedup=True)
             await asyncio.sleep(READ_EVERY_S)
 
@@ -200,7 +200,7 @@ class Net:
             self.status, self.status_at = None, None
             self._bad_state_logged = False
             if had and self.log:
-                self.log.info("配网状态文件不在了：WiFi 那一块先隐藏，别的照常", cat="网络")
+                self.log.info("配网状态文件不在了：WiFi 那一块先隐藏，别的照常", cat="Rede")
             return
         except OSError as e:
             self._state_bad(f"读不了 {self.state_file}：{type(e).__name__}: {e}")
@@ -217,7 +217,7 @@ class Net:
         self.info, self.info_at = data, time.monotonic()
         self._bad_state_logged = False
         if was_bad and self.log:
-            self.log.info("配网状态文件又读到了", cat="网络")
+            self.log.info("配网状态文件又读到了", cat="Rede")
 
     def _state_bad(self, why):
         self.info, self.info_at = None, None
@@ -225,7 +225,7 @@ class Net:
         if self._bad_state_logged or self.log is None:
             return
         self._bad_state_logged = True
-        self.log.warn("配网状态文件读不懂：WiFi 那一块先隐藏", cat="网络", step=str(self.state_file),
+        self.log.warn("配网状态文件读不懂：WiFi 那一块先隐藏", cat="Rede", step=str(self.state_file),
                       raw=why, hint="这是 netcheck 写的；它下次会重写。别的功能照常，不用管")
 
     async def _status_loop(self):
@@ -237,13 +237,13 @@ class Net:
                         raise RpcError("net.status", None, f"回的不是对象（{type(r).__name__}）")
                     self.status, self.status_at = r, time.monotonic()
                     if self._status_error_logged and self.log:
-                        self.log.info("WiFi 状态恢复了", cat="网络")
+                        self.log.info("WiFi 状态恢复了", cat="Rede")
                     self._status_error_logged = False
                 except (Unreachable, Timeout, RpcError) as e:
                     self.status, self.status_at = None, None
                     if not self._status_error_logged and self.log:
                         self._status_error_logged = True
-                        self.log.warn("读不到 WiFi 状态", cat="网络", step="configd net.status", raw=str(e),
+                        self.log.warn("读不到 WiFi 状态", cat="Rede", step="configd net.status", raw=str(e),
                                       hint="configd 没在跑？不影响站和走，只是 WiFi 那一块显示不知道")
             else:
                 self.status, self.status_at = None, None
@@ -323,7 +323,7 @@ class Net:
             cached = self.info.get("scan")
             if isinstance(cached, list):
                 if self.log:
-                    self.log.info("热点模式下用开热点前的扫描结果", cat="网络", raw=error or "configd 回的列表是空的",
+                    self.log.info("热点模式下用开热点前的扫描结果", cat="Rede", raw=error or "configd 回的列表是空的",
                                   dedup=True)
                 return {"networks": [n for n in cached if isinstance(n, dict) and not own_hotspot(n, own)], "cached": True,
                         "scan_at": self.info.get("scan_at")}
@@ -349,12 +349,12 @@ class Net:
             if self.mode() == "hotspot":
                 if self.dev_mode:
                     if self.log:
-                        self.log.info("电脑上开发（--dev-autologin）：不关热点，直接连 WiFi", cat="网络",
+                        self.log.info("电脑上开发（--dev-autologin）：不关热点，直接连 WiFi", cat="Rede",
                                       raw=f"by={by}", dedup=False)
                 else:
                     if not helper.available(refresh=True):
                         if self.log:
-                            self.log.warn("连 WiFi 前发现小助手不在", cat="网络", step="wifi-hotspot-down",
+                            self.log.warn("连 WiFi 前发现小助手不在", cat="Rede", step="wifi-hotspot-down",
                                           hint="先在鸭子上运行 deploy/install.sh")
                         raise Refused("还没装小助手：先在鸭子上运行 deploy/install.sh，Studio 才能关热点去连 WiFi")
                     hotspot_down_tried = True
@@ -400,12 +400,12 @@ class Net:
         except Refused as e:
             outcome = {"ok": False, "reason": "other", "detail": _scrub(str(e), psk), "ip4": None}
             if self.log:
-                self.log.warn("连 WiFi 没开始", cat="网络", step="关热点", raw=_scrub(str(e), psk),
+                self.log.warn("连 WiFi 没开始", cat="Rede", step="关热点", raw=_scrub(str(e), psk),
                               hint="看小助手装没装、版本对不对")
         except Exception as e:  # noqa: BLE001 —— Studio 自己的 bug 也要写 last-try
             outcome = {"ok": False, "reason": "other", "detail": _scrub(f"{type(e).__name__}: {e}", psk), "ip4": None}
             if self.log:
-                self.log.error("连 WiFi 时 Studio 出错", cat="网络", raw=_scrub(f"{type(e).__name__}: {e}", psk),
+                self.log.error("连 WiFi 时 Studio 出错", cat="Rede", raw=_scrub(f"{type(e).__name__}: {e}", psk),
                                exc=True, hint="这是 Studio 的问题，导出诊断包发出来")
         finally:
             rec = {"ssid": ssid, "at": time.time(), "ok": bool(outcome["ok"]),
@@ -514,6 +514,6 @@ class Net:
             os.replace(tmp, self.last_try_path)
         except OSError as e:
             if self.log:
-                self.log.warn("上次连 WiFi 的结果没写进去", cat="网络", step=str(self.last_try_path),
+                self.log.warn("上次连 WiFi 的结果没写进去", cat="Rede", step=str(self.last_try_path),
                               raw=f"{type(e).__name__}: {e}",
                               hint="页面重新连上时看不到上次失败的原因；看看 state 目录满没满、有没有权限")

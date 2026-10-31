@@ -1,25 +1,21 @@
-"""Studio 的日志：分类、分级、落盘，出错写明卡在哪一步，帮人定位问题。
+"""Logs do Studio: categorias, níveis e gravação em arquivo; erros incluem a etapa em que ocorreram para facilitar o diagnóstico.
 
-每条日志去三个地方：
-- 文件 `logs/studio-日期.log`：一行一条，时间到毫秒带时区，出错带 traceback 和现场。
-  出问题时这个文件就是现场：导出诊断包、发群里、或者让 Claude 直接读，都从它开始；
-- 内存里最近 500 条：页面打开时先拿这些，之后实时推；
-- 标准输出：systemd 收进 journal（`journalctl -u microduck-studio`）。
+Cada registro vai para três destinos:
+- Arquivo `logs/studio-data.log`: uma linha por registro, horário com milissegundos e fuso; erros incluem traceback e contexto.
+  Esse arquivo reúne as evidências do problema. Comece por ele ao exportar um pacote de diagnóstico, compartilhar registros ou pedir análise.
+- Memória: os 500 registros mais recentes, enviados ao abrir a página e depois em tempo real.
+- Saída padrão: o systemd encaminha para o journal (`journalctl -u microduck-studio`).
 
-一条错误怎么写才算清楚：
-    log.error("站起来没成功", cat="robotd", step="robot.init",
-              raw="bus not ready: waiting_for_bus", hint="鸭子主程序还在启动，等 10 秒再试",
+Exemplo de registro de erro:
+    log.error("Falha ao ficar em pé", cat="robotd", step="robot.init",
+              raw="bus not ready: waiting_for_bus", hint="O programa principal ainda está iniciando; aguarde 10 s",
               ctx={"mode": "motion", "phase": "waiting_for_bus"})
-文件里是一行：…[robotd][错误] 站起来没成功 · 卡在：robot.init · 原文：… · 建议：… · 现场：{…}
-页面上显示「站起来没成功 · 卡在 robot.init」，展开能看到原文、建议和现场。
+No arquivo, a linha informa a etapa, o erro original, a sugestão e o contexto. Na página, aparece a mensagem resumida; expandir mostra os detalhes.
 
-日志按「每条命令记请求、回执和耗时」来做，代码是自己写的；
-出错时把当时的状态和 robotd 的系统日志一起留下；密码之类的自动打码；时间到毫秒。
-一个 TOF 连接反复断连能刷 8700 多行，把有用的几条淹没，所以这里同样的事
-1 分钟内只记一次，后面合并计数。
+O log registra solicitação, resposta e duração de cada comando; em caso de erro, inclui o estado e o log do sistema robotd. Senhas e outros segredos são ocultados; horários têm precisão de milissegundos.
+Uma conexão TOF que oscila repetidamente pode gerar mais de 8.700 linhas e ocultar os registros úteis; por isso, ocorrências iguais são registradas uma vez por minuto, com as repetições agrupadas.
 
-SD 卡寿命：只留最近 14 天、总共不超过 50 MB；调试级别默认不落盘；写文件在后台线程，
-不卡事件循环。
+Para preservar o cartão SD, mantém somente os últimos 14 dias e no máximo 50 MB. Registros de depuração não são gravados por padrão; a escrita em arquivo ocorre em uma thread em segundo plano e não bloqueia o loop de eventos.
 """
 import asyncio
 import json
@@ -32,23 +28,23 @@ import traceback
 from collections import deque
 from pathlib import Path
 
-CATS = ["系统", "连接", "网络", "robotd", "命令", "安全", "总线", "校准", "IMU", "手柄", "页面", "电池", "调参"]
+CATS = ["Sistema", "Conexão", "Rede", "robotd", "Comando", "Segurança", "Barramento", "Calibração", "IMU", "Controle", "Página", "Bateria", "Ajuste", "Sensores", "Modelos"]
 LEVELS = ["debug", "info", "warn", "error"]
-_TAG = {"debug": "[调试]", "info": "", "warn": "[警告]", "error": "[错误]"}
+_TAG = {"debug": "[Depuração]", "info": "", "warn": "[Aviso]", "error": "[Erro]"}
 
 KEEP_DAYS = 14
 MAX_TOTAL_BYTES = 50 * 1024 * 1024
-MAX_FILE_BYTES = 20 * 1024 * 1024    # 单个文件（一天）超过这么大，只再记警告和错误
+MAX_FILE_BYTES = 20 * 1024 * 1024    # Acima deste limite por dia, grava somente avisos e erros.
 MAX_SECRETS = 64
 RING = 500
 DEDUP_WINDOW_S = 60
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
-# 按键名打码：这些键的值永远不会进日志（家里 WiFi 的 psk 就是走这条）
+# Oculta valores associados a estas chaves (inclui a senha de Wi-Fi psk).
 SECRET_KEYS = frozenset({"psk", "password", "passwd", "secret", "token", "authorization"})
 
 
 def redact(value):
-    """把字典里敏感键的值换成「[oculto]」；嵌套的字典、列表也照做（原文是 JSON 的也走这里）。"""
+    """Substitui por [oculto] os valores de chaves sensíveis, inclusive em dicionários e listas aninhados."""
     if isinstance(value, dict):
         return {k: ("[oculto]" if isinstance(k, str) and k.lower() in SECRET_KEYS else redact(v))
                 for k, v in value.items()}
@@ -76,32 +72,32 @@ class Log:
         self._day = None
         self._day_bytes = 0
         self._capped = False
-        self._listeners = set()      # (loop, queue)：页面的 WebSocket 订阅
+        self._listeners = set()      # (loop, queue): assinaturas WebSocket da página.
         self._secrets = set()
-        self._seen = {}              # (cat, level, msg) -> [第一次的时间, 之后又来了几次]
+        self._seen = {}              # (cat, level, msg) -> [horário da primeira ocorrência, número de repetições].
         self.counts = {lv: 0 for lv in LEVELS}
-        self.write_errors = 0        # 写日志本身出错的次数（诊断包里能看到）
+        self.write_errors = 0        # Quantidade de falhas ao gravar logs (visível no pacote de diagnóstico).
         self._q = queue.SimpleQueue() if background else None
         if background:
             threading.Thread(target=self._writer, name="studio-log", daemon=True).start()
 
-    # ---- 写 ----
+    # ---- Gravação ----
 
     def hide(self, value):
-        """以后日志里出现这个字符串，一律换成「[oculto]」（密码、令牌）。"""
+        """Oculta este valor em todos os registros futuros (por exemplo, senha ou token)."""
         if value and len(value) >= 4:
             with self._lock:
                 if len(self._secrets) < MAX_SECRETS:
                     self._secrets.add(str(value))
 
-    def write(self, msg, cat="系统", level="info", step=None, raw=None, hint=None, ctx=None,
+    def write(self, msg, cat="Sistema", level="info", step=None, raw=None, hint=None, ctx=None,
               exc=False, dedup=True):
-        """cat 见 CATS；level 见 LEVELS。
-        step：卡在哪一步（接口名、流程的第几步）；raw：原始报错或返回原文；hint：建议怎么办；
-        ctx：现场（当时的模式、姿势、电量……，字典）；exc=True 把当前异常的 traceback 写进文件；
-        dedup=False：每次都要记（比如命令的请求和回执）。
+        """cat está em CATS; level está em LEVELS.
+        step: etapa em que parou (nome da interface ou número da etapa); raw: erro original ou resposta; hint: sugestão;
+        ctx: contexto (modo, postura, bateria etc., em um dicionário); exc=True inclui o traceback atual no arquivo;
+        dedup=False: registra cada ocorrência (por exemplo, solicitação e resposta de um comando).
 
-        **永远不抛异常**：卸力在发出之前要先记一行，记日志出错不能把卸力挡住（复核 #1）。"""
+        **Nunca propaga exceções**: registra antes de enviar o comando de desativação do torque; falha no log não pode bloqueá-lo (revisão #1)."""
         try:
             return self._write(msg, cat, level, step, raw, hint, ctx, exc, dedup)
         except Exception:  # noqa: BLE001
@@ -123,7 +119,7 @@ class Log:
                     seen[1] += 1
                     return None
                 if seen and seen[1]:
-                    self._emit_locked(now, cat, level, f"（上一条「{msg}」在 1 分钟内又出现了 {seen[1]} 次，已合并）")
+                    self._emit_locked(now, cat, level, f"A mensagem anterior “{msg}” se repetiu {seen[1]} vezes em 1 minuto; ocorrências agrupadas.")
                 self._seen[key] = [now, 0]
                 if len(self._seen) > 2000:
                     self._seen = {k: v for k, v in self._seen.items() if now - v[0] < DEDUP_WINDOW_S}
@@ -132,13 +128,13 @@ class Log:
     def _emit_locked(self, now, cat, level, msg, step=None, raw=None, hint=None, ctx=None, tb=""):
         parts = [f"{_stamp(now)} [{cat}]{_TAG[level]} {msg}"]
         if step:
-            parts.append(f"卡在：{step}" if level in ("warn", "error") else f"步骤：{step}")
+            parts.append(f"Interrompido em: {step}" if level in ("warn", "error") else f"Etapa: {step}")
         if raw:
-            parts.append(f"原文：{raw}")
+            parts.append(f"Texto original: {raw}")
         if hint:
-            parts.append(f"建议：{hint}")
+            parts.append(f"Sugestão: {hint}")
         if ctx:
-            parts.append(f"现场：{ctx}")
+            parts.append(f"Contexto: {ctx}")
         line = " · ".join(parts)
         self.counts[level] += 1
         if level != "debug" or self.debug_to_file:
@@ -152,11 +148,11 @@ class Log:
             for loop, q in list(self._listeners):
                 try:
                     loop.call_soon_threadsafe(_offer, q, entry)
-                except RuntimeError:      # 事件循环已经关了
+                except RuntimeError:      # O loop de eventos já foi encerrado.
                     pass
         if self.echo:
             try:
-                # 标准输出可能已经写不进（SSH 窗口关了、journald 卡住）：丢掉这份，文件和页面那份还在
+                # Se não for possível escrever na saída padrão (terminal SSH fechado ou journald travado), descarta esta cópia; o arquivo e a página continuam disponíveis.
                 print(line + ("\n" + tb.rstrip() if tb else ""), flush=True)
             except Exception:  # noqa: BLE001
                 self.write_errors += 1
@@ -174,7 +170,7 @@ class Log:
     def error(self, msg, **kw):
         return self.write(msg, level="error", **kw)
 
-    # ---- 读 ----
+    # ---- Leitura ----
 
     def recent(self, limit=200, cats=None, min_level="info"):
         floor = LEVELS.index(min_level) if min_level in LEVELS else 1
@@ -184,7 +180,7 @@ class Log:
         return items[-limit:]
 
     def subscribe(self, loop=None, maxsize=200):
-        """页面实时日志：返回一个 asyncio.Queue，满了就丢最旧的（页面慢不拖累写日志的人）。"""
+        """Logs em tempo real da página: retorna um asyncio.Queue; quando estiver cheio, descarta o item mais antigo para não atrasar quem grava."""
         loop = loop or asyncio.get_running_loop()
         q = asyncio.Queue(maxsize=maxsize)
         with self._lock:
@@ -196,7 +192,7 @@ class Log:
             self._listeners = {(lp, qq) for lp, qq in self._listeners if qq is not q}
 
     def files(self, days=2):
-        """诊断包用：最近 days 天的日志文件，新的在后。"""
+        """Para o pacote de diagnóstico: arquivos dos últimos days dias, do mais antigo ao mais recente."""
         self.flush()
         if not self.dir.is_dir():
             return []
@@ -208,14 +204,14 @@ class Log:
                     "write_errors": self.write_errors}
 
     def flush(self, timeout=2.0):
-        """等后台线程把排队的行写完（导出诊断包、退出前用）。"""
+        """Aguarda a thread em segundo plano gravar as linhas pendentes (antes de exportar um pacote de diagnóstico ou sair)."""
         if self._q is None:
             return
         done = threading.Event()
         self._q.put(done)
         done.wait(timeout)
 
-    # ---- 文件 ----
+    # ---- Arquivos ----
 
     def _clean(self, text):
         if text is None:
@@ -250,11 +246,11 @@ class Log:
                 self._day_bytes = _size(path)
                 self._capped = False
             if self._day_bytes > MAX_FILE_BYTES:
-                # 刷屏保护：今天已经写了 20 MB，普通的行不再写进文件（页面上照常），警告和错误照写
+                # Proteção contra excesso de registros: após 20 MB no dia, não grava linhas comuns no arquivo (continuam na página); avisos e erros ainda são gravados.
                 if not important:
                     if not self._capped:
                         self._capped = True
-                        text = f"（今天的日志超过 {MAX_FILE_BYTES >> 20} MB，后面只记警告和错误）\n"
+                        text = f"Os logs de hoje ultrapassaram {MAX_FILE_BYTES >> 20} MB; somente avisos e erros serão gravados a partir de agora.\n"
                     else:
                         return
                 elif self._day_bytes > MAX_FILE_BYTES * 2:
@@ -264,11 +260,11 @@ class Log:
                 f.write(data)
             self._day_bytes += len(data)
         except OSError:
-            # 写不进文件（卡满、只读）也不能让调用方出错；标准输出那份还在
+            # Falha ao gravar o arquivo (cartão cheio ou somente leitura) não deve afetar o chamador; a saída padrão continua disponível.
             pass
 
     def _prune(self):
-        """只留最近 KEEP_DAYS 天，总量超过 MAX_TOTAL_BYTES 时从最旧的删起（今天的不删）。"""
+        """Mantém os últimos KEEP_DAYS dias; se o total ultrapassar MAX_TOTAL_BYTES, exclui os arquivos mais antigos (preserva o arquivo de hoje)."""
         logs = sorted(self.dir.glob(f"{self.prefix}-*.log"))
         today = self.dir / f"{self.prefix}-{self._day}.log"
         old = [p for p in logs if p != today]
@@ -280,7 +276,7 @@ class Log:
         for p in logs:
             if total <= MAX_TOTAL_BYTES:
                 break
-            if p == today:      # 钟停在 1970 时今天的文件排在最前：跳过它接着删，不能就此停下
+            if p == today:      # Se o relógio estiver em 1970, o arquivo de hoje pode vir primeiro; ignore-o e continue excluindo os seguintes.
                 continue
             total -= _size(p)
             _unlink(p)
@@ -310,18 +306,18 @@ def _unlink(p):
 
 
 class Timer:
-    """记一条命令的来回：
-        with log_cmd(log, "站起来", "robot.init", ctx=...) as t:
+    """Registra o ciclo de um comando:
+        with log_cmd(log, "Ficar em pé", "robot.init", ctx=...) as t:
             reply = await ...
-            t.ok(reply)        # 或 t.fail("原因", raw=..., hint=...)
-    请求、回执、耗时各一行（不合并），失败时带现场。"""
+            t.ok(reply)        # ou t.fail("motivo", raw=..., hint=...)
+    Solicitação, resposta e duração são registradas em linhas separadas, sem agrupamento; falhas incluem o contexto."""
 
     def __init__(self, log, what, step, who=None, args=None, ctx=None):
         self.log, self.what, self.step, self.ctx = log, what, step, ctx
         self.t0 = time.monotonic()
         self.done = False
-        detail = f"（{who}）" if who else ""
-        self.log.write(f"→ {what}{detail}", cat="命令", step=step,
+        detail = f"({who})" if who else ""
+        self.log.write(f"→ {what}{detail}", cat="Comando", step=step,
                        raw=json.dumps(redact(args), ensure_ascii=False) if args else None, dedup=False)
 
     def ms(self):
@@ -329,12 +325,12 @@ class Timer:
 
     def ok(self, reply=None, note=""):
         self.done = True
-        self.log.write(f"← {self.what} 成功 · {self.ms()} ms{(' · ' + note) if note else ''}", cat="命令",
+        self.log.write(f"← {self.what} concluído · {self.ms()} ms{(' · ' + note) if note else ''}", cat="Comando",
                        step=self.step, raw=_brief(reply), dedup=False)
 
     def fail(self, why, raw=None, hint=None, ctx=None):
         self.done = True
-        self.log.write(f"← {self.what} 没成功：{why} · {self.ms()} ms", cat="命令", level="error",
+        self.log.write(f"← {self.what} falhou: {why} · {self.ms()} ms", cat="Comando", level="error",
                        step=self.step, raw=_brief(raw), hint=hint, ctx=ctx or self.ctx, dedup=False)
 
     def __enter__(self):
@@ -352,7 +348,7 @@ def _brief(x, limit=600):
     if x is None:
         return None
     s = x if isinstance(x, str) else json.dumps(redact(x), ensure_ascii=False, default=str)
-    return s if len(s) <= limit else s[:limit] + f"…（共 {len(s)} 字）"
+    return s if len(s) <= limit else s[:limit] + f"… ({len(s)} caracteres no total)"
 
 
 def log_cmd(log, what, step, **kw):
@@ -367,7 +363,7 @@ _default = None
 
 
 def setup(directory, **kw):
-    """进程里只建一个；各模块 `from studio.log import get; log = get()`。"""
+    """Cria apenas uma instância por processo; os módulos usam `from studio.log import get; log = get()`."""
     global _default
     _default = Log(directory, **kw)
     return _default

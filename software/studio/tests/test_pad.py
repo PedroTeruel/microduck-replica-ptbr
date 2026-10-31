@@ -1233,7 +1233,7 @@ class MotionTest(PadTestBase):
         self.assertEqual(b["stand"]["call"], "robot.do sit_toggle")
         self.ops.handle({"op": "stand"})
         self.assertEqual(self.robot.calls[-1], ("robot.do", {"skill": "sit_toggle"}))
-        log = self.log.recent(50, cats=["命令"])
+        log = self.log.recent(50, cats=["Comando"])
         self.assertTrue(any("站起来" in e["msg"] and "成功" in e["msg"] for e in log))
 
     def test_walk_stop_zeros_speed_then_disables(self):
@@ -1263,7 +1263,7 @@ class MotionTest(PadTestBase):
         self.assertIn("开始走", str(cm.exception))
         last = self.ops.snapshot()["motion"]["last"]
         self.assertEqual((last["ok"], last["by"]), (False, "手机"))
-        err = [e for e in self.log.recent(20, cats=["命令"]) if e["level"] == "error"]
+        err = [e for e in self.log.recent(20, cats=["Comando"]) if e["level"] == "error"]
         self.assertTrue(err and "the policy is not driving" in err[-1]["msg"])
 
     def test_blocked_states(self):
@@ -1431,7 +1431,7 @@ class ActionTest(PadTestBase):
                                          encoding="utf-8")
         ops = P.PadOps(self.log, robot=self.robot, state_dir=str(path))
         self.assertEqual([c["id"] for c in ops._user_combos], ["ok1"])
-        self.assertTrue(any("跳过" in e["msg"] for e in self.log.recent(20, cats=["手柄"])))
+        self.assertTrue(any("跳过" in e["msg"] for e in self.log.recent(20, cats=["Controle"])))
 
 
 class Review2Test(PadTestBase):
@@ -1641,7 +1641,7 @@ class Review2Test(PadTestBase):
         with mock.patch.object(self.ops, "_motion_view", side_effect=ValueError("坏了")):
             self.assertIsNone(self.ops.safe_snapshot())
             self.assertIsNone(self.ops.safe_snapshot())
-        errs = [e for e in self.log.recent(50, cats=["手柄"]) if "跳过这一帧" in e["msg"]]
+        errs = [e for e in self.log.recent(50, cats=["Controle"]) if "跳过这一帧" in e["msg"]]
         self.assertEqual(len(errs), 1)
         self.assertIs(self.ops.executor_for({"op": "move"}), self.ops._fast_pool)
         self.assertIsNone(self.ops.executor_for({"op": "pair"}))
@@ -1839,7 +1839,7 @@ class VpadTest(PadTestBase):
             ops.feed_robot({"present": True, "bus": bus(), "bus_at": time.monotonic()})
             time.sleep(0.1)
             self.assertEqual(robot.sent, [("robot.pose", {"active": False})])
-            self.assertTrue(any("连上主程序" in e["msg"] for e in self.log.recent(50, cats=["手柄"])))
+            self.assertTrue(any("连上主程序" in e["msg"] for e in self.log.recent(50, cats=["Controle"])))
         finally:
             ops.close()
 
@@ -1925,7 +1925,7 @@ class VpadTest(PadTestBase):
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "start", "expect": "walk"}, conn="a")
         self.assertIn("坐着", str(cm.exception))
-        self.assertTrue(any("网页手柄 Start → " in e["msg"] for e in self.log.recent(80, cats=["手柄"])))
+        self.assertTrue(any("网页手柄 Start → " in e["msg"] for e in self.log.recent(80, cats=["Controle"])))
 
     def test_v7_start_waits_until_joints_settle(self):
         """homed 了、但关节实际位置还没到 HOME：Start / 开始走不能先显示能按。"""
@@ -1985,7 +1985,7 @@ class VpadTest(PadTestBase):
         self.assertEqual(sounds[-1], {"tag": "wheee", "hold": False})                # 结束发 hold:false
         self.assertIn({"open": 1.0}, [p for _, p in self.sent("robot.mouth")])
         # 日志只记按下、松开，不按拍记（三 V19）
-        lines = [e for e in self.log.recent(200, cats=["手柄"]) if "网页手柄 LT" in e["msg"]]
+        lines = [e for e in self.log.recent(200, cats=["Controle"]) if "网页手柄 LT" in e["msg"]]
         self.assertEqual(len(lines), 2)
 
     def test_v4_rt_chirps_once_and_holding_still_works(self):
@@ -2080,7 +2080,7 @@ class VpadTest(PadTestBase):
             wait_until(lambda: self.poses()[-1] == dict(D.POSE_CENTER), timeout=1.0, what="身体回中")
             wait_until(lambda: self.poses()[-1] == POSE_OFF, timeout=1.5, what="模式心跳超时：退出身体模式")
         self.assertEqual(self.ops.snapshot(conn="a")["virtual"]["mode"], "drive")
-        self.assertTrue(any("没报还在" in e["msg"] for e in self.log.recent(50, cats=["安全"])))
+        self.assertTrue(any("没报还在" in e["msg"] for e in self.log.recent(50, cats=["Segurança"])))
 
     # ---- V12：策略没在跑时头 / 身体帧丢掉，模式照样能切 ----
 

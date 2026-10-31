@@ -91,7 +91,7 @@ class HostGuard:
             local_ip = (scope.get("server") or (None,))[0]
             if not self.guard.host_ok(host, local_ip):
                 # 措辞固定、Host 值放原文：别人换着 Host 刷，也只会被去重合并成一行
-                self.log.warn("拒绝了一个 Host 不对的请求", cat="连接", raw=repr(host[:100]),
+                self.log.warn("拒绝了一个 Host 不对的请求", cat="Conexão", raw=repr(host[:100]),
                               hint="正常用不会遇到；如果你用的是新地址，在启动参数 --name 里加上它")
                 if scope["type"] == "http":
                     await PlainTextResponse("Host 不对", status_code=421)(scope, receive, send)
@@ -196,7 +196,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
     # 设了密码才要登录（设置里以后能加）。Host / Origin 校验照旧：别的网站没法借你的浏览器控制鸭子
     open_sess = {"csrf": "open", "auth_at": time.time(), "remember": False}
     if dev_autologin:
-        log.warn("开发模式：本机来的请求不用登录", cat="系统", hint="只在电脑上截图测试用，鸭子上不要开")
+        log.warn("开发模式：本机来的请求不用登录", cat="Sistema", hint="只在电脑上截图测试用，鸭子上不要开")
 
     def session_of(conn, touch=True):
         token = conn.cookies.get(COOKIE)
@@ -292,7 +292,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         token, sess = session_of(request)
         if sess and origin_ok(request) and request.headers.get("x-csrf") == sess["csrf"]:
             auth.logout(token)
-            log.info(f"退出登录（{_client_desc(request)}）", cat="连接")
+            log.info(f"退出登录（{_client_desc(request)}）", cat="Conexão")
         resp = JSONResponse({"ok": True})
         resp.delete_cookie(COOKIE, path="/")
         return resp
@@ -317,7 +317,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         if action == "clear":
             if auth.has_password():
                 await asyncio.to_thread(auth.clear_password)
-                log.info(f"管理员密码已清掉（{_client_desc(request)}）", cat="连接")
+                log.info(f"管理员密码已清掉（{_client_desc(request)}）", cat="Conexão")
             resp = JSONResponse({"ok": True, "has_password": False})
             resp.delete_cookie(COOKIE, path="/")
             return resp
@@ -340,7 +340,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             new_token, _, _ = await asyncio.to_thread(auth.login, pw, ip, False)
             if new_token:
                 resp.set_cookie(COOKIE, new_token, httponly=True, samesite="lax", path="/")
-        log.info(f"管理员密码已{'设置' if not had_password else '修改'}（{_client_desc(request)}）", cat="连接")
+        log.info(f"管理员密码已{'设置' if not had_password else '修改'}（{_client_desc(request)}）", cat="Conexão")
         return resp
 
     ssh_gate = asyncio.Lock()
@@ -402,15 +402,15 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 except BadKey as e:
                     return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
                 except OSError as e:
-                    log.error("SSH 钥匙没写进去", cat="系统", raw=f"{type(e).__name__}: {e}", step=action,
+                    log.error("SSH 钥匙没写进去", cat="Sistema", raw=f"{type(e).__name__}: {e}", step=action,
                               hint="看看 /home/radxa/.ssh 的权限；还不行就导出诊断包")
                     return JSONResponse({"ok": False, "error": f"写不进 authorized_keys：{e}"}, status_code=500)
                 if action == "add_key":
                     what = f"{k['type']} {k['comment'] or '（没注释）'} {k['fp']}"
-                    log.info(f"SSH 钥匙{'登记了' if added else '本来就在'}：{what}（{by}）", cat="系统")
+                    log.info(f"SSH 钥匙{'登记了' if added else '本来就在'}：{what}（{by}）", cat="Sistema")
                     return JSONResponse({"ok": True, "added": added, "fp": k["fp"], "ssh": await ssh_view()})
                 if gone:
-                    log.info(f"SSH 钥匙删掉了：{body.get('fp')}（{by}）", cat="系统")
+                    log.info(f"SSH 钥匙删掉了：{body.get('fp')}（{by}）", cat="Sistema")
                 return JSONResponse({"ok": True, "removed": gone, "ssh": await ssh_view()})
             if not await asyncio.to_thread(helper.available):
                 return JSONResponse({"ok": False, "error": "这只鸭子没装 root 小助手，网页里开不了 SSH 密码登录"},
@@ -422,11 +422,11 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             word = "打开" if action == "on" else "关掉"
             if not ok:
                 why = helper.friendly(result, detail, "ssh-password")
-                log.warn(f"SSH 密码登录没{word}：{why}", cat="系统", step=f"ssh-password {action}",
+                log.warn(f"SSH 密码登录没{word}：{why}", cat="Sistema", step=f"ssh-password {action}",
                          hint="照提示改；还不行就导出诊断包")
                 return JSONResponse({"ok": False, "error": why},
                                     status_code=400 if result in ("bad_password", "bad_args") else 502)
-            log.info(f"SSH 密码登录{word}了（{by}）", cat="系统")
+            log.info(f"SSH 密码登录{word}了（{by}）", cat="Sistema")
             return JSONResponse({"ok": True, "ssh": await ssh_view()})
 
     async def api_logs(request):
@@ -444,7 +444,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         _, sess = session_of(request)
         if not sess:
             return JSONResponse({"ok": False}, status_code=401)
-        log.info(f"导出诊断包（{_client_desc(request)}）", cat="系统")
+        log.info(f"导出诊断包（{_client_desc(request)}）", cat="Sistema")
         # 状态在事件循环里取好再交给线程（不跨线程读正在变的东西）
         snap = summarize(robotd, duck, servo, ob=onboard, bat=battery, net=net, commit=commit, auth=auth)
         raw = {"hello": robotd.hello.value, "health": robotd.health.value, "busStatus": robotd.bus.value,
@@ -474,7 +474,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             return JSONResponse({"ok": False}, status_code=401)
         if tune is None:
             return JSONResponse({"ok": False, "error": "这只鸭子没开调参卡的后端"}, status_code=404)
-        log.info(f"导出鸭子档案（{_client_desc(request)}）", cat="调参")
+        log.info(f"导出鸭子档案（{_client_desc(request)}）", cat="Ajuste")
         data = json.dumps(tune.profile(), ensure_ascii=False, indent=1, default=str).encode("utf-8")
         name = f"duck-profile-{time.strftime('%Y%m%d-%H%M%S')}.json"
         return Response(data, media_type="application/json",
@@ -492,7 +492,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             return JSONResponse({"ok": True, "data": data}, headers=headers)
         except Exception as e:
             label = "摄像头" if kind == "camera" else "ToF"
-            log.error(f"读取{label}状态失败", cat="传感器", raw=f"{type(e).__name__}: {e}", exc=True)
+            log.error(f"读取{label}状态失败", cat="Sensores", raw=f"{type(e).__name__}: {e}", exc=True)
             return JSONResponse({"ok": False, "error": f"暂时无法读取{label}状态，请稍后重试或查看日志"},
                                 status_code=503, headers=headers)
 
@@ -524,7 +524,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             return model_response({"ok": False, "error": str(e), "code": getattr(e, "code", "invalid")},
                                   getattr(e, "status", 400))
         except Exception as e:  # 不把上传内容写进日志
-            log.error("模型管理操作失败", cat="模型", raw=f"{type(e).__name__}: {e}", exc=True)
+            log.error("模型管理操作失败", cat="Modelos", raw=f"{type(e).__name__}: {e}", exc=True)
             return model_response({"ok": False, "error": "模型管理暂时出错，请查看日志后重试"}, 500)
 
     async def limited_body(request, limit):
@@ -636,20 +636,20 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         except Exception as e:  # noqa: BLE001
             if not tune_err["logged"]:
                 tune_err["logged"] = True
-                log.error("拼调参卡的数据时出错", cat="调参", raw=f"{type(e).__name__}: {e}", exc=True,
+                log.error("拼调参卡的数据时出错", cat="Ajuste", raw=f"{type(e).__name__}: {e}", exc=True,
                           hint="这是 Studio 的问题，导出诊断包发出来；不影响站和走")
             return None
 
     async def ws_endpoint(ws: WebSocket):
         token, sess = session_of(ws)
         if not origin_ok(ws):
-            log.warn(f"拒绝了一个来源不对的页面连接（{_client_desc(ws)}）", cat="连接",
+            log.warn(f"拒绝了一个来源不对的页面连接（{_client_desc(ws)}）", cat="Conexão",
                      raw=f"Origin={ws.headers.get('origin')!r} Host={ws.headers.get('host')!r}",
                      hint="正常打开鸭子的网页不会遇到；如果是别的网站在偷连，这样拒掉是对的")
             await ws.close(code=4403)
             return
         if not sess:
-            log.info(f"页面连接没带有效登录，让它重新登录（{_client_desc(ws)}）", cat="连接")
+            log.info(f"页面连接没带有效登录，让它重新登录（{_client_desc(ws)}）", cat="Conexão")
             await ws.accept()
             await ws.close(code=4401)
             return
@@ -659,7 +659,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         me = {"visible": True, "by": by, "hb_at": time.monotonic(), "route": None, "pad_visible": None}
         clients[ws] = me
         update_viewers()
-        log.info(f"页面连上（{by}，现在 {len(clients)} 个）", cat="连接", dedup=False)
+        log.info(f"页面连上（{by}，现在 {len(clients)} 个）", cat="Conexão", dedup=False)
         logq = log.subscribe()
         send_lock = asyncio.Lock()
 
@@ -691,7 +691,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                         if transport_alive:
                             me["pong_at"] = time.monotonic()
                     if not transport_alive:
-                        log.info(f"页面 {HB_DEAD_S:.0f} 秒没消息且连接未确认，当作断了（{by}）", cat="连接")
+                        log.info(f"页面 {HB_DEAD_S:.0f} 秒没消息且连接未确认，当作断了（{by}）", cat="Conexão")
                         await ws.close(code=4408)
                         return
                 if me["visible"] and quiet > HB_QUIET_S:
@@ -772,13 +772,13 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     accepted, reason = await asyncio.to_thread(servo.relax_all, by)
                 elif servo is not None and servo.orphan and robotd.present is not True:
                     # 上次退出时会话开着、这次没接管上（审查 D1）：robotd 不在，发给它也没用；总线上卸要先接管
-                    log.warn("卸力：上次退出时舵机会话开着、这次没接管上，没法在总线上卸", cat="安全", raw=f"by={by}",
+                    log.warn("卸力：上次退出时舵机会话开着、这次没接管上，没法在总线上卸", cat="Segurança", raw=f"by={by}",
                              hint="去舵机页接管总线后再按卸力；急的话关电源")
                     accepted, reason = False, "上次 Studio 退出时可能还有舵机保持着：先去舵机页接管总线才能卸力（急的话关电源）"
                 else:
                     accepted, reason = await robotd.relax(by)
             except Exception as e:  # noqa: BLE001 —— 不该发生；发生了也要给页面一个回执
-                log.error("处理卸力命令时 Studio 出错", cat="命令", raw=f"{type(e).__name__}: {e}", exc=True,
+                log.error("处理卸力命令时 Studio 出错", cat="Comando", raw=f"{type(e).__name__}: {e}", exc=True,
                           hint="这是 Studio 自己的 bug；先用手柄 − 或关电源，再把诊断包发出来")
                 accepted, reason = False, f"Studio 出错：{type(e).__name__}"
             try:
@@ -831,7 +831,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     if done:
                         ok, why = True, None
                     else:
-                        log.info(f"离开舵机页：{kept}，不交还（总线会话留着；点「交还主程序」才交还）", cat="总线",
+                        log.info(f"离开舵机页：{kept}，不交还（总线会话留着；点「交还主程序」才交还）", cat="Barramento",
                                  raw=f"by={by}", dedup=False)
                         ok, why = True, f"{kept}：没交还，会话留着"
                 else:
@@ -861,7 +861,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                         ok, reason = False, str(e)
                     except Exception as e:  # noqa: BLE001
                         ok, reason = False, f"Studio 出错：{type(e).__name__}: {e}"
-                        log.error(f"舵机操作出错：{args.get('op')}", cat="总线", raw=f"{type(e).__name__}: {e}", exc=True,
+                        log.error(f"舵机操作出错：{args.get('op')}", cat="Barramento", raw=f"{type(e).__name__}: {e}", exc=True,
                                   hint="这是 Studio 的问题，导出诊断包发出来")
                     finally:
                         servo.op_end(tok)
@@ -904,7 +904,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     await send({"t": "result", "id": cid, "ok": False, "reason": str(e)})
                     return
                 except Exception as e:  # noqa: BLE001
-                    log.error("算「要写什么」时出错", cat="校准", raw=f"{type(e).__name__}: {e}", exc=True,
+                    log.error("算「要写什么」时出错", cat="Calibração", raw=f"{type(e).__name__}: {e}", exc=True,
                               hint="这是 Studio 的问题，导出诊断包发出来")
                     await send({"t": "result", "id": cid, "ok": False,
                                 "reason": f"Studio 出错：{type(e).__name__}: {e}"})
@@ -917,7 +917,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             try:
                 view = commit.view(robotd, servo)
             except Exception as e:  # noqa: BLE001
-                log.error("查「写进主程序」的准备情况时出错", cat="校准", raw=f"{type(e).__name__}: {e}", exc=True,
+                log.error("查「写进主程序」的准备情况时出错", cat="Calibração", raw=f"{type(e).__name__}: {e}", exc=True,
                           hint="这是 Studio 的问题，导出诊断包发出来")
                 await send({"t": "result", "id": cid, "ok": False, "reason": f"Studio 出错：{type(e).__name__}: {e}"})
                 return
@@ -944,7 +944,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             try:
                 res = await asyncio.to_thread(commit.commit, by, progress)
             except Exception as e:  # noqa: BLE001
-                log.error("写进主程序的后台任务出错", cat="校准", raw=f"{type(e).__name__}: {e}", exc=True,
+                log.error("写进主程序的后台任务出错", cat="Calibração", raw=f"{type(e).__name__}: {e}", exc=True,
                           hint="看看主程序有没有起来；原来的文件有没有换回去，日志里有")
                 res = {"ok": False, "reason": f"Studio 出错：{type(e).__name__}: {e}", "detail": {}}
             await send({"t": "commit", "phase": "done" if res.get("ok") else "failed", "ok": bool(res.get("ok")),
@@ -963,7 +963,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     ok, reason = False, str(e)
                 except Exception as e:  # noqa: BLE001
                     ok, reason = False, f"Studio 出错：{type(e).__name__}: {e}"
-                    log.error(f"调参操作出错：{args.get('op')}", cat="调参", raw=f"{type(e).__name__}: {e}", exc=True,
+                    log.error(f"调参操作出错：{args.get('op')}", cat="Ajuste", raw=f"{type(e).__name__}: {e}", exc=True,
                               hint="这是 Studio 的问题，导出诊断包发出来")
             try:
                 await send({"t": "result", "id": cid, "ok": ok, "reason": reason, "data": data})
@@ -983,7 +983,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     ok, reason = False, str(e)
                 except Exception as e:  # noqa: BLE001
                     ok, reason = False, f"Studio 出错：{type(e).__name__}: {e}"
-                    log.error(f"手柄操作出错：{args.get('op')}", cat="手柄", raw=f"{type(e).__name__}: {e}", exc=True,
+                    log.error(f"手柄操作出错：{args.get('op')}", cat="Controle", raw=f"{type(e).__name__}: {e}", exc=True,
                               hint="这是 Studio 的问题，导出诊断包发出来")
             try:
                 await send({"t": "result", "id": cid, "ok": ok, "reason": reason, "data": data})
@@ -1017,7 +1017,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 onboard.tick(robotd, pad, servo)               # 马上重判一次，页面不用等下一拍
                 await asyncio.to_thread(onboard.save)
             else:
-                log.info(f"上手清单{what}没记：{why}", cat="校准", step=step or "上手清单")
+                log.info(f"上手清单{what}没记：{why}", cat="Calibração", step=step or "上手清单")
             return {"t": "result", "id": cid, "ok": ok, "reason": why}
 
         async def run_battery_op(cid, args):
@@ -1032,7 +1032,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     ok, reason = False, str(e)
                 except Exception as e:  # noqa: BLE001
                     ok, reason = False, f"Studio 出错：{type(e).__name__}: {e}"
-                    log.error(f"电池设置出错：{args.get('op')}", cat="电池", raw=f"{type(e).__name__}: {e}", exc=True,
+                    log.error(f"电池设置出错：{args.get('op')}", cat="Bateria", raw=f"{type(e).__name__}: {e}", exc=True,
                               hint="这是 Studio 的问题，导出诊断包发出来")
             try:
                 await send({"t": "result", "id": cid, "ok": ok, "reason": reason, "data": data})
@@ -1053,7 +1053,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     await send({"t": "result", "id": cid, "ok": False, "reason": str(e)})
                     return
                 except Exception as e:  # noqa: BLE001
-                    log.error("扫 WiFi 出错", cat="网络", raw=f"{type(e).__name__}: {e}", exc=True,
+                    log.error("扫 WiFi 出错", cat="Rede", raw=f"{type(e).__name__}: {e}", exc=True,
                               hint="这是 Studio 的问题，导出诊断包发出来")
                     await send({"t": "result", "id": cid, "ok": False, "reason": f"Studio 出错：{type(e).__name__}: {e}"})
                     return
@@ -1078,7 +1078,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                         await net.connect(ssid, psk, by)
                     except Exception as e:  # noqa: BLE001
                         net.busy = None
-                        log.error("连 WiFi 的后台任务出错", cat="网络", raw=f"{type(e).__name__}: {e}", exc=True,
+                        log.error("连 WiFi 的后台任务出错", cat="Rede", raw=f"{type(e).__name__}: {e}", exc=True,
                                   hint="这是 Studio 的问题，导出诊断包发出来")
                 # 引用挂在 net 上，不挂在这个页面的 cmd_tasks：手机断开（热点一关就会断）以后页面的处理函数结束，
                 # 后台这一路还要接着连完、写 last-try
@@ -1091,7 +1091,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     await send({"t": "result", "id": cid, "ok": False, "reason": str(e)})
                     return
                 except Exception as e:  # noqa: BLE001
-                    log.error("忘掉 WiFi 出错", cat="网络", raw=f"{type(e).__name__}: {e}", exc=True,
+                    log.error("忘掉 WiFi 出错", cat="Rede", raw=f"{type(e).__name__}: {e}", exc=True,
                               hint="这是 Studio 的问题，导出诊断包发出来")
                     await send({"t": "result", "id": cid, "ok": False, "reason": f"Studio 出错：{type(e).__name__}: {e}"})
                     return
@@ -1103,7 +1103,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             try:
                 out = await onboard_op(cid, args)
             except Exception as e:  # noqa: BLE001
-                log.error("上手清单的按钮出错", cat="系统", raw=f"{type(e).__name__}: {e}", exc=True,
+                log.error("上手清单的按钮出错", cat="Sistema", raw=f"{type(e).__name__}: {e}", exc=True,
                           hint="这是 Studio 的问题，导出诊断包发出来")
                 out = {"t": "result", "id": cid, "ok": False, "reason": f"Studio 出错：{type(e).__name__}"}
             try:
@@ -1222,7 +1222,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     # 进了 COMMANDS 却忘了写分支：明说，别默认当卸力（手柄页审查：每秒 10 次的 move 会全变成卸力）
-                    log.error(f"指令「{name}」在 COMMANDS 里但没有处理分支", cat="系统", hint="这是 Studio 的 bug，导出诊断包发出来")
+                    log.error(f"指令「{name}」在 COMMANDS 里但没有处理分支", cat="Sistema", hint="这是 Studio 的 bug，导出诊断包发出来")
                     await send({"t": "result", "id": cid, "ok": False, "reason": f"Studio 没写「{name}」怎么处理（bug）"})
 
         tasks = [asyncio.create_task(f()) for f in (sender, log_forwarder, receiver)]
@@ -1231,7 +1231,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             for t in done:
                 exc = t.exception()
                 if exc and not isinstance(exc, (WebSocketDisconnect, RuntimeError)):
-                    log.warn("页面连接出错", cat="连接", raw=f"{type(exc).__name__}: {exc}")
+                    log.warn("页面连接出错", cat="Conexão", raw=f"{type(exc).__name__}: {exc}")
         finally:
             for t in tasks:
                 t.cancel()
@@ -1241,7 +1241,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 pad.mark_gone(pad_conn)
                 asyncio.get_running_loop().run_in_executor(None, pad.drop_client, pad_conn, by)
             update_viewers()
-            log.info(f"页面断开（{by}，还剩 {len(clients)} 个）", cat="连接", dedup=False)
+            log.info(f"页面断开（{by}，还剩 {len(clients)} 个）", cat="Conexão", dedup=False)
 
     # ---- 舵机会话：标记文件（审查 D1）、交还、离开、看 robotd（审查 D9） ----
 
@@ -1259,7 +1259,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             os.replace(tmp, marker)
             return True
         except OSError as e:
-            log.warn("舵机会话的标记没写进去", cat="总线", step=str(marker), raw=f"{type(e).__name__}: {e}",
+            log.warn("舵机会话的标记没写进去", cat="Barramento", step=str(marker), raw=f"{type(e).__name__}: {e}",
                      hint="Studio 重启以后就不知道上次还有舵机保持着；看看 state 目录满没满、有没有权限")
             return False
 
@@ -1278,7 +1278,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         except FileNotFoundError:
             pass
         except OSError as e:
-            log.warn("舵机会话的标记删不掉", cat="总线", step=str(marker), raw=f"{type(e).__name__}: {e}",
+            log.warn("舵机会话的标记删不掉", cat="Barramento", step=str(marker), raw=f"{type(e).__name__}: {e}",
                      hint="下次 Studio 起来会以为上次还开着、去接管一次总线；看看 state 目录的权限")
 
     def marker_read():
@@ -1319,16 +1319,16 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         servo.marker_error = None
         servo.giveback_error = servo.giveback_hint = None
         robotd.set_paused(False)
-        log.info(f"交还主程序：{why}", cat="总线", dedup=False)
+        log.info(f"交还主程序：{why}", cat="Barramento", dedup=False)
         # 一键交还：起主程序（小助手 bus-give-back soft：撤旗、起 robotd、等启动四步成功）。
         # 标记等起完再删：没起来、旗还在的话留着，Studio 重启才能接着管（审查 #4）
         ok, gb_why = await asyncio.to_thread(_bus_give_back, by or "Studio", servo)
         if ok:
             await asyncio.to_thread(marker_drop)
             if servo.helper_available is False:
-                log.warn("交还了；没装小助手，主程序要手动起：sudo systemctl start robotd", cat="总线", dedup=False)
+                log.warn("交还了；没装小助手，主程序要手动起：sudo systemctl start robotd", cat="Barramento", dedup=False)
             else:
-                log.info("主程序起来了", cat="总线", dedup=False)
+                log.info("主程序起来了", cat="Barramento", dedup=False)
         else:
             servo.giveback_error = gb_why
             flag = await asyncio.to_thread(helper.flag_present)
@@ -1341,7 +1341,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             else:
                 servo.giveback_hint = "手动 sudo systemctl start robotd，或者再进一次舵机页再交还"
                 await asyncio.to_thread(marker_drop)
-            log.error(f"主程序没起来：{gb_why}", cat="总线", dedup=False, hint=servo.giveback_hint)
+            log.error(f"主程序没起来：{gb_why}", cat="Barramento", dedup=False, hint=servo.giveback_hint)
 
     async def hand_back(why, by=None):
         """点「交还主程序」：先置 closing、等在路上的舵机操作做完（等不到不交还），再在总线上全部卸力并回读确认
@@ -1350,7 +1350,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             return True, None
         ok, reason = await asyncio.to_thread(servo.hand_back_bus, why, before_close=lambda: robotd.set_paused(False))
         if not ok:
-            log.error("没交还主程序", cat="总线", raw=reason, hint="等校准 / 动作做完再点「交还主程序」", dedup=False)
+            log.error("没交还主程序", cat="Barramento", raw=reason, hint="等校准 / 动作做完再点「交还主程序」", dedup=False)
             return False, reason
         servo.handback_note = reason          # 成功时第二个值是「哪几颗没确认卸力」的提示；全确认是 None
         await handed_back(why, by)
@@ -1381,7 +1381,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             await asyncio.to_thread(marker_drop)
             servo.marker_error = None
             robotd.set_paused(False)
-        log.error("主程序被手动起来了：它会把舵机全部松开、跟 Studio 抢串口", cat="总线", step="会话期间查 robotd 的 socket",
+        log.error("主程序被手动起来了：它会把舵机全部松开、跟 Studio 抢串口", cat="Barramento", step="会话期间查 robotd 的 socket",
                   hint="Studio 已经关掉舵机总线（没写舵机）。下次别手动起 robotd：先在页面上点「交还主程序」", dedup=False)
 
     async def servo_restore():
@@ -1390,22 +1390,22 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         if servo is None:
             return
         if updates.installing():
-            log.warn('主程序更新保护仍在：暂停自动恢复舵机会话，请先在软件更新页恢复主程序更新',cat='总线')
+            log.warn('主程序更新保护仍在：暂停自动恢复舵机会话，请先在软件更新页恢复主程序更新',cat='Barramento')
             return
         there, data = await asyncio.to_thread(marker_read)
         if not there:
             return
         if data is None:
-            log.warn("舵机会话的标记坏了：照上次开着处理（用默认的串口）", cat="总线", step=str(marker),
+            log.warn("舵机会话的标记坏了：照上次开着处理（用默认的串口）", cat="Barramento", step=str(marker),
                      hint="多半是写到一半断电了；不影响用")
             data = {}
         here = boot_id()
         if isinstance(data, dict) and data.get("boot_id") and here and data["boot_id"] != here:
-            log.info("上次开机留下的舵机会话标记：断过电，舵机早就松了，作废", cat="总线", dedup=False)
+            log.info("上次开机留下的舵机会话标记：断过电，舵机早就松了，作废", cat="Barramento", dedup=False)
             await asyncio.to_thread(marker_drop)
             return
         if await robotd_up():
-            log.info("上次 Studio 退出时舵机会话开着；主程序现在在跑（它起来时会把舵机全部松开）：不接管", cat="总线",
+            log.info("上次 Studio 退出时舵机会话开着；主程序现在在跑（它起来时会把舵机全部松开）：不接管", cat="Barramento",
                      dedup=False)
             await asyncio.to_thread(marker_drop)
             return
@@ -1437,9 +1437,9 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     asyncio.create_task(asyncio.to_thread(_bus_give_back, "Studio 重启后接着管", servo))
         if ok:
             log.info(f"会话恢复：上次 Studio 退出时舵机会话开着，重新接管了总线（只读打开，没改扭矩；{servo.holding()} 颗保持着）",
-                     cat="总线", dedup=False)
+                     cat="Barramento", dedup=False)
         else:
-            log.error("上次 Studio 退出时舵机会话开着，这次没接管上：可能还有舵机保持着", cat="总线", raw=why, dedup=False,
+            log.error("上次 Studio 退出时舵机会话开着，这次没接管上：可能还有舵机保持着", cat="Barramento", raw=why, dedup=False,
                       hint="去舵机页接管后才能卸力；急的话关电源")
 
     async def servo_watch():
@@ -1466,7 +1466,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 if servo.orphan and fresh and robotd.bus.at > servo.orphan["at"] and not robotd.paused:
                     servo.orphan = None                            # 主程序起来了（它会全部松开）：不用再去接管
                     await asyncio.to_thread(marker_drop)
-                    log.info("上次退出时开着的舵机会话：主程序起来了（它会把舵机全部松开），不用再接管", cat="总线", dedup=False)
+                    log.info("上次退出时开着的舵机会话：主程序起来了（它会把舵机全部松开），不用再接管", cat="Barramento", dedup=False)
                 continue
             probe = servo.probe_robotd if servo.probe_robotd is not None else not servo.sim
             if probe and now - last_probe >= ROBOTD_PROBE_S and not servo.closing:
@@ -1488,7 +1488,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 if done:
                     since = None
                 else:
-                    log.warn(f"舵机页没人在看，但{kept}：不自动交还、不卸力", cat="总线", raw=kept,
+                    log.warn(f"舵机页没人在看，但{kept}：不自动交还、不卸力", cat="Barramento", raw=kept,
                              hint="要交还点页面顶上的「交还主程序」；交还以后舵机会全部松开，先扶住")
 
     async def pad_feed():
@@ -1501,7 +1501,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 robotd.set_background_music(pad.motion_studio.background_music())
                 pad.feed_robot(robot_view(robotd))
             except Exception as e:  # noqa: BLE001
-                log.error("把主程序的状态交给手柄页时出错", cat="手柄", raw=f"{type(e).__name__}: {e}", exc=True,
+                log.error("把主程序的状态交给手柄页时出错", cat="Controle", raw=f"{type(e).__name__}: {e}", exc=True,
                           hint="这是 Studio 的问题，导出诊断包发出来")
                 await asyncio.sleep(1.0)
 
@@ -1518,7 +1518,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 if onboard.tick(robotd, pad, servo):
                     await asyncio.to_thread(onboard.save)
             except Exception as e:  # noqa: BLE001
-                log.error("上手清单判的时候出错", cat="系统", raw=f"{type(e).__name__}: {e}", exc=True,
+                log.error("上手清单判的时候出错", cat="Sistema", raw=f"{type(e).__name__}: {e}", exc=True,
                           hint="这是 Studio 的问题，导出诊断包发出来；不影响站和走")
                 await asyncio.sleep(5.0)
 
@@ -1534,7 +1534,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         if net is not None:
             net.start()
         restore = asyncio.create_task(servo_restore())        # 上次退出时舵机会话开着：接着管（审查 D1）
-        log.info(f"Studio {VERSION} 启动 · Python {platform.python_version()} · {platform.node()}", cat="系统",
+        log.info(f"Studio {VERSION} 启动 · Python {platform.python_version()} · {platform.node()}", cat="Sistema",
                  dedup=False)
         yield
         await updates.stop_readiness()
@@ -1554,12 +1554,12 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             # Studio 退出不卸力（审查 D1）：只关串口，保持着的舵机照样保持；标记留着，下次起来接着管
             n = servo.holding()
             await asyncio.to_thread(servo.close)
-            log.info(f"Studio 退出：舵机会话开着（{n} 颗保持着），不卸力；下次起来会接着管", cat="总线", dedup=False)
+            log.info(f"Studio 退出：舵机会话开着（{n} 颗保持着），不卸力；下次起来会接着管", cat="Barramento", dedup=False)
         if net is not None:
             await net.stop()
         await robotd.stop()
         auth.flush()
-        log.info("Studio 停止", cat="系统", dedup=False)
+        log.info("Studio 停止", cat="Sistema", dedup=False)
         log.flush()
 
     routes = [

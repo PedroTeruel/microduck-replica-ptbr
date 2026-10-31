@@ -817,13 +817,13 @@ class Onboarding:
                 os.replace(p, bad)
             except OSError:
                 bad = None
-            self.log.warn("上手清单的记录文件读不出来，当成空的重新记", cat="系统", step=p, raw=f"{type(e).__name__}: {e}",
+            self.log.warn("上手清单的记录文件读不出来，当成空的重新记", cat="Sistema", step=p, raw=f"{type(e).__name__}: {e}",
                           hint=(f"坏文件留在 {bad}" if bad else "坏文件改名也没成功，看看 state 目录的权限"))
             self.rec = {}
             return
         self.rec, bad = clean_records(data)
         for k, raw in bad:
-            self.log.warn(f"上手清单的记录「{k}」格式不对，这一条不用了", cat="系统", step=p, raw=raw,
+            self.log.warn(f"上手清单的记录「{k}」格式不对，这一条不用了", cat="Sistema", step=p, raw=raw,
                           hint="多半是手改过或者旧版本写的；那一步会按「没做」重新判，做一次就会重新记")
 
     def save(self):
@@ -854,12 +854,12 @@ class Onboarding:
         except OSError as e:
             with self._lk:
                 self._dirty = True              # 下一拍再试
-            self.log.warn("上手清单的记录没存进去", cat="系统", step=self.path(), raw=f"{type(e).__name__}: {e}",
+            self.log.warn("上手清单的记录没存进去", cat="Sistema", step=self.path(), raw=f"{type(e).__name__}: {e}",
                           hint="state 目录满了或者没权限；不影响站和走，下次再试")
             return False
         return True
 
-    def _put(self, key, value, say=None, cat="系统"):
+    def _put(self, key, value, say=None, cat="Sistema"):
         with self._lk:
             if self.rec.get(key) == value:
                 return False
@@ -877,7 +877,7 @@ class Onboarding:
             rec = {"at": self.wall(), "ms": r.get("ms"), "mac": (str(r["mac"]).upper() if r.get("mac") else None),
                    "name": r.get("name"), "build": r.get("build")}
             self._put("estop", rec, say=f"上手清单：记下「测急停过了」（{rec['name'] or rec['mac'] or '手柄'}，主程序 {rec['build']}）",
-                      cat="安全")
+                      cat="Segurança")
             return True
         except Exception:  # noqa: BLE001 —— 测急停线程里，记不上也不能出事
             return False
@@ -906,7 +906,7 @@ class Onboarding:
             return False, f"主程序文件里只有 {len(js)} 颗"
         fp = joints_fp(calib)
         self._put("confirm_servo", {"at": self.wall(), "fp": fp, "by": by},
-                  say=f"上手清单：舵机零位「已经校过，核对一下」（{by or '页面'}；主程序文件里 15 颗都是 2048）", cat="校准")
+                  say=f"上手清单：舵机零位「已经校过，核对一下」（{by or '页面'}；主程序文件里 15 颗都是 2048）", cat="Calibração")
         return True, None
 
     def mark(self, step, kind, rd, pad=None, servo=None, by=None, confirmed=False):
@@ -946,7 +946,7 @@ class Onboarding:
             theirs = dict(self.rec.get(KINDS[OTHER[kind]]) or {})
         mine[step] = entry
         word = "跳过" if kind == "skip" else "标了已完成"
-        self._put(KINDS[kind], mine, cat="校准",
+        self._put(KINDS[kind], mine, cat="Calibração",
                   say=f"上手清单：{TITLES[step]} {word}（{by or '页面'}）" + (f"；点了两次确认：{ask}" if ask else ""))
         if theirs.pop(step, None) is not None:
             self._put(KINDS[OTHER[kind]], theirs)
@@ -974,7 +974,7 @@ class Onboarding:
             return True, "本来就没跳过" if kind == "skip" else "本来就没标已完成"
         mine.pop(step)
         word = "取消跳过" if kind == "skip" else "取消已完成"
-        self._put(KINDS[kind], mine, say=f"上手清单：{TITLES[step]} {word}（{by or '页面'}）", cat="校准")
+        self._put(KINDS[kind], mine, say=f"上手清单：{TITLES[step]} {word}（{by or '页面'}）", cat="Calibração")
         return True, None
 
     def unskip(self, step, by=None, servo=None, confirmed=False):
@@ -1056,7 +1056,7 @@ class Onboarding:
         try:
             self._board_tick(rd)
         except Exception as e:  # noqa: BLE001
-            self.log.error("算主板温度的回差时出错", cat="系统", raw=f"{type(e).__name__}: {e}", exc=True)
+            self.log.error("算主板温度的回差时出错", cat="Sistema", raw=f"{type(e).__name__}: {e}", exc=True)
         try:
             inp = self._inputs(rd, pad, servo, now)
             if not inp["servo_session"]:
@@ -1077,7 +1077,7 @@ class Onboarding:
             why = f"{type(e).__name__}: {e}"[:200]
             if why != self._eval_err:
                 self._eval_err = why
-                self.log.error("上手清单判的时候出错，清单先写「?」", cat="系统", raw=why, exc=True,
+                self.log.error("上手清单判的时候出错，清单先写「?」", cat="Sistema", raw=why, exc=True,
                                hint="这是 Studio 的问题，导出诊断包发出来；不影响站和走")
             v = error_view(why)
         self._view = v
@@ -1096,7 +1096,7 @@ class Onboarding:
             for r in gone:
                 d.pop(r["key"], None)
             word = "跳过" if kind == "skip" else "「已完成」"
-            self._put(rk, d, cat="校准",
+            self._put(rk, d, cat="Calibração",
                       say="上手清单：" + "、".join(f"{r['title']}的{word}作废（{fill(r['found'], kind)}）" for r in gone))
 
     def _bind_marks(self, inp):
@@ -1114,7 +1114,7 @@ class Onboarding:
                     named.append(TITLES[step])
             if named:
                 word = "跳过" if kind == "skip" else "「已完成」"
-                self._put(rk, d, cat="校准", say=f"上手清单：{'、'.join(named)}的{word}标的时候读不到指纹，现在读到了、绑上")
+                self._put(rk, d, cat="Calibração", say=f"上手清单：{'、'.join(named)}的{word}标的时候读不到指纹，现在读到了、绑上")
 
     def _track(self, rd, inp, now):
         """站起来过、走过、配过哪些手柄（只看 Studio 自己收到的状态：robot.state 要有页面看着才推）。"""
@@ -1134,7 +1134,7 @@ class Onboarding:
             elif now - self._stand_since >= STOOD_S and fp is not None:
                 old = self.rec.get("stood") if isinstance(self.rec.get("stood"), dict) else None
                 if old is None or old.get("fp") != fp:
-                    self._put("stood", {"at": self.wall(), "fp": fp}, say="上手清单：记下「站起来过」", cat="手柄")
+                    self._put("stood", {"at": self.wall(), "fp": fp}, say="上手清单：记下「站起来过」", cat="Controle")
         else:
             self._stand_since = None
         if pose == "walking":
@@ -1144,7 +1144,7 @@ class Onboarding:
             old = self.rec.get("walked") if isinstance(self.rec.get("walked"), dict) else None
             if self._walk_acc >= WALKED_S and fp is not None and (old is None or old.get("fp") != fp):
                 self._walk_acc = 0.0
-                self._put("walked", {"at": self.wall(), "fp": fp}, say="上手清单：记下「走过」", cat="手柄")
+                self._put("walked", {"at": self.wall(), "fp": fp}, say="上手清单：记下「走过」", cat="Controle")
         else:
             self._walk_last = None
         # 舵机页标过 15 颗、主程序文件里也都是 2048：记下这时的关节指纹，之后变了要重新核对（代码审查 C9-3）
@@ -1155,7 +1155,7 @@ class Onboarding:
             ss = self.rec.get("servo_studio") if isinstance(self.rec.get("servo_studio"), dict) else None
             if ss is None or ss.get("src") != stu.get("time"):
                 self._put("servo_studio", {"at": self.wall(), "fp": jfp, "src": stu.get("time")},
-                          say="上手清单：舵机页的标定记录跟主程序文件对上了（15 颗都是 2048）", cat="校准")
+                          say="上手清单：舵机页的标定记录跟主程序文件对上了（15 颗都是 2048）", cat="Calibração")
         pv = inp["pad"] or {}
         seen = dict(self.rec.get("pads_seen") or {}) if isinstance(self.rec.get("pads_seen"), dict) else {}
         changed = False

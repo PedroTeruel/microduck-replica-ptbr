@@ -257,7 +257,7 @@ class Tune:
             e = _err(entry)
             if e and key not in self._io_err_logged:
                 self._io_err_logged.add(key)
-                self.log.warn(f"读不懂鸭子上的配置文件（{key}）", cat="调参", raw=e,
+                self.log.warn(f"读不懂鸭子上的配置文件（{key}）", cat="Ajuste", raw=e,
                               hint="调参卡上那一项会显示「读不懂」；文件被手改坏了的话，主程序也可能起不来")
             elif not e:
                 self._io_err_logged.discard(key)
@@ -282,7 +282,7 @@ class Tune:
             try:
                 await asyncio.to_thread(self.io)
             except Exception as e:  # noqa: BLE001
-                self.log.error("调参卡读文件时出错", cat="调参", raw=f"{type(e).__name__}: {e}", exc=True,
+                self.log.error("调参卡读文件时出错", cat="Ajuste", raw=f"{type(e).__name__}: {e}", exc=True,
                                hint="这是 Studio 的问题，导出诊断包发出来；不影响站和走")
                 await asyncio.sleep(5.0)
             await asyncio.sleep(IO_EVERY_S)
@@ -697,7 +697,7 @@ class Tune:
             except OSError:
                 pass
             raise
-        self.log.info("鸭子档案的重量记下了（只存在 Studio 里）", cat="调参",
+        self.log.info("鸭子档案的重量记下了（只存在 Studio 里）", cat="Ajuste",
                       raw=json.dumps({k: out[k] for k in BODY_KEYS + ("foot",)}, ensure_ascii=False), ctx={"by": by})
         self.disk = dict(self.disk, body={"value": out})
         return out

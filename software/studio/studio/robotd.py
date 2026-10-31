@@ -127,7 +127,7 @@ class Robotd:
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
-                self.log.error(f"后台任务「{name}」出错，1 秒后重启", cat="系统", raw=f"{type(e).__name__}: {e}",
+                self.log.error(f"后台任务「{name}」出错，1 秒后重启", cat="Sistema", raw=f"{type(e).__name__}: {e}",
                                hint="这是 Studio 自己的 bug，请把诊断包发出来", exc=True)
                 await asyncio.sleep(1.0)
 
@@ -230,7 +230,7 @@ class Robotd:
                 if self.estop.send_error:
                     why += f"（后来那次{self.estop.send_error}）"
                 self.estop.finish("timeout", why)
-                self.log.error("卸力 8 秒还没确认", cat="安全", step="busStatus 回读",
+                self.log.error("卸力 8 秒还没确认", cat="Segurança", step="busStatus 回读",
                                ctx=dict(evidence(bus), bus_age_s=_round(self.bus.age()),
                                         saw_torque_off=self.estop.saw_off, send_error=self.estop.send_error),
                                hint="舵机可能还顶着：用手柄 − 或者关电源；把诊断包发出来")
@@ -321,7 +321,7 @@ class Robotd:
                         else:
                             self.starting_since = None
                         if self.estop.on_bus(bus, asked):
-                            self.log.info(f"卸力已确认（按下到确认 {self.estop.confirm_ms} ms）", cat="安全",
+                            self.log.info(f"卸力已确认（按下到确认 {self.estop.confirm_ms} ms）", cat="Segurança",
                                           step="busStatus 回读")
                     if self.estop.active:
                         due["bus"] = min(due["bus"], time.monotonic() + 0.1)
@@ -387,7 +387,7 @@ class Robotd:
             except (Unreachable, Timeout, RpcError) as e:
                 self.calib.fail(e)
                 if attempt == 2:
-                    self.log.warn("读不到标定状态", cat="校准", raw=str(e), hint="不影响站和走；页面上标定那一项显示「不知道」")
+                    self.log.warn("读不到标定状态", cat="Calibração", raw=str(e), hint="不影响站和走；页面上标定那一项显示「不知道」")
             await asyncio.sleep(10.0)
 
     def _mark_present(self, ok, why=None):
@@ -495,13 +495,13 @@ class Robotd:
                     due[key] = now + every
                     if down[key]:
                         down[key] = False
-                        self.log.info(f"configd 的 {method} 恢复了", cat="手柄")
+                        self.log.info(f"configd 的 {method} 恢复了", cat="Controle")
                 except (Unreachable, Timeout, RpcError) as e:
                     sample.fail(e)
                     due[key] = now + 5.0
                     if not down[key]:
                         down[key] = True
-                        self.log.warn(f"configd 的 {method} 读不到", cat="手柄", raw=str(e),
+                        self.log.warn(f"configd 的 {method} 读不到", cat="Controle", raw=str(e),
                                       hint="有的鸭子关掉了 configd；不影响站和走，只是手柄那一栏显示「不知道」")
             await asyncio.sleep(0.5)
 

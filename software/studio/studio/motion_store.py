@@ -132,7 +132,7 @@ class MotionStore:
             except (OSError, ValueError, Refused, RecursionError) as e:
                 self.skipped += 1
                 if log:
-                    log.warn("跳过损坏的网页动作记录", cat="手柄", step=str(path), raw=str(e)[:200])
+                    log.warn("跳过损坏的网页动作记录", cat="Controle", step=str(path), raw=str(e)[:200])
 
     def summaries(self):
         with self._lk:

@@ -757,5 +757,5 @@ class Models:
                 else:
                     await self._bind(args, snap)
         if self.log:
-            self.log.write('模型管理配置已确认', cat='models', raw=f'op={op}; by={by or "web"}')
+            self.log.write('模型管理配置已确认', cat='Modelos', raw=f'op={op}; by={by or "web"}')
         return await self.view()

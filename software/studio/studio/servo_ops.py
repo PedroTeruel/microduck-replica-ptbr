@@ -289,7 +289,7 @@ class ServoOps:
             raise Refused("舵机总线没打开：先点「开始调舵机」")
         return self.s.bus
 
-    def log(self, msg, cat="总线", level="info", exc=False):
+    def log(self, msg, cat="Barramento", level="info", exc=False):
         self.s.log.write(msg, cat=CAT.get(cat, cat), level=level, exc=exc)
 
     def guard(self):

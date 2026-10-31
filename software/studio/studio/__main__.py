@@ -93,7 +93,7 @@ def main(argv=None):
     from .robotd import Robotd
 
     log.info(f"依赖：starlette {starlette.__version__} · uvicorn {uvicorn.__version__} · 来自 {Path(starlette.__file__).parent.parent}",
-             cat="系统", dedup=False)
+             cat="Sistema", dedup=False)
     rd = Robotd(a.robotd, a.configd, log)
 
     if a.selfcheck:
@@ -108,7 +108,7 @@ def main(argv=None):
 
     auth = Auth(state_dir, log)
     if not auth.has_password():
-        log.info("没设密码：同一个网络里打开网页就能用（想加密码：更多 → 登录密码）", cat="系统",
+        log.info("没设密码：同一个网络里打开网页就能用（想加密码：更多 → 登录密码）", cat="Sistema",
                  hint=f"网页里设，或者用 radxa 用户运行：python3 -I {ROOT / 'run.py'} set-password（别用 sudo）")
     host, _, port = a.listen.rpartition(":")
     if a.dev_autologin and host != "127.0.0.1":
@@ -158,12 +158,12 @@ def main(argv=None):
     app = build_app(auth=auth, robotd=rd, log=log, web_dir=a.web_dir, duck=duck, names=names, state_dir=state_dir,
                     dev_autologin=a.dev_autologin, servo=servo, imu=imu, pad=pad, onboard=onboard, battery=battery,
                     tune=tune, net=net, commit=commit, models=models, sensors=sensors)
-    log.info(f"网页地址：http://{host if host not in ('0.0.0.0', '') else '<鸭子 IP>'}:{port}/", cat="系统", dedup=False)
+    log.info(f"网页地址：http://{host if host not in ('0.0.0.0', '') else '<鸭子 IP>'}:{port}/", cat="Sistema", dedup=False)
     if a.bench:
         import threading
         import webbrowser
         url = f"http://{host or '127.0.0.1'}:{port}/#/servos"
-        log.info(f"台架模式：不连主程序，浏览器打开 {url}，在舵机页选 COM 口连接", cat="系统", dedup=False)
+        log.info(f"台架模式：不连主程序，浏览器打开 {url}，在舵机页选 COM 口连接", cat="Sistema", dedup=False)
         threading.Timer(1.5, webbrowser.open, args=(url,)).start()
     from .ws_protocol import MusicWebSocketProtocol
     uvicorn.run(app, host=host or "0.0.0.0", port=int(port), ws=MusicWebSocketProtocol, http="h11", lifespan="on",

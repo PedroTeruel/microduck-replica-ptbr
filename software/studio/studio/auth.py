@@ -140,7 +140,7 @@ class Auth:
                 f["until"] = now + wait
             n = f["n"]
         if not self.check_password(password):
-            self._log("warn", "Falha no login", cat="连接", raw=f"Origem {ip}, tentativa consecutiva nº {n}")
+            self._log("warn", "Falha no login", cat="Conexão", raw=f"Origem {ip}, tentativa consecutiva nº {n}")
             return None, "Senha incorreta" + (f"，Tente novamente em {wait} segundos" if wait else ""), wait
         token = secrets.token_urlsafe(32)
         sess = {"created": now, "last": now, "remember": bool(remember), "ip": ip,
@@ -150,7 +150,7 @@ class Auth:
             self._sessions = {t: v for t, v in self._sessions.items() if not self._expired(v, now)}
             self._sessions[token] = sess
             self._flush_locked()
-        self._log("info", f"Login bem-sucedido (origem {ip}{'; manter conectado por 30 dias' if remember else ''})", cat="连接")
+        self._log("info", f"Login bem-sucedido (origem {ip}{'; manter conectado por 30 dias' if remember else ''})", cat="Conexão")
         return token, None, 0
 
     def session(self, token, touch=True):
@@ -231,10 +231,10 @@ class Auth:
         try:
             _write_private(self.sess_path, self._sessions)
         except OSError as e:
-            self._log("warn", "Falha ao gravar a sessão; será necessário entrar novamente após reiniciar o Studio", cat="系统", raw=str(e))
+            self._log("warn", "Falha ao gravar a sessão; será necessário entrar novamente após reiniciar o Studio", cat="Sistema", raw=str(e))
         self._dirty_at = None
 
-    def _log(self, level, msg, cat="连接", **kw):
+    def _log(self, level, msg, cat="Conexão", **kw):
         if self.log:
             self.log.write(msg, cat=cat, level=level, **kw)
 
