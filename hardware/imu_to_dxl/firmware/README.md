@@ -19,7 +19,7 @@ Somente esta versão base pode usar o layout de RAM revisado: `sample=0x2000006C
 o checksum da Flash e o endereço/tamanho destes dois símbolos. Não reutilize endereços antigos ao ler um programa novo.
 
 Para depurar o código-fonte com breakpoints, compile novamente o `.axf` no seu ambiente. A compilação também gera `.map` e `.bin` para conferência durante o desenvolvimento;
-这些文件及测试产物由 `.gitignore` 排除，不提交到仓库。
+Esses arquivos e os artefatos de teste são excluídos pelo `.gitignore` e não são enviados ao repositório.
 
 Fluxo de dados: LSM6DSV16X → SPI1 → STM32 → USART2 + buffer externo → barramento half-duplex de fio único → controlador Linux.
 Implementa o **protocolo Feetech SCS/STS, ID 200, 1 Mbps** e se apresenta como um servo no barramento (a versão 0.1.0 usava Dynamixel Protocol 2.0).
@@ -27,7 +27,7 @@ O código não movimenta servos, não grava nos Option Bytes do MCU e não grava
 
 **Validação no barramento real:** conecte um adaptador half-duplex (URT-2) e execute `python tools/imu200/imu200.py check --port COMx`. Os 13 critérios foram derivados do código-fonte do controlador; todos devem passar antes de integrar o sistema. A verificação elétrica (liberação de DE, níveis lógicos e medição real de T_resp) ainda exige um analisador lógico.
 
-## 1. 直接开始
+## 1. Comece por aqui
 
 ### Keil
 
@@ -114,7 +114,7 @@ Se o depurador tiver saída de alimentação, não a conecte em paralelo às ceg
 J1/J2: 1=GND, 2=VDD_BUS, 3=DATA; J4/J5: 1=DATA, 2=VDD_BUS, 3=GND.
 O teste do barramento exige um adaptador USB half-duplex de fio único; um USB-TTL comum serve somente para os logs de J3.
 
-## 4. IMU 行为
+## 4. Comportamento do IMU
 
 - `WHO_AM_I` deve ser `0x70`. Após o reset por software, configura o dispositivo em etapas e lê de volta ODR, faixa e ativação SFLP.
 - Acelerômetro ±4g, 0,122 mg/LSB; giroscópio ±500 dps, 17,5 mdps/LSB.
@@ -135,7 +135,7 @@ O script de aquisição no PC desta versão já lê esses campos; o fato de “a
 
 Formato do quadro: `FF FF ID LEN INSTR parâmetros… CHK`, `CHK = ~(ID+LEN+INSTR+Σparâmetros)`. Como não há byte stuffing, `FF FF` também pode aparecer no payload: a recepção acumula o comprimento indicado e depois valida o checksum; se estiver incorreto, descarta um byte e procura novamente o cabeçalho, sem se confundir com um falso cabeçalho no payload. Consulte o comportamento de cada instrução no [protocolo do barramento §8](../总线协议.md#8-其它指令怎么应答):
 
-| 指令 | 行为 |
+| Instrução | Comportamento |
 |---|---|
 | `SYNC_READ 0x82` (broadcast) | Se estiver na posição k da lista: para k=0, transmite 50 µs após receber a instrução completa; para k>0, aguarda os quadros de resposta dos k dispositivos anteriores (ID anterior, comprimento correto e quinto byte diferente do código de instrução); se algum dispositivo anterior ficar silencioso por 1 ms, considera-o offline e o ignora |
 | `PING` / `READ` (unicast) | Retorna quadro de estado/dados, ERROR sempre 0; PING em broadcast não recebe resposta |
@@ -149,9 +149,9 @@ Na interrupção de recepção, somente overflow (**ORE**) é tratado como falha
 
 **Coloque o ID 200 na primeira posição da lista Sync Read**, como em `bus.rs` oficial. Ele também pode responder no meio da lista (regra de enfileiramento), mas se faltar um dispositivo anterior, a análise no controlador fica desalinhada; consulte o protocolo do barramento §2.
 
-多字节字段全部小端。
+Todos os campos com mais de um byte usam little-endian.
 
-| 地址 | 字节数 | Conteúdo / 权限 |
+| Endereço | Bytes | Conteúdo / permissão |
 |---|---:|---|
 | 0 / 1 | 1 cada | Versão do firmware 0.2 (principal/secundária); não se identifica como servo 3.46 |
 | 2 | 1 | END = 0 (little-endian) |
@@ -181,50 +181,50 @@ Bits de estado do bloco (byte 13): BIT0 fusão não pronta (quaternion todo zero
 Códigos de erro em `imu.h`: 0 normal, 1 inicialização, 2 SPI, 3 identidade, 4 timeout de reset, 5 configuração, 6 expirado, 7 FIFO, 8 quaternion.
 Estado do clock: 0=HSI PLL, 1=HSE PLL, 2=falha HSE com retorno a HSI PLL, 3=falha PLL usando HSI16, 4=falha na troca com retorno.
 
-## 6. 板到后 de 顺序
+## 6. Sequência após receber a placa
 
-1. 核实HardwareVersão、J3方向 e Alimentação，先单板限流Superior电，Verificação3.3V、短路、发热e复位。
-2. SWD识别 STM32，Baixar HEX，确认 main 可断点、复位e断电重启都可Inicialização。
-3. 接 J3 日志串口，115200/8N1。应有Versão信息；每秒输出 ready、id、错误eDados。
-   `s`打印状态，`l`切换周期日志，`r`重新初始化IMU，`?`查看帮助。
-4. Verificação WHO_AM_I=0x70、ready=1、采样计数增长，翻面/转动三轴核对加速度 e 姿态方向。
-5. 只接 IMU 的总线（URT-2 等半双工适配器），运行 `python tools/imu200/imu200.py check --port COMx --only-imu`（只问 200），再接舵机跑完整的 `check`。
-6. 用逻辑分析仪Verificação1Mbps、DE极性、最后停止位后释放、RX恢复 e 最坏回复延迟。
-7. 接入一个Servo，再接Completo总线；ID200放第一。记录错误、丢包、FIFO e 采样年龄。
-8. Concluído主控失效处理eInstalação方向核对后，再进行支撑状态Inferior de 整机联调。
+1. Confira a versão do hardware, a orientação de J3 e a alimentação. Energize primeiro somente a placa, com limite de corrente, e verifique os 3,3 V, curtos, aquecimento e reset.
+2. Identifique o STM32 por SWD, grave o HEX e confirme que é possível parar em `main` com breakpoint e iniciar normalmente após reset ou desligar/ligar a alimentação.
+3. Conecte a serial de logs J3, 115200/8N1. Deve aparecer a versão; uma linha por segundo informa `ready`, ID, erros e dados.
+   `s` imprime o estado, `l` alterna os logs periódicos, `r` reinicializa o IMU e `?` mostra a ajuda.
+4. Confira `WHO_AM_I=0x70`, `ready=1` e o aumento do contador de amostras. Vire e gire a placa nos três eixos para conferir a direção da aceleração e da postura.
+5. Conecte somente o IMU ao barramento (com adaptador half-duplex como URT-2) e execute `python tools/imu200/imu200.py check --port COMx --only-imu` (consulta somente o ID 200). Depois conecte os servos e execute o `check` completo.
+6. Use um analisador lógico para verificar 1 Mbps, polaridade de DE, liberação após o último bit de parada, restauração de RX e pior latência de resposta.
+7. Conecte um servo e depois o barramento completo; coloque o ID 200 primeiro. Registre erros, pacotes perdidos, FIFO e idade das amostras.
+8. Conclua o tratamento de falhas do controlador e confira a direção de instalação antes de integrar o sistema completo com apoio no chão.
 
-### 电脑验收Ferramentas
+### Ferramentas de validação no computador
 
-总线验收用 [`tools/imu200/imu200.py`](../../../tools/imu200/imu200.py)（0.1.0 的 `Tools/imu_probe.py` 说的是 Dynamixel 协议，已随协议更换删除）。需要 Python 3.10+ 和 pyserial：
+Use [`tools/imu200/imu200.py`](../../../tools/imu200/imu200.py) para validar o barramento (`Tools/imu_probe.py` da versão 0.1.0 era para o protocolo Dynamixel e foi removido quando o protocolo mudou). Requer Python 3.10+ e pyserial:
 
 ```powershell
-python tools/imu200/imu200.py check --port COM5   # 13 项逐条 PASS/FAIL，判据照主控源码
-python tools/imu200/imu200.py demo                # 不接硬件，看假小板怎么答
+python tools/imu200/imu200.py check --port COM5   # 13 critérios, cada um com PASS/FAIL, derivados do código do controlador
+python tools/imu200/imu200.py demo                # sem hardware; mostra as respostas da placa simulada
 ```
 
-把 COM5 替换为**半双工总线适配器**端口；J3日志口不能响应这些协议指令。日志落在 `tools/imu200/logs/`（原始收发十六进制 + 每帧一行 JSONL）。
-é necessárioInstalação可Execução de  Python，Windows 应用商店入口占位符不能Execução这些脚本；编译Firmware本身无需 Python。
+Substitua COM5 pela porta do **adaptador half-duplex do barramento**; a porta de logs J3 não responde a essas instruções do protocolo. Os logs ficam em `tools/imu200/logs/` (hexadecimal bruto enviado/recebido e uma linha JSONL por quadro).
+É preciso instalar uma distribuição executável do Python; o atalho fictício da Microsoft Store do Windows não executa esses scripts. A compilação do firmware em si não precisa de Python.
 
-## 7. Validação e 已知限制
+## 7. Validação e limitações conhecidas
 
-Teste代码使用实际 C 编译器Execução；SPI/FIFOTeste用模拟寄存器e时间，不等同于芯片实测。
-安装 MSVC 后，在其 **x64 Native Tools Command Prompt / Developer PowerShell** 中运行 `Tools/test.ps1` 重复主机测试。
-该入口要求 `cl` 已在 PATH 中；可传 `-PythonExe` 指定自己的 Python。单独运行两份 C 测试 `.cmd` 时，
-也可将自己的 `vcvars64.bat` 完整路径作为第一个参数。测试脚本不会安装编译器，也不连接硬件。
-当前验证记录见 `VALIDATION.md`，第三方源版本见 `DEPENDENCIES.md`。
+Os testes executam código compilado por um compilador C real; os testes SPI/FIFO usam registradores e tempo simulados, portanto não equivalem a medições no chip.
+Depois de instalar o MSVC, execute `Tools/test.ps1` no **x64 Native Tools Command Prompt / Developer PowerShell** para repetir os testes de host.
+O script exige que `cl` esteja no PATH; use `-PythonExe` para indicar seu Python. Para executar separadamente os dois arquivos `.cmd` de teste C,
+também é possível passar como primeiro argumento o caminho completo do seu `vcvars64.bat`. O script de teste não instala compilador nem se conecta ao hardware.
+O registro atual de validação está em `VALIDATION.md`; as versões das fontes de terceiros estão em `DEPENDENCIES.md`.
 
-待实板确认：Alimentação e 装配、HSI波特率误差、SPI模式/边沿/片选时序、TX使能时序、总线Eletrônica电平、
-FIFO实际Atualização率、SFLP初始收敛e坐标方向、温漂、看门狗恢复 e 长时间共线Execução。
-SoftwareTestepor meio de不能替代这些验收。
+Ainda precisam de confirmação na placa real: alimentação e montagem, erro de baud rate do HSI, modo/borda/timing de CS do SPI, temporização de habilitação TX, níveis elétricos do barramento,
+taxa real de atualização do FIFO, convergência inicial e eixos do SFLP, deriva térmica, recuperação do watchdog e operação prolongada no barramento compartilhado.
+Testes de software não substituem essas validações.
 
-## 8. 资料依据
+## 8. Referências
 
-- [本板硬件](https://github.com/fanhao375/microduck-replica/tree/a1f4979c425bd9228622be89f2bfa4d1de7fbde3/hardware/imu_to_dxl)
-- [STM32G031数据手册](https://www.st.com/resource/en/datasheet/stm32g031f8.pdf)
-- [LSM6DSV16X数据手册](https://www.st.com/resource/en/datasheet/lsm6dsv16x.pdf)
-- [ST IMU驱动](https://github.com/STMicroelectronics/lsm6dsv16x-pid)
-- 飞特《SCS 通信协议》与内存表：仓库 [`docs/飞特资料/`](../../../docs/飞特资料/)
-- [本板总线Protocolo（接口契约）](../总线Protocolo.md)
-- [所检查的上游主控接口](https://github.com/pollen-robotics/microduck/blob/5984efb770855432b03dafd3d879e9929981e45b/duck-control/src/bus.rs)
+- [Hardware desta placa](https://github.com/fanhao375/microduck-replica/tree/a1f4979c425bd9228622be89f2bfa4d1de7fbde3/hardware/imu_to_dxl)
+- [Datasheet STM32G031](https://www.st.com/resource/en/datasheet/stm32g031f8.pdf)
+- [Datasheet LSM6DSV16X](https://www.st.com/resource/en/datasheet/lsm6dsv16x.pdf)
+- [Driver de IMU da ST](https://github.com/STMicroelectronics/lsm6dsv16x-pid)
+- Protocolo de comunicação Feetech SCS e tabela de memória: diretório [`docs/飞特资料/`](../../../docs/飞特资料/) do repositório
+- [Protocolo do barramento desta placa (contrato da interface)](../总线Protocolo.md)
+- [Interface upstream do controlador examinada](https://github.com/pollen-robotics/microduck/blob/5984efb770855432b03dafd3d879e9929981e45b/duck-control/src/bus.rs)
 
-este projeto新写代码按 MIT Licença提供；TerceiroArquivoPreservado各自版权eLicença，见各 Drivers Diretório。
+O código novo deste projeto é fornecido sob a licença MIT; arquivos de terceiros preservam seus direitos autorais e licenças próprios, consulte cada diretório em `Drivers`.
