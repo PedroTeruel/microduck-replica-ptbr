@@ -114,9 +114,9 @@ class RowTest(unittest.TestCase):
         self.assertEqual((h["kind"], h["text"]), ("starting", "主程序还在启动"))
         h = O.header_of(inp(bus=boot, starting_s=31))
         self.assertEqual(h["kind"], "starting")
-        self.assertIn("主程序一直报「启动中」，超过 30 秒了", h["text"])
-        self.assertIn("旧版主程序的毛病", h["text"])
-        self.assertIn("去日志页", h["text"])
+        self.assertIn("O programa principal continua inicializando", h["text"])
+        self.assertIn("problema de versões antigas", h["text"])
+        self.assertIn("página de logs", h["text"])
         self.assertNotIn("10 秒", h["text"])
         h = O.header_of(inp(bus=dict(boot, phase="waiting_for_bus", error="Feetech Sync Read timeout"), starting_s=40))
         self.assertIn("舵机没上电", h["text"])                               # 有原话的等总线照旧说清楚是什么
@@ -434,15 +434,15 @@ class CpuViewTest(unittest.TestCase):
         v = cpu_view(None, 12.4, BUS, True)
         self.assertIsNone(v["c"])
         self.assertIsNone(v["throttled"])
-        self.assertIn("12 秒没更新", v["why"])
-        self.assertIn("调试模式", cpu_view(None, None, {"mode": "commissioning"}, True)["why"])
-        self.assertIn("等舵机总线", cpu_view(None, None, {"mode": "motion", "phase": "waiting_for_bus"}, True)["why"])
-        self.assertIn("没在跑", cpu_view(None, None, None, False)["why"])
+        self.assertIn("sem atualização há 12 s", v["why"])
+        self.assertIn("modo de depuração", cpu_view(None, None, {"mode": "commissioning"}, True)["why"])
+        self.assertIn("aguardando o barramento", cpu_view(None, None, {"mode": "motion", "phase": "waiting_for_bus"}, True)["why"])
+        self.assertIn("não está em execução", cpu_view(None, None, None, False)["why"])
 
         class Servo:
             state = "open"
-        self.assertIn("调舵机", cpu_view(None, None, BUS, True, Servo())["why"])
-        self.assertIn("没报温度", cpu_view({"battery": {}}, 0.5, BUS, True)["why"])
+        self.assertIn("Controle das servos", cpu_view(None, None, BUS, True, Servo())["why"])
+        self.assertIn("não informou a temperatura", cpu_view({"battery": {}}, 0.5, BUS, True)["why"])
 
     def test_throttled_limited_hot(self):
         h = dict(HEALTH, cpu_temp_c=92.4, cpu_throttle={"level": 4, "max_level": 6, "khz": 1008000, "max_khz": 1800000})
@@ -1218,9 +1218,9 @@ class StartingTooLongTest(unittest.TestCase):
         self.assertTrue(s["starting_long"])
         self.assertEqual(s["starting_s"], 31)
         t = next(t for t in s["todo"] if t["key"] == "starting")
-        self.assertEqual(t["msg"], "主程序一直报「启动中」")
-        self.assertIn("已经 31 秒了", t["hint"])
-        self.assertIn("旧版主程序的毛病", t["hint"])
+        self.assertEqual(t["msg"], "O programa principal continua inicializando")
+        self.assertIn("Já se passaram 31 s", t["hint"])
+        self.assertIn("problema de versões antigas", t["hint"])
         self.assertNotIn("10 秒", t["hint"])
         ob = O.Onboarding(self.tmp.name, self.log)
         ob.tick(rd)

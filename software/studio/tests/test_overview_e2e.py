@@ -190,8 +190,8 @@ class OverviewE2E(unittest.TestCase):
         c = self.out["cpu"]
         self.assertTrue(c["throttled"]["bad"])
         self.assertIn("降频了：1008 / 1800 MHz", c["throttled"]["text"])
-        self.assertIn("主板过热降频了", c["throttled"]["todo"])
-        self.assertIn("有点热", c["hot"])
+        self.assertIn("A placa reduziu a frequência por superaquecimento", c["throttled"]["todo"])
+        self.assertIn("temperatura alta", c["hot"])
         self.assertIn("—", c["stale"])                                   # health 过期：写「—」，不写「正常」（O5）
         self.assertNotIn("正常", c["stale"])
 

@@ -586,7 +586,7 @@ class StartingTimerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.rd.starting_since, since)                      # 连续报着：不重新计
         s = summarize(self.rd, {}, now=since + 31)                          # 假时钟：过了 31 秒
         self.assertTrue(s["starting_long"])
-        self.assertIn("主程序一直报「启动中」", [t["msg"] for t in s["todo"]])
+        self.assertIn("O programa principal continua inicializando", [t["msg"] for t in s["todo"]])
         self.fake.comm_stuck = False                                        # 换上修好的 fork：快照来了，清零
         self.assertTrue(await self.wait_for(lambda: self.rd.starting_since is None
                                             and (self.rd.bus.value or {}).get("phase") == "ready"))

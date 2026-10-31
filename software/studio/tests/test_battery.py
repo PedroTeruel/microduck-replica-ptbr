@@ -176,7 +176,7 @@ class EstimatingTest(unittest.TestCase):
         self.assertIsNone(e.shown)
         v = e.view(t)
         self.assertIsNone(v["pct"])
-        self.assertEqual(v["why"], "估算中，刚开始读")
+        self.assertEqual(v["why"], "Estimando; leitura iniciada agora")
         self.assertGreater(v["estimating_left_s"], 0)
         run(e, hold(7.4, "light", 3), t0=t + 1)
         self.assertEqual(e.mode, "calm")
@@ -193,8 +193,8 @@ class EstimatingTest(unittest.TestCase):
         self.assertIsNotNone(e.shown)
         self.assertGreater(e.shown, 3)
         v = e.view(t)
-        self.assertEqual(v["why"], "走路中，按负载电压粗估，偏低")
-        self.assertIn("偏低", " ".join(v["detail"]))
+        self.assertEqual(v["why"], "Em movimento; estimativa aproximada pela tensão sob carga, possivelmente abaixo do real")
+        self.assertIn("abaixo do valor real", " ".join(v["detail"]))
 
     def test_no_warning_while_estimating(self):
         e = B.Estimator()
@@ -220,7 +220,7 @@ class CalmTest(unittest.TestCase):
         calm = e.shown
         t, _ = run(e, hold(7.40, "heavy", 200), t0=t + 1)
         self.assertEqual(e.shown, calm)                 # 5 分钟以内：还是停下时的估算
-        self.assertEqual(e.view(t)["why"], "走路中，按停下时的电压估")
+        self.assertEqual(e.view(t)["why"], "Em movimento; estimativa baseada na tensão em repouso")
         t, _ = run(e, hold(7.40, "heavy", 200), t0=t + 1)
         self.assertEqual(e.mode, "load_rough")          # 一直走超过 5 分钟：改成负载粗估
         self.assertEqual(e.shown, round(B.soc_from_pack(7.40)))
@@ -258,7 +258,7 @@ class WarningTest(unittest.TestCase):
         self.assertEqual(e.level(), "warn")
         warns = [x["msg"] for _, x in ev if x["level"] == "warn"]
         self.assertEqual(len(warns), 1)
-        self.assertTrue(warns[0].startswith("电量到提醒线 30%"))
+        self.assertTrue(warns[0].startswith("Bateria atingiu o limite de aviso de 30%"))
         # 32%：还在回差里（30 + 3）
         t, _ = run(e, hold(7.445, "rest", 120), t0=t + 1)
         self.assertTrue(e.warn.on)
@@ -267,7 +267,7 @@ class WarningTest(unittest.TestCase):
         self.assertTrue(e.warn.on)
         t, ev = run(e, hold(7.50, "rest", 40), t0=t + 1)
         self.assertFalse(e.warn.on)
-        self.assertTrue(any("收起" in x["msg"] for _, x in ev))
+        self.assertTrue(any("aviso removido" in x["msg"] for _, x in ev))
 
     def test_flapping_does_not_flash(self):
         """在线附近来回：60 秒持续条件 + 死区，不会一会儿亮一会儿灭。"""
@@ -291,8 +291,8 @@ class WarningTest(unittest.TestCase):
         self.assertEqual(e.level(), "error")
         items = B.todo_items(e.view(t))
         self.assertEqual(items[0]["level"], "error")
-        self.assertIn("电量只剩约", items[0]["msg"])
-        self.assertIn("不会自己停", items[0]["hint"])
+        self.assertIn("Restam cerca de", items[0]["msg"])
+        self.assertIn("não para sozinho", items[0]["hint"])
         self.assertEqual(len([i for i in items if i["key"] == "battery"]), 1)
 
     def test_rough_estimate_caps_at_yellow(self):
@@ -303,7 +303,7 @@ class WarningTest(unittest.TestCase):
         self.assertTrue(e.warn.on)
         self.assertFalse(e.red.on)
         self.assertEqual(e.level(), "warn")
-        self.assertIn("粗估", B.todo_items(e.view(t))[0]["msg"])
+        self.assertIn("estimativa aproximada", B.todo_items(e.view(t))[0]["msg"])
 
     def test_settings_change_applies_next_tick(self):
         e = B.Estimator()
@@ -325,7 +325,7 @@ class LoadLineTest(unittest.TestCase):
         self.assertTrue(e.low.on)
         self.assertEqual(e.level(), "error")
         msg = [x for _, x in ev if x["level"] == "error"]
-        self.assertTrue(msg and msg[0]["msg"].startswith("电压很低"))
+        self.assertTrue(msg and msg[0]["msg"].startswith("Tensão muito baixa"))
         items = B.todo_items(e.view(t))
         self.assertEqual(items[0]["key"], "battery_low_volt")
         t, _ = run(e, hold(7.05, "light", 50), t0=t + 1)
@@ -360,8 +360,8 @@ class GapTest(unittest.TestCase):
         self.assertEqual(e.mode, "no_data")
         self.assertIsNone(e.shown)
         self.assertIsNone(e.level())
-        self.assertTrue(any("重新估算" in x["msg"] for _, x in ev))
-        self.assertEqual(e.view(t)["why"], "读不到电压")
+        self.assertTrue(any("reiniciando a estimativa" in x["msg"] for _, x in ev))
+        self.assertEqual(e.view(t)["why"], "Sem leitura de tensão")
         t, _ = run(e, hold(7.40, "rest", 5), t0=t + 1)
         self.assertEqual(e.mode, "estimating")
 
@@ -378,7 +378,7 @@ class GapTest(unittest.TestCase):
         t, _ = run(e, [(None, None)] * 15, t0=t + 1)
         t, ev = run(e, hold(8.10, "rest", 40), t0=t + 1)
         self.assertEqual(e.shown, round(B.soc_from_pack(8.10)))
-        self.assertTrue(any("换了电池或充过电" in x["msg"] for _, x in ev))
+        self.assertTrue(any("trocada ou recarregada" in x["msg"] for _, x in ev))
 
 
 class FeedTest(unittest.TestCase):
@@ -418,18 +418,18 @@ class FeedTest(unittest.TestCase):
         e = B.Estimator()
         for i in range(40):
             e.feed(float(i), DUCK2, None, "rest", key=i)
-        names = ["左髋转向", "左髋横滚", "左髋俯仰", "左膝", "左踝", "脖子", "头俯仰", "头转向", "头横滚", "嘴",
-                 "右髋转向", "右髋横滚", "右髋俯仰", "右膝", "右踝"]
+        names = ["Giro do quadril esquerdo", "Inclinação do quadril esquerdo", "Flexão do quadril esquerdo", "Joelho esquerdo", "Tornozelo esquerdo", "Pescoço", "Inclinação da cabeça", "Giro da cabeça", "Rolagem da cabeça", "Boca",
+                 "Giro do quadril direito", "Inclinação do quadril direito", "Flexão do quadril direito", "Joelho direito", "Tornozelo direito"]
         v = e.view(39.0, rd={"volts": 7.63, "percent": 64.4}, names=names)
         self.assertEqual(v["pct"], round(B.soc_from_pack(7.622)))
-        self.assertEqual(v["why"], "静置")
+        self.assertEqual(v["why"], "Em repouso")
         self.assertEqual(v["rd_pct"], 64)
-        self.assertEqual(v["spread"]["min_name"], "头横滚")
+        self.assertEqual(v["spread"]["min_name"], "Rolagem da cabeça")
         text = "\n".join(v["detail"])
-        for s in ("15 颗去掉最高最低各 3 颗的平均", "每芯 3.81 V", "主程序自己的算法：64%", "直线，低电量偏高",
-                  "放空了尽快充；长期不用存一半电（约 7.4–7.6 V）", "不会自己停", "黄条会比以前早亮", "±15%"):
+        for s in ("média após descartar as 3 leituras mais altas e mais baixas", "3.81 V por célula", "Estimativa do programa principal: 64%", "escala linear de 6,6–8,2 V",
+                  "Recarregue logo após descarregar", "não para sozinho", "o aviso amarelo aparece antes", "±15%"):
             self.assertIn(s, text)
-        self.assertIn("没电自动坐下关机", "\n".join(e.view(39.0, shutdown=True)["detail"]))
+        self.assertIn("sentar e desligar", "\n".join(e.view(39.0, shutdown=True)["detail"]))
 
     def test_bench_preset(self):
         e = B.Estimator({"preset": "bench"})
@@ -444,7 +444,7 @@ class FeedTest(unittest.TestCase):
         e = B.Estimator()
         seq = hold(7.60, "light", 60) + [(4.21, "light")] + hold(7.60, "light", 5) + [(4.3, "light")] + hold(7.6, "light", 30)
         t, ev = run(e, seq)
-        g = [x for _, x in ev if "掉了 1 V" in x["msg"]]
+        g = [x for _, x in ev if "caiu mais de 1 V" in x["msg"]]
         self.assertEqual(len(g), 1)                        # 一分钟最多一条
         self.assertIn("4.21", g[0]["raw"])
         self.assertEqual(e.shown, round(B.soc_from_pack(7.60)))
@@ -455,8 +455,8 @@ class FeedTest(unittest.TestCase):
         _, ev = run(e, hold(7.60, "rest", 40))
         B.log_events(log, [x for _, x in ev])
         self.assertTrue(log.lines)
-        self.assertTrue(all(c == "电池" for _, c, _, _ in log.lines))
-        self.assertIn("电量估算起步", log.lines[0][2])
+        self.assertTrue(all(c == "Bateria" for _, c, _, _ in log.lines))
+        self.assertIn("Estimativa de bateria iniciada", log.lines[0][2])
         B.log_events(None, [x for _, x in ev])             # 没有 log 不出错
 
 
@@ -536,7 +536,7 @@ class SettingsTest(unittest.TestCase):
         self.assertTrue(os.path.exists(p + ".bad"))
         self.assertFalse(os.path.exists(p))
         self.assertEqual(log.lines[0][0], "warn")
-        self.assertEqual(log.lines[0][1], "电池")
+        self.assertEqual(log.lines[0][1], "Bateria")
         with open(p, "w", encoding="utf-8") as f:
             f.write("[1, 2]")
         self.assertEqual(B.load_settings(self.dir, FakeLog()), B.DEFAULTS)
@@ -548,7 +548,7 @@ class SettingsTest(unittest.TestCase):
         s = B.load_settings(self.dir, log)
         self.assertEqual((s["warn_pct"], s["red_pct"], s["cal_offset_v"]), (30, 20, 0.1))
         self.assertEqual(len(log.lines), 1)
-        self.assertIn("提醒线", log.lines[0][3]["raw"])
+        self.assertIn("Limite de aviso", log.lines[0][3]["raw"])
         with open(B.settings_path(self.dir), "w", encoding="utf-8") as f:
             json.dump({"warn_pct": 20, "red_pct": 18}, f)                   # 每项都合法、合起来不行
         s = B.load_settings(self.dir, FakeLog())
@@ -557,7 +557,7 @@ class SettingsTest(unittest.TestCase):
     def test_changes_text(self):
         a = dict(B.DEFAULTS)
         b = dict(a, red_pct=20, cal_offset_v=0.12)
-        self.assertEqual(B.settings_changes(a, b), "红线 15% → 20%；读数校准 +0.00 V → +0.12 V")
+        self.assertEqual(B.settings_changes(a, b), "Limite crítico 15% → 20%; Calibração da leitura +0.00 V → +0.12 V")
         self.assertEqual(B.settings_changes(a, a), "")
 
 
@@ -583,7 +583,7 @@ class ReplayTest(unittest.TestCase):
         e = B.Estimator()
         shown, ev, _ = replay(e, load_fixture("battery-20261012-1458.csv"))
         self.assertEqual(shown[915], shown[935])
-        g = [t for t, x in ev if "掉了 1 V" in x["msg"]]
+        g = [t for t, x in ev if "caiu mais de 1 V" in x["msg"]]
         self.assertTrue(any(920 <= t <= 930 for t in g))
         self.assertFalse([x for _, x in ev if x["level"] == "error"])
         self.assertTrue(38 <= shown[max(shown)] <= 50)

@@ -86,7 +86,7 @@ async function restart(battery) {
 
 const out = { errors, steps: {} };
 
-// ---- 1. 总览：静置 7.62 V ----
+// ---- 1. Visão geral: repouso a 7,62 V ----
 // Studio may have accumulated the recorded fixture's 7.54 V while Edge was
 // starting. Explicitly clear that history before testing the scripted 7.62 V.
 await fakeSet({ battery: { gone: true } });
@@ -125,7 +125,7 @@ await shot('battery-warn.png', '.band', '.todo');
 
 // ---- 5. 红：7.15 V（约 9%） ----
 await restart({ v: 7.15 });
-await waitFor(`document.querySelector('.bat-cell')?.classList.contains('bad') && /电量只剩约/.test(document.querySelector('.todo')?.innerText || '')`, '红线', 15000);
+await waitFor(`document.querySelector('.bat-cell')?.classList.contains('bad') && /Restam cerca de/.test(document.querySelector('.todo')?.innerText || '')`, 'limite crítico', 15000);
 out.steps.red = { text: await cellText(), todo: await todoText() };
 await shot('battery-red.png', '.band', '.todo');
 
@@ -170,7 +170,7 @@ await setNum('red_pct', 20);
 await clickBtn('保存');
 await waitFor(`/已保存/.test(document.querySelector('.bset').innerText)`, '存好');
 out.steps.saved = { msg: await bmsg(), logs: (await studioLogs()).filter((m) => m.startsWith('电池设置改了')) };
-// 我量了电池电压：鸭子卸力静置（假 robotd 一开始就是软着的）
+// Medição da tensão da bateria: robô em repouso, sem torque (o robotd simulado já inicia sem torque)
 await sleep(2500);
 await setNum('万用表读数', 7.80);
 await clickBtn('算一下');

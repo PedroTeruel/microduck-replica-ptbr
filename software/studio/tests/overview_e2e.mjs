@@ -471,16 +471,16 @@ if (PHASE === 'done') {
     return { tops: c, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }; })()`);
   await shot('desktop-1100-full.png', 'full');
 
-  // ================= 主板温度格：降频（红）、有点热（橙）、读不到（—） =================
+  // ================= Indicador de temperatura da placa: frequência reduzida, temperatura alta, indisponível =================
   await open('#/', 1440, 900, false);
   await fakeSet({ cpu: { c: 92.4, level: 4, max_level: 6, khz: 1008000, max_khz: 1800000 } });
-  await waitFor(`/降频了/.test(document.querySelector('.band-cpu').innerText)`, '主板格变红', 8000);
+  await waitFor(`/reduziu a frequência/.test(document.querySelector('.band-cpu').innerText)`, 'indicador da placa em vermelho', 8000);
   out.cpu = { throttled: await js(`({ text: document.querySelector('.band-cpu').innerText.replace(/\\s+/g, ' '), bad: document.querySelector('.band-cpu').classList.contains('bad'),
     todo: document.querySelector('.todo')?.innerText.replace(/\\s+/g, ' ') })`) };
   await shot('band-throttled.png', '.band');
   await shot('band-throttled-with-todo.png', '.overview');
   await fakeSet({ cpu: { c: 82.3, level: 0, khz: 1800000 } });
-  await waitFor(`/有点热/.test(document.querySelector('.band-cpu').innerText)`, '主板格变橙', 8000);
+  await waitFor(`/temperatura alta/.test(document.querySelector('.band-cpu').innerText)`, 'indicador da placa em laranja', 8000);
   out.cpu.hot = await js(`document.querySelector('.band-cpu').innerText.replace(/\\s+/g, ' ')`);
   await shot('band-hot.png', '.band');
   await fakeSet({ errors: { 'robot.health': { code: -32603, message: 'health 没回（测试）' } } });

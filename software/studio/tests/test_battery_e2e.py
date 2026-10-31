@@ -83,7 +83,7 @@ class BatteryE2E(unittest.TestCase):
 
     def test_overview_states(self):
         calm = self.step("calm")
-        self.assertRegex(calm["text"], r"电池 (4[5-9]|50) % 7\.6\d V · 静置")       # 二号鸭那组：7.62 V → 约 48%
+        self.assertRegex(calm["text"], r"Bateria (4[5-9]|50) % 7\.6\d V · Em repouso")  # Conjunto do robô 2: 7,62 V → cerca de 48%
         self.assertNotIn("warn", calm["cls"])
         self.assertIn("读不到电压", self.step("nodata")["text"])
         self.assertIn("估算中", self.step("estimating")["text"])
@@ -92,7 +92,7 @@ class BatteryE2E(unittest.TestCase):
         self.assertRegex(warn["text"], r"电池 (2\d|30) %")                          # 7.40 V 加二号鸭那组偏差：7.42 V → 30%
         self.assertRegex(warn["todo"], r"电量约 (2\d|30)%")
         red = self.step("red")
-        self.assertRegex(red["todo"], r"电量只剩约 \d+%")
+        self.assertRegex(red["todo"], r"Restam cerca de \d+% de bateria")
         self.assertIn("不会自己停", red["todo"])                                       # 只警告的文案
         low = self.step("lowvolt")
         self.assertIn("电压很低", low["todo"])
