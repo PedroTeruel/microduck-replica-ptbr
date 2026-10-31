@@ -97,7 +97,7 @@ class ServiceTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def create(self, **kwargs):
-        return self.service.create_run({"name": "测试", "recipe_id": "hd1910-flat", "kind": "smoke", **kwargs})
+        return self.service.create_run({"name": "teste", "recipe_id": "hd1910-flat", "kind": "smoke", **kwargs})
 
     def complete_smoke(self):
         run = self.create()
@@ -433,7 +433,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(resumed["kind"], "smoke")
 
     def test_long_valid_name_can_resume_without_auto_suffix_overflow(self):
-        run = self.create(name="鸭" * 100)
+        run = self.create(name="pato" * 100)
         run = wait_for(self.service, run["id"], lambda r: r["status"] == "completed")
         resumed = self.service.resume(run["id"], {"checkpoint_id": run["checkpoints"][-1]["id"]})
         self.assertLessEqual(len(resumed["name"]), 100)

@@ -49,7 +49,7 @@ test('chart ignores missing/non-finite observations without inventing rewards', 
 });
 test('profile import accepts only the Studio schema and keeps missing measurements explicit', () => {
   const summarize = feature('profileSummary');
-  assert.throws(()=>summarize({schema:'other'}), /档案|schema/);
+  assert.throws(()=>summarize({schema:'other'}), /perfil|schema/);
   const s = summarize({schema:'microduck-studio-duck-profile/v1',duck:{label:'duck-70c3'},body:null});
   assert.equal(s.label, 'duck-70c3');
   assert.equal(s.mass, null);
@@ -76,7 +76,7 @@ test('process controls send no checkpoint payload; stopped resume targets the se
   assert.deepEqual(payload({status:'completed'},'evaluate',cp),{checkpoint_id:'cp-5'});
 });
 
-const balanceRecipe = {id:'hd1910-single-leg',title:'HD1910 单脚平衡',skill_defaults:{support_side:'left',lift_height_m:.01,hold_seconds:3},skill_limits:{support_side:['left','right'],lift_height_m:{min:.005,max:.02,step:.005},hold_seconds:{min:1,max:5,step:1}}};
+const balanceRecipe = {id:'hd1910-single-leg',title:'HD1910 equilíbrio em um pé',skill_defaults:{support_side:'left',lift_height_m:.01,hold_seconds:3},skill_limits:{support_side:['left','right'],lift_height_m:{min:.005,max:.02,step:.005},hold_seconds:{min:1,max:5,step:1}}};
 test('balance goal normalizes numeric input and uses recipe defaults without mutating them', () => {
   const normalize=feature('normalizeSkill');
   assert.deepEqual(normalize(balanceRecipe),balanceRecipe.skill_defaults);
@@ -106,10 +106,10 @@ test('a completed balance smoke qualifies only for exactly the same goal', () =>
   assert.equal(ready([smoke],balanceRecipe.id,'real',defaults,null,null),false);
 });
 test('balance summaries distinguish support and lifted feet and identify the right recipe', () => {
-  assert.match(feature('skillSummary')(balanceRecipe.skill_defaults),/左脚支撑.*右脚抬高 1 cm.*保持 3 秒/);
-  assert.match(feature('skillSummary')({...balanceRecipe.skill_defaults,support_side:'right'}),/右脚支撑.*左脚抬高/);
+  assert.match(feature('skillSummary')(balanceRecipe.skill_defaults),/pé esquerdo como apoio.*pé direito elevado 1 cm.*manter 3 s/);
+  assert.match(feature('skillSummary')({...balanceRecipe.skill_defaults,support_side:'right'}),/pé direito como apoio.*pé esquerdo elevado/);
   assert.equal(feature('recipeTitle')({recipe_id:balanceRecipe.id},[balanceRecipe]),balanceRecipe.title);
-  assert.equal(feature('recipeTitle')({recipe_id:balanceRecipe.id}),'HD1910 单脚平衡');
+  assert.equal(feature('recipeTitle')({recipe_id:balanceRecipe.id}),'HD1910 equilíbrio em um pé');
 });
 test('copy and smoke-to-training preserve the archived action goal independently', () => {
   const run={recipe_id:balanceRecipe.id,kind:'smoke',status:'completed',config:defaults,skill:{...balanceRecipe.skill_defaults},profile:{schema:'microduck-studio-duck-profile/v1'}};
@@ -131,22 +131,22 @@ test('evaluation evidence never treats missing or demonstration counts as physic
   assert.deepEqual(stats({trials:4,successes:1,success_rate:.25}),{trials:4,successes:1,success_rate:.25});
 });
 const catalogRecipes=[
-  {id:'hd1910-flat',title:'HD1910 平地行走',description:'练习向前走和转向',catalog:{category:'行走',tags:['基础步态','平地'],preview_kind:'robot_model',source_label:'项目内置',verification_state:'pipeline',verification_label:'已完成短试跑',instructions:['选择参数','短试跑','评估检查点']}},
-  {id:'hd1910-rough',title:'HD1910 起伏地形',description:'适应坡面和不平整地面',catalog:{category:'行走',tags:['地形适应'],preview_kind:'text',verification_state:'unverified',verification_label:'待 GPU 验证'}},
-  {...balanceRecipe,catalog:{category:'平衡',tags:['单脚','左右可选'],preview_kind:'balance_target',verification_state:'pipeline',verification_label:'已完成短试跑'}}
+  {id:'hd1910-flat',title:'HD1910 caminhada em terreno plano',description:'Pratique caminhar para a frente e virar',catalog:{category:'Caminhada',tags:['marcha básica','terreno plano'],preview_kind:'robot_model',source_label:'Incluído no projeto',verification_state:'pipeline',verification_label:'Teste rápido concluído',instructions:['Configurar parâmetros','Teste rápido','Avaliar checkpoint']}},
+  {id:'hd1910-rough',title:'HD1910 terreno irregular',description:'Adapte-se a declives e terrenos irregulares',catalog:{category:'Caminhada',tags:['adaptação a terrenos'],preview_kind:'text',verification_state:'unverified',verification_label:'Aguardando validação em GPU'}},
+  {...balanceRecipe,catalog:{category:'Equilíbrio',tags:['um pé','esquerda ou direita'],preview_kind:'balance_target',verification_state:'pipeline',verification_label:'Teste rápido concluído'}}
 ];
 test('recipe catalog search combines category with case-insensitive title, description and tags', () => {
   const filter=feature('filterRecipes');
-  assert.deepEqual(filter(catalogRecipes,{query:' hd1910   地形 ',category:'行走'}).map(r=>r.id),['hd1910-rough']);
-  assert.deepEqual(filter(catalogRecipes,{query:'左右可选'}).map(r=>r.id),['hd1910-single-leg']);
-  assert.deepEqual(filter(catalogRecipes,{query:'坡面'}).map(r=>r.id),['hd1910-rough']);
-  assert.deepEqual(filter(catalogRecipes,{query:'单脚',category:'行走'}),[]);
-  assert.deepEqual(filter(catalogRecipes,{query:'   ',category:'全部'}),catalogRecipes);
+  assert.deepEqual(filter(catalogRecipes,{query:' hd1910   terreno ',category:'Caminhada'}).map(r=>r.id),['hd1910-rough']);
+  assert.deepEqual(filter(catalogRecipes,{query:'esquerda ou direita'}).map(r=>r.id),['hd1910-single-leg']);
+  assert.deepEqual(filter(catalogRecipes,{query:'declive'}).map(r=>r.id),['hd1910-rough']);
+  assert.deepEqual(filter(catalogRecipes,{query:'um pé',category:'Caminhada'}),[]);
+  assert.deepEqual(filter(catalogRecipes,{query:'   ',category:'Tudo'}),catalogRecipes);
 });
 test('catalog categories follow available recipes and never add unavailable actions', () => {
-  assert.deepEqual(feature('recipeCategories')(catalogRecipes),['全部','行走','平衡']);
-  assert.deepEqual(feature('recipeCategories')([]),['全部']);
-  const filtered=feature('filterRecipes')(catalogRecipes,{category:'平衡'});
+  assert.deepEqual(feature('recipeCategories')(catalogRecipes),['Tudo','Caminhada','Equilíbrio']);
+  assert.deepEqual(feature('recipeCategories')([]),['Tudo']);
+  const filtered=feature('filterRecipes')(catalogRecipes,{category:'Equilíbrio'});
   assert.equal(filtered[0],catalogRecipes[2]);
   assert.equal(catalogRecipes.length,3);
 });
@@ -156,8 +156,8 @@ test('old recipe metadata falls back to available previews without inventing ver
   assert.equal(catalog({id:'hd1910-rough'}).preview_kind,'text');
   assert.equal(catalog(balanceRecipe).preview_kind,'balance_target');
   assert.equal(catalog(balanceRecipe).verification_state,'unverified');
-  assert.equal(catalog(balanceRecipe).verification_label,'验证记录未提供');
-  assert.equal(catalog(catalogRecipes[0]).verification_label,'已完成短试跑');
+  assert.equal(catalog(balanceRecipe).verification_label,'Registro de validação não fornecido');
+  assert.equal(catalog(catalogRecipes[0]).verification_label,'Teste rápido concluído');
   assert.equal(catalog({id:'future',catalog:{preview_kind:'unknown',tags:null,instructions:null}}).preview_kind,'text');
   assert.equal(catalog({id:'future'}).instructions.length,3);
 });
@@ -172,22 +172,22 @@ test('resource numbers distinguish missing measurements from a real zero', () =>
 });
 test('resource freshness keeps a failed or old sample from looking live', () => {
   const status=feature('resourceStatus'),fresh={status:'ready',age_seconds:1,stale:false};
-  assert.equal(status(null).label,'正在采集');
-  assert.equal(status({status:'pending',age_seconds:null}).label,'正在采集');
-  assert.equal(status(fresh).label,'实时更新');
-  assert.equal(status({...fresh,status:'partial'}).label,'部分指标可用');
+  assert.equal(status(null).label,'Coletando');
+  assert.equal(status({status:'pending',age_seconds:null}).label,'Coletando');
+  assert.equal(status(fresh).label,'Atualização em tempo real');
+  assert.equal(status({...fresh,status:'partial'}).label,'Algumas métricas disponíveis');
   assert.equal(status({...fresh,age_seconds:20}).stale,true);
   assert.equal(status({...fresh,stale:true}).stale,true);
-  assert.equal(status(fresh,'网络断开').stale,true);
-  assert.equal(status({status:'unavailable',age_seconds:null}).label,'暂不可读取');
-  assert.equal(status({status:'ready',age_seconds:null}).label,'采样时间未知');
+  assert.equal(status(fresh,'Rede desconectada').stale,true);
+  assert.equal(status({status:'unavailable',age_seconds:null}).label,'Indisponível no momento');
+  assert.equal(status({status:'ready',age_seconds:null}).label,'Horário da leitura desconhecido');
 });
 test('resource freshness ignores remote wall clock offsets and ages after browser suspension', () => {
   const status=feature('resourceStatus');
   for(const sampled_at of ['2000-01-01T00:00:00Z','2099-12-31T00:00:00Z']) {
     const fresh={status:'ready',age_seconds:1,stale:false,sampled_at};
-    assert.equal(status(fresh).label,'实时更新');
-    assert.equal(status(fresh,'',2).label,'实时更新');
+    assert.equal(status(fresh).label,'Atualização em tempo real');
+    assert.equal(status(fresh,'',2).label,'Atualização em tempo real');
     assert.equal(status(fresh,'',11).stale,true);
     assert.equal(status({...fresh,age_seconds:9},'',2).stale,true);
   }
@@ -198,9 +198,9 @@ test('pretrained links allow only absolute HTTPS without embedded credentials', 
   for(const url of ['javascript:alert(1)','data:text/html,x','//example.com','http://example.com','https://user:pass@example.com',null]) assert.equal(safe(url),null);
 });
 test('pretrained search combines actual source and category without making recipes', () => {
-  const models=[{id:'official-walk',title:'行走',category:'行走',source_kind:'official',source_label:'Pollen Robotics 官方',servos:'XL330',version:'V8',tags:['恢复']},{id:'kiss-walk',title:'行走',category:'行走',source_kind:'community',source_label:'kissqy 社区',servos:'HD1910',version:'V167',tags:['恢复']},{id:'kiss-spin',title:'原地旋转',category:'滑轮',source_kind:'community',servos:'HD1910',tags:[]}];
+  const models=[{id:'official-walk',title:'Caminhada',category:'Caminhada',source_kind:'official',source_label:'Pollen Robotics Oficial',servos:'XL330',version:'V8',tags:['Recuperação']},{id:'kiss-walk',title:'Caminhada',category:'Caminhada',source_kind:'community',source_label:'kissqy Comunidade',servos:'HD1910',version:'V167',tags:['Recuperação']},{id:'kiss-spin',title:'Girar no próprio eixo',category:'Rodízios',source_kind:'community',servos:'HD1910',tags:[]}];
   assert.deepEqual(feature('filterPretrained')(models,{query:'v8 xl330',source:'official'}).map(m=>m.id),['official-walk']);
-  assert.deepEqual(feature('filterPretrained')(models,{query:'恢复',category:'行走',source:'community'}).map(m=>m.id),['kiss-walk']);
+  assert.deepEqual(feature('filterPretrained')(models,{query:'Recuperação',category:'Caminhada',source:'community'}).map(m=>m.id),['kiss-walk']);
   assert.deepEqual(feature('filterPretrained')(models,{query:'unknown'}),[]);
   assert.equal(models.length,3);
 });

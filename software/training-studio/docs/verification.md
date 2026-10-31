@@ -65,7 +65,7 @@ Esse resultado cobre uma execução curta em piso plano. A consistência PT/ONNX
 
 ## Entrada para o guia de ações personalizadas · 23/10/2026
 
-- Foi adicionado um guia em chinês sobre o fluxo oficial de desenvolvimento, os limites atuais, um exemplo de solicitação de equilíbrio em uma perna, a viabilidade de saltos e os critérios para avaliar giros. O fonte é `web/custom-actions.md` e a página estática é `web/guide.html`.
+- Foi adicionado um guia em português sobre o fluxo oficial de desenvolvimento, os limites atuais, um exemplo de solicitação de equilíbrio em uma perna, a viabilidade de saltos e os critérios para avaliar giros. O fonte é `web/custom-actions.md` e a página estática é `web/guide.html`.
 - A barra lateral e a janela de novo treinamento ganharam um link para abrir o guia em outra aba. A revisão independente conferiu os XL330 do upstream e os HD1910 locais, o modelo de roda Spin, tarefas ainda não implementadas, comandos existentes e limites de integração com o diretório fixo de experimentos; não encontrou problemas claros.
 - O guia foi validado no serviço real atual com Edge em 1440×1000 e 390×844: abertura pelo link, preservação do nome original da tabela, presença de todos os destinos internos, retorno ao Studio e acesso aos arquivos fonte, sem erros de página nem transbordamento.
 - Nesta rodada foram adicionados apenas documentação, estilo estático, ferramenta de geração e links de leitura. Não houve novo treinamento nem mudanças na lógica do mecanismo ou do serviço. Capturas e relatório estão em `本地记录/training-custom-guide-20261023/`.

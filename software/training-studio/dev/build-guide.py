@@ -15,26 +15,26 @@ source = (WEB / "custom-actions.md").read_text(encoding="utf-8")
 parser = markdown.Markdown(extensions=["tables", "fenced_code", "toc", "sane_lists"])
 content = parser.convert(source)
 page = """<!doctype html>
-<html lang="zh-CN">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>自定义动作训练指南 · Microduck Studio</title>
+  <title>Guia de treinamento de ações personalizadas · Microduck Studio</title>
   <link rel="icon" href="/duck.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/guide.css">
 </head>
 <body class="guide-page">
-  <a class="skip-guide" href="#guide-content">跳到正文</a>
+  <a class="skip-guide" href="#guide-content">Ir para o conteúdo</a>
   <header class="guide-top">
-    <a class="brand" href="/#/workspace"><img src="/duck.svg" width="26" height="26" alt=""><span>Studio<small>训练指南</small></span></a>
-    <a class="btn small" href="/#/workspace">返回训练台</a>
+    <a class="brand" href="/#/workspace"><img src="/duck.svg" width="26" height="26" alt=""><span>Studio<small>Guia de treinamento</small></span></a>
+    <a class="btn small" href="/#/workspace">Voltar ao Training Studio</a>
   </header>
   <div class="guide-layout">
-    <aside class="guide-index"><nav aria-label="指南目录"><b>自定义动作</b>__TOC__</nav><a class="guide-source" href="/custom-actions.md" download>下载 Markdown 文档 ↓</a></aside>
-    <main id="guide-content" class="guide-content"><div class="guide-kicker">MICRODUCK / 从想法到动作</div>__CONTENT__</main>
+    <aside class="guide-index"><nav aria-label="Índice do guia"><b>Ações personalizadas</b>__TOC__</nav><a class="guide-source" href="/custom-actions.md" download>Baixar documento Markdown ↓</a></aside>
+    <main id="guide-content" class="guide-content"><div class="guide-kicker">MICRODUCK / Da ideia ao movimento</div>__CONTENT__</main>
   </div>
-  <footer class="guide-bottom">说明基于本仓库冻结训练环境。新增动作须完成适配与验证后才能加入训练配方。</footer>
+  <footer class="guide-bottom">Estas instruções se baseiam no ambiente de treinamento fixado neste repositório. Novos movimentos só podem entrar nas receitas após adaptação e validação.</footer>
 </body>
 </html>
 """.replace("__TOC__", parser.toc).replace("__CONTENT__", content)

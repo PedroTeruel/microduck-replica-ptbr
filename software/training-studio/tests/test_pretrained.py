@@ -45,14 +45,14 @@ class PretrainedCatalogTests(unittest.TestCase):
                     self.assertIn(model['revision'], model['download_url'])
                 else:
                     self.assertEqual(model['servos'], 'HD1910')
-                    self.assertIn('非商业', model['license_label'])
+                    self.assertIn('não comercial', model['license_label'])
 
     def test_community_bundle_link_never_masquerades_as_one_model(self):
         models = pretrained_models()
-        bundled = [m for m in models if m['download_label'] == '查看发布包']
+        bundled = [m for m in models if m['download_label'] == 'Ver pacote de publicação']
         self.assertEqual(len(bundled), 5)
         self.assertTrue(all(m['source_kind'] == 'community' and m['model_file'].endswith('.onnx') for m in bundled))
-        self.assertTrue(all(any('发布包' in text for text in m['details']) for m in bundled))
+        self.assertTrue(all(any('pacote de publicação' in text for text in m['details']) for m in bundled))
         self.assertEqual(sum(m['requires_rollers'] for m in models), 6)
 
     def test_callers_cannot_mutate_future_catalog(self):
