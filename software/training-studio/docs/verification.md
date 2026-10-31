@@ -1,71 +1,71 @@
-# 训练台验收记录 · 2026-10-22
+# Registro de validação do Training Studio · 22/10/2026
 
-## por meio de de Validação
+## Validação de ponta a ponta
 
-| 环境 | Verificação | Resultado |
+| Ambiente | Verificação | Resultado |
 |---|---|---|
-| Windows / Python 3.12 | `python -m unittest discover -s tests -v` | 54 项：51 通过，3 项 Linux 专用测试跳过 |
-| WSL Ubuntu 22.04 / Python 3.11 | 同一后端TesteComando | 54/54 por meio de |
-| Node.js | `node --test tests/state.test.mjs` | 11/11 通过 |
-| Edge / Playwright | `node dev/browser-check.mjs` | 1440×1000 桌面、390×844 手机流程通过，无页面异常与横向溢出 |
+| Windows / Python 3.12 | `python -m unittest discover -s tests -v` | 54 testes: 51 aprovados e 3 exclusivos de Linux ignorados |
+| WSL Ubuntu 22.04 / Python 3.11 | Mesmo comando de testes de backend | 54/54 aprovados |
+| Node.js | `node --test tests/state.test.mjs` | 11/11 aprovados |
+| Edge / Playwright | `node dev/browser-check.mjs` | Fluxos aprovados em desktop 1440×1000 e celular 390×844; sem erros de página nem transbordamento horizontal |
 
-浏览器验收Inicialização隔离 de 演示Serviço，实际调用 HTTP API，没有模拟接口，也没有绕过 CSP。覆盖访问令牌、共享 CAD 加载、固定 64 环境/5 轮短试跑、进阶设置折叠Preservado、正式实验、保存Verificação点后 de 暂停、轮数冻结、刷新后继续、停止、旧Verificação点评估、认证Baixar、导出包Conteúdo、从选定Verificação点新建续训、实验比较、搜索、Modelo列表、环境重新检测e手机抽屉。修改学习Parâmetros会重新短试跑，原正式训练草稿仍Preservado。
+A validação no navegador iniciou um serviço de demonstração isolado, mas usou a API HTTP real, sem interface simulada nem contorno de CSP. Cobriu token de acesso, carregamento do CAD, teste curto fixo de 64 ambientes e 5 iterações, recolhimento de opções avançadas, treinamento real, pausa após salvar checkpoint, congelamento de iterações, retomada após atualizar a página, encerramento, avaliação de checkpoint antigo, download autenticado, conteúdo do pacote exportado, criação de continuação a partir de um checkpoint selecionado, comparação de experimentos, busca, lista de modelos, nova verificação do ambiente e gaveta móvel. Alterar parâmetros de aprendizado exige um novo teste curto; o rascunho do treinamento real original é preservado.
 
-Linux 专用测试使用真实操作系统信号与 CPU 子进程，未模拟 `killpg` 或 `waitid`：
+Os testes exclusivos de Linux usaram sinais do sistema operacional e subprocessos de CPU reais; não simularam `killpg` nem `waitid`:
 
-- SIGSTOP 后主进程 e 后代 de 计数器均冻结；SIGCONT 后继续增长。
-- 暂停时关闭Serviço，拥有 de 进程组被清理。
-- 主进程退出但后代仍持有 stdout 时，训练 e 评估任务都能结束并清理后代。
+- Depois de SIGSTOP, os contadores do processo principal e dos descendentes pararam; após SIGCONT, voltaram a avançar.
+- Encerrar o serviço enquanto estava pausado limpou o grupo de processos pertencente a ele.
+- Se o processo principal terminou, mas um descendente ainda mantinha stdout aberto, tanto o treinamento quanto a avaliação conseguiram terminar e limpar o descendente.
 
-## 审核 e 修正
+## Revisão e correções
 
-前后端分别经过独立规格审核 e 代码质量审核，最终均无阻塞项。审核 em 修复了Configuração不匹配仍可正式训练、Verificação点匹配不精确、暂停Controle错误携带Verificação点Parâmetros、环境检测缓存不刷新、退出清理竞态、未CompletoGravação de Verificação点、日志管道导致任务不结束、续训名称超长、导出遗漏评估证据eFonte信息等问题。
+Backend e frontend passaram por revisões independentes de especificação e qualidade de código, sem itens bloqueadores ao final. As revisões levaram a corrigir: treinamento real ainda permitido após divergência de configuração; correspondência imprecisa de checkpoints; parâmetros de controle de pausa carregando indevidamente parâmetros do checkpoint; cache da verificação de ambiente sem atualização; corrida na limpeza ao sair; salvamento incompleto de checkpoint; tarefa que não terminava por causa do pipe de logs; nome de continuação excessivamente longo; omissão de evidências de avaliação e de informações de origem na exportação.
 
-## Validação边界
+## Limites da validação
 
-Superior述 2026-10-22 Validação没有Inicialização NVIDIA GPU 训练。2026-10-23 已追加abaixo de 本机 GPU 实测；目标云电脑、长训练e真机仍需单独验收。适配已对照锁定 de  mjlab 1.3.0  e  rsl-rl-lib 5.0.1 调用接口；短Teste不等于证明机器人已经学会走路。
+A validação de 22/10/2026 não iniciou treinamento em GPU NVIDIA. Em 23/10/2026 foi acrescentado o teste local real de GPU descrito abaixo. O computador em nuvem de destino, treinamentos longos e o robô físico ainda precisam de validação separada. A integração foi conferida com as interfaces de mjlab 1.3.0 e rsl-rl-lib 5.0.1 fixadas no projeto. Um teste curto não prova que o robô aprendeu a caminhar.
 
-演示 ZIP 包不包含 PT/ONNX 权重。鸭子档案usado para归档核对，不会自动改写物理Modelo。暂停不会关闭云电脑或停止云平台计费。
+O ZIP de demonstração não inclui pesos PT/ONNX. O perfil do pato é arquivado para conferência e não altera automaticamente o modelo físico. Pausar não desliga o computador em nuvem nem interrompe a cobrança da plataforma.
 
-##  em 控风格对齐复核 · 2026-10-23
+## Revisão de alinhamento visual com o Studio · 23/10/2026
 
-- 采用 em 控实际颜色、字体、鸭标、浅侧栏、黑色胶囊按钮、白卡e灰色三维舞台；手机改为四项底部导航。
-- `node --test tests/state.test.mjs`：11/11 通过。修改后的真实演示浏览器全流程通过，包含鉴权、CAD、任务控制、评估导出、比较和手机抽屉；无页面异常或失败资源。
-- 独立审查在 1440、1024、960、840、701、700、390、320 px 八种宽度Verificação四个路由，无Página横向溢出，导航选 em 项正确。手机抽屉提交按钮不被底栏遮挡，正反 Tab 焦点留在对话框。
-- 修复审查发现 de 手机图表缩放：SVG 按容器实际宽度布局，320/390 px 坐标保持 12 px；空Dados、单点、多点e窗口宽度切换均por meio de。
-- 风格对齐这一轮只改前端e文档，未更改训练后端；以Inferior是之后追加 de 真实本机Validação。
+- Foram adotados as cores reais do painel, a fonte, a identidade do pato, a barra lateral clara, os botões pretos em formato cápsula, os cartões brancos e a área 3D cinza; no celular, a navegação passou a ter quatro itens na barra inferior.
+- `node --test tests/state.test.mjs`: 11/11 aprovados. O fluxo completo no navegador com o serviço de demonstração real passou: autenticação, CAD, controle de tarefa, exportação da avaliação, comparação e gaveta móvel, sem erros de página ou recursos com falha.
+- Uma revisão independente conferiu quatro rotas nas larguras de 1440, 1024, 960, 840, 701, 700, 390 e 320 px. Não houve transbordamento horizontal; a rota selecionada ficou correta. O botão da gaveta móvel não ficou coberto pela barra inferior e o foco por Tab permaneceu no diálogo nos dois sentidos.
+- Foi corrigido o dimensionamento do gráfico no celular: o SVG agora usa a largura real do contêiner e mantém coordenadas a 12 px em telas de 320 e 390 px. Testes com dados vazios, um ou vários pontos e mudança da largura passaram.
+- Essa rodada alterou somente frontend e documentação, não o backend de treinamento. A validação real local descrita abaixo foi acrescentada posteriormente.
 
-## 本机 GPU 短试跑 · 2026-10-23
+## Teste curto local com GPU · 23/10/2026
 
-环境：Windows / WSL2 Ubuntu 22.04，NVIDIA GeForce RTX 5060 Ti 16 GB，驱动 617.14，Python 3.12.14，实际安装 torch 2.9.1+cu128、mjlab 1.3.0、rsl-rl-lib 5.0.1。使用当前 `software/training` 与锁文件，通过离线缓存准备隔离虚拟环境，没有更改训练引擎参数定义或锁文件。
+Ambiente: Windows/WSL2 Ubuntu 22.04, NVIDIA GeForce RTX 5060 Ti de 16 GB, driver 617.14, Python 3.12.14, torch 2.9.1+cu128, mjlab 1.3.0 e rsl-rl-lib 5.0.1 efetivamente instalados. O ambiente virtual isolado foi preparado com o cache offline usando o projeto `software/training` e seu arquivo de lock; definições do mecanismo e lock não foram alterados.
 
-通过 Edge / Playwright 操作真实模式页面，创建 `caa6a1c5de10`：HD1910 平地、64 个环境、5 轮、每轮保存、seed 42、学习率 0.001。没有模拟 API 或训练数据。
+Pela interface no Edge/Playwright, foi criado no modo real o experimento `caa6a1c5de10`: HD1910 em piso plano, 64 ambientes, 5 iterações, salvamento a cada iteração, seed 42 e taxa de aprendizado 0.001. Não houve API nem dados de treinamento simulados.
 
-| Verificação | 实测Resultado |
+| Verificação | Resultado medido |
 |---|---|
-| CUDA 仿真e PPO Atualização | 5 轮Concluído，7,680 条采样，含Inicialização加载耗时 40.54 秒 |
-| 指标和检查点 | 5 个指标点，`model_0.pt` 至 `model_4.pt`；最后文件用 `torch.load(weights_only=True)` 成功读取，递归检查 76 个张量全部有限 |
-| 策略评估 | 最后Verificação点Concluído 250 步，生成 H.264、960×540、50 FPS、250 帧、5 秒视频；首尾帧解码por meio de |
-| 导出 e 推理 | 引擎正常导出 ONNX eModelo包；ONNX checker por meio de，CPU Runtime 输入 61 维、输出 14 维 |
-| PT/ONNX 一致性 | 使用已安装 rsl-rl 的 MLPModel 严格加载全部 actor 权重及归一化；零输入 + 固定种子的 31 组随机输入比较，最大绝对差 `1.9073486328125e-6`，通过 `atol=1e-5, rtol=1e-4` |
-| 重启后 de 浏览器 | 真实模式就绪；已保存实验重新加载，评估视频实际播放、Modelo包BaixarSucesso，无Página异常 |
-| 回归Validação | Windows Python 3.12：56 项 em  53 por meio de、3 跳过；WSL Python 3.12：56/56 por meio de；独立代码审核无阻塞项 |
+| Simulação CUDA e atualização PPO | 5 iterações concluídas, 7.680 amostras; 40,54 s incluindo carregamento inicial |
+| Métricas e checkpoints | 5 pontos de métricas e `model_0.pt` a `model_4.pt`; o último foi lido com `torch.load(weights_only=True)` e os 76 tensores verificados eram finitos |
+| Avaliação da política | Último checkpoint avaliado por 250 passos; vídeo H.264 de 960×540, 50 FPS, 250 quadros e 5 s; quadros inicial e final decodificados |
+| Exportação e inferência | O mecanismo exportou ONNX e o pacote do modelo; ONNX checker aprovado; ONNX Runtime em CPU recebeu 61 dimensões e produziu 14 |
+| Consistência PT/ONNX | Carregamento estrito dos pesos do ator e normalização via MLPModel do rsl-rl instalado; entrada zero e 31 entradas aleatórias com semente fixa; diferença absoluta máxima `1.9073486328125e-6`, dentro de `atol=1e-5, rtol=1e-4` |
+| Navegador após reinício | Modo real pronto; experimento salvo carregado; vídeo de avaliação reproduzido e pacote baixado; sem erros de página |
+| Regressões | Python 3.12 no Windows: 53 aprovados e 3 ignorados, de 56; Python 3.12 no WSL: 56/56 aprovados; revisão independente sem itens bloqueadores |
 
-实际操作发现并修复两项环境问题：任务冷导入约 24 秒，原预检 20 秒会误报，现改为 60 秒；预检与训练使用不同 GL 环境，缺 EGL 时仍显示就绪，现统一运行环境并实际导入所选图形后端。Ubuntu 补装 `libegl1` 后真实视频成功生成。显式设置的 `MUJOCO_GL` 会保留。修复后的服务已重启，实际 EGL/CUDA/任务预检通过，原实验与产物仍可读取。
+A execução encontrou e corrigiu dois problemas de ambiente. A importação fria da tarefa levava cerca de 24 segundos, acima do limite anterior de 20; o limite passou para 60 segundos. A pré-verificação e o treinamento usavam ambientes GL diferentes, então o serviço podia indicar que estava pronto mesmo sem EGL; agora usam o mesmo ambiente e o backend gráfico escolhido é importado de verdade. Depois de instalar `libegl1` no Ubuntu, o vídeo foi gerado corretamente. Um valor definido explicitamente em `MUJOCO_GL` continua preservado. O serviço corrigido foi reiniciado, passou nas verificações reais EGL/CUDA/tarefas e manteve o experimento e os artefatos existentes acessíveis.
 
-来源边界：运行基线为 Windows Git 提交 `adfb878cf944853aaa720dff4554fdab2dcaadb8` 加本次预检修复。此 Windows worktree 的 `.git` 路径不能由 WSL Git 直接解析，所以运行记录的 `git_commit` 为 null，文件 SHA-256 已保留。记录内 `dependency_versions` 是多平台锁文件的摘要，其中 torch 显示 cu129；上文 cu128 来自实际解释器读取。该摘要不能作为安装版本证明。
+A linha de base desta execução foi o commit Windows `adfb878cf944853aaa720dff4554fdab2dcaadb8` mais a correção local da pré-verificação. O caminho `.git` deste worktree Windows não pode ser acessado diretamente pelo Git no WSL; por isso, `git_commit` ficou nulo no registro e foram preservados hashes SHA-256 dos arquivos. O campo `dependency_versions` resume o lock multiplataforma e mostra torch cu129; cu128 acima foi lido do interpretador efetivamente usado. O resumo não é prova da versão instalada.
 
-本机证据保存在工作区外层 `本地记录/training-local-20261023/`：原始日志、运行快照、截图、产物核对脚本及 `artifact-verification.json`。大体积日志和模型不纳入 Git。代表产物 SHA-256：
+As evidências locais estão fora do repositório em `本地记录/training-local-20261023/`: logs originais, snapshot de execução, capturas, script de verificação dos artefatos e `artifact-verification.json`. Logs grandes e modelos não foram adicionados ao Git. SHA-256 dos principais artefatos:
 
-- `model_4.pt`：`0caa0e69f38533d1694960aaa4e7d260625bc6dc803852b15f1e3df82015f9ac`
-- `policy.onnx`：`673bc7e787a084df1f3a8593a43ce987d2a05472ee12097b393e1ddb7311da57`
-- `rl-video-step-0.mp4`：`e967b6d33b4debc28a10a88fe026dbb2250f3cf51bae44b6c197aa1cc2119f3d`
+- `model_4.pt`: `0caa0e69f38533d1694960aaa4e7d260625bc6dc803852b15f1e3df82015f9ac`
+- `policy.onnx`: `673bc7e787a084df1f3a8593a43ce987d2a05472ee12097b393e1ddb7311da57`
+- `rl-video-step-0.mp4`: `e967b6d33b4debc28a10a88fe026dbb2250f3cf51bae44b6c197aa1cc2119f3d`
 
-此Resultado覆盖一组平地短试跑。PT/ONNX 一致性是本次独立验收，尚未自动加入每次导出流程；不包含 GPU 长训暂停/恢复实测、起伏地形训练、云平台或真机Validação。操作步骤见 [本机短试跑](local-smoke.md)。
+Esse resultado cobre uma execução curta em piso plano. A consistência PT/ONNX foi verificada separadamente nesta rodada e ainda não faz parte automática de toda exportação. Não foram validados treinamento longo com pausa/retomada na GPU, terreno irregular, plataforma em nuvem nem robô físico. Consulte os passos em [Teste curto local](local-smoke.md).
 
-## 自定义动作Instruções入口 · 2026-10-23
+## Entrada para o guia de ações personalizadas · 23/10/2026
 
-- 增加中文自定义动作指南，涵盖官方开发流程、现有能力边界、单腿站立需求示例、跳跃可行性和转圈验收。源码为 `web/custom-actions.md`，静态阅读页为 `web/guide.html`。
-- 侧栏e新建训练窗口提供入口，在新标签页阅读。独立源码审核核对了upstream XL330  e 本地 HD1910、Spin 轮滑Modelo、尚未实现 de 新任务、已有Comandoe固定实验Diretório de 接入限制，无明确问题。
-- 在Atual真实ServiçoSuperior用 Edge 验收 1440×1000  e  390×844：入口打开Sucesso、Tabela original单名称Preservado、Diretório锚点全部存在、返回训练台 e 源Arquivo访问正常，无Página异常 e 横向溢出。
-- 本轮只新增文档、静态样式、文档生成工具和阅读链接，没有启动新训练或改变引擎与服务端逻辑。截图及验收记录在 `本地记录/training-custom-guide-20261023/`。
+- Foi adicionado um guia em chinês sobre o fluxo oficial de desenvolvimento, os limites atuais, um exemplo de solicitação de equilíbrio em uma perna, a viabilidade de saltos e os critérios para avaliar giros. O fonte é `web/custom-actions.md` e a página estática é `web/guide.html`.
+- A barra lateral e a janela de novo treinamento ganharam um link para abrir o guia em outra aba. A revisão independente conferiu os XL330 do upstream e os HD1910 locais, o modelo de roda Spin, tarefas ainda não implementadas, comandos existentes e limites de integração com o diretório fixo de experimentos; não encontrou problemas claros.
+- O guia foi validado no serviço real atual com Edge em 1440×1000 e 390×844: abertura pelo link, preservação do nome original da tabela, presença de todos os destinos internos, retorno ao Studio e acesso aos arquivos fonte, sem erros de página nem transbordamento.
+- Nesta rodada foram adicionados apenas documentação, estilo estático, ferramenta de geração e links de leitura. Não houve novo treinamento nem mudanças na lógica do mecanismo ou do serviço. Capturas e relatório estão em `本地记录/training-custom-guide-20261023/`.
