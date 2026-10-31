@@ -1,11 +1,10 @@
-"""站 HOME 时两只脚掌在横滚（左右）方向差多少、是哪个关节造成的、哪条边低（只读分析）。
-脚掌法线 = 脚碰撞盒最短边方向；横滚 = 法线在躯干 y-z 平面里的倾角（+ = 法线往机身左边倒 = 脚掌左边低）。
-两脚横滚差 = 左脚横滚 − 右脚横滚，**相对仿真 HOME 姿势**：仿真模型在 HOME 时两只脚底本身就差 5.97°（每只外侧低约 3°，
-是模型几何，见开头自检行），下面都减掉这个基准。读数和 HOME 目标用同一个零点，所以零位偏差在这里看不出来。
-关节贡献 = 只把该关节从 HOME 换成实测值时差值的变化（其余关节保持 HOME）。
-内外侧边 = 躯干摆正时，脚碰撞盒底面靠身体中线的长边（内）和远离中线的长边（外）的平均高度；碰撞盒是简化的脚，真实情况要看实物。
-用法：python home_roll.py MJCF.xml 名称=录像.jsonl ...   （取每段 policy=held 且未卸力的最后 150 帧，按段统计）
-     python home_roll.py MJCF.xml 名称=home-capture.json ...（单帧，字段 joints15）
+"""Análise somente de leitura da diferença de rolagem (lateral) entre os pés na posição HOME, da articulação responsável e do lado mais baixo.
+Normal do pé = direção do menor lado da caixa de colisão; rolagem = inclinação da normal no plano y-z do tronco (+ indica inclinação para a esquerda do robô, deixando baixo o lado esquerdo do pé).
+Diferença de rolagem = rolagem do pé esquerdo − rolagem do direito, **em relação à posição HOME simulada**. No modelo, as solas já diferem 5,97° em HOME (lado externo de cada pé cerca de 3° mais baixo, devido à geometria; veja a verificação inicial). Esse valor de referência é subtraído dos resultados. Leituras e alvo HOME usam o mesmo zero, portanto o desvio de zero não aparece aqui.
+Contribuição da articulação = variação da diferença quando somente essa articulação passa de HOME ao valor medido (as demais permanecem em HOME).
+Bordas interna/externa = altura média, com o tronco nivelado, das bordas longas da parte inferior da caixa de colisão do pé: a mais próxima da linha central do corpo (interna) e a mais distante (externa). A caixa é uma simplificação; confira o robô real.
+Uso: python home_roll.py MJCF.xml NOME=video.jsonl ... (usa os últimos 150 quadros de cada trecho com policy=held e torque ativo; apresenta estatísticas por trecho)
+     python home_roll.py MJCF.xml NOME=home-capture.json ... (quadro único, campo joints15)
 """
 import json
 import math
@@ -18,8 +17,8 @@ J14 = ['left_hip_yaw', 'left_hip_roll', 'left_hip_pitch', 'left_knee', 'left_ank
        'head_yaw', 'head_roll', 'right_hip_yaw', 'right_hip_roll', 'right_hip_pitch', 'right_knee', 'right_ankle']
 HOME = np.array([0.0, -0.0873, -0.4579, -0.0049, 0.453, 0.3491, 0.3491, 0.0, 0.0, 0.0, 0.0873, 0.4579, 0.0049, -0.453])
 LEG = {'left': [0, 1, 2, 3, 4], 'right': [9, 10, 11, 12, 13]}
-NAME = ['髋偏航', '髋横滚', '髋俯仰', '膝', '踝']
-CN = {'left': '左', 'right': '右'}
+NAME = ['guinada do quadril', 'rolagem do quadril', 'inclinação do quadril', 'joelho', 'tornozelo']
+CN = {'left': 'esquerdo', 'right': 'direito'}
 
 m = mujoco.MjModel.from_xml_path(sys.argv[1]); d = mujoco.MjData(m)
 adr = [m.jnt_qposadr[m.joint(n).id] for n in J14]
@@ -39,7 +38,7 @@ def rolls(q):
     for s, g in gid.items():
         R = d.geom_xmat[g].reshape(3, 3); n = Rb.T @ R[:, int(np.argmin(m.geom_size[g]))]
         if n[2] < 0: n = -n
-        out[s] = math.degrees(math.atan2(n[1], n[2]))       # + = 法线往机身左边倒 = 脚掌左边低
+        out[s] = math.degrees(math.atan2(n[1], n[2]))       # + = normal inclinada para a esquerda do robô = lado esquerdo do pé mais baixo
     return out
 
 
@@ -48,8 +47,8 @@ def diff(q):
 
 
 def edges(q):
-    """躯干坐标下每只脚底面内侧边、外侧边的平均高度（mm）。
-    底面 = 碰撞盒最薄方向上朝下的那一面；内外 = 底面左右两条长边里离身体中线近 / 远的那条。"""
+    """Altura média das bordas interna e externa da sola de cada pé nas coordenadas do tronco (mm).
+    A sola é o lado voltado para baixo no eixo mais fino da caixa de colisão; interna/externa são as bordas longas mais próxima/distante da linha central do corpo."""
     Rb, pb = fk(q); out = {}
     for s, g in gid.items():
         R = Rb.T @ d.geom_xmat[g].reshape(3, 3); c = Rb.T @ (d.geom_xpos[g] - pb); h = m.geom_size[g]
@@ -61,7 +60,7 @@ def edges(q):
         for sg in (-1.0, 1.0):
             e = bottom + sg * h[lat] * R[:, lat]
             side[sg] = (abs(e[1]), np.mean([(e + sx * h[lon] * R[:, lon])[2] for sx in (-1.0, 1.0)]))
-        inner, outer = sorted(side.values())                  # |y| 小的是内侧
+        inner, outer = sorted(side.values())                  # O menor |y| corresponde ao lado interno.
         out[s] = (inner[1] * 1000, outer[1] * 1000)
     return out
 
@@ -69,7 +68,7 @@ def edges(q):
 def edge_text(q):
     parts = []
     for s, (zi, zo) in edges(q).items():
-        parts.append(f"{CN[s]}脚{'外侧' if zo < zi else '内侧'}低 {abs(zo - zi):.1f} mm")
+        parts.append(f"lado {'externo' if zo < zi else 'interno'} do pé {CN[s]} mais baixo: {abs(zo - zi):.1f} mm")
     return '，'.join(parts)
 
 
@@ -84,8 +83,8 @@ def report(name, Q):
             if abs(c) >= 0.05: parts.append(f"{CN[s]}{NAME[k]} {c:+.2f}°")
     devs = '  '.join(f"{CN[s]}{NAME[k]} {math.degrees(qm[i] - HOME[i]):+.1f}°"
                      for s in ('left', 'right') for k, i in enumerate(LEG[s]) if k in (0, 1))
-    print(f"{name:28s} {len(Q):6d} 帧  两脚横滚差 {total:+.2f}°  = {'  '.join(parts)}\n"
-          f"{'':36s}髋偏航/髋横滚 实测-HOME：{devs}\n{'':36s}躯干摆正时：{edge_text(qm)}")
+    print(f"{name:28s} {len(Q):6d} quadros  diferença de rolagem entre os pés {total:+.2f}° = {'  '.join(parts)}\n"
+          f"{'':36s}guinada/rolagem do quadril medido-HOME: {devs}\n{'':36s}com o tronco nivelado: {edge_text(qm)}")
 
 
 def held_segments(path):
@@ -105,7 +104,7 @@ def held_segments(path):
     return segs
 
 
-print(f"仿真 HOME 自检：两脚横滚差 {diff(HOME):+.3f}°，{edge_text(HOME)}（下面的差值都减掉了这个基准）")
+print(f"Verificação da HOME simulada: diferença de rolagem entre os pés {diff(HOME):+.3f}°, {edge_text(HOME)} (esse valor de referência é subtraído das diferenças abaixo)")
 for spec in sys.argv[2:]:
     name, path = spec.split('=', 1)
     if path.endswith('.json'):
