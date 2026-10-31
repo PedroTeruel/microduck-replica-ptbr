@@ -1,48 +1,48 @@
-# fold_contact · 腿关节转到哪儿会被零件顶住
+# fold_contact · pontos de contato das juntas das pernas
 
-零位标定想拿「缩着」当Mecânica参考点（悬空手扶着摆直，一两度 de 误差就会摔），先得知道：缩着 de 时候每个关节是被什么顶住 de 、停在多少度。这个脚本用Oficial仿真Modelo算这件事。
+Uma possibilidade para calibrar o zero é usar a postura encolhida como referência mecânica. Porém, se o robô ficar suspenso e for alinhado à mão, um erro de apenas um ou dois graus pode fazê-lo cair. Antes, é preciso saber quais peças limitam cada junta nessa postura e em que ângulo o contato ocorre. Este script calcula esses pontos usando o modelo oficial de simulação.
 
-**最后的做法**（调试台 [`tools/servo-web`](../servo-web/) 0.14.0 起的「官方折叠（头颈摆正）」基准）：腿按官方 FOLD 摆，膝折到踝刚贴上大腿舵机（下表第 2 行的接触点），髋 pitch 用直角尺摆垂直；髋 yaw / roll、踝、头颈摆正（0°），嘴闭上；15 颗一起标，零点照样是官方的 2048。
+**Procedimento definido:** use como referência a pose “Oficial dobrada (cabeça e pescoço alinhados)” da bancada [`tools/servo-web`](../servo-web/), disponível desde a versão 0.14.0. Coloque as pernas na pose FOLD oficial e flexione os joelhos até os tornozelos encostarem nos servos das coxas (ponto de contato da segunda linha da tabela). Use um esquadro para deixar o pitch dos quadris na vertical. Deixe quadril yaw/roll, tornozelos, cabeça e pescoço alinhados (0°), com a boca fechada. Calibre as 15 juntas juntas; o zero continua sendo o valor oficial 2048.
 
 ```bash
 pip install mujoco python-fcl numpy
-python fold_contact.py --mjcf <microduck_rl>/src/mjlab_microduck/robot/microduck/robot_walk.xml [--json 结果.json]
+python fold_contact.py --mjcf <microduck_rl>/src/mjlab_microduck/robot/microduck/robot_walk.xml [--json resultado.json]
 ```
 
-- MuJoCo 只算正运动学（每个零件在哪）。碰没碰Superior用 **fcl 按original三角网格精确求交**：MuJoCo 自己 de 碰撞把网格当凸包，比实物「胖」，接触角会偏小
-- 零位（腿伸直）时就穿插 de  20 对几何体当作装配关系（Servo装在支架里、轴承装在座里），扫描时排除
-- 扫描步长 0.25°，碰Superior以后二分到 0.05°
+- O MuJoCo calcula somente a cinemática direta (posição de cada peça). Para determinar o contato, **o FCL calcula a interseção exata das malhas triangulares originais**. O cálculo de colisão próprio do MuJoCo trata as malhas como cascos convexos, que são mais espessos que as peças reais e antecipam o contato.
+- Na pose zero, com as pernas estendidas, já existem 20 pares de geometrias sobrepostos por causa da montagem (por exemplo, servos dentro dos suportes e rolamentos dentro dos alojamentos). Esses pares são excluídos da varredura.
+- A varredura avança em passos de 0,25°; depois de detectar contato, uma busca binária refina o resultado até 0,05°.
 
-## Resultado（Oficial XL330 原版几何，2026-09-22，microduck_rl d424a0c）
+## Resultados · geometria original XL330 (simulação oficial, 2026-09-22, microduck_rl `d424a0c`)
 
-Modelo约定 de 角度，Inferior表写Esquerdo腿。Direito腿 de 膝、踝数值相同、符号相反；**髋 pitch 不对称**（EsquerdoDireito外壳不一样），两边都列了。
+O modelo define a convenção dos ângulos. A tabela abaixo mostra a perna esquerda. Os valores dos joelhos e tornozelos da perna direita têm a mesma magnitude e sinal oposto; o pitch do quadril é assimétrico porque as carcaças esquerda e direita diferem, então os dois lados são apresentados.
 
-| 关节 · 条件 | 碰Superior de 角度 | 谁顶住谁 |
-|---|---|---|
-| 膝往折叠方向，髋 0°、踝 0° | **±70.7°** | 脚掌碰髋 roll 支架 |
-| 膝往折叠方向，髋 ±90°（Oficial FOLD  de 髋）、踝 0° | **±89.6°** | 踝碰大腿Superior de Servo |
-| 髋 pitch 往折叠方向，膝已折到底 | Esquerdo **+126.0°**，Direito **−122.9°** | 踝碰躯干外壳 |
-| 踝，膝e髋都折到底之后 | 只剩 **+0.4 ～ −19.8°** 能动 | 一头碰外壳，一头碰大腿 |
-| 颈 pitch 往Oficial FOLD  de 方向，腿折好 | **+66.6°**（头 pitch 0° e 57° 一样） | 颈Superior de Servo碰躯干外壳 |
+| Junta e condição | Ângulo de contato | Superfícies em contato |
+|---|---:|---|
+| Joelho no sentido de flexão, quadril 0° e tornozelo 0° | **±70,7°** | Pé contra suporte de roll do quadril |
+| Joelho no sentido de flexão, quadril ±90° (quadril da pose FOLD oficial) e tornozelo 0° | **±89,6°** | Tornozelo contra servo da coxa |
+| Pitch do quadril no sentido de flexão, joelho totalmente flexionado | Esquerda **+126,0°**, direita **−122,9°** | Tornozelo contra carcaça do tronco |
+| Tornozelo depois de flexionar totalmente joelho e quadril | Apenas o intervalo de **+0,4° a −19,8°** continua livre | Em uma extremidade, carcaça; na outra, coxa |
+| Pitch do pescoço na direção da pose FOLD oficial, pernas flexionadas | **+66,6°** (igual com pitch da cabeça em 0° ou 57°) | Servo superior do pescoço contra carcaça do tronco |
 
-官方的三个姿势（`scene.xml` keyframe）：
+As três poses oficiais são keyframes de `scene.xml`:
 
-| 姿势 | 零件会不会顶在一起 |
+| Pose | Há contato entre as peças? |
 |---|---|
-| STAND 站 | 不会 |
-| SIT 坐 | 不会 |
-| FOLD 折叠（髋、膝 ±90°） | **会**：踝顶进大腿Servo约 0.36°（Oficial膝 1.57 rad = 89.95°，接触在 89.59°）。FOLD  de 膝几乎就是接触点；Depuração台发折叠时膝只折 88° |
+| STAND (em pé) | Não |
+| SIT (sentado) | Não |
+| FOLD (dobrada, quadril e joelhos ±90°) | **Sim:** o tornozelo entra em contato com o servo da coxa cerca de 0,36° antes. A pose oficial usa joelho 1,57 rad = 89,95°; o contato ocorre em 89,59°. A pose dobrada da bancada limita o joelho a 88°. |
 
-FOLD  de 颈 / 头 pitch 是 57°（1 rad），不是接触点：颈要转到 **66.6°** 才碰Superior零件，57° 那里前后都空着，靠眼睛摆不准。所以Depuração台拿折叠当校准基准时，头颈改成摆正（0°）。
+Na pose FOLD oficial, o pitch do pescoço e da cabeça é 57° (1 rad), mas isso não corresponde ao ponto de contato. O pescoço só encosta em outra peça a **66,6°**; em 57°, há folga dos dois lados, e alinhar a peça apenas visualmente não é preciso. Por isso, ao usar a pose dobrada como referência de calibração na bancada, alinhe a cabeça e o pescoço em 0°.
 
-校准时膝 de 目标按Oficial 1.57 rad 算，实际摆到 de 是接触点 89.59°，零点因此差约 0.36°（4 步），pode忽略。
+O alvo do joelho durante a calibração é calculado com o valor oficial de 1,57 rad. A posição física chega ao ponto de contato de 89,59°, deixando uma diferença de cerca de 0,36° (quatro passos) no zero, que pode ser ignorada.
 
-## 对「缩着当标定基准」意味着什么
+## O que isso significa ao usar a postura encolhida como referência
 
-1. **顶住关节 de 都是脚e踝**，不是关节自己 de 限位。所以每个关节停在哪跟其它关节 de 角度有关：同样是「膝折到底」，髋 0° 时停在 70.7°，髋 90° 时停在 89.6°。
-2. **踝在缩着时没被定住**，还有约 20°  de 空间，拿缩着校不了踝。髋 yaw / roll、头本来就不受约束。
-3. 真要用缩着校髋e膝，得把**摆法写死**（先把髋摆到多少度、踝往哪边推、再折膝），角度用同一套摆法算出来 de 值。
-4. **这些是 XL330 原版 de 几何**。飞特版改过 8 个跟舵盘配合 de 件，接触角会变：要么把飞特版装配体按零位导出每个 link  de  STL 再跑一遍，要么在 SolidWorks 里按同样 de 摆法量。
-5. 更稳 de 路是**标定夹具**：打印几个卡在大腿-小腿-脚之间 de 夹板，把关节卡在确定 de 角度（比如零位 de 伸直、脚板垂直），比「缩到底」好定义，EsquerdoDireito也一致。
+1. **Os contatos das juntas são determinados pelos pés e tornozelos contra outras peças**, não pelos limites internos das próprias juntas. A posição final de cada uma depende dos ângulos das outras. Por exemplo, o joelho para em 70,7° com o quadril a 0° e em 89,6° com o quadril a 90°.
+2. **O tornozelo fica livre na postura encolhida**, com cerca de 20° de movimento restante; não é possível calibrá-lo usando essa postura. Quadril yaw/roll e cabeça também não ficam restringidos.
+3. Para calibrar o quadril e os joelhos nessa postura, é preciso **padronizar como ela é montada**: primeiro posicione o quadril no ângulo definido, pressione o tornozelo na direção indicada e então flexione o joelho. Os ângulos de referência só valem para esse procedimento reproduzível.
+4. **Esses resultados descrevem a geometria original XL330.** A versão Feetech alterou oito peças de encaixe do horn, o que pode mudar os ângulos de contato. Exporte cada link do conjunto Feetech como STL na pose zero e refaça a análise, ou meça as mesmas poses no SolidWorks.
+5. O método mais consistente é usar **um gabarito de calibração**: imprima placas que fixem as juntas entre coxa, perna e pé em ângulos definidos (por exemplo, perna estendida no zero e sola perpendicular). Isso é mais preciso e reproduzível do que flexionar até o contato, e fornece a mesma referência para os lados esquerdo e direito.
 
-调试台（`tools/servo-web`，0.13.0 起）可以在 3D 里叠加官方姿势，逐关节列出「实际 − 官方」差多少度，用来看现在的零点偏了多少；0.15.0 起还能叠加「校准用折叠」（腿官方折叠、头颈摆正），就是校准时要摆的样子。
+A bancada (`tools/servo-web`, desde a versão 0.13.0) pode sobrepor poses oficiais no modelo 3D e listar, para cada junta, a diferença “real − oficial”, ajudando a estimar o erro do zero. Desde a versão 0.15.0, também pode mostrar a pose “dobrada para calibração”: pernas na pose FOLD oficial, com a cabeça e o pescoço alinhados como descrito acima.
