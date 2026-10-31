@@ -1,16 +1,16 @@
 # imu_to_dxl Firmware 0.2.0
 
-usado para队友自制 de  **STM32G031F8P6 + LSM6DSV16X** 板。Hardware基线为
+Usado na placa **STM32G031F8P6 + LSM6DSV16X** feita por um integrante da equipe. A base de hardware é
 `fanhao375/microduck-replica` 的 `a1f4979c425bd9228622be89f2bfa4d1de7fbde3`
-（2026-09-08，含 J4/J5 e RX_EN）。2026-09-20 已Concluído首次实板Inicialização：J-Link SWD Conexão、
-固件烧录读回校验、Keil 停在 `main`、64MHz 时钟及 IMU 采样均已验证。
-短测中 IMU 标识为 `0x70`、ready=1、SPI/FIFO 错误为0；外部总线和舵机尚未实测。
+(`2026-09-08`, inclui J4/J5 e RX_EN). Em 2026-09-20 foi concluída a primeira inicialização na placa real: conexão J-Link SWD,
+gravação e verificação de leitura do firmware, parada do Keil em `main`, clock de 64 MHz e amostragem do IMU foram verificados.
+No teste curto, o identificador do IMU foi `0x70`, `ready=1` e os erros SPI/FIFO ficaram em 0; o barramento externo e os servos ainda não foram testados.
 
-**0.2.0（2026-09-22）把总线协议换成飞特 SCS/STS**，逐条按[总线协议](../总线协议.md)实现：ID 200、地址 56 的 15 字节块、sync_read 排队。IMU、板级和 Keil 工程未改。电脑上的主机测试和「真协议代码上模拟总线」的验收（`Tests/bus_sim_test.py`，用 [`tools/imu200`](../../../tools/imu200) 的 `check` 判据）全部通过；已烧进原开发板，IMU 照常工作。**真总线和舵机尚未实测。**
-构建、桌面Teste e 首次实板Validação de 边界见 [VALIDATION.md](VALIDATION.md)。
+**Na versão 0.2.0 (2026-09-22), o protocolo do barramento foi substituído por Feetech SCS/STS** e implementado item a item conforme o [protocolo do barramento](../总线协议.md): ID 200, bloco de 15 bytes no endereço 56 e enfileiramento de sync_read. O IMU, a placa e o projeto Keil não foram alterados. Os testes do host no computador e a validação do “código real do protocolo em um barramento simulado” (`Tests/bus_sim_test.py`, usando os critérios `check` de [`tools/imu200`](../../../tools/imu200)) foram aprovados. O firmware foi gravado na placa de desenvolvimento original e o IMU continua funcionando. **O barramento real e os servos ainda não foram testados.**
+Os limites da compilação, dos testes de desktop e da primeira validação na placa real estão em [VALIDATION.md](VALIDATION.md).
 
-本Diretório e Princípio图、PCB 放在一起，提供源码、Keil 工程 e 唯一Preservado de 预编译产物
-[`Build/imu_to_dxl.hex`](Build/imu_to_dxl.hex)。串口调试台 [`tools/servo-web`](../../../tools/servo-web)能在同一个网页中叠加舵机关节角和 IMU 躯干姿态，三种读法：`--imu-bus`（舵机总线，跟主控同一条 sync_read）、`--imu-swd`（ST-Link / DAPLink）、`--imu-jlink`（J-Link）。
+Este diretório reúne o diagrama de princípios e a PCB, e contém o código-fonte, o projeto Keil e o único artefato pré-compilado preservado
+[`Build/imu_to_dxl.hex`](Build/imu_to_dxl.hex). O console de depuração serial [`tools/servo-web`](../../../tools/servo-web) sobrepõe os ângulos das articulações dos servos e a postura do tronco do IMU na mesma página Web. Há três modos de leitura: `--imu-bus` (barramento dos servos, mesma chamada sync_read do controlador), `--imu-swd` (ST-Link / DAPLink) e `--imu-jlink` (J-Link).
 
 SWD / J-Link 观察器从 HEX 解码 `0x08000000` 起的 **10,724 字节** Flash 镜像，检查 SHA-256
 `66bc7c532f5a1ad87e3dfff71a4b51f8c4f20840a8f62436874fa5b7c665938e`，并校验板上镜像。
