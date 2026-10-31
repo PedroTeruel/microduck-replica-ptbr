@@ -1,63 +1,62 @@
-# Superior机分析脚本
+# Scripts de análise no robô
 
-2026-10-12 夜第一台上机时用来定位问题的脚本（10-13 夜更新了录像服务）。走路的步态分析在电脑上跑，见 [`tools/gait-analysis/`](../../gait-analysis/)。都是**只读**的：只订阅 robotd 的状态、读日志，不发任何控制指令（`webpad_probe.py` 例外，它只发「不按键、摇杆归零」的空帧）。
-怎么用它们一步步找到「一接管就猛冲」 de 根因，见 [2026-10-12 夜Superior机记录](../../../docs/HD1910-20261012-夜-IMU校准 e 首次迈步.md)。
+Scripts usados para investigar problemas na primeira inicialização do robô, na noite de 12/10/2026; o serviço de gravação foi atualizado na noite de 13/10. A análise da marcha é executada no computador; consulte [`tools/gait-analysis/`](../../gait-analysis/). Os scripts são **somente leitura**: assinam o estado do robotd e leem logs, sem enviar comandos de controle. A exceção é `webpad_probe.py`, que envia apenas quadros vazios com todos os botões soltos e os eixos no centro.
 
-脚本假定的环境：主板上跑 kissqy 的 R17（robotd 套接字 `/run/robotd.sock`），录像放在 `/home/duck/r17/rec/`，脚本放在 `/home/duck/tools/`。
+A investigação passo a passo da causa do “avanço brusco assim que assume o controle” está no [registro de análise no robô da noite de 12/10](../../../docs/HD1910-20261012-夜-IMU校准 e 首次迈步.md).
 
-## 先把Dados录Inferior来
+Os scripts pressupõem R17 do kissqy em execução na placa, socket do robotd em `/run/robotd.sock`, gravações em `/home/duck/r17/rec/` e scripts em `/home/duck/tools/`.
 
-| Arquivo | 在哪跑 | 干什么 |
+## Primeiro, grave os dados
+
+| Arquivo | Onde executar | Finalidade |
 |---|---|---|
-| `duck_rec.py` | 主板 | 订阅 robotd 的 `robot.subscribe`，50 Hz 记关节角、目标、关节速度、IMU、安全状态、摇杆指令、策略状态，存 JSONL。`python3 duck_rec.py 秒数 输出文件`。追加写、**每秒写盘一次**；robotd 重启时记一行 `rec_error` 并自己重连 |
-| `duck_health_log.py` | 主板 | 每 0.5 秒记一次 `robotctl health --json`：舵机电压、最热舵机、CPU 温度和频率、WiFi 和蓝牙状态，存 CSV |
-| `duck-rec.service` | 主板 | 把上面两个做成开机自启，独立运行（不随 robotd 停），文件名带开机编号。放到 `/etc/systemd/system/`，`systemctl enable --now duck-rec` |
-| `duck_journal.py`、`duck-journal.service` | 主板 | 把本次开机的系统日志实时抄到卡上，每秒写盘（Armbian 的日志在内存里，掉电就没了）。跳过 robotd 启动时 IMU 稳定阶段的刷屏 |
+| `duck_rec.py` | Placa principal | Assina `robot.subscribe` do robotd e registra a 50 Hz ângulos e alvos das articulações, velocidade articular, IMU, segurança, comandos do joystick e estado da política em JSONL. Uso: `python3 duck_rec.py segundos arquivo-de-saida`. Acrescenta ao arquivo e grava em disco a cada segundo; se o robotd reiniciar, registra `rec_error` e reconecta automaticamente. |
+| `duck_health_log.py` | Placa principal | A cada 0,5 s registra `robotctl health --json` em CSV: tensão dos servos, servo mais quente, temperatura e frequência da CPU, Wi-Fi e Bluetooth. |
+| `duck-rec.service` | Placa principal | Executa os dois scripts como serviços independentes na inicialização, sem depender do robotd; os nomes dos arquivos incluem o identificador de boot. Instale em `/etc/systemd/system/` e habilite com `systemctl enable --now duck-rec`. |
+| `duck_journal.py`, `duck-journal.service` | Placa principal | Copia continuamente os logs de sistema da sessão de boot para o cartão, gravando a cada segundo. Os logs do Armbian ficam em memória e se perdem se houver queda de energia. Ignora o excesso de mensagens da fase de estabilização da IMU na inicialização do robotd. |
 
-两个 service 文件里写死了用户 `duck` 和 `/home/duck/...` 路径（我们自己做的卡）；kissqy 一键镜像的用户是 `radxa`，用之前改成 `/home/radxa/...`。
+Os dois arquivos de serviço usam o usuário `duck` e caminhos `/home/duck/...`, correspondentes ao cartão personalizado deste projeto. A imagem de instalação rápida de kissqy usa o usuário `radxa`; ajuste os caminhos para `/home/radxa/...` antes de instalar.
 
-录像约 3 MB/分钟。文件名是 `run-日期-时间-b开机编号前6位.jsonl`：主板没有 RTC，每次开机时钟都会回拨，**按开机编号找文件**（`cut -c1-6 /proc/sys/kernel/random/boot_id`）。每秒写盘，突然掉电最多丢最后 1 秒，坏行下面的脚本都会跳过。
+As gravações ocupam cerca de 3 MB por minuto. O nome segue `run-data-hora-bprimeiros6caracteresDoBoot.jsonl`. Como a placa não tem RTC e o relógio volta ao iniciar, localize os arquivos pelo ID de boot: `cut -c1-6 /proc/sys/kernel/random/boot_id`. Os dados são gravados a cada segundo, então uma queda abrupta pode perder no máximo o último segundo. Os scripts abaixo ignoram linhas inválidas.
 
-## 出了问题怎么查
+## Investigar uma falha
 
-| Arquivo | 回答什么问题 |
+| Arquivo | Pergunta que ajuda a responder |
 |---|---|
-| `walk_now.py` | 最近一段模型接管（policy=walk）里，机身倾斜、角速度、腿目标偏离 HOME 多少、跟踪误差、摇杆指令 |
-| `walk_report.py` | 最近 N 分钟推了几次摇杆，每次两条腿有没有交替迈步（左右膝角差的摆幅和换腿次数），倒没倒 |
-| `failure_onset.py` | 从平稳到失控的转折点：腿目标第一次偏离 HOME 超过 15° 前后，逐帧看倾斜、重力、角速度、哪个关节先打满 |
-| `imu_consistency.py` | IMU 陀螺仪和重力方向是不是自洽（dg/dt = −ω×g）。吻合度接近 1 说明轴向、正负号没错；接近 −1 或别的轴组合更吻合，就是配反了 |
-| `vel_consistency.py` | 每个关节：角度差分（真实转速）和 robotd 报的速度比，查速度的正负号和比例 |
-| `imu_fault_ctx.py` | IMU 每次断线时，机器人在干什么（静止 / 回 HOME / 走路）、电压多少，用来区分接触不良、供电跌落、驱动时序 |
-| `webpad_probe.py` | 在主板本机测网页手柄那条路：webpad 冷启动多久、padd 能不能认到虚拟手柄 |
-| `crash_scan.py` | 每段录像的状态切换时间线、摇杆指令、最后几帧的安全状态；带上同一段的 health CSV 就同时看电压、温度。用来判断「整机掉电」前一刻在干什么 |
-| `judge_block.py` | **电脑上跑**。BNO085 陀螺融合上机用的停止规则：模型看到的姿态在直立走路时有没有「陀螺说没转、姿态却跳了 5° 以上」，按融合判定分硬 / 软 / 豁免；HOME 静站时融合跟芯片差多少。chip 模式下顺带给出芯片那一路的跳变数当基线。只用标准库。来龙去脉见 [10-15 记录](../../../docs/HD1910-20261015-IMU乱跳根因与陀螺融合上机.md) §5.5 |
-| `ab_blocks.py` | **电脑上跑**。几段录像分别数摔倒（`safety.fallen` 上升沿，3 s 内来回跳算一次）、推摇杆时间、每推杆分钟摔几次、芯片跳变、机身颤；标签以 chip / gyro 开头的两组加总，给出率比、95% 区间和 p 值。录像里实际是哪种模式它自己认，标签写反会报错 |
+| `walk_now.py` | Durante o trecho mais recente em que a política assumiu (`policy=walk`), qual era a inclinação do corpo, a velocidade angular, o desvio dos alvos das pernas em relação a HOME, o erro de acompanhamento e os comandos do joystick? |
+| `walk_report.py` | Quantas vezes o joystick foi acionado nos últimos N minutos? As pernas alternaram corretamente? Mede amplitude da diferença entre os joelhos e número de trocas e informa se houve queda. |
+| `failure_onset.py` | Qual foi a transição entre estabilidade e perda de controle? Examina quadro a quadro inclinação, gravidade, velocidade angular e a primeira articulação a saturar antes/depois de um alvo da perna se desviar mais de 15° de HOME. |
+| `imu_consistency.py` | O giroscópio da IMU e a direção da gravidade são coerentes (`dg/dt = −ω×g`)? Uma concordância próxima de 1 sugere eixos e sinais corretos; valor perto de −1 ou melhor concordância com outra combinação de eixos pode indicar montagem invertida. |
+| `vel_consistency.py` | Compara, para cada articulação, a derivada do ângulo (velocidade medida) com a velocidade informada pelo robotd; ajuda a conferir sinal e escala. |
+| `imu_fault_ctx.py` | O que o robô fazia quando a IMU desconectou (parado, retornando a HOME ou andando) e qual era a tensão? Ajuda a distinguir mau contato, queda de alimentação e temporização do driver. |
+| `webpad_probe.py` | Testa na própria placa o caminho do controle web: tempo de inicialização do webpad e se o padd reconhece o controle virtual. |
+| `crash_scan.py` | Mostra a linha do tempo de estados, comandos do joystick e últimos quadros de segurança de cada gravação. Com o CSV de health correspondente, também mostra tensão e temperatura antes de uma possível queda completa de alimentação. |
+| `judge_block.py` | **Executar no computador.** Avalia a regra de parada usada com fusão do giroscópio BNO085: durante a caminhada ereta, detecta quando a postura percebida pelo modelo salta mais de 5° sem rotação indicada pelo giroscópio. Classifica os eventos de fusão como rígidos, leves ou isentos e compara a fusão ao chip quando parado em HOME. No modo chip, informa também os saltos do canal do chip como linha de base. Usa apenas a biblioteca padrão. Contexto no [registro de 15/10](../../../docs/HD1910-20261015-IMU乱跳根因与陀螺融合上机.md), seção 5.5. |
+| `ab_blocks.py` | **Executar no computador.** Compara várias gravações: quedas (bordas de subida de `safety.fallen`; alternâncias dentro de 3 s contam como uma), tempo com joystick acionado, quedas por minuto de comando, saltos do chip e tremor do corpo. Soma as gravações rotuladas como `chip` e `gyro` e calcula razão, intervalo de 95% e valor p. Identifica o modo efetivo da gravação e avisa se o rótulo estiver invertido. |
 
-## IMU 校准（今晚手动做 de 流程）
+## Calibração da IMU (procedimento manual)
 
-**第一步：方向Verificação**（第一次装 IMU、拆Inferior来重装以后做）
+**Etapa 1: conferir a orientação** (na primeira montagem da IMU ou depois de removê-la e reinstalá-la)
 
-鸭子扶竖直，往前、后、Esquerdo（鸭子自己 de Esquerdo边）、Direito各倾斜约 20°，每个方向停 3 秒、回正。Depois：
+Segure o pato na vertical e incline cerca de 20° para frente, para trás, para a esquerda do próprio pato e para a direita. Mantenha cada inclinação por três segundos e retorne à posição inicial. Depois, execute:
 
+```text
+python3 imu_tilt_check.py 120        # Últimos 120 s, uma linha a cada 0,5 s; marca com ← desvios acima de 8° da posição inicial
 ```
-python3 imu_tilt_check.py 120        # 最近 120 秒，每 0.5 s 一行，偏离起点超过 8° 的标 ←
-```
 
-四段读数应该依次是「前倾 +」「前倾 −（后仰）」「Direito倾 −（Esquerdo倾）」「Direito倾 +」，陀螺仪转动方向也要跟着对Superior。有一段符号反了，就是Instalação方向 de 轴配错了。
+As quatro leituras devem aparecer na ordem: “inclinação para frente +”, “inclinação para trás −”, “inclinação para a direita − (esquerda +)” e “inclinação para a direita +”. A direção de rotação medida pelo giroscópio também deve coincidir. Um sinal invertido indica que os eixos da montagem estão configurados incorretamente.
 
-**第二步：零点校准**（摔狠了、碰过 IMU、换过线以后做）
+**Etapa 2: calibrar o zero** (depois de uma queda forte, impacto na IMU ou troca do cabo)
 
-模型训练时，鸭子站官方 HOME 姿势、脚平踩地面，**机身是水平的**（MJCF 的 `STAND` 关键帧，机身四元数是单位四元数，IMU 读 0°）。所以真机站 HOME，IMU 也应该读接近 0°；差多少，就是 IMU 模块装歪了多少。膝盖塌一点也没关系，下面按真实关节角算。
+Durante o treinamento do modelo, o pato fica na pose HOME oficial, com os pés apoiados e o corpo nivelado. O keyframe `STAND` do MJCF usa quaternion unitário, isto é, leitura de IMU de 0°. Portanto, com o robô real em HOME, a IMU também deve indicar aproximadamente 0°. A diferença mede a inclinação do módulo; o procedimento abaixo considera os ângulos reais das articulações, mesmo que os joelhos fiquem ligeiramente cedidos.
 
-1. 鸭子放平地，按 Start 站到 HOME，手拿开，静止 3 秒；
-2. 主板：`python3 capture_home.py home-capture.json`（取最后 100 帧的平均关节角和重力）；
-3. 把 JSON 拷到装了 mujoco 和官方 `microduck_rl` 的电脑上：
-   `python sim_home_tilt.py <microduck_rl>/src/mjlab_microduck/robot/microduck/scene_backlash.xml home-capture.json`
-   输出「按真机关节角，机身应该前倾多少」e「IMU Instalação偏差（实测 − 应有）」；
-4. `python imu_mount_fix.py <前倾偏差> <右倾偏差> <当前安装四元数 w x y z>` 算出新的安装四元数；
-5. 鸭子**卸力**以后，备份 `/etc/robot/feetech-ft5/hd1910-calibration.toml`，把 `["imu_mounts"."bno08x"]` 下的 `"quat"` 换成新值，`sudo systemctl restart robotd`；
-6. 再站一次 HOME，重复 2～3，偏差应在 1° 以内。
+1. Coloque o pato em piso plano, pressione Start para assumir HOME, retire as mãos e aguarde três segundos parado.
+2. Na placa principal, execute `python3 capture_home.py home-capture.json` para capturar a média dos ângulos das articulações e da gravidade nos últimos 100 quadros.
+3. Copie o JSON para um computador com MuJoCo e o projeto oficial `microduck_rl`. Execute: `python sim_home_tilt.py <microduck_rl>/src/mjlab_microduck/robot/microduck/scene_backlash.xml home-capture.json`. A saída mostra a inclinação esperada do corpo com os ângulos reais das articulações e o desvio de montagem da IMU (medido menos esperado).
+4. Calcule o novo quaternion de montagem: `python imu_mount_fix.py <desvio-de-inclinação-frontal> <desvio-de-inclinação-lateral> <quaternion-atual-w-x-y-z>`.
+5. Depois de **liberar o torque**, faça backup de `/etc/robot/feetech-ft5/hd1910-calibration.toml`, substitua `"quat"` sob `[["imu_mounts"."bno08x"]]` pelo novo valor e execute `sudo systemctl restart robotd`.
+6. Coloque o robô em HOME novamente e repita as etapas 2–3. O desvio deve ficar abaixo de 1°.
 
-2026-10-12 第一台：两种站姿算出的偏差是前倾 8.2° / 8.9°、右倾 1.7° / 1.8°，补 8.54° / 1.78° 后，复测剩 −0.55° / −0.47°。写进去的四元数是 `[0.454164155, 0.544101455, 0.527409117, 0.468538313]`（当时用两组数据做最小二乘，`imu_mount_fix.py 8.54 1.78` 算出的值与它差不到 0.01°）。
+Na primeira unidade, em 12/10/2026, duas posturas indicaram inclinação frontal de 8,2°/8,9° e lateral à direita de 1,7°/1,8°. Depois de compensar 8,54°/1,78°, a medição de retorno foi −0,55°/−0,47°. O quaternion gravado foi `[0.454164155, 0.544101455, 0.527409117, 0.468538313]`; ele veio de um ajuste de mínimos quadrados em dois conjuntos de dados e diferiu menos de 0,01° do valor calculado por `imu_mount_fix.py 8.54 1.78`.
 
-以后要把这套做成按钮式 de 手动校准Ferramentas（不自动改，每次校准都记日志），见Superior机记录 de 「Inferior一步」。
+O próximo passo é transformar este procedimento em uma ferramenta manual com botões. Ela não deve alterar a configuração automaticamente e deve registrar cada calibração em log. Consulte “Próximas etapas” no [registro de análise no robô](../../../docs/HD1910-20261012-夜-IMU校准 e 首次迈步.md).
