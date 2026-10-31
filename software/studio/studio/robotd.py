@@ -1,19 +1,19 @@
-"""跟鸭子上的服务说话：robotd 4 条连接 + configd 1 条（review-impl-plan I4）。
+"""Comunicação com os serviços do robô: quatro conexões robotd + uma conexão configd (review-impl-plan I4).
 
-| 连接    | 只做什么                                                      |
-| stream  | robot.subscribe {"hz":10}。有人在看才开，最后一个人走了 10 秒后才关 |
-| poll    | hello（一次）、health 2 s、busStatus 1 s（卸力确认时 10 Hz）、policies 2 s、calibration-status（连上时、phase 变成 control 时各一次，只认这次 hello 之后的） |
-| cmd     | 运动命令（S1b 才用）                                           |
-| 卸力    | 只发 robot.relax；每次新开一条连接（不留长连接）                   |
-| 启动步骤 | robot.startupSubscribe：这次 hello 的四步没全成功时开，全成功 / 有一步失败就关（startup.py） |
-| configd | pad.status 5 s、system.info 60 s                               |
+| Conexão | Função                                                        |
+| stream  | robot.subscribe {"hz":10}. Abre quando alguém está vendo e fecha 10 s após a última pessoa sair |
+| poll    | hello (uma vez), health 2 s, busStatus 1 s (10 Hz ao confirmar torque desligado), policies 2 s, calibration-status (ao conectar e quando phase vira control; só vale após este hello) |
+| cmd     | Comandos de movimento (usado somente em S1b)                  |
+| Torque  | Envia apenas robot.relax; abre uma conexão nova a cada chamada |
+| Inicialização | robot.startupSubscribe: abre se alguma das quatro etapas deste hello não tiver sucesso; fecha quando todas passam ou uma falha (startup.py) |
+| configd | pad.status a cada 5 s; system.info a cada 60 s                 |
 
-为什么分开：robotd 一条连接一次只处理一个请求，卸力不能排在一个 2 秒超时的 busStatus 后面。
-为什么订阅要「有人看才开」：只要有一个订阅者，robotd 的控制线程每拍都要组一帧（跟 hz 无关），
-没人看就别让它白干活（review-tech-v3 T4）。
+Por que separar: cada conexão robotd processa uma solicitação por vez; o comando para desligar o torque não pode ficar atrás de um busStatus com timeout de 2 segundos.
+Por que só abrir a assinatura quando alguém estiver vendo: com qualquer assinante, a thread de controle do robotd precisa montar um quadro a cada ciclo (independentemente de hz);
+sem espectadores, evitamos trabalho desnecessário (review-tech-v3 T4).
 
-所有时间用 time.monotonic()：鸭子开机没联网时墙钟停在 1970（I12）。
-本模块**不 import 任何串口相关的东西**：Studio 的这一版根本没有能打开 ttyS2 的路径（I1）。
+Todos os intervalos usam time.monotonic(): se o robô iniciar sem rede, o relógio do sistema pode ficar em 1970 (I12).
+Este módulo **não importa nenhum recurso serial**: esta versão do Studio não tem nenhum caminho que abra ttyS2 (I1).
 """
 import asyncio
 import time
@@ -23,7 +23,7 @@ from .log import log_cmd
 from .rpc import Conn, RpcError, Timeout, Unreachable, call_once, encode, open_conn, read_message
 from .startup import StartupTrack, startup_loop
 
-API_VERSION = 40                     # duck-ipc-proto/src/lib.rs:437；不一致只记日志，不拒绝
+API_VERSION = 40                     # duck-ipc-proto/src/lib.rs:437; divergências são registradas, mas não bloqueiam
 KNOWN_BUILDS = ("1fa8438-feetech-ft6-control.43", "4734cbb-feetech-imu-auto-control.44")
 BACKOFF = (0.5, 1.0, 2.0, 5.0)
 STREAM_HZ = 10
@@ -58,51 +58,51 @@ class Robotd:
         self.hello, self.health, self.bus = Sample(), Sample(), Sample()
         self.policies, self.calib, self.state = Sample(), Sample(), Sample()
         self.pad, self.sysinfo = Sample(), Sample()
-        self.present = None          # robotd 的 socket 在不在；None = 还没试过
+        self.present = None          # indica se o socket robotd existe; None = ainda não verificado
         self.absent_since = None
         self.estop = EStop()
-        self.viewers = 0             # 可见的页面数
+        self.viewers = 0             # número de páginas visíveis
         self.force_subscribe = False
-        self.background_music = False  # 内部动作消费者；不伪装成可见页面
+        self.background_music = False  # consumidor interno de ações; não conta como página visível
         self.stream_open = False
         self._last_viewer_at = 0.0
         self._tasks = []
         self._wake_stream = asyncio.Event()
-        self._due = {"health": 0.0, "bus": 0.0, "policies": 0.0}   # 轮询各项下次的时间（monotonic）
-        self._fails = {}             # 轮询各项连续失败的次数
-        self._relax_send = None      # 正在路上的卸力发送（asyncio.Task）
+        self._due = {"health": 0.0, "bus": 0.0, "policies": 0.0}   # horário da próxima consulta de cada item (monotonic)
+        self._fails = {}             # falhas consecutivas por item
+        self._relax_send = None      # envio de desligamento de torque em andamento (asyncio.Task)
         self._relax_send_started = 0.0
-        self._relax_watch = None     # 卸力的补发 / 超时监视
+        self._relax_watch = None     # reenvio e monitoramento de timeout do comando de desligamento do torque
         self._calib_task = None
-        # 标定状态（calibration-status）只认「这次 hello 之后」读到的（总览重排审查 O5）：robotd 重启以后、
-        # 刚起来还没开总线的那 20 秒，旧的「15 颗都标了」不能当真。None = 还没 hello 过（测试里的假对象也是 None）
+        # O estado de calibração (calibration-status) só vale se lido após este hello (revisão O5 da reorganização do painel): depois que o robotd reinicia,
+        # não confie no antigo “15 servos calibrados” durante os 20 segundos iniciais, antes de abrir o barramento. None = ainda não houve hello (também vale para objetos simulados nos testes)
         self.calib_valid_after = None
         self._last_phase = None
-        # 这次连上以后 busStatus 从什么时候起一直报启动阶段（monotonic）；不在启动阶段是 None。超过 30 秒页面改口
-        # 「一直报启动中」（10-20 真机：旧 fork 的标定模式永远报 configuring_bus）
+        # instante (monotonic) em que busStatus começou a informar a fase de inicialização após esta conexão; None fora dessa fase. Após 30 segundos, a interface passa a informar
+        # “continua inicializando” (teste em hardware real em 20/10: o modo de calibração do fork antigo informa configuring_bus indefinidamente)
         self.starting_since = None
-        self._wake_poll = asyncio.Event()   # 卸力时把轮询从退避的睡眠里叫醒
-        self._loop = None                   # 事件循环：别的线程调 set_paused 时用它叫醒轮询（线程安全）
-        self.paused = None                  # 调舵机时 robotd 按计划停着：轮询暂停，不报「主程序不在」
-        self.startup = StartupTrack()       # 启动四步（startup.py 的 startup_loop 写；调参卡、待办读）
+        self._wake_poll = asyncio.Event()   # desperta a consulta durante o sono de espera quando o torque é desligado
+        self._loop = None                   # event loop usado para despertar a consulta com segurança entre threads quando set_paused é chamado
+        self.paused = None                  # o robotd é pausado intencionalmente ao ajustar os servos: suspende as consultas sem informar que o programa principal está ausente
+        self.startup = StartupTrack()       # quatro etapas de inicialização (gravadas por startup_loop em startup.py; lidas pelo cartão de ajustes e pela lista de tarefas)
 
-    # ---- 生命周期 ----
+    # ---- Ciclo de vida ----
 
     def start(self):
         loop = asyncio.get_running_loop()
         self._loop = loop
         if self.addr == "none":
-            # 台架模式：主控没烧、只用调试板在电脑上调舵机，不连主程序
-            self.log.info("台架模式：不连主程序 robotd", cat="robotd")
+            # Modo de bancada: sem firmware no controlador principal; ajusta os servos no computador com a placa de depuração, sem conexão ao programa principal
+            self.log.info("Modo de bancada: sem conexão ao robotd principal", cat="robotd")
             self._tasks = []
             return
-        self._tasks = [loop.create_task(self._supervise("轮询", self._poll_loop), name="robotd-poll"),
-                       loop.create_task(self._supervise("实时状态订阅", self._stream_loop), name="robotd-stream"),
-                       loop.create_task(self._supervise("configd 轮询", self._configd_loop), name="configd-poll"),
-                       loop.create_task(self._supervise("启动步骤订阅", lambda: startup_loop(self)), name="robotd-startup")]
+        self._tasks = [loop.create_task(self._supervise("consulta", self._poll_loop), name="robotd-poll"),
+                       loop.create_task(self._supervise("assinatura de estado em tempo real", self._stream_loop), name="robotd-stream"),
+                       loop.create_task(self._supervise("consulta configd", self._configd_loop), name="configd-poll"),
+                       loop.create_task(self._supervise("assinatura das etapas de inicialização", lambda: startup_loop(self)), name="robotd-startup")]
 
     async def stop(self):
-        # 正在路上的卸力先让它发完（最多等 1 秒），别在关 Studio 时把它掐掉
+        # Aguarda o envio do desligamento de torque em andamento (no máximo 1 s), sem interrompê-lo ao fechar o Studio
         if self._relax_send is not None and not self._relax_send.done():
             await asyncio.wait({self._relax_send}, timeout=1.0)
         tasks = [t for t in self._tasks + [self._relax_send, self._relax_watch, self._calib_task]
@@ -111,15 +111,15 @@ class Robotd:
             t.cancel()
         for c in (self.poll, self.cmd, self.cfg):
             c.close()
-        # 取消以后要等任务真的退出：只 cancel 不等，任务可能正好停在「future 已回、下一步还没跑」，
-        # 留下一个永远醒不来的 cancelling 任务，测试 / 退出时就会卡在 _cancel_all_tasks。
-        # 兜底最多等 2 秒：真遇到也不至于让 Studio 退不出去。
+        # Após cancelar, aguarda as tarefas realmente terminarem. Se não aguardar, uma tarefa pode ficar parada depois que o future retorna e antes da próxima etapa,
+        # deixando uma tarefa cancelada que nunca desperta e travando _cancel_all_tasks nos testes ou no encerramento.
+        # Como limite de segurança, espera no máximo 2 s para que o Studio ainda consiga encerrar.
         pending = [t for t in tasks if not t.done()]
         if pending:
             await asyncio.wait(pending, timeout=2.0)
 
     async def _supervise(self, name, fn):
-        """后台循环出了任何意外都不能无声停掉（代码审查 #4）：记下完整报错，1 秒后重启。"""
+        """Nenhuma falha inesperada pode encerrar silenciosamente um loop em segundo plano (revisão de código #4): registra o erro completo e reinicia após 1 s."""
         while True:
             try:
                 await fn()
@@ -127,19 +127,19 @@ class Robotd:
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
-                self.log.error(f"后台任务「{name}」出错，1 秒后重启", cat="Sistema", raw=f"{type(e).__name__}: {e}",
-                               hint="这是 Studio 自己的 bug，请把诊断包发出来", exc=True)
+                self.log.error(f"A tarefa em segundo plano “{name}” falhou; reiniciando em 1 s", cat="Sistema", raw=f"{type(e).__name__}: {e}",
+                               hint="Este é um erro do Studio; envie o pacote de diagnóstico", exc=True)
                 await asyncio.sleep(1.0)
 
     def set_paused(self, on, why=None):
         if on and not self.paused:
-            self.paused = why or "暂停"
-            self.log.info(f"暂停跟主程序的轮询（{self.paused}）", cat="robotd", hint="主程序按计划停着，不是出错")
+            self.paused = why or "pausado"
+            self.log.info(f"Consultas ao programa principal pausadas ({self.paused})", cat="robotd", hint="O programa principal está pausado intencionalmente; não é um erro")
         elif not on and self.paused:
-            self.log.info(f"恢复跟主程序的轮询（{self.paused}结束）", cat="robotd")
+            self.log.info(f"Consultas ao programa principal retomadas (fim de {self.paused})", cat="robotd")
             self.paused = None
-            # 从舵机线程调（关总线前恢复轮询）时不能直接 Event.set：debug 模式下 Future.set_result
-            # 会先把事件置成已完成，再在跨线程调度那一步抛错，等待方就永远醒不过来了。
+            # Quando chamado pela thread dos servos (para retomar as consultas antes de fechar o barramento), não chame Event.set diretamente: no modo de depuração, Future.set_result
+            # marca o evento como concluído antes de lançar um erro ao agendar entre threads, e a tarefa em espera nunca desperta.
             try:
                 asyncio.get_running_loop()
             except RuntimeError:
@@ -162,23 +162,23 @@ class Robotd:
             self.background_music = on
             self._wake_stream.set()
 
-    # ---- 卸力 ----
+    # ---- Desligamento do torque ----
 
     async def relax(self, by):
-        """按一下卸力，回 (发出去了没有, 原因)。确认由 busStatus 回读完成（estop.on_bus）。
+        """Pressiona para desligar o torque e retorna (se foi enviado, motivo). A confirmação é feita pela leitura de busStatus (estop.on_bus).
 
-        - 发送在独立的任务里跑，调用方（页面连接）断了也不会把它取消（代码审查 #6）；
-        - 同一时间最多一个发送在路上，连按就等同一个；
-        - 监视任务负责 2 秒补发一次、8 秒超时，确认或超时就结束（代码审查 #1）。"""
+        - O envio roda em uma tarefa independente e não é cancelado se o chamador (conexão da interface) cair (revisão de código #6)；
+        - No máximo um envio fica em andamento por vez; pressionar repetidamente é equivalente a uma única solicitação；
+        - A tarefa de monitoramento reenvia após 2 s e encerra após confirmação ou timeout de 8 s (revisão de código #1)。"""
         now = time.monotonic()
         self.estop.press(by, now)
-        self._due["bus"] = 0.0          # 排在后面的 busStatus 提前：马上开始每 0.1 秒回读
-        self._wake_poll.set()           # 轮询要是正在退避里睡（robotd 刚回来），叫醒它
+        self._due["bus"] = 0.0          # antecipa a próxima consulta busStatus: começa a ler novamente a cada 0,1 s
+        self._wake_poll.set()           # desperta as consultas se estiverem no intervalo de espera (robotd acabou de voltar)
         loop = asyncio.get_running_loop()
-        # 在路上的发送刚开始（< 0.3 秒）就跟它；早就开始的（robotd 卡住了）另发一个，不吞掉这次按下（复核 #3）
+        # Se o envio em andamento começou há pouco (<0,3 s), aguarda-o; se já está em andamento há mais tempo (robotd travado), envia outro para não perder esta pressão (revisão #3)
         if (self._relax_send is None or self._relax_send.done()
                 or now - self._relax_send_started > JOIN_S):
-            self._start_send(by, "卸力")
+            self._start_send(by, "Desligar torque")
         if self._relax_watch is None or self._relax_watch.done():
             self._relax_watch = loop.create_task(self._watch_relax())
         return await asyncio.shield(self._relax_send)
@@ -189,35 +189,35 @@ class Robotd:
         self._relax_send = asyncio.get_running_loop().create_task(self._send_relax(by, what, started))
 
     async def _send_relax(self, by, what, started):
-        """每次新开一条连接发（代码审查 #2：长期空闲的连接在 robotd 重启后已经死了）。
-        连不上隔 0.1 秒再试一次（robotd 重启时 socket 会短暂不在）。
-        发出之前的每一步都不许失败：日志不抛异常，现场字段只读不算（复核 #1）。"""
+        """Abre uma nova conexão para cada envio (revisão de código #2: conexões ociosas por muito tempo deixam de funcionar após reiniciar o robotd).
+        Se não conectar, tenta novamente após 0,1 s (o socket pode ficar indisponível por um instante durante a reinicialização do robotd).
+        Nenhuma etapa anterior ao envio pode falhar: erros de log não devem ser propagados e a leitura dos campos do estado atual não conta como falha (revisão #1)."""
         with log_cmd(self.log, what, "robot.relax", who=by,
                      ctx={"mode": self._mode(), "phase": self._phase()}) as t:
             r = None
             for attempt in (1, 2):
                 try:
-                    r = await call_once(self.addr, "robot.relax", {}, timeout=3.0, name="卸力", log=self.log)
+                    r = await call_once(self.addr, "robot.relax", {}, timeout=3.0, name="Desligar torque", log=self.log)
                     break
                 except Unreachable as e:
                     if attempt == 1:
                         await asyncio.sleep(0.1)
                         continue
-                    return self._relax_failed(t, started, f"没发出去：{e}")
+                    return self._relax_failed(t, started, f"Não foi possível enviar: {e}")
                 except (Timeout, RpcError) as e:
-                    return self._relax_failed(t, started, f"没发出去：{e}")
+                    return self._relax_failed(t, started, f"Não foi possível enviar: {e}")
             if isinstance(r, dict) and r.get("accepted") is False:
-                return self._relax_failed(t, started, f"主程序没接受卸力：{r.get('reason') or '没说原因'}", reply=r)
+                return self._relax_failed(t, started, f"O programa principal não aceitou desligar o torque: {r.get('reason') or 'motivo não informado'}", reply=r)
             self.estop.sent(started)
-            self._mark_present(True)        # robotd 回话了：它在（轮询可能还在退避里，没发现它回来）
-            note = "已发出，等回读确认"
+            self._mark_present(True)        # robotd respondeu e está ativo (as consultas talvez ainda estejam aguardando o intervalo e não tenham detectado seu retorno)
+            note = "Enviado; aguardando confirmação pela leitura de retorno"
             if not (isinstance(r, dict) and "accepted" in r):
-                note += "（回执里没有 accepted 字段，以回读为准）"
+                note += "（A resposta não contém o campo accepted; a leitura de retorno será considerada definitiva）"
             t.ok(r, note=note)
             return True, None
 
     def _relax_failed(self, t, started, why, reply=None):
-        t.fail(why, hint="要停住它：用手柄 − 或者关电源", raw=reply)
+        t.fail(why, hint="Para pará-lo, use o botão − do controle ou desligue a alimentação", raw=reply)
         self.estop.send_failed(started, why)
         return False, why
 
@@ -226,42 +226,42 @@ class Robotd:
             el = self.estop.elapsed()
             if el >= CONFIRM_TIMEOUT_S:
                 bus = self.bus.value
-                why = "按了 8 秒还没确认卸力"
+                why = "O desligamento do torque não foi confirmado após 8 s"
                 if self.estop.send_error:
-                    why += f"（后来那次{self.estop.send_error}）"
+                    why += f"（erro no reenvio: {self.estop.send_error}）"
                 self.estop.finish("timeout", why)
-                self.log.error("卸力 8 秒还没确认", cat="Segurança", step="busStatus 回读",
+                self.log.error("O desligamento do torque não foi confirmado após 8 s", cat="Segurança", step="leitura de retorno de busStatus",
                                ctx=dict(evidence(bus), bus_age_s=_round(self.bus.age()),
                                         saw_torque_off=self.estop.saw_off, send_error=self.estop.send_error),
-                               hint="舵机可能还顶着：用手柄 − 或者关电源；把诊断包发出来")
+                               hint="Os servos ainda podem estar energizados: use o botão − do controle ou desligue a alimentação; envie o pacote de diagnóstico")
                 return
-            # 2 秒还没确认，补发一次。回读里已经看到扭矩关了（只差 hd1910 标志）就不补：
-            # 那时别人可能已经用手柄让它站起来了，补发会把它又卸软（复核 #5）
+            # Se não houver confirmação após 2 s, reenvia uma vez. Não reenvia se a leitura já indicar torque desligado (restando apenas o sinalizador hd1910):
+            # alguém pode já ter usado o controle para colocar o robô em pé, e o reenvio o deixaria frouxo novamente (revisão #5)
             if el >= RESEND_AT_S and not self.estop.resent and not self.estop.saw_off:
                 self.estop.resent = True
                 if self._relax_send is None or self._relax_send.done():
-                    self._start_send(self.estop.last_by, "卸力（2 秒没确认，补发一次）")
+                    self._start_send(self.estop.last_by, "Desligamento do torque (sem confirmação após 2 s; reenvio)")
             await asyncio.sleep(0.1)
 
-    # ---- 轮询 ----
+    # ---- Consultas periódicas ----
 
     async def _ask(self, key, method, params=None, timeout=2.0, every=1.0):
-        """问一项。成功了按 every 排下一次；回了错误或超时只影响这一项（代码审查 #5），
-        按退避推迟它，不挡别的项。Unreachable 往上抛（整条连接没了）。"""
+        """Consulta um item. Em caso de sucesso, agenda a próxima consulta após every; erro ou timeout afeta somente esse item (revisão de código #5),
+        e aplica espera progressiva sem bloquear os demais. Unreachable é propagado (a conexão inteira caiu)."""
         asked = time.monotonic()
         try:
             r = await self.poll.call(method, params or {}, timeout=timeout)
             if not isinstance(r, dict):
-                raise RpcError(method, None, f"回的不是对象（{type(r).__name__}）")
+                raise RpcError(method, None, f"a resposta não é um objeto ({type(r).__name__})")
         except (RpcError, Timeout) as e:
             n = self._fails[key] = self._fails.get(key, 0) + 1
             self._due[key] = time.monotonic() + BACKOFF[min(n - 1, len(BACKOFF) - 1)] * 2
-            if n in (1, 10) or n % 60 == 0:      # 第 1、10 次和之后每 60 次记一行
-                self.log.warn("主程序没回好这项查询", cat="robotd", step=method, raw=f"{e}（连续第 {n} 次）",
-                              hint="偶尔一次不要紧；一直这样，看主板温度和 robotd 日志")
+            if n in (1, 10) or n % 60 == 0:      # registra na 1ª, 10ª e a cada 60ª falha
+                self.log.warn("O programa principal respondeu incorretamente a esta consulta", cat="robotd", step=method, raw=f"{e}（falha consecutiva nº {n}）",
+                              hint="Uma falha ocasional não é problema; se continuar, verifique a temperatura da placa principal e os logs do robotd")
             return None, asked
         if self._fails.pop(key, 0) >= 10:
-            self.log.info("这项查询恢复了", cat="robotd", step=method)
+            self.log.info("Esta consulta voltou a funcionar", cat="robotd", step=method)
         self._due[key] = time.monotonic() + every
         return r, asked
 
@@ -269,45 +269,45 @@ class Robotd:
         due = self._due
         fails = 0
         hello_done = False
-        hello_link = None             # hello 那一刻轮询连接的重连计数
+        hello_link = None             # contador de reconexões da conexão de consulta no momento do hello
         while True:
             if self.paused:
                 hello_done = False
                 await self._nap(1.0)
                 continue
             if hello_done and self.poll.reconnects != hello_link:
-                # 轮询连接断过、重连过（某一项超时 rpc 会关掉连接，下次自动重连）：robotd 可能已经是个新进程了，
-                # 当成新连上——重新 hello、作废已经读到的标定（代码审查 C8）
+                # A conexão de consulta caiu e foi restabelecida (um timeout RPC fecha a conexão, que é reaberta automaticamente na próxima tentativa); o robotd pode estar em um processo novo,
+                # então trata como uma nova conexão, envia hello novamente e invalida a calibração já lida (revisão de código C8)
                 hello_done = False
-                self.log.info("跟主程序的轮询连接重连过：当成新连上，重新 hello、重读标定状态", cat="robotd")
+                self.log.info("A conexão de consulta ao programa principal foi restabelecida; iniciando nova conexão, hello e releitura do estado de calibração", cat="robotd")
             try:
                 if not hello_done:
                     r = await self.poll.call("hello", {"api_version": API_VERSION}, timeout=2.0)
                     self.hello.set(r)
-                    self.calib_valid_after = self.hello.at    # 这之前读到的标定状态作废（审查 O5）
+                    self.calib_valid_after = self.hello.at    # o estado de calibração lido antes disso é invalidado (revisão O5)
                     self._last_phase = None
-                    self.starting_since = None                # 「一直报启动中」从这次连上重新算
+                    self.starting_since = None                # reinicia a contagem de “continua inicializando” a partir desta conexão
                     self._mark_present(True)
                     hello_done = True
                     hello_link = self.poll.reconnects
                     self._ask_calib(again=True)
                     v = r.get("api_version") if isinstance(r, dict) else None
                     if v != API_VERSION:
-                        self.log.warn(f"主程序的接口版本是 {v}，Studio 按 {API_VERSION} 写的", cat="robotd",
-                                      hint="一般能用；哪个功能出错，会在那个功能上报出来")
+                        self.log.warn(f"A versão da interface do programa principal é {v}; o Studio foi desenvolvido para {API_VERSION}", cat="robotd",
+                                      hint="Em geral funciona; erros serão informados no recurso correspondente")
                     ver = r.get("daemon_version") if isinstance(r, dict) else None
-                    self.log.info(f"连上主程序（接口 v{v}，版本 {ver}）", cat="robotd")
+                    self.log.info(f"Conectado ao programa principal (interface v{v}, versão {ver})", cat="robotd")
                 now = time.monotonic()
                 if now >= due["bus"]:
-                    # 标定模式 10 Hz：IMU 页的实时读数、站着校准都从 last_sample 拿（标定模式没有 robot.state）
+                    # No modo de calibração, consulta a 10 Hz: as leituras em tempo real da página da IMU e a calibração em pé vêm de last_sample (esse modo não tem robot.state)
                     every = 0.1 if (self.bus.value or {}).get("mode") == "commissioning" else 1.0
                     bus, asked = await self._ask("bus", "robot.busStatus", every=every)
                     if bus is not None:
                         self.bus.set(bus)
                         self._check_build(bus)
-                        # 离开 control（robotd 卡回等总线、换了模式）：已经读到的标定不作数（代码审查 C8）；
-                        # 从「等总线 / 启动中」进了 control（或调试模式的 ready）：标定文件这时才存进 robotd
-                        # （fork main.rs:1535），再问一次（审查 O5）
+                        # Ao sair de control (robotd volta a aguardar o barramento ou muda de modo), invalida a calibração lida (revisão de código C8);
+                        # Ao passar de “aguardando barramento/inicializando” para control (ou ready no modo de depuração), o arquivo de calibração só então é carregado no robotd
+                        # （fork main.rs:1535），consulta novamente (revisão O5)
                         phase = bus.get("phase") if isinstance(bus, dict) else None
                         if self._last_phase == "control" and phase != "control":
                             self.calib_valid_after = time.monotonic()
@@ -321,8 +321,8 @@ class Robotd:
                         else:
                             self.starting_since = None
                         if self.estop.on_bus(bus, asked):
-                            self.log.info(f"卸力已确认（按下到确认 {self.estop.confirm_ms} ms）", cat="Segurança",
-                                          step="busStatus 回读")
+                            self.log.info(f"Desligamento do torque confirmado ({self.estop.confirm_ms} ms entre pressionar e confirmar)", cat="Segurança",
+                                          step="leitura de retorno de busStatus")
                     if self.estop.active:
                         due["bus"] = min(due["bus"], time.monotonic() + 0.1)
                 if now >= due["health"]:
@@ -344,16 +344,16 @@ class Robotd:
                 await self._nap(BACKOFF[min(fails - 1, len(BACKOFF) - 1)])
                 continue
             except (Timeout, RpcError) as e:
-                # 只有 hello 会走到这里
+                # Somente hello chega aqui
                 fails += 1
-                self.log.warn("主程序没回好 hello", cat="robotd", raw=str(e),
-                              hint="主程序可能正在启动；一直这样，看 robotd 日志")
+                self.log.warn("O programa principal respondeu incorretamente ao hello", cat="robotd", raw=str(e),
+                              hint="O programa principal talvez esteja iniciando; se continuar, verifique os logs do robotd")
                 await self._nap(BACKOFF[min(fails - 1, len(BACKOFF) - 1)])
                 continue
             await asyncio.sleep(0.05)
 
     async def _nap(self, seconds):
-        """退避的睡眠，按卸力时会被叫醒。"""
+        """Espera progressiva, interrompida quando o torque é desligado."""
         try:
             await asyncio.wait_for(self._wake_poll.wait(), seconds)
         except asyncio.TimeoutError:
@@ -361,8 +361,8 @@ class Robotd:
         self._wake_poll.clear()
 
     def _ask_calib(self, again=False):
-        """起一次 _calib_once（已经在问就不重复起）。again：phase 刚变成 control，上一轮可能正在「没读到、10 秒后再试」
-        的睡眠里，掐掉它马上重问（标定文件这时才有）。"""
+        """Inicia _calib_once uma vez (não inicia de novo se já estiver em andamento). again: quando phase acaba de virar control, a tentativa anterior pode estar dormindo após “não foi possível ler; tentar novamente em 10 s”,
+        então cancela a espera e consulta novamente (o arquivo de calibração já estará disponível)."""
         if again and self._calib_task is not None and not self._calib_task.done():
             self._calib_task.cancel()
             self._calib_task = None
@@ -370,43 +370,43 @@ class Robotd:
             self._calib_task = asyncio.get_running_loop().create_task(self._calib_once())
 
     def calib_fresh(self):
-        """calibration-status 的回包，只要这次 hello 之后读到的；读不到 / 旧的回 None（审查 O5）。"""
+        """Retorna a resposta de calibration-status somente se tiver sido lida após este hello; se não houver resposta ou ela for antiga, retorna None (revisão O5)."""
         return fresh_calib(self)
 
     async def _calib_once(self):
-        """标定状态只在连上时、和 phase 变成 control 时各查一次，用独立连接：它在 robotd 里可能很慢，不能挡住
-        busStatus（复核 #8）。失败最多再试两次，隔 10 秒；还不行就算了（页面上显示不知道）。"""
+        """Consulta o estado de calibração uma vez ao conectar e outra quando phase vira control, usando uma conexão separada: a chamada pode demorar no robotd e não deve bloquear
+        busStatus (revisão #8). Em caso de falha, tenta no máximo mais duas vezes, com intervalo de 10 s; se continuar falhando, desiste (a interface mostra “desconhecido”)."""
         for attempt in range(3):
             try:
                 r = await call_once(self.addr, "robot.busCommand", {"action": "calibration-status"},
-                                    timeout=5.0, name="标定状态", log=self.log)
+                                    timeout=5.0, name="Estado da calibração", log=self.log)
                 if isinstance(r, dict):
                     self.calib.set(r)
                     return
-                self.calib.fail(f"回的不是对象（{type(r).__name__}）")
+                self.calib.fail(f"a resposta não é um objeto ({type(r).__name__})")
             except (Unreachable, Timeout, RpcError) as e:
                 self.calib.fail(e)
                 if attempt == 2:
-                    self.log.warn("读不到标定状态", cat="Calibração", raw=str(e), hint="不影响站和走；页面上标定那一项显示「不知道」")
+                    self.log.warn("Não foi possível ler o estado da calibração", cat="Calibração", raw=str(e), hint="Isso não impede ficar em pé nem andar; a calibração aparecerá como “desconhecida” na interface")
             await asyncio.sleep(10.0)
 
     def _mark_present(self, ok, why=None):
         if ok and self.present is not True:
             if self.present is False:
                 gone = time.monotonic() - (self.absent_since or time.monotonic())
-                self.log.info(f"主程序回来了（断了 {gone:.0f} 秒）", cat="robotd")
+                self.log.info(f"O programa principal voltou após {gone:.0f} s desconectado", cat="robotd")
             self.present, self.absent_since = True, None
         elif not ok and self.present is not False:
             self.present, self.absent_since = False, time.monotonic()
-            self.log.warn("连不上主程序 robotd", cat="robotd", raw=str(why),
-                          hint="鸭子主程序没在跑，或者正在重启（重启约 2 秒）。注意：停掉 robotd 不会卸力，舵机可能还顶着")
+            self.log.warn("Não foi possível conectar ao robotd principal", cat="robotd", raw=str(why),
+                          hint="O programa principal do robô não está em execução ou está reiniciando (cerca de 2 s). Atenção: parar o robotd não desliga o torque; os servos podem continuar energizados")
 
     def _check_build(self, bus):
         build = (bus or {}).get("build")
         if build and build not in KNOWN_BUILDS and not getattr(self, "_warned_build", False):
             self._warned_build = True
-            self.log.warn(f"主程序版本 {build} Studio 还没核对过", cat="robotd",
-                          hint="只读显示和卸力照常；以后的运动按钮会先置灰")
+            self.log.warn(f"A versão {build} do programa principal ainda não foi verificada com o Studio", cat="robotd",
+                          hint="A exibição somente leitura e o desligamento do torque continuam funcionando; os futuros botões de movimento ficarão desativados")
 
     def _mode(self):
         b = self.bus.value
@@ -416,7 +416,7 @@ class Robotd:
         b = self.bus.value
         return b.get("phase") if isinstance(b, dict) else None
 
-    # ---- 订阅 ----
+    # ---- Assinaturas ----
 
     def _want_stream(self):
         if self.paused:
@@ -440,22 +440,22 @@ class Robotd:
                 fails = 0
             except (Unreachable, RpcError) as e:
                 fails += 1
-                self.log.warn("实时状态订阅断了", cat="robotd", raw=str(e))
+                self.log.warn("A assinatura do estado em tempo real foi interrompida", cat="robotd", raw=str(e))
                 await asyncio.sleep(BACKOFF[min(fails - 1, len(BACKOFF) - 1)])
             except asyncio.TimeoutError:
                 fails += 1
-                self.log.warn("实时状态 3 秒没来新帧，重新订阅", cat="robotd")
+                self.log.warn("Nenhum quadro novo de estado em tempo real recebido em 3 s; assinando novamente", cat="robotd")
 
     async def _stream_once(self):
         r, w = await asyncio.wait_for(open_conn(self.addr), 3.0)
         self.stream_open = True
-        self.log.info(f"开始订阅实时状态（{STREAM_HZ} Hz，{self.viewers} 个页面在看）", cat="robotd")
+        self.log.info(f"Iniciando assinatura do estado em tempo real ({STREAM_HZ} Hz; {self.viewers} páginas visualizando)", cat="robotd")
         try:
             try:
-                w.write(encode(1, "robot.subscribe", {"hz": int(STREAM_HZ)}))   # hz 必须是整数（u32）
+                w.write(encode(1, "robot.subscribe", {"hz": int(STREAM_HZ)}))   # hz deve ser um inteiro (u32)
                 await w.drain()
             except (ConnectionError, OSError) as e:
-                raise Unreachable(f"订阅请求没发出去：{type(e).__name__}: {e}") from e
+                raise Unreachable(f"Não foi possível enviar a solicitação de assinatura: {type(e).__name__}: {e}") from e
             while True:
                 msg = await read_message(r, 3.0)
                 if msg is None:
@@ -468,7 +468,7 @@ class Robotd:
                 if msg.get("method") == "robot.state":
                     self.state.set(msg.get("params"))
                 if not self._want_stream():
-                    self.log.info("没人在看了，停止订阅", cat="robotd")
+                    self.log.info("Ninguém está visualizando; encerrando a assinatura", cat="robotd")
                     return
         finally:
             self.stream_open = False
@@ -480,8 +480,8 @@ class Robotd:
     # ---- configd ----
 
     async def _configd_loop(self):
-        """system.info 60 s、pad.status 5 s，两项各自出错各自退避（代码审查 #19：以前 system.info
-        一直失败，pad.status 就永远轮不到）。"""
+        """system.info a cada 60 s e pad.status a cada 5 s; cada item aplica sua própria espera em caso de falha (revisão de código #19: antes, se system.info
+        falhasse continuamente, pad.status nunca seria consultado)."""
         due = {"info": 0.0, "pad": 0.0}
         down = {"info": False, "pad": False}
         while True:
@@ -495,21 +495,21 @@ class Robotd:
                     due[key] = now + every
                     if down[key]:
                         down[key] = False
-                        self.log.info(f"configd 的 {method} 恢复了", cat="Controle")
+                        self.log.info(f"{method} do configd voltou a funcionar", cat="Controle")
                 except (Unreachable, Timeout, RpcError) as e:
                     sample.fail(e)
                     due[key] = now + 5.0
                     if not down[key]:
                         down[key] = True
-                        self.log.warn(f"configd 的 {method} 读不到", cat="Controle", raw=str(e),
-                                      hint="有的鸭子关掉了 configd；不影响站和走，只是手柄那一栏显示「不知道」")
+                        self.log.warn(f"Não foi possível ler {method} do configd", cat="Controle", raw=str(e),
+                                      hint="Alguns robôs desativam o configd; isso não impede ficar em pé nem andar, mas a seção do controle mostrará “desconhecido”")
             await asyncio.sleep(0.5)
 
-    # ---- 只读自检（--selfcheck） ----
+    # ---- Autodiagnóstico somente leitura (--selfcheck) ----
 
     async def selfcheck(self):
-        """只读。除了各问一次，还查三个 socket 的权限（上机最容易卡在 robot 组上），
-        以及「不先 hello、新连接直接查询」行不行（卸力每次都是新连接直接发）。"""
+        """Somente leitura. Além de consultar cada serviço uma vez, verifica as permissões dos três sockets (um problema comum ao configurar o grupo robot),
+        e se é possível consultar diretamente em uma nova conexão sem enviar hello primeiro (o comando para desligar o torque sempre é enviado por uma conexão nova)."""
         import grp
         import os
         import pwd
@@ -517,16 +517,16 @@ class Robotd:
         try:
             me = pwd.getpwuid(os.getuid()).pw_name
             groups = sorted(grp.getgrgid(g).gr_name for g in os.getgroups())
-            out["用户"] = f"{me} · 组 {','.join(groups)}"
+            out["Usuário"] = f"{me} · grupos {','.join(groups)}"
         except (ImportError, KeyError, OSError) as e:
-            out["用户"] = f"（查不到：{e}）"
+            out["Usuário"] = f"(não foi possível consultar: {e})"
         for path in ("/run/robotd.sock", "/run/configd.sock", "/run/padd/pad.sock"):
             if not os.path.exists(path):
-                out[path] = "不在"
+                out[path] = "ausente"
             else:
-                out[path] = "可读写" if os.access(path, os.R_OK | os.W_OK) else "没权限（把用户加进 robot 组）"
+                out[path] = "leitura e gravação permitidas" if os.access(path, os.R_OK | os.W_OK) else "sem permissão (adicione o usuário ao grupo robot)"
         for name, method, params, addr in (
-            ("新连接直接查", "robot.health", {}, self.addr),
+            ("Consulta direta em nova conexão", "robot.health", {}, self.addr),
             ("hello", "hello", {"api_version": API_VERSION}, self.addr),
             ("busStatus", "robot.busStatus", {}, self.addr),
             ("pad.status", "pad.status", {}, self.cfg.addr),
@@ -537,11 +537,11 @@ class Robotd:
                 if name == "busStatus":
                     out[name] = f"ok · mode={r.get('mode')} phase={r.get('phase')} build={r.get('build')}"
                 elif name == "hello":
-                    out[name] = f"ok · 接口 v{r.get('api_version')} 版本 {r.get('daemon_version')}"
+                    out[name] = f"ok · interface v{r.get('api_version')} versão {r.get('daemon_version')}"
                 else:
                     out[name] = "ok"
             except Exception as e:  # noqa: BLE001
-                out[name] = f"失败：{e}"
+                out[name] = f"Falhou: {e}"
         return out
 
 
@@ -550,8 +550,8 @@ def _round(x, nd=2):
 
 
 def fresh_calib(rd):
-    """rd.calib 的值，但只认「这次 hello 之后」读到的（总览重排审查 O5）。rd 没有 calib_valid_after（测试里的假对象）
-    就不挡。不是 dict 的一律 None。"""
+    """Valor de rd.calib, válido somente se lido após este hello (revisão O5 da reorganização do painel). Se rd não tiver calib_valid_after (objeto simulado dos testes),
+    não bloqueia a leitura. Qualquer valor que não seja dict retorna None."""
     s = getattr(rd, "calib", None)
     if s is None or not isinstance(s.value, dict) or s.at is None:
         return None
