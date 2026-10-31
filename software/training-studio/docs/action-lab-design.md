@@ -1,51 +1,51 @@
-# 动作实验室：单脚平衡
+# Laboratório de Ações: equilíbrio em uma perna
 
-日期：2026-10-23。Usuário已授权在现有训练台内实现首个零代码动作玩法。
+Data: 23/10/2026. O usuário autorizou a implementação da primeira atividade sem código na interface de treinamento existente.
 
-## Usuário流程
+## Fluxo do usuário
 
-按用户最后明确的布局，动作实验室是同一训练台内的独立页面 `#/actions`，在左侧导航和手机底栏中与训练工作台并列。首页保留浏览入口。配方库先收录现有平地行走、起伏地形、单脚平衡，支持搜索、按类别筛选，以及预览和文字说明。选择配方后进入现有新建训练抽屉，不另建产品或服务器。
+Conforme o layout definido pelo usuário, o Laboratório de Ações é uma página independente `#/actions` dentro do mesmo painel de treinamento, lado a lado com a bancada na navegação lateral e na barra inferior do celular. A página inicial mantém o acesso à biblioteca. Primeiro, ela reúne as receitas existentes de caminhada em piso plano, terreno irregular e equilíbrio em uma perna, com busca, filtro por categoria, prévia e descrição textual. Ao escolher uma receita, o usuário abre o painel existente de novo treinamento; não é criado outro produto nem outro servidor.
 
-单脚平衡用户选择支撑脚（机器人自身左/右）、另一只脚抬高多少、保持多久；进阶训练参数仍折叠。配方卡从后端 `catalog` 元数据读取类别、标签、预览类型、来源和验证状态；一次只加载正在查看的三维预览，避免配方增多后同时创建大量 WebGL 场景。文字说明同样是完整的卡片类型，不要求每个配方都有视频。
+No equilíbrio em uma perna, o usuário escolhe qual perna apoia o robô (esquerda ou direita), a altura de elevação da outra perna e o tempo de sustentação. Os parâmetros avançados de treinamento continuam recolhidos. Os cartões da biblioteca usam os metadados `catalog` do backend para categoria, tags, tipo de prévia, origem e estado de validação. Só a prévia 3D em exibição é carregada por vez, para evitar criar muitas cenas WebGL quando houver mais receitas. A descrição textual também é um tipo completo de cartão; nem toda receita precisa de vídeo.
 
-三维目标示意展示EsquerdoDireito脚e抬脚方向，并标注「目标示意 · 非训练Resultado」。绘图不宣称精确运动学或平衡Validação。已创建实验保存动作Parâmetros，Parâmetros只读；复制实验或短试跑转正式训练沿用Parâmetros。修改动作目标é necessário新 de 匹配短试跑。实际策略效果只来自选定Verificação点 de 物理评估视频。
+O diagrama 3D mostra as pernas esquerda e direita e a direção da elevação, com o rótulo “Ilustração da meta · não representa resultado de treinamento”. O desenho não afirma fornecer cinemática precisa nem validar o equilíbrio. Experimentos criados salvam os parâmetros da ação como somente leitura; copiar um experimento ou promover um teste curto a treinamento real mantém os mesmos parâmetros. Para alterar a meta da ação, é necessário executar um novo teste curto correspondente. O resultado real da política só pode ser observado no vídeo de avaliação física do checkpoint selecionado.
 
-## 固定接口
+## Contrato fixo
 
-- 配方 `hd1910-single-leg`，任务 `Mjlab-Balance-Flat-MicroDuck-HD1910`，实验目录 `microduck_hd1910_balance`。
-- 请求及记录新增 `skill` 对象：`support_side` 为 `left/right`；`lift_height_m` 为 0.005–0.02、默认 0.01；`hold_seconds` 为 1–5、默认 3。拒绝布尔数值、非有限值、未知字段、行走配方夹带技能参数。
-- 配方元数据增加 `experiment_name`；单脚配方提供 `skill_defaults` 和 `skill_limits`，前端按后端范围展示厘米与秒。新配方默认 256 环境、1000 轮、25 轮保存；短试跑仍强制 64 环境、5 轮、每轮保存。
-- 动作参数加入短试跑匹配、恢复、导出来源及评估。旧行走记录没有 `skill` 时保持兼容；不接受任意任务名、路径或命令片段。
-- 每个配方 de 日志Diretório从Serviço端白名单取得，训练日志识别、PT 扫描、恢复Caminho、评估/导出Verificação点校验必须一致。
+- Receita `hd1910-single-leg`, tarefa `Mjlab-Balance-Flat-MicroDuck-HD1910`, diretório de experimento `microduck_hd1910_balance`.
+- As requisições e os registros recebem o objeto `skill`: `support_side` aceita `left/right`; `lift_height_m` vai de 0.005 a 0.02, padrão 0.01; `hold_seconds` vai de 1 a 5, padrão 3. Rejeitar booleanos usados como números, valores não finitos, campos desconhecidos e parâmetros de habilidade enviados junto com receitas de caminhada.
+- Os metadados das receitas incluem `experiment_name`. A receita de uma perna fornece `skill_defaults` e `skill_limits`, e a interface apresenta centímetros e segundos dentro dos limites fornecidos pelo backend. Novas receitas começam com 256 ambientes, 1.000 iterações e checkpoint a cada 25 iterações; o teste curto continua fixo em 64 ambientes, 5 iterações e checkpoint a cada iteração.
+- Os parâmetros da ação são incluídos na correspondência do teste curto, na retomada, na origem da exportação e na avaliação. Registros antigos de caminhada sem `skill` permanecem compatíveis. Não aceitar nomes arbitrários de tarefas, caminhos ou trechos de comandos.
+- O serviço fornece o diretório de logs de cada receita por uma lista de permissões. A identificação dos logs, a busca de PT, os caminhos de retomada e a validação de checkpoints para avaliação e exportação devem usar a mesma regra.
 
-## 训练引擎
+## Mecanismo de treinamento
 
-从 HD1910 速度Configuração深拷贝，Preservado Feetech BAM、61 维观测、14 维动作、50 Hz、NaN 防护 e 匹配物理随机化。新增专属Comando、奖励e阶段进度；删除会抵消抬脚或改写Comando de 步态奖励/课程。EsquerdoDireito只训练所选支撑脚，不启用无条件Imagem损失。
+Copiar profundamente a configuração de velocidade HD1910, preservando Feetech BAM, observação de 61 dimensões, ação de 14 dimensões, 50 Hz, proteção contra NaN e a randomização física correspondente. Adicionar comando, recompensa e progresso de fases específicos. Remover recompensas de caminhada ou currículo que compensem a elevação do pé ou sobrescrevam o comando. Treinar somente a perna de apoio selecionada; não ativar perdas de imagem incondicionais.
 
-动作包括稳定、抬脚、保持、落脚、双脚稳定结束；Completo周期eParâmetros随实验固定。奖励 e Sucesso判断必须Verificação正确支撑脚、抬脚高度、躯干姿态、滑移、禁用身体接地、落脚恢复，防止跌倒后脚离地骗取奖励。新Comando语义另行记录，不能仅因输入输出维度相同就声称旧机器人Execução时可直接使用。
+As fases são: estabilizar, elevar o pé, sustentar, apoiar o pé e terminar estável com os dois pés. O ciclo completo e seus parâmetros permanecem fixos por experimento. A recompensa e a condição de sucesso devem verificar a perna de apoio correta, altura do pé, postura do tronco, deslizamento, contato proibido do corpo com o chão e recuperação após apoiar o pé. Isso impede obter recompensa enganando o sistema ao cair e manter o pé suspenso. Registrar separadamente a semântica do novo comando; dimensões de entrada e saída iguais, por si só, não provam que o comando possa ser usado diretamente no runtime do robô antigo.
 
-训练 CLI 使用类型化ComandoConfiguração字段传递Parâmetros；评估、导出在创建环境前用同一校验函数应用保存Parâmetros。Preservado现有归一化导出Caminho，不改依赖锁Arquivo，不改变既有Caminhada配方行为。
+A CLI de treinamento transmite parâmetros por campos tipados em `CommandConfig`. A avaliação e a exportação aplicam os parâmetros salvos usando a mesma função de validação antes de criar o ambiente. Preservar o caminho atual de exportação com normalização; não alterar o arquivo de lock das dependências nem o comportamento das receitas de caminhada existentes.
 
-## 验收
+## Critérios de validação
 
-1. CPU Configuração/奖励Teste：范围、EsquerdoDireito映射、阶段边界、终止/Sucesso门控、有限值、61/14/50 契约、旧工厂隔离；Verificação候选姿态e几何能suporta目标。
-2. Serviço回归：匹配短试跑、旧记录、配方隔离Caminho、错误Parâmetros、暂停/续训、导出Parâmetros e Fonte。
-3. 前端：草稿、单位换算、EsquerdoDireito切换、短试跑门禁、复制、Resultado展示 e 移动布局。目标示意不得成为评估凭证。
-4. 真实 GPU：64 环境 5 轮、保存 PT、按Completo周期多次评估、真实视频、导出 ONNX 并核对推理。记录实际Sucesso次数；训练退出Sucesso不等同于动作Sucesso。
-5. 集成回稳定工作区，Preservado既有实验eServiço状态。只在没有活动任务时重启Serviço。
+1. Testes de configuração e recompensa em CPU: limites, mapeamento esquerda/direita, limites das fases, condições de término/sucesso, valores finitos, contrato 61/14/50 e isolamento da fábrica antiga. Confirmar que as posturas candidatas e a geometria suportam a meta.
+2. Regressão do serviço: correspondência do teste curto, registros antigos, caminhos isolados por receita, parâmetros inválidos, pausa/retomada e parâmetros/origem na exportação.
+3. Interface: rascunhos, conversão de unidades, troca entre esquerda e direita, bloqueio após alterar parâmetros, cópia, exibição dos resultados e layout móvel. A ilustração da meta não pode servir como evidência de avaliação.
+4. GPU real: 64 ambientes e 5 iterações, salvamento de PT, várias avaliações com o ciclo completo, vídeo real, exportação ONNX e comparação de inferência. Registrar o número real de sucessos; terminar o processo de treinamento com sucesso não significa que a ação tenha sido bem-sucedida.
+5. Integrar ao espaço de trabalho estável, preservando os experimentos e o estado do serviço. Reiniciar o serviço somente quando não houver tarefas ativas.
 
-## 边界
+## Limites
 
-首版Concluído单脚平衡可Configuração训练闭环。跳跃、精准转圈不显示为可Execução模板。长训收敛e真机效果依据实际证据报告，不由示意动画或短试跑por meio de替代。
+A primeira versão conclui o fluxo configurável de treinamento para equilíbrio em uma perna. Saltos e giros precisos não aparecem como modelos disponíveis para execução. Convergência em treinamento longo e resultados no robô real devem ser relatados com evidências próprias, sem substituí-las por ilustrações ou testes curtos.
 
-## 后续定位：Comunidade动作配方库
+## Direção futura: biblioteca comunitária de receitas de ação
 
-Usuário进一步明确：动作实验室应承载ComunidadeAutor编写 de 动作任务，让普通Usuário选择并训练，不要求每个人从零写奖励代码。首版单脚平衡是这一流程 de Completo样例。Comunidade发布、审核、Baixar e 自动Instalação尚未实现。
+O usuário esclareceu também que o Laboratório de Ações deve permitir que autores da comunidade criem tarefas de ação para que usuários comuns possam selecioná-las e treiná-las, sem precisar escrever código de recompensa do zero. O equilíbrio em uma perna da primeira versão é um exemplo completo desse fluxo. Publicação comunitária, revisão, download e instalação automática ainda não foram implementados.
 
-规划 em  de 配方应包含：Autor e Fonte、Licença、配方Versão、适配Hardware e 引擎Versão、动作Instruções、可调整Parâmetros e 范围、训练规则、Sucesso e Falha判定、评估条件e示例视频。Parâmetros应同时进入训练、续训、评估 e 导出，Usuário修改目标后Preservado自己 de 实验记录。
+Uma receita planejada deve incluir autor e origem, licença, versão, hardware e versão do mecanismo compatíveis, instruções da ação, parâmetros ajustáveis e seus limites, regras de treinamento, critérios de sucesso e falha, condições de avaliação e vídeo de exemplo. Os parâmetros devem ser usados no treinamento, na retomada, na avaliação e na exportação; se o usuário alterar a meta, seu registro de experimento deve ser preservado.
 
-Contribuição流程优先走仓库 PR：Autor实现任务eTeste → 维护者审核兼容性 e Validação证据 → 收录为可选择 de 配方 → Usuário短试跑后正式训练。Atual仍由Serviço端白名单注册任务；未来Página不能把任意Enviar脚本直接当作已经审核 de 内置能力。
+O fluxo de contribuição deve priorizar pull requests no repositório: o autor implementa a tarefa e os testes; os mantenedores revisam compatibilidade e evidências de validação; a receita é adicionada à lista de opções; o usuário faz um teste curto antes de iniciar o treinamento real. Atualmente, as tarefas ainda são registradas por uma lista de permissões no serviço. No futuro, a página não deve tratar scripts enviados livremente como recursos internos já revisados.
 
-配方卡 de Validação状态需分别表达「训练链路por meio de」「在指定条件InferiorConcluído动作」「经过真机Validação」。一次Sucesso退出或几轮短试跑不能升级为动作已经学会。已有策略权重是可选 de 独立成果，注明Fontee对应目标，不 e 训练配方混为一谈。
+O estado de validação nos cartões deve distinguir “fluxo de treinamento aprovado”, “ação concluída sob condições específicas” e “validado em robô real”. Encerrar com sucesso uma execução ou passar algumas iterações curtas não basta para afirmar que a ação foi aprendida. Pesos de políticas existentes são artefatos separados e opcionais: devem indicar a origem e a meta correspondente, sem serem confundidos com a receita de treinamento.
 
-Página后续按配方元Dados渲染卡片 e Parâmetros表单，逐步减少动作名称硬编码。先稳定配方约定eContribuição样例，再建设分享入口；本轮没有新建账号、EnviarServiço或Comunidade后台。
+A página deve passar a renderizar cartões e formulários de parâmetros com base nos metadados das receitas, reduzindo gradualmente os nomes de ações fixos no código. Primeiro, estabilizar o contrato das receitas e o exemplo de contribuição; depois, criar um fluxo de compartilhamento. Esta rodada não criou contas, serviço de envio ou backend comunitário.
