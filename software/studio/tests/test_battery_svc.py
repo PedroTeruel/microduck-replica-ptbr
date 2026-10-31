@@ -61,7 +61,7 @@ class FakeServo:
                 "avg_volts": self.volt, "battery_pct": B.linear_pct(self.volt), "all_off": self.torque_v == 0}
 
     def estop_status(self):
-        return {"state": "confirmed", "why": "15 颗都已卸力（总线回读）"}
+        return {"state": "confirmed", "why": "Torque aliviado nos 15 servos (leitura do barramento)"}
 
     def holding(self):
         return 0

@@ -14,7 +14,7 @@ def experiment_for(run):
     recipe_id = run.get("recipe_id")
     recipe = RECIPE_BY_ID.get(recipe_id) if isinstance(recipe_id, str) else None
     if recipe is None or run.get("task_id") != recipe["task_id"]:
-        raise StudioError("不支持的训练任务")
+        raise StudioError("Tarefa de treinamento não compatível")
     return recipe["experiment_name"]
 
 
@@ -35,7 +35,7 @@ def build_train_argv(run, training_root, checkpoint=None):
         checkpoint = Path(checkpoint).resolve()
         log_root = (Path(training_root) / "logs" / "rsl_rl" / experiment).resolve()
         if checkpoint.parent.parent != log_root or not re.fullmatch(r"model_\d+\.pt", checkpoint.name):
-            raise StudioError("检查点不属于当前引擎实验目录")
+            raise StudioError("O checkpoint não pertence ao diretório de experimentos deste mecanismo")
         argv += ["--agent.resume", "True", "--agent.load-run", "^" + re.escape(checkpoint.parent.name) + "$",
                  "--agent.load-checkpoint", "^" + re.escape(checkpoint.name) + "$"]
     return argv
@@ -55,7 +55,7 @@ def parse_metric(line):
             try:
                 value = int(match[1]) if key == "iteration" else float(match[1])
                 if not math.isfinite(value):
-                    raise StudioError("训练日志出现非有限指标，任务不能被视为成功。", 409)
+                    raise StudioError("O log de treinamento contém uma métrica não finita; a tarefa não pode ser considerada bem-sucedida.", 409)
                 result[key] = value
             except ValueError:
                 pass
