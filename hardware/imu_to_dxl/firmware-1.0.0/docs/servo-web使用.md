@@ -1,40 +1,40 @@
-# servo-web WebSuperior位机Instruções de uso
+# Uso do servo-web como estação Web no host
 
-por meio de RK3566 Superior de  servo-web WebSuperior位机，在电脑浏览器里实时查看 IMU 姿态eServo状态。
+A estação Web servo-web no RK3566 permite visualizar em tempo real a postura do IMU e o estado dos servos pelo navegador do computador.
 
 ---
 
-## 1. 前提条件
+## 1. Pré-requisitos
 
-| 项目 | 要求 |
+| Item | Requisito |
 |---|---|
-| IMU 板Firmware | 已Gravação飞特 FT-SCS ProtocoloFirmware v1.0.0（ID=200，1Mbps） |
-| RK3566 | servo-web 已克隆到 `/gitclone/microduck-replica/tools/servo-web/` |
-| 总线串口 | `/dev/ttyS2`（RK3566 板载串口，直连 IMU 总线） |
-| 网络 | RK3566 与电脑在同一局域网（wlan0 IP 如 `<鸭子 IP>`） |
-| 浏览器 | Chrome / Edge / Firefox（需suporta WebSocket e ES Module） |
+| Firmware da placa IMU | Firmware de protocolo Feetech FT-SCS v1.0.0 gravado (ID=200, 1 Mbps) |
+| RK3566 | servo-web clonado em `/gitclone/microduck-replica/tools/servo-web/` |
+| Porta serial do barramento | `/dev/ttyS2` (serial integrada à placa RK3566, conectada diretamente ao barramento do IMU) |
+| Rede | RK3566 e computador na mesma rede local (IP de wlan0, por exemplo, `<IP do Duck>`) |
+| Navegador | Chrome / Edge / Firefox (com suporte a WebSocket e ES Module) |
 
-## 2. InicializaçãoServiço
+## 2. Inicialização do serviço
 
-### 2.1 SSH 或串口登录 RK3566
+### 2.1 Acesse o RK3566 por SSH ou serial
 
 ```bash
-# 通过 SSH（需已配置 SSH）
-ssh root@<鸭子 IP>
+# Via SSH (é necessário já ter configurado o SSH)
+ssh root@<IP do Duck>
 
-# 或通过 USB 串口控制台（COM8 @ 1500000 baud）
-# 用串口助手或 Python pyserial 连接，登录 root
+# Ou pelo console serial USB (COM8 @ 1500000 baud)
+# Conecte com um terminal serial ou Python pyserial e entre como root
 ```
 
-### 2.2 停掉冲突Serviço
+### 2.2 Pare serviços que possam conflitar
 
-servo-web 和 robotd 会抢 `/dev/ttyS2` 总线，启动前必须先停 robotd：
+servo-web e robotd disputam o acesso a `/dev/ttyS2`; pare o robotd antes de iniciar:
 
 ```bash
 systemctl stop robotd
 ```
 
-### 2.3 Inicialização server.py
+### 2.3 Inicie `server.py`
 
 ```bash
 cd /gitclone/microduck-replica/tools/servo-web
@@ -46,205 +46,205 @@ nohup python3 server.py \
   > /tmp/servo-web.log 2>&1 &
 ```
 
-ParâmetrosInstruções：
+Descrição dos parâmetros:
 
-| Parâmetros | 含义 |
+| Parâmetro | Significado |
 |---|---|
-| `--port /dev/ttyS2` | 总线串口设备 |
-| `--imu-bus` | 启用 IMU 总线模式（ID 200 跟舵机在同一条 sync_read 里读） |
-| `--host 0.0.0.0` | 监听所有网卡（允许外部访问） |
-| `--http-port 8080` | HTTP/WebSocket 端口 |
-| `> /tmp/servo-web.log 2>&1 &` | 后台运行，日志写 /tmp/servo-web.log |
+| `--port /dev/ttyS2` | Dispositivo da porta serial do barramento |
+| `--imu-bus` | Habilita o modo de barramento do IMU (ID 200 é lido junto dos servos na mesma chamada sync_read) |
+| `--host 0.0.0.0` | Escuta em todas as interfaces de rede (permite acesso externo) |
+| `--http-port 8080` | Porta HTTP/WebSocket |
+| `> /tmp/servo-web.log 2>&1 &` | Executa em segundo plano e grava os logs em `/tmp/servo-web.log` |
 
-### 2.4 确认Serviço已Inicialização
+### 2.4 Confirme que o serviço iniciou
 
 ```bash
-# 查看进程
+# Confira o processo
 ps aux | grep server.py
 
-# 查看日志（应显示总线已打开、IMU 已启用）
+# Confira os logs (devem indicar que o barramento foi aberto e o IMU habilitado)
 tail -20 /tmp/servo-web.log
 ```
 
-正常日志示例：
+Exemplo de log normal:
 
 ```
-[总线] 打开 /dev/ttyS2 @ 1000000 8N1
-[IMU] 总线 IMU 已启用：ID 200 跟舵机在同一条 sync_read 里读（有网页连着才轮询）
+[Bus] Aberto /dev/ttyS2 @ 1000000 8N1
+[IMU] IMU do barramento habilitado: ID 200 lido com os servos na mesma sync_read (a leitura ocorre quando há uma página conectada)
 ```
 
-## 3. Web访问
+## 3. Acesso pela Web
 
-### 3.1 打开Web
+### 3.1 Abra a página
 
-在电脑浏览器访问：
+No navegador do computador, acesse:
 
 ```
-http://<鸭子 IP>:8080/
+http://<IP do Duck>:8080/
 ```
 
-> IP 地址以 RK3566 实际 wlan0 IP 为准，可用 `ip addr show wlan0` 查看。
+> Use o IP real de wlan0 do RK3566. Consulte-o com `ip addr show wlan0`.
 
-### 3.2 Página结构
+### 3.2 Estrutura da página
 
-Página标题为「鸭子ServoDepuração台」，从Superior到Inferior依次为：
+O título da página é “Estação de depuração de servos do Duck”. De cima para baixo:
 
-1. **Conexão状态**：EsquerdoSuperior角绿点 = WebSocket 已Conexão
-2. **Servo扫描区**：点击「扫描」按钮扫描总线设备
-3. **ServoControle区**：扭矩开关、目标位置/速度滑块
-4. **IMU 姿态面板**（`躯干姿态 · IMU`）：
-   - 模式标签：`总线 · ID 200`
-   - 状态标签：`等待数据` → `实时跟随`（收到有效数据后变绿）
-   - 横滚 / 俯仰 / 偏航角度（度）
-   - 采样数、Leitura频率（Hz）、参考电压（V）
-   - 加速度 g（三轴）、角速度 °/s（三轴）
-   - 错误计数：IMU / SPI / FIFO
-   - 操作按钮：「Atual姿态显示归零」「original姿态」
-   - Instalação方向Inferior拉框（可选不同Instalação方向）
-5. **姿态管理区**：保存/加载/发送预设姿态
-6. **3D 可视化区**：躯干姿态（按 IMU 四元数转）+ 关节姿态（按Servo位置转）
-7. **日志区**：底部实时日志
+1. **Estado da conexão:** ponto verde no canto superior esquerdo = WebSocket conectado.
+2. **Área de busca de servos:** clique em “Buscar” para procurar dispositivos no barramento.
+3. **Área de controle de servos:** botão de torque e controles deslizantes para posição e velocidade-alvo.
+4. **Painel de postura do IMU** (`Postura do tronco · IMU`):
+   - Etiqueta de modo: `Barramento · ID 200`.
+   - Etiqueta de estado: `Aguardando dados` → `Acompanhamento em tempo real` (fica verde após receber dados válidos).
+   - Ângulos de rolagem, inclinação e guinada (graus).
+   - Contagem de amostras, frequência de leitura (Hz) e tensão de referência (V).
+   - Aceleração em g (três eixos) e velocidade angular em °/s (três eixos).
+   - Contadores de erros: IMU / SPI / FIFO.
+   - Botões: “Zerar postura exibida” e “Postura original”.
+   - Menu suspenso para direção de instalação (permite selecionar diferentes orientações).
+5. **Área de gerenciamento de posturas:** salva, carrega e envia posturas predefinidas.
+6. **Área de visualização 3D:** postura do tronco (derivada do quaternion do IMU) e postura das articulações (derivada das posições dos servos).
+7. **Área de logs:** logs atualizados em tempo real na parte inferior.
 
-### 3.3 开始查看 IMU Dados
+### 3.3 Comece a visualizar os dados do IMU
 
-**Web连Superior后会自动开始Leitura IMU Dados，不é necessário额外设定。**
+**Depois de conectar à página Web, a leitura dos dados do IMU começa automaticamente; não é necessária nenhuma configuração adicional.**
 
-WebSocket Conexão建立后，server.py  de 轮询循环自动Inicialização，每帧 sync_read 会带Superior ID 200。
-IMU 面板状态从「等待Dados」变为「实时跟随」，角度e采样Dados开始实时刷新。
+Após estabelecer a conexão WebSocket, o loop de consulta de `server.py` inicia automaticamente e inclui o ID 200 em cada quadro sync_read. O painel do IMU muda de “Aguardando dados” para “Acompanhamento em tempo real”, e os ângulos e dados de amostragem passam a ser atualizados continuamente.
 
-### 3.4 Validação IMU Dados是否正常
+### 3.4 Confira se os dados do IMU estão normais
 
-在 IMU 面板 em Verificação：
+Verifique no painel do IMU:
 
-| 字段 | 正常值 | 异常排查 |
+| Campo | Valor normal | Diagnóstico se estiver anormal |
 |---|---|---|
-| 状态标签 | `实时跟随`（绿色） | 若显示「等待数据」/「数据无效」：检查 IMU 板供电、固件是否已烧录 |
-| 模式标签 | `总线 · ID 200` | 若不显示 IMU 面板：确认 server.py 用了 `--imu-bus` 参数 |
-| 横滚/俯仰/偏航 | 随板子转动而变化 | 数字不动：Verificação总线Fiação、/dev/ttyS2 是否被占用 |
-| 采样数 | 持续递增 | 不递增：总线无应答，Verificação IMU 板是否Superior电 |
-| Leitura Hz | 30~60 Hz | 为 0 或极低：Verificação是否有其他进程占用总线 |
-| 加速度 / 角速度 | 三轴有数值 | 全 `—`：validPacket 未通过，检查 ready/configured 字段 |
+| Etiqueta de estado | `Acompanhamento em tempo real` (verde) | Se mostrar “Aguardando dados”/“Dados inválidos”, confira a alimentação da placa IMU e se o firmware foi gravado |
+| Etiqueta de modo | `Barramento · ID 200` | Se o painel não aparecer, confirme que `server.py` foi iniciado com `--imu-bus` |
+| Rolagem/inclinação/guinada | Muda quando a placa é girada | Se os valores não mudarem, confira o cabeamento do barramento e se `/dev/ttyS2` está ocupado |
+| Contagem de amostras | Aumenta continuamente | Se não aumentar, não há resposta do barramento; confira se a placa IMU está energizada |
+| Hz de leitura | 30–60 Hz | Se for zero ou muito baixo, confira se outro processo está usando o barramento |
+| Aceleração/velocidade angular | Valores nos três eixos | Se todos mostrarem `—`, `validPacket` não passou; confira os campos `ready/configured` |
 
-### 3.5 Servo操作（可选）
+### 3.5 Operação dos servos (opcional)
 
-1. 点击「扫描」按钮，等待扫描Concluído（约 2 秒）
-2. 在线Servo列表会显示在扫描区
-3. 点击「扭矩开」使能Servo扭矩
-4. 拖动滑块设置目标位置，或点击预设姿态按钮
-5. 操作完毕点击「扭矩关」
+1. Clique em “Buscar” e aguarde a conclusão (cerca de 2 segundos).
+2. Os servos encontrados aparecem na lista de dispositivos online.
+3. Clique em “Ligar torque” para habilitar o torque dos servos.
+4. Arraste os controles para definir as posições-alvo ou clique em um botão de postura predefinida.
+5. Ao terminar, clique em “Desligar torque”.
 
-> **安全提示**：扭矩开启后Servo有保持力，Por favor先确认舵盘活动范围内无干涉。
+> **Segurança:** com o torque ligado, os servos exercem força de retenção. Antes de começar, confira se nada interfere no curso das alavancas dos servos.
 
-## 4. Teste步骤
+## 4. Etapas de teste
 
-### 4.1 基础ConexãoTeste
+### 4.1 Teste básico de conexão
 
-1. 确认 IMU 板已上电、总线已连接到 `/dev/ttyS2`
-2. 停掉 robotd：`systemctl stop robotd`
-3. Inicialização server.py（见第 2.3 节）
-4. 查看日志无报错：`tail -20 /tmp/servo-web.log`
-5. 电脑浏览器打开 `http://<鸭子 IP>:8080/`
-6. EsquerdoSuperior角绿点亮起 = WebSocket ConexãoSucesso
-7. IMU 面板出现，状态显示「实时跟随」
+1. Confirme que a placa IMU está energizada e conectada a `/dev/ttyS2`.
+2. Pare o robotd: `systemctl stop robotd`.
+3. Inicie `server.py` (consulte a seção 2.3).
+4. Confira se os logs não mostram erros: `tail -20 /tmp/servo-web.log`.
+5. Abra `http://<IP do Duck>:8080/` no navegador do computador.
+6. O ponto verde no canto superior esquerdo indica que a conexão WebSocket foi estabelecida.
+7. O painel do IMU aparece e mostra “Acompanhamento em tempo real”.
 
-### 4.2 IMU DadosValidação
+### 4.2 Validação dos dados do IMU
 
-1. 静置 IMU 板，观察角度值稳定（横滚/俯仰接近 0°）
-2. 缓慢倾斜板子，横滚/俯仰角应跟随变化
-3. 水平旋转板子，偏航角应变化（Atenção：六轴偏航会漂移，属正常现象）
-4. 采样数持续递增、Leitura频率在 30~60 Hz 范围
-5. 错误计数（IMU/SPI/FIFO）保持 0
+1. Deixe a placa IMU parada e confira se os ângulos permanecem estáveis (rolagem/inclinação próximas de 0°).
+2. Incline a placa devagar; os ângulos de rolagem/inclinação devem acompanhar o movimento.
+3. Gire a placa horizontalmente; o ângulo de guinada deve mudar. **Atenção:** a guinada de um IMU de seis eixos sofre deriva, o que é normal.
+4. Confirme que a contagem de amostras aumenta e a frequência de leitura fica entre 30 e 60 Hz.
+5. Os contadores de erro (IMU/SPI/FIFO) devem permanecer em 0.
 
-### 4.3 归零eoriginal姿态操作
+### 4.3 Zerar e restaurar a postura original
 
-1. 将板子摆到期望 de 「零位」姿态
-2. 点击「Atual姿态显示归零」—— Atual姿态设为 0°（仅影响Página显示，不写Hardware）
-3. 转动板子，角度相对零位显示
-4. 点击「original姿态」—— 切换回含Instalação方向 de original姿态显示
+1. Coloque a placa na postura desejada como “posição zero”.
+2. Clique em “Zerar postura exibida”: a postura atual passa a 0° (afeta somente a exibição da página; não grava no hardware).
+3. Gire a placa e observe os ângulos em relação à posição zero.
+4. Clique em “Postura original” para voltar a exibir a postura original, incluindo a direção de instalação.
 
-### 4.4 Servo联合Teste
+### 4.4 Teste conjunto com os servos
 
-1. 点击「扫描」，确认Servo在线
-2. 点击「扭矩开」
-3. 拖动位置滑块，Servo应跟随运动
-4. 同时观察 IMU 面板Dados不受影响（IMU  e Servo同帧Leitura）
-5. Teste完毕点击「扭矩关」
+1. Clique em “Buscar” e confirme que os servos aparecem online.
+2. Clique em “Ligar torque”.
+3. Arraste o controle de posição; o servo deve se mover.
+4. Observe ao mesmo tempo se os dados do painel IMU continuam chegando (IMU e servos são lidos no mesmo quadro).
+5. Ao terminar, clique em “Desligar torque”.
 
-### 4.5 多设备同帧LeituraValidação
+### 4.5 Validação de leitura simultânea de vários dispositivos
 
-1. 总线Superior接 IMU 板 + 1~2 个飞特Servo
-2. Inicialização server.py，打开Web
-3. 扫描到 IMU（ID 200）+ Servo
-4. IMU 面板「实时跟随」+ Servo位置Dados同时刷新
-5. Leitura频率稳定（不因多设备而明显Inferior降）
-6. 日志无 ck_err / timeout 报错
+1. Conecte a placa IMU e um ou dois servos Feetech ao barramento.
+2. Inicie `server.py` e abra a página Web.
+3. Confirme que a busca encontra o IMU (ID 200) e os servos.
+4. Confira se “Acompanhamento em tempo real” do IMU e as posições dos servos são atualizados simultaneamente.
+5. A frequência de leitura deve permanecer estável, sem queda perceptível por causa dos dispositivos adicionais.
+6. Os logs não devem mostrar erros `ck_err`/timeout.
 
-## 5. 停止Serviço
+## 5. Como parar o serviço
 
 ```bash
-# 查找进程 ID
+# Localize o PID
 ps aux | grep server.py
 
-# 停止
+# Pare o processo
 kill <PID>
 
-# 或一条命令搞定
+# Ou encerre com um único comando
 pkill -f 'python3 server.py'
 
-# 恢复 robotd（如果需要）
+# Reinicie o robotd, se necessário
 systemctl start robotd
 ```
 
-## 6. 常见问题
+## 6. Problemas comuns
 
-| 现象 | 排查方向 |
+| Sintoma | O que verificar |
 |---|---|
-| 浏览器打不开Página | RK3566 是否开机、IP 是否正确、防火墙是否放行 8080 端口 |
-| 左上角灰点（连不上） | server.py 是否在运行；`ps aux \| grep server.py` 确认进程 |
-| IMU 面板不显示 | server.py 是否加了 `--imu-bus` 参数；日志是否显示「IMU 已启用」 |
-| 状态显示「等待数据」 | IMU 板是否上电、总线接线是否正确、`/dev/ttyS2` 是否被 robotd 占用 |
-| 角度全显示 `—` | validPacket 未通过：确认 imu_bus.py live 帧含 `ready=1, configured=1` |
-| 采样数不递增 | 总线无应答：Verificação IMU 板Firmware是否已烧飞特Protocolo版、供电是否正常 |
-| Leitura频率为 0 | 没有Web连着（轮询只在有 WebSocket 客户端时Inicialização）；或正在校准 |
-| 扫描不到Servo | Servo供电是否正常（VDD_BUS）、ID 是否在扫描范围、总线Fiação |
-| Servo不动 | 扫描后是否点了「扭矩开」、模式/速度寄存器是否正确 |
-| 日志报 ck_err / timeout | 总线干扰、引线过长、终端电阻缺失；SYNC READ 列表 ID 200 是否末位 |
-| `/dev/ttyS2` 被占用 | `fuser /dev/ttyS2` 查看占用进程，先 kill 或 `systemctl stop robotd` |
+| O navegador não abre a página | Confira se o RK3566 está ligado, se o IP está correto e se o firewall permite a porta 8080 |
+| Ponto cinza no canto superior esquerdo (sem conexão) | Confira se `server.py` está em execução; use `ps aux \| grep server.py` para verificar o processo |
+| Painel do IMU não aparece | Confira se `server.py` recebeu `--imu-bus` e se os logs dizem “IMU habilitado” |
+| Estado “Aguardando dados” | Confira a alimentação da placa IMU, o cabeamento do barramento e se o robotd está usando `/dev/ttyS2` |
+| Todos os ângulos mostram `—` | `validPacket` não passou: confirme se o quadro live de `imu_bus.py` contém `ready=1, configured=1` |
+| Contagem de amostras não aumenta | Sem resposta do barramento: confira se o firmware da placa IMU é a versão com protocolo Feetech e se a alimentação está normal |
+| Frequência de leitura igual a 0 | Não há página Web conectada (a consulta só inicia com um cliente WebSocket) ou o sistema está calibrando |
+| Busca não encontra servos | Confira a alimentação dos servos (`VDD_BUS`), se os IDs estão na faixa de busca e o cabeamento do barramento |
+| Servo não se move | Depois da busca, confira se clicou em “Ligar torque” e se os registradores de modo/velocidade estão corretos |
+| Log mostra `ck_err`/timeout | Interferência no barramento, cabos longos ou falta de terminação; confira se o ID 200 está no fim da lista SYNC READ |
+| `/dev/ttyS2` está ocupado | Consulte o processo com `fuser /dev/ttyS2` e encerre-o ou execute `systemctl stop robotd` |
 
-## 7. 飞特 FT-SCS Protocolo
+---
 
-### 7.1 帧格式
+## 7. Protocolo Feetech FT-SCS
 
-IMU 板使用飞特 FT-SCS（Feetech Servo Communication Serial）半双工总线Protocolo，
- e 飞特 SCS/STS Servo共线Execução。所有帧使用相同格式：
+### 7.1 Formato dos quadros
+
+A placa IMU usa o protocolo de barramento half-duplex Feetech FT-SCS (Feetech Servo Communication Serial) e opera na mesma linha que os servos Feetech SCS/STS. Todos os quadros têm o mesmo formato:
 
 ```
-请求帧：  FF FF  ID  LEN  INST  P1..Pn  CK
-应答帧：  FF FF  ID  LEN  ERR   D1..Dd  CK
+Quadro de solicitação: FF FF  ID  LEN  INST  P1..Pn  CK
+Quadro de resposta:    FF FF  ID  LEN  ERR   D1..Dd  CK
 ```
 
-| 字段 | Instruções |
+| Campo | Descrição |
 |---|---|
-| `FF FF` | 帧头（2 字节，固定 0xFF 0xFF） |
-| `ID` | 设备地址（1 字节；0xFE=广播，1~252=单播） |
-| `LEN` | 长度（1 字节；= 2 + 参数/数据字节数） |
-| `INST`/`ERR` | 指令码（请求方）/ 错误码（应答方） |
-| `P1..Pn`/`D1..Dd` | 参数（请求方）/ 数据（应答方） |
-| `CK` | 校验和（1 字节） |
+| `FF FF` | Cabeçalho (2 bytes fixos: 0xFF 0xFF) |
+| `ID` | Endereço do dispositivo (1 byte; 0xFE=broadcast, 1~252=unicast) |
+| `LEN` | Comprimento (1 byte; = 2 + quantidade de bytes de parâmetros/dados) |
+| `INST`/`ERR` | Código de instrução (solicitação) / código de erro (resposta) |
+| `P1..Pn`/`D1..Dd` | Parâmetros (solicitação) / dados (resposta) |
+| `CK` | Checksum (1 byte) |
 
-帧总长度 = 4 + LEN 字节。
+Comprimento total do quadro = 4 + LEN bytes.
 
-### 7.2 校验eAlgoritmos
+### 7.2 Algoritmo de checksum
 
 ```
 CK = ~(ID + LEN + INST/ERR + sum(P1..Pn/D1..Dd)) & 0xFF
 ```
 
-- 对 ID 到最后一个Dados字节 de 所有字节累加取低 8 位
-- 取反后取低 8 位
-- FF FF 帧头不参 e 校验e计算
+- Soma todos os bytes de ID até o último byte de dados e mantém os 8 bits inferiores.
+- Inverte os bits e mantém os 8 bits inferiores.
+- O cabeçalho FF FF não participa do cálculo do checksum.
 
-固件实现（`protocol.c`）：
+Implementação no firmware (`protocol.c`):
 
 ```c
 uint8_t proto_checksum(const uint8_t *bytes, uint16_t length) {
@@ -255,269 +255,262 @@ uint8_t proto_checksum(const uint8_t *bytes, uint16_t length) {
 }
 ```
 
-### 7.3 指令集
+### 7.3 Conjunto de instruções
 
-| 指令码 | 名称 | Instruções |
+| Código | Nome | Descrição |
 |---|---|---|
-| 0x01 | PING | 单播应答空状态帧；广播 PING 不应答 |
-| 0x02 | READ | 读寄存器（addr u8, count u8）；单播 |
-| 0x03 | WRITE | 写寄存器（addr u8, data...）；单播 ACK，广播静默 |
-| 0x82 | SYNC READ | 广播读（addr, count, id...）；各 ID 按列表顺序依次应答 |
-| 0x83 | SYNC WRITE | 广播写（addr, dlen, [id, data]...）；静默 |
+| 0x01 | PING | Responde um quadro de estado vazio em unicast; PING em broadcast não recebe resposta |
+| 0x02 | READ | Lê registradores (addr u8, count u8); unicast |
+| 0x03 | WRITE | Grava registradores (addr u8, data...); ACK em unicast, silêncio em broadcast |
+| 0x82 | SYNC READ | Leitura em broadcast (addr, count, id...); cada ID responde em sequência conforme a lista |
+| 0x83 | SYNC WRITE | Gravação em broadcast (addr, dlen, [id, data]...); sem resposta |
 
-IMU 板 de 身份寄存器（地址 0~9）只读，WRITE 会被拒绝返回 ERR_ACCESS(7)。
-地址 85（user_marker）可写 1 字节，地址 240 写 0xA5 触发 IMU 重新初始化。
+Os registradores de identidade da placa IMU (endereços 0~9) são somente para leitura; WRITE é recusado com ERR_ACCESS(7). O endereço 85 (`user_marker`) aceita gravação de 1 byte; escrever 0xA5 no endereço 240 solicita a reinicialização do IMU.
 
-### 7.4 错误码
+### 7.4 Códigos de erro
 
-| 码值 | 名称 | 含义 |
+| Código | Nome | Significado |
 |---|---|---|
 | 0 | OK | Sucesso |
-| 1 | RESULT | Resultado错误 |
-| 2 | INSTRUCTION | 指令错误 |
-| 3 | CRC | 校验e错误 |
-| 4 | RANGE | 地址范围错误 |
-| 5 | LENGTH | 长度错误 |
-| 6 | LIMIT | 限制错误 |
-| 7 | ACCESS | 访问错误（只读区Gravação、身份区Gravação等） |
+| 1 | RESULT | Erro de resultado |
+| 2 | INSTRUCTION | Instrução inválida |
+| 3 | CRC | Erro de checksum |
+| 4 | RANGE | Endereço fora da faixa |
+| 5 | LENGTH | Comprimento inválido |
+| 6 | LIMIT | Limite excedido |
+| 7 | ACCESS | Acesso negado (gravação em área somente leitura ou de identidade etc.) |
 
-### 7.5 SYNC READ 有序应答规则
+### 7.5 Regra de respostas SYNC READ em ordem
 
-SYNC READ 是广播指令，多个设备按 ID 列表顺序依次应答。IMU 板（ID=200） de 
-应答规则（`protocol.c`）：
+SYNC READ é uma instrução de broadcast; vários dispositivos respondem em sequência de acordo com a lista de IDs. A resposta da placa IMU (ID=200) funciona assim (`protocol.c`):
 
-1. **ID 200 在列表首位**（`i == 2`）：直接应答，但飞特舵机会提前开口导致冲突
-   （实测仅 3/30 Sucesso），**禁止这样排**
-2. **ID 200 在列表 em 位/末位**：等待前一个 ID  de 应答帧por meio de总线后，再发自己 de 应答
-   （实测 30/30 Sucesso）
-3. **前驱无应答/校验错误**：IMU 板跳过本轮，避免总线冲突
-4. **超时保护**：等待前驱超过 25ms（`PROTO_TRANSACTION_TIMEOUT_US`）自动取消
+1. **ID 200 em primeiro lugar** (`i == 2`): responde diretamente, mas os servos Feetech podem começar antes e causar colisão (somente 3/30 sucessos observados). **Não use essa ordem.**
+2. **ID 200 no fim da lista:** aguarda a resposta do ID anterior no barramento e então responde (30/30 sucessos observados).
+3. **Predecessor sem resposta ou com checksum inválido:** a placa IMU ignora esta rodada para evitar colisão.
+4. **Proteção de timeout:** se a espera pelo predecessor exceder 25 ms (`PROTO_TRANSACTION_TIMEOUT_US`), a transação é cancelada automaticamente.
 
-> **主机必须将 ID 200 排在舵机之后**（`[舵机ID..., 200]`）或单独成组（`[200]`）。
+> **O host deve colocar o ID 200 depois dos servos** (`[IDs dos servos..., 200]`) ou em um grupo separado (`[200]`).
 
 ---
 
-## 8. 寄存器定义
+## 8. Definição dos registradores
 
-### 8.1 身份区（地址 0~9，只读）
+### 8.1 Área de identidade (endereços 0~9, somente leitura)
 
-| 地址 | 字段 | 值 | Instruções |
+| Endereço | Campo | Valor | Descrição |
 |---|---|---|---|
-| 0 | FirmwareVersão Major | 1 | |
-| 1 | FirmwareVersão Minor | 0 | |
-| 2 | 字节序 | 0 | 0=小端 |
-| 3-4 | 型号 | 0x4D44 | 低字节在前（3=0x44, 4=0x4D） |
-| 5 | 设备 ID | 200 | 固定，不可写 |
-| 6 | 波特率码 | 0 | 0 = 1,000,000 bit/s |
-| 7 | Preservado | 0 | |
-| 8 | 状态级别 | 1 | 返回错误码（非 0 时） |
-| 9 | Preservado | 0 | |
+| 0 | Versão principal do firmware | 1 | |
+| 1 | Versão secundária do firmware | 0 | |
+| 2 | Ordem dos bytes | 0 | 0=little-endian |
+| 3-4 | Modelo | 0x4D44 | Byte menos significativo primeiro (3=0x44, 4=0x4D) |
+| 5 | ID do dispositivo | 200 | Fixo, não pode ser alterado |
+| 6 | Código de baud rate | 0 | 0 = 1.000.000 bit/s |
+| 7 | Reservado | 0 | |
+| 8 | Nível de estado | 1 | Retorna código de erro (quando diferente de 0) |
+| 9 | Reservado | 0 | |
 
-### 8.2 快速块（地址 56~70，15 字节）
+### 8.2 Bloco rápido (endereços 56~70, 15 bytes)
 
- e 飞特Servo状态块同址（56），一条 SYNC READ 56/15 同时Leitura IMU 板e所有Servo。
+O bloco ocupa os mesmos endereços do estado dos servos Feetech (56). Uma chamada SYNC READ 56/15 lê a placa IMU e todos os servos ao mesmo tempo.
 
-| 偏移 | 地址 | 字段 | 类型 | Instruções |
+| Deslocamento | Endereço | Campo | Tipo | Descrição |
 |---|---|---|---|---|
-| 0-1 | 56-57 | 陀螺仪 X | i16 LE | 量程 ±500 dps，17.5 mdps/LSB |
-| 2-3 | 58-59 | 陀螺仪 Y | i16 LE | 同Superior |
-| 4-5 | 60-61 | 陀螺仪 Z | i16 LE | 同Superior |
-| 6-7 | 62-63 | 四元数 X | fp16 (binary16) | SFLP 格式，x 分量 |
-| 8-9 | 64-65 | 四元数 Y | fp16 | SFLP 格式，y 分量 |
-| 10-11 | 66-67 | 四元数 Z | fp16 | SFLP 格式，z 分量 |
-| 12 | 68 | 采样计数 | u8 | SFLP 记录计数低 8 位，每帧 +1~4 |
-| 13 | 69 | 状态位 | u8 bitfield | 见 8.3 |
-| 14 | 70 | Preservado | u8 | 固定为 0，server.py 校验 |
+| 0-1 | 56-57 | Giroscópio X | i16 LE | Faixa ±500 dps, 17,5 mdps/LSB |
+| 2-3 | 58-59 | Giroscópio Y | i16 LE | Igual ao anterior |
+| 4-5 | 60-61 | Giroscópio Z | i16 LE | Igual ao anterior |
+| 6-7 | 62-63 | Quaternion X | fp16 (binary16) | Formato SFLP, componente x |
+| 8-9 | 64-65 | Quaternion Y | fp16 | Formato SFLP, componente y |
+| 10-11 | 66-67 | Quaternion Z | fp16 | Formato SFLP, componente z |
+| 12 | 68 | Contador de amostras | u8 | 8 bits inferiores do contador de registros SFLP; aumenta de 1 a 4 por quadro |
+| 13 | 69 | Bits de estado | u8 bitfield | Consulte a seção 8.3 |
+| 14 | 70 | Reservado | u8 | Fixo em 0; `server.py` valida esse valor |
 
-四元数 w 分量不在总线Enviar输，主机重建：
+O componente w do quaternion não é transmitido no barramento; o host o reconstrói:
 
 ```python
 norm2 = x*x + y*y + z*z
-w = sqrt(max(0, 1 - norm2))    # 若 norm2 > 1 则归一化 xyz
+w = sqrt(max(0, 1 - norm2))    # se norm2 > 1, normaliza xyz
 ```
 
-陀螺仪换算：
+Conversão do giroscópio:
 
 ```python
-gyro_dps = raw_i16 * 0.0175    # 17.5 mdps/LSB → dps
+gyro_dps = raw_i16 * 0.0175    # 17,5 mdps/LSB → dps
 ```
 
-### 8.3 状态位定义（地址 69）
+### 8.3 Definição dos bits de estado (endereço 69)
 
-| 位 | 名称 | 值 | 含义 |
+| Bit | Nome | Valor | Significado |
 |---|---|---|---|
-| BIT0 | FUSION_NOT_READY | 0x01 | 融合未就绪（四元数全 0 或刚Superior电） |
-| BIT1 | IMU_COMM_FAIL | 0x02 | IMU 通信Falha（SPI/复位/Configuração/FIFO/Dados过期/四元数） |
-| BIT2 | SELF_TEST_FAIL | 0x04 | 自检Falha（WHO_AM_I 不符 = 0x70） |
-| BIT3 | READER_TOO_SLOW | 0x08 | 主机读太慢（两次读之间 SFLP 刷新 ≥5 次） |
+| BIT0 | FUSION_NOT_READY | 0x01 | Fusão não pronta (quaternion zerado ou logo após ligar) |
+| BIT1 | IMU_COMM_FAIL | 0x02 | Falha de comunicação do IMU (SPI/reset/configuração/FIFO/dados obsoletos/quaternion) |
+| BIT2 | SELF_TEST_FAIL | 0x04 | Falha no autoteste (`WHO_AM_I` diferente de 0x70) |
+| BIT3 | READER_TOO_SLOW | 0x08 | Host lê devagar demais (pelo menos 5 atualizações SFLP entre duas leituras) |
 
-固件设置逻辑（`control_table.c`）：
+Lógica de definição no firmware (`control_table.c`):
 
 ```c
-if (!s->ready || quat_fp16 全 0)      bits |= BIT0;  // 融合未出数
-if (error 是 SPI/RESET/CONFIG/STALE/FIFO/QUAT) bits |= BIT1;  // 通信失败
-if (error 是 ID)                      bits |= BIT2;  // 自检失败
-if (sample_count 增量 >= 5)           bits |= BIT3;  // 读太慢
+if (!s->ready || quat_fp16_all_zero)  bits |= BIT0;  // fusão ainda não produziu dados
+if (error in SPI/RESET/CONFIG/STALE/FIFO/QUAT) bits |= BIT1;  // falha de comunicação
+if (error == ID)                      bits |= BIT2;  // falha no autoteste
+if (sample_count_delta >= 5)          bits |= BIT3;  // leitura lenta demais
 ```
 
-server.py 对状态位 de 处理：
+Comportamento de `server.py` para cada estado:
 
-| 状态 | server.py 行为 |
+| Estado | Comportamento de `server.py` |
 |---|---|
-| BIT0 置位 | 帧 status="stale"（融合还没出数，刚Superior电约 0.5 秒内正常） |
-| BIT1 置位 | 帧 status="error"（通信Falha，Verificação焊接/Fiação） |
-| BIT2 置位 | 帧 status="error"（自检Falha，Verificação IMU 芯片焊接） |
-| BIT3 置位 | live 帧附加慢读提示，不影响Dados有效性 |
-| byte 14 ≠ 0 | 帧 status="error"（Preservado字节非 0，Firmware不符合Protocolo） |
+| BIT0 ativo | O quadro recebe `status="stale"` (a fusão ainda não produziu dados; cerca de 0,5 s após ligar é normal) |
+| BIT1 ativo | O quadro recebe `status="error"` (falha de comunicação; confira soldas/cabeamento) |
+| BIT2 ativo | O quadro recebe `status="error"` (falha no autoteste; confira a solda do chip IMU) |
+| BIT3 ativo | O quadro live recebe um aviso de leitura lenta; a validade dos dados não muda |
+| byte 14 ≠ 0 | O quadro recebe `status="error"` (byte reservado diferente de 0; firmware incompatível com o protocolo) |
 
-### 8.4 扩展区（地址 71~85）
+### 8.4 Área de expansão (endereços 71~85)
 
-| 地址 | 字段 | 类型 | Instruções |
+| Endereço | Campo | Tipo | Descrição |
 |---|---|---|---|
-| 71-76 | 加速度 X/Y/Z | i16 × 3 LE | 量程 ±4 g，0.122 mg/LSB |
+| 71-76 | Aceleração X/Y/Z | i16 × 3 LE | Faixa ±4 g, 0,122 mg/LSB |
 | 77 | WHO_AM_I | u8 | LSM6DSV16X = 0x70 (112) |
-| 78 | 错误码 | u8 | imu_error_t 枚举值 |
-| 79 | 时钟状态 | u8 | |
-| 80 | 看门狗使能 | u8 | |
-| 81-84 | 采样计数 | u32 LE | SFLP 记录总数（全 32 位） |
-| 85 | Usuário标记 | u8 | 可写，RAM（断电丢失） |
+| 78 | Código de erro | u8 | Valor do enum `imu_error_t` |
+| 79 | Estado do clock | u8 | |
+| 80 | Watchdog habilitado | u8 | |
+| 81-84 | Contador de amostras | u32 LE | Total de registros SFLP (32 bits) |
+| 85 | Marcador do usuário | u8 | Gravável, fica na RAM (perdido quando a alimentação é desligada) |
 
-### 8.5 诊断区（地址 90~185，96 字节）
+### 8.5 Área de diagnóstico (endereços 90~185, 96 bytes)
 
-24 个小端 u32 字，按顺序：
+24 palavras u32 little-endian, na seguinte ordem:
 
-| 偏移 | 地址 | 名称 | Instruções |
+| Deslocamento | Endereço | Nome | Descrição |
 |---|---|---|---|
-| 0 | 90 | gyro_count | 陀螺仪采样总数 |
-| 1 | 94 | accel_count | 加速度采样总数 |
-| 2 | 98 | uptime_ms | Execução时间（毫秒） |
-| 3 | 102 | gyro_age_ms | 距Superior次陀螺仪Dados毫秒数 |
-| 4 | 106 | quat_age_ms | 距Superior次四元数毫秒数 |
-| 5 | 110 | spi_errors | SPI 通信错误次数 |
-| 6 | 114 | fifo_overflows | FIFO 溢出次数 |
-| 7 | 118 | invalid_quaternions | 无效四元数次数 |
-| 8 | 122 | recovery_count | IMU 恢复次数 |
-| 9 | 126 | rx_overflows | UART RX 溢出 |
-| 10 | 130 | uart_errors | UART 错误 |
-| 11 | 134 | checksum_errors | Protocolo校验错误 |
-| 12 | 138 | malformed_packets | 畸形包数 |
-| 13 | 142 | receive_timeouts | 接收超时 |
-| 14 | 146 | rx_packets | 接收包数 |
-| 15 | 150 | tx_packets | 发送包数 |
-| 16 | 154 | cancelled_replies | 取消 de 应答数 |
-| 17 | 158 | reset_flags | 复位标志 |
-| 18 | 162 | clock_hz | 时钟频率 |
-| 19 | 166 | tx_timeouts | 发送超时 |
-| 20 | 170 | log_dropped | 日志丢弃数 |
-| 21 | 174 | diag_revision | 诊断表Versão（=1） |
-| 22 | 178 | tx_busy_drops | 总线忙丢弃数 |
-| 23 | 182 | reserved | Preservado |
+| 0 | 90 | `gyro_count` | Total de amostras do giroscópio |
+| 1 | 94 | `accel_count` | Total de amostras do acelerômetro |
+| 2 | 98 | `uptime_ms` | Tempo de execução (ms) |
+| 3 | 102 | `gyro_age_ms` | Milissegundos desde os últimos dados do giroscópio |
+| 4 | 106 | `quat_age_ms` | Milissegundos desde o último quaternion |
+| 5 | 110 | `spi_errors` | Quantidade de erros de comunicação SPI |
+| 6 | 114 | `fifo_overflows` | Quantidade de overflows FIFO |
+| 7 | 118 | `invalid_quaternions` | Quantidade de quaternions inválidos |
+| 8 | 122 | `recovery_count` | Quantidade de recuperações do IMU |
+| 9 | 126 | `rx_overflows` | Overflow da recepção UART RX |
+| 10 | 130 | `uart_errors` | Erros UART |
+| 11 | 134 | `checksum_errors` | Erros de checksum do protocolo |
+| 12 | 138 | `malformed_packets` | Quantidade de pacotes malformados |
+| 13 | 142 | `receive_timeouts` | Timeouts de recepção |
+| 14 | 146 | `rx_packets` | Pacotes recebidos |
+| 15 | 150 | `tx_packets` | Pacotes transmitidos |
+| 16 | 154 | `cancelled_replies` | Respostas canceladas |
+| 17 | 158 | `reset_flags` | Flags de reset |
+| 18 | 162 | `clock_hz` | Frequência do clock |
+| 19 | 166 | `tx_timeouts` | Timeouts de transmissão |
+| 20 | 170 | `log_dropped` | Logs descartados |
+| 21 | 174 | `diag_revision` | Versão da tabela de diagnóstico (=1) |
+| 22 | 178 | `tx_busy_drops` | Transmissões descartadas porque o barramento estava ocupado |
+| 23 | 182 | `reserved` | Reservado |
 
 ---
 
-## 9. 校验逻辑
+## 9. Lógica de validação
 
-### 9.1 Firmware侧校验（接收Por favor求帧）
+### 9.1 Validação no firmware (quadros de solicitação recebidos)
 
-`protocol.c` 的 `proto_feed()` 逐字节接收，校验流程：
+`proto_feed()` em `protocol.c` recebe os bytes um a um e faz as seguintes verificações:
 
-1. **帧头搜索**：等待 2 个 0xFF；额外 0xFF 容忍；非 0xFF 重置
-2. **ID 校验**：0x00 e 0xFF 无效，重置
-3. **LEN 校验**：LEN < 2 或 > 132（`PROTO_MAX_FRAME_LEN`）丢弃
-4. **校验和校验**：`complete_packet()` 对 ID~倒数第二字节求校验和，
-   与最后一字节比对；不匹配 → `checksum_errors++`，不执行指令
-5. **指令校验**：ParâmetrosQuantidade、地址范围、SYNC READ ID 列表唯一性等
+1. **Busca do cabeçalho:** espera dois bytes 0xFF; aceita FF excedentes; reinicia se encontrar algo diferente de 0xFF.
+2. **Validação de ID:** 0x00 e 0xFF são inválidos e reiniciam a busca.
+3. **Validação de LEN:** descarta LEN < 2 ou > 132 (`PROTO_MAX_FRAME_LEN`).
+4. **Validação do checksum:** `complete_packet()` calcula o checksum dos bytes de ID até o penúltimo; compara com o último byte. Se não corresponder, incrementa `checksum_errors++` e não executa a instrução.
+5. **Validação da instrução:** verifica quantidade de parâmetros, faixa de endereços, unicidade da lista de IDs em SYNC READ etc.
 
-### 9.2 server.py 侧校验（解析 15 字节块）
+### 9.2 Validação em `server.py` (bloco de 15 bytes analisado)
 
-`imu_bus.py` 的 `feed()` 对 ID 200 返回的 15 字节块逐项校验：
+`feed()` em `imu_bus.py` valida item a item o bloco de 15 bytes retornado pelo ID 200:
 
-| 校验项 | Falha行为 | 对应状态 |
+| Verificação | Ação em caso de falha | Estado correspondente |
 |---|---|---|
-| block 长度 = 15 | 不会发生（sync_read 定长） | — |
-| Preservado字节 (offset 14) == 0 | status="error" | Firmware不符合Protocolo |
-| BIT2 (自检Falha) 置位 | status="error" | WHO_AM_I 不符 |
-| BIT1 (通信Falha) 置位 | status="error" | SPI/复位/Configuração/FIFO |
-| BIT0 (未就绪) 置位 或四元数全 0 | status="stale" | 融合未出数 |
-| 前 12 字节连续 ≥8 帧完全相同 | status="stale" | Dados冻结 |
-| 四元数 fp16 解码异常 | status="error" | 四元数无效 |
-| 以Superior全por meio de | status="live" | 正常Dados |
+| Comprimento do bloco = 15 | Não deve ocorrer (sync_read tem comprimento fixo) | — |
+| Byte reservado (offset 14) == 0 | `status="error"` | Firmware incompatível com o protocolo |
+| BIT2 (falha no autoteste) ativo | `status="error"` | `WHO_AM_I` diferente do esperado |
+| BIT1 (falha de comunicação) ativo | `status="error"` | SPI/reset/configuração/FIFO |
+| BIT0 (não pronto) ativo ou quaternion todo zero | `status="stale"` | A fusão ainda não produziu dados |
+| Os primeiros 12 bytes idênticos por pelo menos 8 quadros consecutivos | `status="stale"` | Dados congelados |
+| Erro ao decodificar fp16 do quaternion | `status="error"` | Quaternion inválido |
+| Todas as verificações anteriores passam | `status="live"` | Dados normais |
 
-### 9.3 前端校验（显示Dados）
+### 9.3 Validação no frontend (exibição dos dados)
 
-`imu_attitude.js` 的 `validPacket()` 要求同时满足所有条件：
+`validPacket()` em `imu_attitude.js` exige que todas as condições abaixo sejam satisfeitas ao mesmo tempo:
 
-| 条件 | Instruções |
+| Condição | Descrição |
 |---|---|
-| `live === true` | 帧标记为 live |
-| `status === "live"` | 状态字符串匹配 |
-| `ready === 1` | IMU 就绪（固件 ready 标志） |
-| `configured === 1` | IMU 已配置（固件 configured 标志） |
-| `connected === true` | 总线连接正常 |
-| `quaternion_xyzw` Array(4) | 四元数是 4 元素数组 |
-| 4 个元素都是有限数 | 非NaN/Infinity |
-| 模长 > 0.5 且 < 1.5 | 四元数合理性Verificação |
-| `sample_count` 是非负安全整数 | 采样计数有效 |
+| `live === true` | Quadro marcado como live |
+| `status === "live"` | Texto do estado corresponde |
+| `ready === 1` | IMU pronto (flag ready do firmware) |
+| `configured === 1` | IMU configurado (flag configured do firmware) |
+| `connected === true` | Conexão do barramento normal |
+| `quaternion_xyzw` Array(4) | Quaternion é um vetor de 4 elementos |
+| Todos os 4 elementos são finitos | Nenhum `NaN`/`Infinity` |
+| Módulo > 0,5 e < 1,5 | Verificação de plausibilidade do quaternion |
+| `sample_count` é um inteiro seguro não negativo | Contagem de amostras válida |
 
-任一条件不满足，网页上角度/采样/Hz 全显示 `—`，状态标签变黄。
+Se qualquer condição falhar, ângulos/contagem/Hz aparecem como `—` na página e a etiqueta de estado fica amarela.
 
-> 注：`ready` 和 `configured` 由 server.py 的 `imu_bus.py` 在 live 帧中设为 1。
-> 若缺失（如旧版 imu_bus.py），数据虽在广播但网页显示 `—`。
+> Nota: `ready` e `configured` são definidos como 1 no quadro live por `imu_bus.py` em `server.py`. Se estiverem ausentes (por exemplo, em uma versão antiga de `imu_bus.py`), os dados são transmitidos, mas a página mostra `—`.
 
 ---
 
-## 10. Dados流 e 轮询机制
+## 10. Fluxo de dados e mecanismo de consulta
 
-### 10.1 轮询触发条件
+### 10.1 Condições para iniciar a consulta
 
-server.py 的 `stream_should_poll()` 逻辑：
+A lógica `stream_should_poll()` de `server.py` é:
 
 ```
-有 WebSocket 客户端 && (有舵机在线 || imu_backend=="bus") && 非校准锁定
+há cliente WebSocket && (há servo online || imu_backend=="bus") && calibração não está bloqueada
 ```
 
-即：**只有网页连着时才轮询**。IMU 数据通过独立的 `imu_stream` 协程广播，不阻塞舵机流。
+Em outras palavras, **a consulta só acontece enquanto uma página está conectada**. Os dados do IMU são transmitidos pela coroutine independente `imu_stream`, sem bloquear o fluxo dos servos.
 
-### 10.2 sync_read 列表顺序
+### 10.2 Ordem da lista `sync_read`
 
-`read_states_with_imu()` 中 sync_read 的 ID 列表顺序：
+A lista de IDs de `sync_read` em `read_states_with_imu()` é construída assim:
 
 ```python
 ids_sent = servo_ids + ([imu_bus.IMU_ID] if with_imu else [])
 #          ^^^^^^^^^^                          ^^^^^^^^^^^^^^^^
-#          舵机在前                            IMU 排末位
+#          servos primeiro                     IMU por último
 ```
 
-**IMU 必须排末位**，不能排首位：
-- 排首位：IMU 直接应答， e 飞特Servo同时开口 → 总线冲突 → 帧错位（0xFF 出现在Dados区）→ 校验错
-- 排末位：IMU 等最后一个Servo应答完再开口 → 不冲突（30/30 Sucesso）
-- 单独成组 `[200]`：无其他设备 → 不冲突
+**O IMU precisa ficar no final; não pode ficar no início.**
+- No início: o IMU responde diretamente enquanto um servo Feetech também começa a transmitir → colisão no barramento → bytes desalinhados (0xFF aparece na área de dados) → erro de checksum.
+- No final: o IMU aguarda a resposta do último servo e então transmite → sem colisão (30/30 sucessos).
+- Em grupo isolado `[200]`: não há outros dispositivos → sem colisão.
 
-> **注意**：当 `PRESENT` 为空（没扫到舵机）时，`ids_sent = [200]`，IMU 单独读不冲突。
-> 舵机上线后 `[200] + servo_ids` 会导致冲突 — 这正是之前 IMU 数据时有时无的原因。
+> **Atenção:** quando `PRESENT` está vazio (nenhum servo encontrado), `ids_sent = [200]` e a leitura do IMU isolado não colide. Quando servos ficam online, `[200] + servo_ids` causa colisões — esse era o motivo dos dados do IMU aparecerem de forma intermitente.
 
-### 10.3 Dados流
+### 10.3 Fluxo de dados
 
 ```
-飞特舵机 (ID=2..) ──┐
-                   ├──> /dev/ttyS2 ──> server.py sync_read ──> WebSocket ──> 浏览器
-IMU 板 (ID=200) ──┘    (末位应答)                        ↓                ↓
-                                                    imu_bus.py      imu_attitude.js
-                                                        ↓                ↓
-                                                     feed()          IMU 面板刷新
-                                                   (校验+解码)
+Servos Feetech (ID=2..) ──┐
+                          ├──> /dev/ttyS2 ──> server.py sync_read ──> WebSocket ──> navegador
+Placa IMU (ID=200) ───────┘    (responde por último)                    ↓             ↓
+                                                                  imu_bus.py   imu_attitude.js
+                                                                       ↓             ↓
+                                                                    feed()      painel do IMU
+                                                              (validação/decodificação)
 ```
 
-### 10.4 时序Parâmetros
+### 10.4 Parâmetros de tempo
 
-| Parâmetros | 值 | Instruções |
+| Parâmetro | Valor | Descrição |
 |---|---|---|
-| 总线波特率 | 1,000,000 bit/s | 8N1 |
-| IMU 采样率 | 120 Hz | 片内 SFLP 融合频率 |
-| 主机轮询频率 | ~30~60 Hz | 取决于总线设备数eWeb刷新 |
-| 字节超时 | 1500 µs | 帧内字节间隔超此值丢弃 |
-| 事务超时 | 25,000 µs | SYNC READ 等前驱超此值取消 |
-| 应答有效期 | 2,000 µs | 准备好 de 应答超此值未发则取消 |
-| 主机Dados过期 | 1,000 ms | 帧发布超此值标记 stale |
-| Dados冻结阈值 | 8 帧 | 连续 8 帧前 12 字节完全相同标记冻结 |
-| 慢读阈值 | 5 次 | 两次读之间 SFLP 刷新 ≥5 次标记 BIT3 |
+| Baud rate do barramento | 1.000.000 bit/s | 8N1 |
+| Taxa de amostragem do IMU | 120 Hz | Frequência de fusão SFLP interna do chip |
+| Frequência de consulta do host | ~30–60 Hz | Depende da quantidade de dispositivos no barramento e da atualização da Web |
+| Timeout entre bytes | 1500 µs | Descarta o quadro se o intervalo entre bytes exceder esse valor |
+| Timeout da transação | 25.000 µs | Cancela SYNC READ se exceder a espera pelo predecessor |
+| Validade da resposta | 2.000 µs | Cancela a resposta pronta que não for transmitida dentro desse prazo |
+| Expiração dos dados no host | 1.000 ms | Marca como stale um quadro publicado há mais tempo |
+| Limite de dados congelados | 8 quadros | Marca congelado se os 12 primeiros bytes forem idênticos em 8 quadros seguidos |
+| Limite de leitura lenta | 5 atualizações | Marca BIT3 se houver pelo menos 5 atualizações SFLP entre duas leituras |
