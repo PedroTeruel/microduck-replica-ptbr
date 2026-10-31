@@ -1,13 +1,13 @@
-// 舞台上的 3D 鸭子。模型就是 servo-web 的 model/（官方 CAD 导出，见 model/NOTICE.md）。
+// Robô 3D no palco. O modelo vem de servo-web/model/ (exportação oficial do CAD; consulte model/NOTICE.md).
 //
-// 规矩（review-design-v3 V2、V7）：
-// - 表达「现在」：关节角来自状态流，机身按 IMU 的重力方向倾斜；不自转。
-// - 能拖着转，转到哪停在哪（用户 10-18：不要自己弹回去）；点「回正」才回默认机位。
-// - 点一下舵机就选中它（点击选中、加深，不需要放大）：
-//   模型里 15 个 xl330 零件就是 15 颗舵机的外壳，按「离哪个关节转轴最近」一一配上；
-//   点到的不是舵机（腿、壳），就选带动这个零件的那颗。按下到松开挪了 6 像素以上算拖动，不算点。
-// - 只在有变化时重画：模型 40 多万面，一直按 60 帧画会把笔记本风扇吹起来、手机发烫。
-// - 数据旧了由外面给 canvas 加 .stale（去色、半透明），这里不管。
+// Regras de interação (review-design-v3 V2 e V7):
+// - Mostra o estado atual: ângulos das articulações vêm do fluxo de estado; o corpo inclina conforme a gravidade da IMU, sem girar.
+// - Arraste para girar e mantenha a vista na posição escolhida; “Recentralizar” restaura o ângulo padrão.
+// - Toque em um servo para selecioná-lo e destacá-lo, sem ampliar o modelo:
+//   As 15 peças xl330 representam as carcaças dos servos; cada uma é associada ao eixo de articulação mais próximo.
+//   Ao tocar em outra peça, seleciona o servo que a movimenta. Deslocamentos acima de 6 pixels são tratados como arrasto.
+// - Redesenha apenas quando há mudanças: renderizar continuamente mais de 400 mil faces a 60 fps sobrecarrega computadores e celulares.
+// - Dados desatualizados são indicados pela classe .stale no canvas (esmaecido e semitransparente).
 import * as THREE from './vendor/three/three.module.js';
 import { OrbitControls } from './vendor/three/addons/OrbitControls.js';
 import { RoomEnvironment } from './vendor/three/addons/RoomEnvironment.js';
@@ -23,20 +23,20 @@ function materialFor(rgba) {
   const [r, g, b] = rgba;
   const near = (a, bb, c) => Math.abs(r - a) < 0.04 && Math.abs(g - bb) < 0.04 && Math.abs(b - c) < 0.04;
   let color, rough = 0.5;
-  if (near(0.98, 0.71, 0.0)) { color = '#F5B400'; rough = 0.42; }            // 黄色打印件
-  else if (near(0.29, 0.29, 0.29)) { color = '#5E6167'; rough = 0.58; }      // 舵机
+  if (near(0.98, 0.71, 0.0)) { color = '#F5B400'; rough = 0.42; }            // Peça impressa amarela
+  else if (near(0.29, 0.29, 0.29)) { color = '#5E6167'; rough = 0.58; }      // Servo
   else if (near(0.35, 0.38, 0.40)) { color = '#4C5157'; rough = 0.55; }
   else if (near(0.26, 0.28, 0.30)) { color = '#2F3338'; rough = 0.4; }
-  else if (near(0.54, 0.85, 0.83)) { color = '#86D3CC'; rough = 0.6; }       // 脚底
-  else if (r > 0.75 && g > 0.75 && b > 0.75) { color = '#ECECE8'; rough = 0.5; } // 白壳
+  else if (near(0.54, 0.85, 0.83)) { color = '#86D3CC'; rough = 0.6; }       // Solado
+  else if (r > 0.75 && g > 0.75 && b > 0.75) { color = '#ECECE8'; rough = 0.5; } // Carcaça branca
   else color = new THREE.Color(r, g, b).getStyle();
   return new THREE.MeshStandardMaterial({ color: new THREE.Color(color), roughness: rough, metalness: 0, envMapIntensity: 0.55 });
 }
 
-// 模型解码（量化顶点还原 + 折边法线）在手机上要几百毫秒：整页只做一次，切页面回来直接用。
-// 几何体所有 Duck3D 共用，不随某一个 dispose 释放。
+// A decodificação do modelo leva algumas centenas de milissegundos no celular; é feita uma vez e reutilizada ao voltar à página.
+// A geometria é compartilhada por todas as instâncias Duck3D e não é liberada no dispose individual.
 let modelCache = null;
-// 先在后台线程（model-worker.js）里解码、算折边法线，页面不卡；浏览器不支持 worker 才在主线程里算（老办法）
+// Decodifica e calcula as normais no worker model-worker.js para não travar a página; usa a thread principal como alternativa.
 function loadInWorker(base) {
   return new Promise((resolve, reject) => {
     let w;
@@ -52,10 +52,10 @@ function loadInWorker(base) {
         if (m.index) g.setIndex(new THREE.BufferAttribute(m.index, 1));
         geoms[name] = g;
       }
-      window.__model = { cached: !!e.data.cached, at: performance.now() };   // 排查用：模型什么时候好的、是不是读的缓存
+      window.__model = { cached: !!e.data.cached, at: performance.now() };   // Depuração: instante em que o modelo ficou pronto e se veio do cache
       resolve({ mj: e.data.mj, geoms });
     };
-    w.onerror = (e) => { w.terminate(); reject(new Error(e.message || 'worker 出错')); };
+    w.onerror = (e) => { w.terminate(); reject(new Error(e.message || 'Falha no worker')); };
     w.postMessage({ base: new URL(base, location.href).href });
   });
 }
@@ -76,7 +76,7 @@ async function loadModel(base) {
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
         g.setIndex(new THREE.BufferAttribute(idx, 1));
-        geoms[name] = toCreasedNormals(g, Math.PI / 6);     // 去掉面片感
+        geoms[name] = toCreasedNormals(g, Math.PI / 6);     // Suaviza as faces
       }
       return { mj, geoms };
     })()).catch((e) => { modelCache = null; throw e; });
@@ -87,22 +87,22 @@ async function loadModel(base) {
 const same = (a, b, eps) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < eps);
 
 export class Duck3D {
-  // pageScroll（总览的舞台用，总览重排审查 O2）：总览是要往下刷的首页，舞台不能把滚轮和手指吃掉——
-  // 关掉缩放（滚轮留给页面：OrbitControls 在 enableZoom=false 时不 preventDefault），手机上单指留给页面滚动
-  // （canvas 的 touch-action 改回 pan-y，单指不转），两个手指转视角；桌面上鼠标照样拖着转。vendor 里的文件不改，构造以后改设置
+  // pageScroll (palco da visão geral): a página deve continuar rolável, sem o modelo capturar a roda do mouse ou os toques.
+  // Desativa o zoom para deixar a roda do mouse para a página; no celular, um dedo rola a página.
+  // O canvas usa touch-action: pan-y; um dedo rola e dois giram a vista. No desktop, o mouse continua girando. Ajusta as opções após criar o controle.
   constructor(canvas, { view = 'front34', centerX = 0.61, centerY = 0.5, fill = 0.92, pageScroll = false } = {}) {
     this.canvas = canvas;
-    canvas.__duck3d = this;   // 排查用（e2e 也看 frames：不在视口就不画）
-    this.frames = 0;          // 真画了几帧
+    canvas.__duck3d = this;   // Depuração e testes e2e: conta quadros; fora da tela, não renderiza
+    this.frames = 0;          // Quadros realmente renderizados
     this.view = view;
-    this.centerX = centerX;   // 鸭子水平中心放在画面宽度的哪里（给左边的字让位）
-    this.centerY = centerY;   // 竖直方向（手机上字在下面，鸭子往上放）
+    this.centerX = centerX;   // Posição horizontal do centro do robô (deixa espaço para os rótulos à esquerda)
+    this.centerY = centerY;   // Posição vertical (no celular, o robô fica acima dos rótulos)
     this.fill = fill;
-    this.joints = {};         // 关节名 -> { pivot, axis }（名字跟 robotd 的 JOINT_NAMES 一致）
+    this.joints = {};         // Nome da articulação -> { pivot, axis } (nomes iguais a robotd JOINT_NAMES)
     this.dirty = true;
     this.ready = false;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    // 40 万面按高分屏全分辨率画，转起来会卡、手机会发烫：最多 1.5 倍（用户 10-18：转动缩放有点卡）
+    // Limita a resolução a 1,5× em telas de alta densidade para evitar lentidão e aquecimento ao girar o modelo.
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -114,7 +114,7 @@ export class Duck3D {
     pmrem.dispose();
     this.camera = new THREE.PerspectiveCamera(30, 1, 0.01, 20);
     this.camera.up.set(0, 0, 1);
-    this.trunk = new THREE.Group();    // 按 IMU 倾斜的那一层
+    this.trunk = new THREE.Group();    // Grupo inclinado conforme a IMU
     this.content = new THREE.Group();
     this.trunk.add(this.content);
     this.scene.add(this.trunk);
@@ -126,10 +126,10 @@ export class Duck3D {
     this.controls.addEventListener('end', () => { if (this._sel) this._seeThrough(); });
     if (pageScroll) {
       this.controls.enableZoom = false;
-      this.controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };   // ONE 不是 ROTATE / PAN：单指什么都不做
-      canvas.style.touchAction = 'pan-y';          // OrbitControls 构造时设成了 none（OrbitControls.js:36）
+      this.controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };   // ONE não é ROTATE nem PAN: um dedo não gira o modelo
+      canvas.style.touchAction = 'pan-y';          // O OrbitControls define none durante a construção (OrbitControls.js:36)
     }
-    // 不在屏幕上就不画（审查 O9）：停在 #/pad 时舞台滚出去了，每秒 10 次的状态照样让它 dirty；dirty 留着，回来再画
+    // Não renderiza fora da tela; mantém dirty para redesenhar ao voltar, mesmo com atualizações de estado a 10 Hz.
     this._onScreen = true;
     if (typeof IntersectionObserver !== 'undefined') {
       this._io = new IntersectionObserver((es) => { for (const e of es) this._onScreen = e.isIntersecting; if (this._onScreen) this.dirty = true; });
@@ -143,7 +143,7 @@ export class Duck3D {
       down = null;
       if (moved < 6) { const j = this.pick(e.clientX, e.clientY); if (j) this.onPick(j); }
     });
-    this.servoOf = {};        // 关节名 -> 那颗舵机的外壳零件
+    this.servoOf = {};        // Nome da articulação -> peça da carcaça do servo
     this._resize = new ResizeObserver(() => this.resize());
     this._resize.observe(canvas);
     this._loop = this._loop.bind(this);
@@ -155,7 +155,7 @@ export class Duck3D {
     if (this._dead) return;
     const mjq = (q) => new THREE.Quaternion(q[1], q[2], q[3], q[0]);
     const objs = [];
-    const jointOf = [];       // 每个 body 归哪个关节带动（自己有关节就是自己，否则跟父 body）
+    const jointOf = [];       // Articulação que movimenta cada corpo: a própria, se houver, ou a do corpo pai.
     const root = mj.bodies.find((b) => b.parent < 0);
     if (root) { this.trunk.position.set(...root.pos); this.content.position.copy(this.trunk.position).negate(); }
     for (const b of mj.bodies) {
@@ -188,7 +188,7 @@ export class Duck3D {
     const fill = new THREE.DirectionalLight(0xe4ecff, 0.8); fill.position.set(0.3, -0.8, 0.35);
     const rim = new THREE.DirectionalLight(0xcfe0ff, 1.8); rim.position.set(-0.7, -0.5, 0.6);
     this.scene.add(key, fill, rim, new THREE.HemisphereLight(0xffffff, 0x2a2b2f, 0.35));
-    // 脚下的软接触阴影：一张径向渐变贴图，不用实时阴影（省 GPU，也没有硬边）
+    // Sombra suave de contato sob os pés, feita com textura radial em vez de sombras em tempo real (economiza GPU e evita bordas duras).
     const c = document.createElement('canvas'); c.width = c.height = 256;
     const ctx = c.getContext('2d');
     const grd = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
@@ -199,11 +199,11 @@ export class Duck3D {
     this.scene.add(this.blob);
   }
 
-  /** 关节角：robotd 的 robot.state.joints（弧度，按 JOINT_NAMES 顺序，已经标定过，原样用、不乘方向）。
-   *  对应关系 review-impl-plan I13：joints[i] → 模型里名字是 JOINT_NAMES[i] 的那个关节。 */
+  /** Ângulos das articulações: robot.state.joints de robotd, em radianos e na ordem JOINT_NAMES; já calibrados, usados sem inverter o sinal.
+    * Mapeamento review-impl-plan I13: joints[i] corresponde à articulação do modelo chamada JOINT_NAMES[i]. */
   setJoints(arr) {
     if (!this.ready || !Array.isArray(arr)) return;
-    // 鸭子站着不动时每帧数据几乎一样：没变就不重画（40 万面，一直画会让手机发烫）
+    // Quando o robô está parado, os dados quase não mudam; evita redesenhar sem necessidade.
     if (this._lastJoints && same(arr, this._lastJoints, 1e-4)) return;
     this._lastJoints = arr.slice();
     arr.forEach((rad, i) => {
@@ -213,8 +213,8 @@ export class Duck3D {
     this.dirty = true;
   }
 
-  /** 机身坐标系里的重力方向（robot.state.safety.gravity，直立时约为 [0, 0, -1]）；null 表示没有数据，保持竖直。
-   *  setFromUnitVectors 给的是最短旋转，只有俯仰和横滚，偏航永远为 0（不会转圈）。 */
+  /** Direção da gravidade no referencial do corpo (robot.state.safety.gravity; em pé, aproximadamente [0, 0, -1]); null mantém o corpo vertical.
+    * setFromUnitVectors usa a rotação mais curta, apenas inclinação e rolagem; o ângulo de guinada é sempre zero. */
   setGravity(g) {
     if (!this.ready) return;
     if (!g) { if (this._lastGravity) { this._lastGravity = null; this.trunk.quaternion.identity(); this.dirty = true; } return; }
@@ -228,7 +228,7 @@ export class Duck3D {
 
   setView(view) { this.view = view; this._frame(); }
 
-  // 舵机外壳 ↔ 关节：在零位（刚加载完，关节都是 0）按「外壳中心离转轴多近」从近到远一一配对
+  // Associação entre carcaças de servos e articulações pela proximidade ao eixo, na posição zero após carregar o modelo.
   _mapServos() {
     this.scene.updateMatrixWorld(true);
     const servos = [];
@@ -251,8 +251,8 @@ export class Duck3D {
     }
   }
 
-  /** 屏幕坐标点到了哪个关节。先只跟 15 颗舵机比（壳挡不住：头壳里那几颗也点得中）；
-   *  一颗舵机都没点中，再看点到了哪个零件，算带动它的那个关节。 */
+  /** Articulação atingida pelas coordenadas da tela. Primeiro compara com os 15 servos (inclusive os cobertos pela carcaça da cabeça);
+    * se nenhum servo for atingido, identifica a peça e seleciona a articulação que a movimenta. */
   pick(clientX, clientY) {
     const r = this.canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2((clientX - r.left) / r.width * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
@@ -266,7 +266,7 @@ export class Duck3D {
     return hit ? hit.object.userData.jointOf || null : null;
   }
 
-  // 选中的舵机被壳挡着（头里那几颗）：挡在前面的零件变半透明，看得见它。换视角松手后重算
+  // Se a carcaça esconder o servo selecionado, torna as peças à frente semitransparentes. Recalcula ao soltar após girar a vista.
   _seeThrough() {
     for (const m of this._ghosted || []) {
       m.material.transparent = false; m.material.opacity = 1; m.material.depthWrite = true; m.material.needsUpdate = true;
@@ -290,7 +290,7 @@ export class Duck3D {
     this.dirty = true;
   }
 
-  /** 选中一颗舵机：外壳换成 color（用分组色），上一颗恢复原色。name 为 null 就全部恢复。 */
+  /** Seleciona um servo: aplica a cor do grupo à carcaça e restaura a cor anterior. name null restaura todas. */
   select(name, color) {
     if (this._sel && this._sel.userData.baseColor) this._sel.material.color.copy(this._sel.userData.baseColor);
     this._sel = name ? this.servoOf[name] || null : null;
@@ -299,7 +299,7 @@ export class Duck3D {
     this.dirty = true;
   }
 
-  /** 慢慢转回默认机位（舞台上的「回正」按钮）。 */
+  /** Gira suavemente para a vista padrão (botão “Recentralizar” do palco). */
   resetView() { this._snapAt = performance.now(); this.dirty = true; }
 
   _frame() {
@@ -321,7 +321,7 @@ export class Duck3D {
     this.dirty = true;
   }
 
-  // 让鸭子出现在画面的 (centerX, centerY) 处（给字让位）：平移相机的视锥，不动相机
+  // Posiciona o robô em (centerX, centerY), liberando espaço para os rótulos sem mover a câmera.
   _applyOffset() {
     const w = this.canvas.clientWidth || 1, h = this.canvas.clientHeight || 1;
     this.camera.aspect = w / h;
@@ -340,14 +340,14 @@ export class Duck3D {
   _loop(now) {
     if (this._dead) return;
     if (this._snapAt && now > this._snapAt && this.home) {
-      // 点了「回正」：慢慢转回默认机位
+      // “Recentralizar” foi acionado: retorna suavemente à vista padrão.
       this.camera.position.lerp(this.home.pos, 0.18);
       this.controls.target.lerp(this.home.target, 0.18);
       if (this.camera.position.distanceTo(this.home.pos) < 1e-4) this._snapAt = null;
       this.dirty = true;
     }
     if (this.controls.update()) this.dirty = true;
-    // 页面切到后台、总览被藏起来（切到别的页）、舞台滚出了屏幕就不画（dirty 留着，回来再画）
+    // Não renderiza quando a página está em segundo plano ou o palco sai da tela; mantém dirty para redesenhar ao voltar.
     if (this.dirty && this.ready && !document.hidden && this._onScreen && this.canvas.offsetParent !== null) {
       this.renderer.render(this.scene, this.camera); this.dirty = false; this.frames++;
     }
@@ -359,12 +359,12 @@ export class Duck3D {
     this._resize.disconnect();
     if (this._io) this._io.disconnect();
     this.controls.dispose();
-    // 材质、贴图是这个实例自己的，释放；几何体是共用缓存，不动
+    // Libera materiais e texturas desta instância; mantém a geometria compartilhada em cache.
     this.scene.traverse((o) => {
       if (o.material) { o.material.map?.dispose(); o.material.dispose(); }
     });
     this.scene.environment?.dispose();
     this.renderer.dispose();
-    this.renderer.forceContextLoss();     // 浏览器同时能开的 WebGL 上下文有限，切几次页面就会用完
+    this.renderer.forceContextLoss();     // O navegador limita o número de contextos WebGL simultâneos; páginas repetidas poderiam esgotá-los.
   }
 }

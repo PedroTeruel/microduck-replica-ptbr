@@ -1,13 +1,13 @@
-// 在后台线程里解码 3D 模型（用户 10-18：「一刷新就卡，应该是加载模型的原因」）。
+// Decodifica o modelo 3D em uma thread de segundo plano (o carregamento do modelo causava travamentos ao atualizar a página).
 //
-// 模型 31.7 万面：量化顶点还原 + 折边法线（三角面拆开成 95 万个顶点、按位置分组、30° 以内的面法线平均）
-// 放在页面主线程里要卡一两秒。挪到这里，页面先出来能点，算好了把数组（transfer，不拷贝）交回去。
-// 折边法线照 three.js BufferGeometryUtils.toCreasedNormals 的算法写（结果一样）；
-// 这里不 import three：worker 里用不了 importmap，「three」这个裸名字解析不了。
+// O modelo tem 317 mil faces: restaura vértices quantizados e calcula normais suavizadas (expande para 950 mil vértices, agrupa posições e calcula a média das faces com até 30° de diferença).
+// Na thread principal, isso trava a página por um ou dois segundos. Aqui, a interface continua responsiva e recebe os arrays por transferência, sem cópia.
+// O algoritmo de normais suavizadas segue three.js BufferGeometryUtils.toCreasedNormals e produz o mesmo resultado.
+// Não importa three: workers não usam importmap e não resolvem o nome de pacote “three”.
 //
-// 手机也要快（用户 10-18）：
-// - 算完把结果存进浏览器的 IndexedDB，下次刷新直接取（只有 model.json 变了才重算）；
-// - 折边法线拆出来的 95 万个顶点里，位置和法线都相同的合并（加索引），顶点少好几倍，显存和每帧的活都少。
+// Também otimiza o carregamento em celulares:
+// - Salva o resultado no IndexedDB; só recalcula quando model.json mudar.
+// - Mescla vértices com posição e normal iguais e usa índices, reduzindo vértices, memória de vídeo e trabalho por quadro.
 const DB = 'studio-model', STORE = 'decoded', VERSION = 3;
 
 self.onmessage = async (e) => {
@@ -34,7 +34,7 @@ self.onmessage = async (e) => {
       const idx = m.index_bytes === 2 ? new Uint16Array(bin, m.ioff, m.ntris * 3) : new Uint32Array(bin, m.ioff, m.ntris * 3);
       meshes[name] = creasedIndexed(pos, q, idx, Math.PI / 6);
     }
-    await idbPut(key, { mj, meshes });            // 先存（结构化克隆），再 transfer 给页面
+    await idbPut(key, { mj, meshes });            // Primeiro armazena (clonagem estruturada), depois transfere para a página.
     for (const m of Object.values(meshes)) transfer.push(m.position.buffer, m.normal.buffer, m.index.buffer);
     self.postMessage({ ok: true, mj, meshes }, transfer);
   } catch (err) {
@@ -42,10 +42,10 @@ self.onmessage = async (e) => {
   }
 };
 
-// 折边法线 + 合并顶点，一趟做完（用户 10-18：第一次加载要 8 秒，太慢）。
-// 每个角点的法线 = 跟它重合的所有面里、跟自己这个面夹角 30° 以内的面法线平均（three.js toCreasedNormals 的做法）。
-// 「重合」按量化坐标完全相同算（three 按 1 厘米的格子算，一格几千个面挨个比，慢）；
-// 位置和法线都相同的角点合并成一个顶点，加索引——棱角处法线不同，照样分开。
+// Calcula normais suavizadas e mescla vértices em uma passagem (a primeira carga demorava 8 s).
+// A normal de cada canto é a média das normais das faces coincidentes que formam até 30° com sua face, como em three.js toCreasedNormals.
+// Considera posições coincidentes quando suas coordenadas quantizadas são iguais; evita a busca lenta em uma grade de 1 cm usada pelo three.
+// Mescla cantos com posição e normal iguais em um vértice indexado; cantos em arestas permanecem separados quando as normais diferem.
 function creasedIndexed(pos, q, idx, creaseAngle) {
   const creaseDot = Math.cos(creaseAngle);
   const nTri = idx.length / 3;
@@ -58,7 +58,7 @@ function creasedIndexed(pos, q, idx, creaseAngle) {
     const len = Math.hypot(x, y, z) || 1;
     faceN[t * 3] = x / len; faceN[t * 3 + 1] = y / len; faceN[t * 3 + 2] = z / len;
   }
-  // 重合的位置 → 用到它的面（量化坐标拼成一个数当键：65536³ < 2⁵³，不会撞）
+  // Posição coincidente → faces que a utilizam (coordenadas quantizadas combinadas em uma chave numérica sem colisões).
   const posKey = (v) => (q[v * 3] + 32768) * 4294967296 + (q[v * 3 + 1] + 32768) * 65536 + (q[v * 3 + 2] + 32768);
   const groups = new Map();
   for (let t = 0; t < nTri; t++) {
@@ -69,7 +69,7 @@ function creasedIndexed(pos, q, idx, creaseAngle) {
     }
   }
   const P = [], N = [], index = new Uint32Array(idx.length);
-  const seen = new Map();                       // 位置键 → [[nx,ny,nz,新下标], ...]（一般就一两个）
+  const seen = new Map();                       // Chave da posição → [[nx,ny,nz,novo índice], ...] (normalmente um ou dois itens).
   let u = 0;
   for (let t = 0; t < nTri; t++) {
     const fx = faceN[t * 3], fy = faceN[t * 3 + 1], fz = faceN[t * 3 + 2];
@@ -104,7 +104,7 @@ function hash(t) {
   return (h >>> 0).toString(16);
 }
 
-// IndexedDB 存取：隐私模式、存储被禁时取不到也存不进，照样能用（只是每次都算）
+// A leitura/gravação no IndexedDB é opcional; em navegação privada ou com armazenamento desativado, funciona recalculando sempre.
 function idbOpen() {
   return new Promise((resolve) => {
     try {
@@ -133,7 +133,7 @@ async function idbPut(key, value) {
     try {
       const tx = db.transaction(STORE, 'readwrite');
       const st = tx.objectStore(STORE);
-      st.clear();                                   // 只留一份，旧版本的删掉
+      st.clear();                                   // Mantém apenas uma cópia e remove versões antigas.
       st.put(value, key);
       tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
     } catch { resolve(); }
