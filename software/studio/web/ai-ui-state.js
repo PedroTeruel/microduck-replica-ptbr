@@ -8,7 +8,7 @@ export function isDirty(form, saved) {
   return Object.keys(initial).some(k=>form[k] !== initial[k]);
 }
 export function missingFields(form, saved) {
-  const missing = [['name','连接名称'],['base_url','Base URL'],['model','Model ID']].filter(([k])=>!form[k]?.trim()).map(([,label])=>label);
+  const missing = [['name','Nome da conexão'],['base_url','Base URL'],['model','ID do modelo']].filter(([k])=>!form[k]?.trim()).map(([,label])=>label);
   const kept = saved?.key_configured && saved.provider === form.provider && saved.base_url === form.base_url && !form.clear_key;
   if (form.auth_mode === 'bearer' && !form.api_key.trim() && !kept) missing.push('API Key');
   return missing;

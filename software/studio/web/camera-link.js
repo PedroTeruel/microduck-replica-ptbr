@@ -24,8 +24,8 @@ export class CameraLink {
     const generation = this.generation;
     this.state = { state: 'connecting', error: null, width: null, height: null, frames: 0, metadata: null, producer: null };
     this.update({});
-    if (!this.WebSocket || !this.RTCPeerConnection) return this.fail('这个浏览器不支持 WebRTC 预览。');
-    if (!Number.isInteger(port) || port < 1 || port > 65535) return this.fail('摄像头信令端口无效。');
+    if (!this.WebSocket || !this.RTCPeerConnection) return this.fail('Este navegador não oferece suporte à prévia por WebRTC.');
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return this.fail('A porta de sinalização da câmera é inválida.');
     try {
       const hostname = this.location.hostname;
       const host = hostname.includes(':') && !hostname.startsWith('[') ? `[${hostname}]` : hostname;
@@ -37,34 +37,34 @@ export class CameraLink {
       ws.onmessage = event => {
         if (!this.current(generation)) return;
         if (typeof event.data !== 'string' || event.data.length > MAX_MESSAGE || ++this.queuedMessages > 256) {
-          this.fail('摄像头信令数据超出限制。'); return;
+          this.fail('Os dados de sinalização da câmera excederam o limite.'); return;
         }
         this.chain = this.chain.then(async () => {
           if (this.current(generation)) await this.message(JSON.parse(event.data), generation);
-        }).catch(error => { if (this.current(generation)) this.fail(`摄像头协商失败：${error.message || '数据无效'}`); })
+        }).catch(error => { if (this.current(generation)) this.fail(`Falha na negociação da câmera: ${error.message || 'dados inválidos'}`); })
           .finally(() => { if (this.current(generation)) this.queuedMessages--; });
       };
-      ws.onerror = () => { if (this.current(generation)) this.fail(`连不上摄像头信令端口 ${port}，请检查 mediad 和局域网连接。`); };
-      ws.onclose = () => { if (this.current(generation)) this.fail('摄像头信令连接断开，请重新连接。'); };
+      ws.onerror = () => { if (this.current(generation)) this.fail(`Não foi possível conectar à porta de sinalização da câmera ${port}. Verifique o mediad e a rede local.`); };
+      ws.onclose = () => { if (this.current(generation)) this.fail('A conexão de sinalização da câmera foi interrompida. Reconecte.'); };
       this.lastFrameAt = this.startedAt = this.now();
       this.watch(generation);
-    } catch (error) { this.fail(`摄像头连接失败：${error.message}`); }
+    } catch (error) { this.fail(`Falha ao conectar à câmera: ${error.message}`); }
   }
 
   current(generation, pc = null) { return this.generation === generation && !!this.ws && (!pc || this.pc === pc); }
   send(message) { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(message)); }
 
   async message(msg, generation) {
-    if (!msg || typeof msg !== 'object') throw Error('信令数据无效');
+    if (!msg || typeof msg !== 'object') throw Error('Dados de sinalização inválidos');
     if (msg.type === 'welcome') { this.send({ type: 'list' }); return; }
     if (msg.type === 'list') {
       if (this.sessionId || this.starting) return;
-      if (!Array.isArray(msg.producers) || msg.producers.length > 64) throw Error('视频来源列表无效');
+      if (!Array.isArray(msg.producers) || msg.producers.length > 64) throw Error('Lista de fontes de vídeo inválida');
       const producers = msg.producers.filter(p => validId(p?.id) && p.meta &&
         typeof p.meta.release === 'string' && /^\d+$/.test(String(p.meta.api_version || '')) &&
         (!p.meta.kind || p.meta.kind === 'microduck'));
       if (producers.length !== 1) {
-        this.fail(producers.length ? '发现多个视频来源，无法确认这只鸭子的画面。' : '没有可识别的本机视频来源，请检查 mediad。'); return;
+        this.fail(producers.length ? 'Foram encontradas várias fontes de vídeo; não é possível identificar a imagem deste Microduck.' : 'Nenhuma fonte de vídeo local reconhecida. Verifique o mediad.'); return;
       }
       this.starting = true;
       this.update({ producer: producers[0].meta });
@@ -73,7 +73,7 @@ export class CameraLink {
     }
     if (msg.type === 'sessionStarted') {
       if (!this.starting || this.sessionId) return;
-      if (!validId(msg.sessionId)) throw Error('会话编号无效');
+      if (!validId(msg.sessionId)) throw Error('Identificador de sessão inválido');
       this.starting = false;
       this.sessionId = msg.sessionId;
       this.update({ state: 'negotiating' });
@@ -84,7 +84,7 @@ export class CameraLink {
       const pc = this.pc;
       if (!pc || msg.sessionId !== this.sessionId) return;
       if (msg.sdp) {
-        if (msg.sdp.type !== 'offer' || typeof msg.sdp.sdp !== 'string' || msg.sdp.sdp.length > 128 * 1024) throw Error('SDP 无效');
+        if (msg.sdp.type !== 'offer' || typeof msg.sdp.sdp !== 'string' || msg.sdp.sdp.length > 128 * 1024) throw Error('SDP inválido');
         await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp.sdp });
         if (!this.current(generation, pc)) return;
         for (const transceiver of pc.getTransceivers?.() || []) {
@@ -102,16 +102,16 @@ export class CameraLink {
       } else if (msg.ice) {
         const ice = msg.ice;
         if (typeof ice.candidate !== 'string' || ice.candidate.length > 8192 ||
-          !Number.isInteger(ice.sdpMLineIndex) || ice.sdpMLineIndex < 0 || ice.sdpMLineIndex > 32 || ++this.iceCount > 256) throw Error('ICE 无效');
+          !Number.isInteger(ice.sdpMLineIndex) || ice.sdpMLineIndex < 0 || ice.sdpMLineIndex > 32 || ++this.iceCount > 256) throw Error('ICE inválido');
         const candidate = { candidate: ice.candidate, sdpMLineIndex: ice.sdpMLineIndex };
         if (pc.remoteDescription) await pc.addIceCandidate(candidate);
         else this.pendingIce.push(candidate);
       }
       return;
     }
-    if (msg.type === 'endSession' && this.sessionId && msg.sessionId === this.sessionId) this.fail('摄像头结束了视频会话，请重新连接。');
-    else if (msg.type === 'sessionRejected') this.fail('摄像头拒绝了视频会话，请稍后重新连接。');
-    else if (msg.type === 'error') this.fail('摄像头信令服务报告错误，请重新连接。');
+    if (msg.type === 'endSession' && this.sessionId && msg.sessionId === this.sessionId) this.fail('A câmera encerrou a sessão de vídeo. Reconecte.');
+    else if (msg.type === 'sessionRejected') this.fail('A câmera recusou a sessão de vídeo. Tente reconectar mais tarde.');
+    else if (msg.type === 'error') this.fail('O serviço de sinalização da câmera informou um erro. Reconecte.');
   }
 
   createPeer(generation) {
@@ -125,13 +125,13 @@ export class CameraLink {
     };
     pc.onconnectionstatechange = () => {
       if (!this.current(generation, pc)) return;
-      if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) this.fail('视频连接已断开，请重新连接。');
+      if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) this.fail('A conexão de vídeo foi interrompida. Reconecte.');
     };
     pc.ontrack = event => {
       if (!this.current(generation, pc)) { event.track.stop(); return; }
       if (event.track.kind !== 'video') { event.track.stop(); return; }
       this.tracks.add(event.track);
-      event.track.onended = () => { if (this.current(generation, pc)) this.fail('摄像头视频轨道已结束。'); };
+      event.track.onended = () => { if (this.current(generation, pc)) this.fail('A transmissão de vídeo da câmera foi encerrada.'); };
       this.hasTrack = true;
       this.lastFrameAt = this.now();
       this.video.srcObject = event.streams?.[0] || new this.MediaStream([event.track]);
@@ -139,7 +139,7 @@ export class CameraLink {
       if (this.playing) this.video.removeEventListener('playing', this.playing);
       this.playing = () => { if (this.current(generation, pc)) this.samplePlayback(); };
       this.video.addEventListener('playing', this.playing);
-      this.video.play()?.catch(() => { if (this.current(generation, pc)) this.fail('浏览器没有开始播放，请点击重新连接。'); });
+      this.video.play()?.catch(() => { if (this.current(generation, pc)) this.fail('O navegador não iniciou a reprodução. Clique em Reconectar.'); });
     };
     pc.ondatachannel = event => {
       if (!this.current(generation, pc) || this.channel) { event.channel.close(); return; }
@@ -185,7 +185,7 @@ export class CameraLink {
     this.timer = this.setTimeout(() => {
       if (!this.current(generation)) return;
       this.samplePlayback();
-      if (this.now() - this.lastFrameAt >= 10000) this.fail(this.hasTrack ? '接收画面超时，视频已停止更新。' : '等待摄像头画面超时，请检查视频来源。');
+      if (this.now() - this.lastFrameAt >= 10000) this.fail(this.hasTrack ? 'Tempo esgotado ao receber imagens; o vídeo parou de atualizar.' : 'Tempo esgotado aguardando a imagem da câmera. Verifique a fonte de vídeo.');
       else this.watch(generation);
     }, 1000);
   }
