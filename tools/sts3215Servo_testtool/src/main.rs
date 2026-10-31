@@ -1,15 +1,15 @@
-//! sts3215Servo_testtool — STS3215 舵机测试工具
+//! sts3215Servo_testtool — ferramenta de teste dos servos STS3215
 //!
-//! 用法：
-//!   sts3215Servo_testtool scan [--from 0 --to 253]     扫描总线上的舵机（带进度条）
-//!   sts3215Servo_testtool info <id>                    读取舵机状态（位置/电压/温度/电流/负载）
-//!   sts3215Servo_testtool read <id> <addr> <len>       读取任意寄存器（十六进制输出）
-//!   sts3215Servo_testtool set-id <旧id> <新id>         修改舵机 ID（总线上只能接一个！）
-//!   sts3215Servo_testtool move <id> <pos> [--speed N] [--time ms]   转到指定位置(0~4095)
-//!   sts3215Servo_testtool test <id>                    对单个舵机做完整测试
-//!   sts3215Servo_testtool test-all                     扫描并批量测试所有舵机
-//!   sts3215Servo_testtool raw [id]                     底层诊断：打印原始收发字节
-//!   全局选项: --port <路径>（默认 /dev/ttyUSB0）  --baud <波特率>（默认 1000000）
+//! Uso:
+//!   sts3215Servo_testtool scan [--from 0 --to 253]     busca servos no barramento (com barra de progresso)
+//!   sts3215Servo_testtool info <id>                    lê o estado do servo (posição/tensão/temperatura/corrente/carga)
+//!   sts3215Servo_testtool read <id> <addr> <len>       lê qualquer registrador (saída hexadecimal)
+//!   sts3215Servo_testtool set-id <id-antigo> <id-novo> altera o ID do servo (conecte somente um servo ao barramento!)
+//!   sts3215Servo_testtool move <id> <pos> [--speed N] [--time ms]   move até a posição especificada (0~4095)
+//!   sts3215Servo_testtool test <id>                    executa um teste completo em um servo
+//!   sts3215Servo_testtool test-all                     busca e testa todos os servos
+//!   sts3215Servo_testtool raw [id]                     diagnóstico de baixo nível: imprime bytes brutos enviados/recebidos
+//!   Opções globais: --port <caminho> (padrão /dev/ttyUSB0)  --baud <taxa> (padrão 1000000)
 
 mod sts;
 
@@ -18,15 +18,15 @@ use std::thread;
 use std::time::{Duration, Instant};
 use sts::{reg, StsBus};
 
-const TEST_POSITIONS: [u16; 4] = [2048, 1024, 3072, 2048]; // 中位 -> 低 -> 高 -> 回中
-const POS_TOLERANCE: u16 = 20; // 位置容差（步）
+const TEST_POSITIONS: [u16; 4] = [2048, 1024, 3072, 2048]; // Centro → baixo → alto → centro.
+const POS_TOLERANCE: u16 = 20; // Tolerância de posição (passos).
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let cfg = match parse_args(&args) {
         Ok(c) => c,
         Err(msg) => {
-            eprintln!("参数错误: {msg}\n");
+            eprintln!("Erro nos argumentos: {msg}\n");
             print_usage();
             std::process::exit(2);
         }
@@ -35,13 +35,13 @@ fn main() {
     let mut bus = match StsBus::open(&cfg.port, cfg.baud) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("无法打开串口 {}: {e}", cfg.port);
-            eprintln!("请检查：舵机转接板是否插入、设备路径是否正确、当前用户是否在 dialout 组。");
+            eprintln!("Não foi possível abrir a porta serial {}: {e}", cfg.port);
+            eprintln!("Verifique se o adaptador dos servos está conectado, se o caminho do dispositivo está correto e se o usuário pertence ao grupo dialout.");
             std::process::exit(1);
         }
     };
 
-    // 部分转接板用 RTS/DTR 控制收发方向或使能，可按需调整
+    // Alguns adaptadores usam RTS/DTR para controlar a direção ou habilitar a transmissão; ajuste conforme necessário.
     if let Some(on) = cfg.rts {
         let _ = bus.set_rts(on);
     }
@@ -52,11 +52,11 @@ fn main() {
     let code = match cfg.cmd.as_str() {
         "scan" => cmd_scan(&mut bus, cfg.from, cfg.to),
         "raw" => cmd_raw(&mut bus, cfg.id.unwrap_or(1)),
-        "read" => cmd_read(&mut bus, cfg.id.expect("read 需要 id"), cfg.pos.expect("read 需要 addr") as u8, cfg.len.unwrap_or(1)),
-        "info" => cmd_info(&mut bus, cfg.id.expect("info 需要 id")),
-        "set-id" => cmd_set_id(&mut bus, cfg.id.expect("set-id 需要旧 id"), cfg.pos.expect("set-id 需要新 id") as u8),
-        "move" => cmd_move(&mut bus, cfg.id.expect("move 需要 id"), cfg.pos.unwrap_or(2048), cfg.speed, cfg.time_ms),
-        "test" => cmd_test(&mut bus, cfg.id.expect("test 需要 id")),
+        "read" => cmd_read(&mut bus, cfg.id.expect("read exige id"), cfg.pos.expect("read exige addr") as u8, cfg.len.unwrap_or(1)),
+        "info" => cmd_info(&mut bus, cfg.id.expect("info exige id")),
+        "set-id" => cmd_set_id(&mut bus, cfg.id.expect("set-id exige o ID antigo"), cfg.pos.expect("set-id exige o ID novo") as u8),
+        "move" => cmd_move(&mut bus, cfg.id.expect("move exige id"), cfg.pos.unwrap_or(2048), cfg.speed, cfg.time_ms),
+        "test" => cmd_test(&mut bus, cfg.id.expect("test exige id")),
         "test-all" => cmd_test_all(&mut bus, cfg.from, cfg.to),
         _ => {
             print_usage();
@@ -103,39 +103,39 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
             *i += 1;
             args.get(*i)
                 .map(|s| s.as_str())
-                .ok_or_else(|| format!("选项 {} 缺少参数", args[*i - 1]))
+                .ok_or_else(|| format!("Falta o valor da opção {}", args[*i - 1]))
         };
         let onoff = |s: &str| -> Result<bool, String> {
             match s {
                 "on" | "1" => Ok(true),
                 "off" | "0" => Ok(false),
-                _ => Err("必须是 on/off".into()),
+                _ => Err("O valor deve ser on/off".into()),
             }
         };
         match args[i].as_str() {
             "--port" | "-p" => cfg.port = take(&mut i)?.to_string(),
-            "--baud" | "-b" => cfg.baud = take(&mut i)?.parse().map_err(|_| "波特率必须是数字")?,
-            "--speed" => cfg.speed = take(&mut i)?.parse().map_err(|_| "speed 必须是数字")?,
-            "--time" => cfg.time_ms = take(&mut i)?.parse().map_err(|_| "time 必须是数字")?,
-            "--from" => cfg.from = take(&mut i)?.parse().map_err(|_| "from 必须是数字")?,
-            "--to" => cfg.to = take(&mut i)?.parse().map_err(|_| "to 必须是数字")?,
+            "--baud" | "-b" => cfg.baud = take(&mut i)?.parse().map_err(|_| "A taxa baud deve ser numérica")?,
+            "--speed" => cfg.speed = take(&mut i)?.parse().map_err(|_| "speed deve ser numérico")?,
+            "--time" => cfg.time_ms = take(&mut i)?.parse().map_err(|_| "time deve ser numérico")?,
+            "--from" => cfg.from = take(&mut i)?.parse().map_err(|_| "from deve ser numérico")?,
+            "--to" => cfg.to = take(&mut i)?.parse().map_err(|_| "to deve ser numérico")?,
             "--rts" => cfg.rts = Some(onoff(take(&mut i)?)?),
             "--dtr" => cfg.dtr = Some(onoff(take(&mut i)?)?),
             "-h" | "--help" => return Err("".into()),
-            s if s.starts_with('-') => return Err(format!("未知选项 {s}")),
+            s if s.starts_with('-') => return Err(format!("Opção desconhecida: {s}")),
             s => positional.push(s),
         }
         i += 1;
     }
     cfg.cmd = positional.first().copied().unwrap_or("").to_string();
     if let Some(v) = positional.get(1) {
-        cfg.id = Some(v.parse().map_err(|_| "id 必须是 0~253 的数字")?);
+        cfg.id = Some(v.parse().map_err(|_| "id deve ser um número de 0 a 253")?);
     }
     if let Some(v) = positional.get(2) {
-        cfg.pos = Some(v.parse().map_err(|_| "pos/addr 必须是数字")?);
+        cfg.pos = Some(v.parse().map_err(|_| "pos/addr deve ser um número")?);
     }
     if let Some(v) = positional.get(3) {
-        cfg.len = Some(v.parse().map_err(|_| "len 必须是数字")?);
+        cfg.len = Some(v.parse().map_err(|_| "len deve ser um número")?);
     }
     Ok(cfg)
 }
@@ -149,48 +149,48 @@ fn print_usage() {
     eprintln!("{}", doc.join("\n"));
 }
 
-/// 诊断：向舵机发 ping，把收到的原始字节以十六进制打印出来。
-///   无任何字节     -> 舵机没应答（供电/接线/模式问题）
-///   与发送内容一致 -> 转接板有回显，但舵机没应答
-///   一堆乱码       -> 波特率不匹配
-///   FF FF id 02 00 CS -> 舵机正常应答！
+/// Diagnóstico: envia ping ao servo e imprime os bytes brutos recebidos em hexadecimal.
+///   Nenhum byte       -> servo não respondeu (alimentação/fiação/modo)
+///   Igual ao enviado  -> adaptador ecoou, mas o servo não respondeu
+///   Muitos caracteres inválidos -> taxa baud incompatível
+///   FF FF id 02 00 CS -> resposta normal do servo!
 fn cmd_raw(bus: &mut StsBus, id: u8) -> i32 {
     let show = |label: &str, r: io::Result<(Vec<u8>, Vec<u8>)>| match r {
         Ok((sent, recv)) => {
             let h = |v: &[u8]| v.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");
             println!("{label}");
-            println!("  发送: {}", h(&sent));
-            println!("  收到: {}", if recv.is_empty() { "(无任何字节)".into() } else { h(&recv) });
+            println!("  Enviado: {}", h(&sent));
+            println!("  Recebido: {}", if recv.is_empty() { "(nenhum byte)".into() } else { h(&recv) });
             0
         }
         Err(e) => {
-            eprintln!("{label} 失败: {e}");
+            eprintln!("{label} falhou: {e}");
             1
         }
     };
     let mut code = 0;
     code |= show("PING:", bus.raw_exchange(id, sts::INST_PING, &[]));
-    code |= show("READ 型号(地址3,2字节):", bus.raw_exchange(id, sts::INST_READ, &[3, 2]));
-    code |= show("READ 状态区(地址56,15字节):", bus.raw_exchange(id, sts::INST_READ, &[56, 15]));
+    code |= show("READ modelo (endereço 3, 2 bytes):", bus.raw_exchange(id, sts::INST_READ, &[3, 2]));
+    code |= show("READ estado (endereço 56, 15 bytes):", bus.raw_exchange(id, sts::INST_READ, &[56, 15]));
     code
 }
 
-/// 通用寄存器读取：read <id> <addr> <len>，以十六进制打印。
+/// Leitura genérica de registrador: read <id> <addr> <len>, com saída hexadecimal.
 fn cmd_read(bus: &mut StsBus, id: u8, addr: u8, len: u8) -> i32 {
     match bus.read(id, addr, len) {
         Ok(data) => {
             let hex: Vec<String> = data.iter().map(|b| format!("{b:02X}")).collect();
-            println!("舵机 {id} 地址 {addr} 起的 {} 字节: {}", data.len(), hex.join(" "));
+            println!("Servo {id}, {} bytes a partir do endereço {addr}: {}", data.len(), hex.join(" "));
             0
         }
         Err(e) => {
-            eprintln!("读取失败: {e}");
+            eprintln!("Falha na leitura: {e}");
             1
         }
     }
 }
 
-/// 带进度条的扫描。
+/// Busca com barra de progresso.
 fn scan_with_progress(bus: &mut StsBus, from: u8, to: u8) -> Vec<u8> {
     use std::io::Write as _;
     let total = (to - from + 1) as usize;
@@ -199,7 +199,7 @@ fn scan_with_progress(bus: &mut StsBus, from: u8, to: u8) -> Vec<u8> {
         const WIDTH: usize = 30;
         let done = (i + 1) * WIDTH / total;
         eprint!(
-            "\r扫描中 [{}{}] {:>3}/{total}  已发现 {} 个",
+            "\rBuscando [{}{}] {:>3}/{total}  encontrados: {}",
             "#".repeat(done),
             "-".repeat(WIDTH - done),
             i + 1,
@@ -210,15 +210,15 @@ fn scan_with_progress(bus: &mut StsBus, from: u8, to: u8) -> Vec<u8> {
             found.push(id);
         }
     }
-    eprintln!(); // 进度条换行
+    eprintln!(); // Quebra de linha após a barra de progresso.
     found
 }
 
-/// 扫描总线，打印发现的舵机及其型号。
+/// Busca no barramento e imprime os servos encontrados e seus modelos.
 fn cmd_scan(bus: &mut StsBus, from: u8, to: u8) -> i32 {
     let ids = scan_with_progress(bus, from, to);
     if ids.is_empty() {
-        println!("未发现任何舵机。请检查接线、供电(7.4V/12V)和波特率(--baud)。");
+        println!("Nenhum servo encontrado. Verifique a fiação, a alimentação (7,4 V/12 V) e a taxa baud (--baud). ");
         return 1;
     }
     for id in &ids {
@@ -227,114 +227,115 @@ fn cmd_scan(bus: &mut StsBus, from: u8, to: u8) -> i32 {
         let v_max = bus.read_u8(*id, reg::MAX_VOLTAGE).map(|v| v as f32 * 0.1).unwrap_or(0.0);
         let v_min = bus.read_u8(*id, reg::MIN_VOLTAGE).map(|v| v as f32 * 0.1).unwrap_or(0.0);
         let volt = bus.read_u8(*id, reg::PRESENT_VOLTAGE).map(|v| v as f32 * 0.1).unwrap_or(0.0);
-        println!("  ID {id:>3}  在线  型号={model}  电压={volt:.1}V (范围 {v_min:.1}~{v_max:.1}V)  温度保护={t_max}°C");
+        println!("  ID {id:>3}  Online  Modelo={model}  Tensão={volt:.1} V (faixa {v_min:.1}~{v_max:.1} V)  Proteção térmica={t_max} °C");
     }
-    println!("共发现 {} 个舵机。", ids.len());
+    println!("Total de servos encontrados: {}.", ids.len());
     0
 }
 
-/// 打印单个舵机的完整状态。
+/// Imprime o estado completo de um servo.
 fn cmd_info(bus: &mut StsBus, id: u8) -> i32 {
     match bus.read_status(id) {
         Ok(s) => {
-            println!("舵机 ID {id}:");
-            println!("  位置     : {:>4} / 4095   ({:.1}°)", s.position, s.angle_deg());
-            println!("  速度     : {:>4} 步/秒", s.speed);
-            println!("  负载     : {:>4.1} %", s.load as f32 * 0.1);
-            println!("  电压     : {:>4.1} V", s.voltage);
-            println!("  温度     : {:>4} °C", s.temperature);
-            println!("  电流     : {:>4.0} mA", s.current_ma);
-            println!("  运动中   : {}", if s.moving { "是" } else { "否" });
+            println!("Servo ID {id}:");
+            println!("  Posição  : {:>4} / 4095   ({:.1}°)", s.position, s.angle_deg());
+            println!("  Velocidade: {:>4} passos/s", s.speed);
+            println!("  Carga    : {:>4.1} %", s.load as f32 * 0.1);
+            println!("  Tensão   : {:>4.1} V", s.voltage);
+            println!("  Temperatura: {:>4} °C", s.temperature);
+            println!("  Corrente : {:>4.0} mA", s.current_ma);
+            println!("  Em movimento: {}", if s.moving { "sim" } else { "não" });
             if s.servo_status != 0 {
-                println!("  ⚠ 报警   : 状态码 0x{:02X}", s.servo_status);
+                println!("  ⚠ Alarme : código de estado 0x{:02X}", s.servo_status);
             }
             0
         }
         Err(e) => {
-            eprintln!("读取舵机 {id} 失败: {e}");
+            eprintln!("Falha ao ler o servo {id}: {e}");
             1
         }
     }
 }
 
-/// 修改舵机 ID：写 EEPROM，流程为 解锁(LOCK=0) -> 写 ID -> 锁定(LOCK=1)。
-/// ⚠ 总线上必须只接要修改的那一个舵机！否则所有同 ID 舵机会被一起改掉。
+/// Altera o ID do servo na EEPROM: desbloqueia (LOCK=0) → grava o ID → bloqueia (LOCK=1).
+/// ⚠ Conecte somente o servo que será alterado ao barramento! Caso contrário, todos os servos com o mesmo ID serão modificados.
 fn cmd_set_id(bus: &mut StsBus, old_id: u8, new_id: u8) -> i32 {
     if new_id > 253 {
-        eprintln!("新 ID 必须在 0~253 之间（254 是广播地址）");
+        eprintln!("O novo ID deve estar entre 0 e 253 (254 é o endereço de broadcast)");
         return 2;
     }
     match bus.ping(old_id) {
-        Ok(true) => println!("ID {old_id} 在线，准备修改为 {new_id} ..."),
+        Ok(true) => println!("ID {old_id} online; preparando alteração para {new_id}..."),
         Ok(false) => {
-            eprintln!("ID {old_id} 无应答，未做任何修改。");
+            eprintln!("O ID {old_id} não respondeu; nenhuma alteração foi feita.");
             return 1;
         }
         Err(e) => {
-            eprintln!("ping 失败: {e}");
+            eprintln!("Falha no ping: {e}");
             return 1;
         }
     }
-    // 最后那步「重新锁定」要发给**新 ID**：写完 ID 那一刻舵机就只认新 ID 了，
-    // 还发给旧 ID 的话这条命令没人收，舵机被留在 EEPROM 解锁状态（55=0），
-    // 之后任何一次误写 EEPROM 寄存器都会永久生效。飞特官方 SDK 也是 LockEprom(新ID)。
+    // A última etapa, de bloqueio, deve ser enviada ao **novo ID**: assim que o ID é gravado, o servo
+    // passa a reconhecer apenas o novo. Se a instrução for enviada ao ID antigo, ninguém a receberá
+    // e a EEPROM ficará desbloqueada (55=0); qualquer gravação acidental posterior será permanente.
+    // O SDK oficial da Feetech também usa LockEprom(novo ID).
     let steps = [
-        (old_id, reg::LOCK, 0u8),  // 解锁 EEPROM
-        (old_id, reg::ID, new_id), // 写入新 ID —— 生效后这颗舵机改名了
-        (new_id, reg::LOCK, 1),    // 重新锁定，发给新 ID
+        (old_id, reg::LOCK, 0u8),  // Desbloqueia a EEPROM.
+        (old_id, reg::ID, new_id), // Grava o novo ID; após aplicar, o servo passa a usar esse ID.
+        (new_id, reg::LOCK, 1),    // Bloqueia novamente, enviando para o novo ID.
     ];
     for (id, addr, val) in steps {
         if let Err(e) = bus.write_u8(id, addr, val) {
-            eprintln!("写寄存器 {addr} 失败: {e}");
+            eprintln!("Falha ao gravar no registrador {addr}: {e}");
             return 1;
         }
-        thread::sleep(Duration::from_millis(50)); // 等 EEPROM 写入完成
+        thread::sleep(Duration::from_millis(50)); // Aguarda a gravação da EEPROM terminar.
     }
-    // 用新 ID 验证，并回读锁标志确认真的锁上了
+    // Verifica o novo ID e lê novamente o sinalizador de bloqueio para confirmar que foi aplicado.
     match bus.ping(new_id) {
         Ok(true) => {
             let locked = bus.read_u8(new_id, reg::LOCK).unwrap_or(0);
-            println!("✅ 修改成功：ID {old_id} -> {new_id}（断电重启后依然有效）");
+            println!("✅ ID alterado: {old_id} -> {new_id} (continua válido após desligar e ligar)");
             if locked != 1 {
-                eprintln!("⚠ 锁标志回读为 {locked}，EEPROM 还开着，手动写一下：set-id 后请重新确认");
+                eprintln!("⚠ O sinalizador de bloqueio retornou {locked}; a EEPROM continua desbloqueada. Bloqueie manualmente e verifique novamente após set-id.");
                 return 1;
             }
             0
         }
         _ => {
-            eprintln!("❌ 新 ID {new_id} 无应答，修改可能失败，请重新扫描确认。");
+            eprintln!("❌ O novo ID {new_id} não respondeu; a alteração pode ter falhado. Faça uma nova busca para confirmar.");
             1
         }
     }
 }
 
-/// 控制舵机转到指定位置，然后回读确认。
+/// Move o servo para a posição especificada e lê novamente para confirmar.
 fn cmd_move(bus: &mut StsBus, id: u8, pos: u16, speed: u16, time_ms: u16) -> i32 {
     if pos > 4095 {
-        eprintln!("pos 超出范围 0~4095");
+        eprintln!("pos fora do intervalo 0~4095");
         return 2;
     }
     if let Err(e) = bus.move_to(id, pos, speed, time_ms) {
-        eprintln!("发送运动指令失败: {e}");
+        eprintln!("Falha ao enviar a instrução de movimento: {e}");
         return 1;
     }
-    println!("舵机 {id} -> 目标 {pos}，等待到位...");
+    println!("Servo {id} -> alvo {pos}; aguardando chegar à posição...");
     match wait_until_arrived(bus, id, pos, Duration::from_secs(5)) {
         Ok((final_pos, _elapsed)) => {
-            println!("到位: 当前位置 {final_pos} ({:.1}°)", final_pos as f32 * 360.0 / 4096.0);
+            println!("Posição atingida: {final_pos} ({:.1}°)", final_pos as f32 * 360.0 / 4096.0);
             0
         }
         Err(e) => {
-            eprintln!("等待到位超时/失败: {e}");
+            eprintln!("Tempo esgotado ou falha ao aguardar a posição: {e}");
             1
         }
     }
 }
 
-/// 轮询直到舵机到达目标位置（或超时），返回最终位置与耗时。
+/// Consulta até o servo atingir a posição-alvo (ou ocorrer timeout) e retorna a posição final e a duração.
 fn wait_until_arrived(bus: &mut StsBus, id: u8, target: u16, timeout: Duration) -> io::Result<(u16, Duration)> {
     let start = Instant::now();
-    thread::sleep(Duration::from_millis(50)); // 等舵机启动
+    thread::sleep(Duration::from_millis(50)); // Aguarda o servo iniciar o movimento.
     loop {
         let s = bus.read_status(id)?;
         let err = s.position.abs_diff(target);
@@ -344,14 +345,14 @@ fn wait_until_arrived(bus: &mut StsBus, id: u8, target: u16, timeout: Duration) 
         if start.elapsed() > timeout {
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
-                format!("超时未到位: 目标 {target}, 当前 {}, 偏差 {err}", s.position),
+                format!("Timeout antes de atingir a posição: alvo {target}, atual {}, diferença {err}", s.position),
             ));
         }
         thread::sleep(Duration::from_millis(20));
     }
 }
 
-/// 单个舵机的完整测试报告。
+/// Relatório do teste completo de um servo.
 struct TestReport {
     id: u8,
     model: u16,
@@ -364,7 +365,7 @@ struct TestReport {
     notes: Vec<String>,
 }
 
-/// 对单个舵机执行完整测试：基线读数 -> 位置扫描 -> 采样电流/负载 -> 回中。
+/// Executa um teste completo em um servo: leitura de referência → varredura de posição → amostragem de corrente/carga → retorno ao centro.
 fn cmd_test(bus: &mut StsBus, id: u8) -> i32 {
     match test_one(bus, id) {
         Ok(r) => {
@@ -376,31 +377,31 @@ fn cmd_test(bus: &mut StsBus, id: u8) -> i32 {
             }
         }
         Err(e) => {
-            eprintln!("舵机 {id} 测试失败: {e}");
+            eprintln!("Falha no teste do servo {id}: {e}");
             1
         }
     }
 }
 
 fn test_one(bus: &mut StsBus, id: u8) -> io::Result<TestReport> {
-    println!("== 测试舵机 ID {id} ==");
+    println!("== Testando o servo ID {id} ==");
     if !bus.ping(id)? {
-        return Err(io::Error::new(io::ErrorKind::NotConnected, "舵机无应答"));
+        return Err(io::Error::new(io::ErrorKind::NotConnected, "O servo não respondeu"));
     }
     let model = bus.read_u16(id, reg::MODEL_NUMBER)?;
     let mut notes = Vec::new();
 
-    // 基线状态
+    // Estado de referência.
     let base = bus.read_status(id)?;
-    println!("  型号={model}  电压={:.1}V  温度={}°C  位置={}", base.voltage, base.temperature, base.position);
+    println!("  Modelo={model}  Tensão={:.1} V  Temperatura={} °C  Posição={}", base.voltage, base.temperature, base.position);
     if base.voltage < 6.0 {
-        notes.push(format!("电压偏低 {:.1}V，请检查供电", base.voltage));
+        notes.push(format!("Tensão baixa: {:.1} V; verifique a alimentação", base.voltage));
     }
     if base.servo_status != 0 {
-        notes.push(format!("存在报警状态 0x{:02X}", base.servo_status));
+        notes.push(format!("Alarme ativo: 0x{:02X}", base.servo_status));
     }
 
-    // 位置扫描 + 运动中采样
+    // Varredura de posição e amostragem durante o movimento.
     let mut max_current = 0f32;
     let mut max_load = 0f32;
     let mut max_pos_err = 0u16;
@@ -421,13 +422,13 @@ fn test_one(bus: &mut StsBus, id: u8) -> io::Result<TestReport> {
         let s = bus.read_status(id)?;
         let err = s.position.abs_diff(target);
         max_pos_err = max_pos_err.max(err);
-        println!("  目标 {target:>4} -> 实际 {:>4}  偏差 {err:>3}  {}", s.position, if arrived { "OK" } else { "超时" });
+        println!("  Alvo {target:>4} -> atual {:>4}  diferença {err:>3}  {}", s.position, if arrived { "OK" } else { "timeout" });
     }
 
-    // 结束读数
+    // Leitura final.
     let end = bus.read_status(id)?;
     if end.temperature > base.temperature + 15 {
-        notes.push(format!("温升过大: {}°C -> {}°C", base.temperature, end.temperature));
+        notes.push(format!("Aumento excessivo de temperatura: {} °C -> {} °C", base.temperature, end.temperature));
     }
     let pass = notes.is_empty() && max_pos_err <= POS_TOLERANCE;
 
@@ -445,23 +446,23 @@ fn test_one(bus: &mut StsBus, id: u8) -> io::Result<TestReport> {
 }
 
 fn print_report(r: &TestReport) {
-    println!("-- 报告: 舵机 {} --", r.id);
-    println!("  型号={}  电压={:.1}V  温度={}°C", r.model, r.voltage, r.temperature);
-    println!("  峰值电流={:.0}mA  峰值负载={:.1}%  最大位置偏差={}", r.max_current_ma, r.max_load_pct, r.max_pos_err);
+    println!("-- Relatório do servo {} --", r.id);
+    println!("  Modelo={}  Tensão={:.1} V  Temperatura={} °C", r.model, r.voltage, r.temperature);
+    println!("  Corrente máxima={:.0} mA  Carga máxima={:.1}%  Maior desvio de posição={}", r.max_current_ma, r.max_load_pct, r.max_pos_err);
     for n in &r.notes {
         println!("  ⚠ {n}");
     }
-    println!("  结果: {}", if r.pass { "✅ PASS" } else { "❌ FAIL" });
+    println!("  Resultado: {}", if r.pass { "✅ PASSOU" } else { "❌ FALHOU" });
 }
 
-/// 扫描所有舵机并逐一测试，最后输出汇总。
+/// Busca todos os servos, testa cada um e exibe um resumo final.
 fn cmd_test_all(bus: &mut StsBus, from: u8, to: u8) -> i32 {
     let ids = scan_with_progress(bus, from, to);
     if ids.is_empty() {
-        println!("未发现任何舵机。");
+        println!("Nenhum servo encontrado.");
         return 1;
     }
-    println!("发现 {} 个舵机: {:?}\n", ids.len(), ids);
+    println!("Servos encontrados: {} — {:?}\n", ids.len(), ids);
 
     let mut reports = Vec::new();
     for &id in &ids {
@@ -471,20 +472,20 @@ fn cmd_test_all(bus: &mut StsBus, from: u8, to: u8) -> i32 {
                 reports.push(r);
             }
             Err(e) => {
-                eprintln!("舵机 {id} 测试异常: {e}");
+                eprintln!("Exceção durante o teste do servo {id}: {e}");
                 reports.push(TestReport {
                     id, model: 0, voltage: 0.0, temperature: 0,
                     max_current_ma: 0.0, max_load_pct: 0.0, max_pos_err: u16::MAX,
-                    pass: false, notes: vec![format!("测试异常: {e}")],
+                    pass: false, notes: vec![format!("Exceção no teste: {e}")],
                 });
             }
         }
         println!();
     }
 
-    // 汇总表
-    println!("==== 批量测试汇总 ====");
-    println!("{:<4} {:<8} {:<8} {:<6} {:<10} {:<10} {:<8} 结果", "ID", "型号", "电压V", "温度°C", "峰值电流mA", "峰值负载%", "位置偏差");
+    // Tabela de resumo.
+    println!("==== Resumo dos testes em lote ====");
+    println!("{:<4} {:<8} {:<8} {:<6} {:<10} {:<10} {:<8} Resultado", "ID", "Modelo", "Tensão V", "Temp. °C", "Corrente máx. mA", "Carga máx. %", "Desvio posição");
     for r in &reports {
         println!(
             "{:<4} {:<8} {:<8.1} {:<6} {:<10.0} {:<10.1} {:<8} {}",

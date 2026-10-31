@@ -1,85 +1,85 @@
-//! 飞特 STS3215 总线舵机通讯协议（FEETECH STS/SCS 串口协议）的最小实现。
+//! Implementação mínima do protocolo de comunicação serial FEETECH STS/SCS para servos STS3215.
 //!
-//! 协议帧格式（每个字节通过 UART 发送，默认 1,000,000 波特率 8N1）：
+//! Formato do quadro (bytes enviados via UART, padrão de 1.000.000 baud, 8N1):
 //!   [0xFF, 0xFF, ID, LENGTH, INSTRUCTION, PARAM1..PARAMn, CHECKSUM]
-//!   - LENGTH    = 参数字节数 + 2（指令字节 + 校验字节）
-//!   - CHECKSUM  = ~(ID + LENGTH + INSTRUCTION + 所有参数) 的低 8 位
+//!   - LENGTH    = número de bytes de parâmetros + 2 (byte de instrução + byte de checksum)
+//!   - CHECKSUM  = 8 bits inferiores de ~(ID + LENGTH + INSTRUCTION + todos os parâmetros)
 //!
-//! 舵机应答帧格式相同，只是把 INSTRUCTION 换成 ERROR 状态字节。
+//! O quadro de resposta do servo usa o mesmo formato, mas substitui INSTRUCTION pelo byte de estado ERROR.
 
 use serialport::SerialPort;
 use std::io::{self, ErrorKind};
 use std::time::{Duration, Instant};
 
-// ---- 指令码 ----
+// ---- Códigos de instrução ----
 pub const INST_PING: u8 = 0x01;
 pub const INST_READ: u8 = 0x02;
 pub const INST_WRITE: u8 = 0x03;
 
-/// STS3215 内存表（常用寄存器地址）。
-/// 已对照飞特官方 SDK `sms_sts.py`（FTServo_Python）核对。
-#[allow(dead_code)] // 完整寄存器表作为查阅参考保留
+/// Mapa de memória do STS3215 (endereços de registradores comuns).
+/// Conferido com o SDK oficial da Feetech `sms_sts.py` (FTServo_Python).
+#[allow(dead_code)] // Mantém a tabela completa de registradores como referência.
 pub mod reg {
-    // ---- EPROM 只读 ----
-    pub const FIRMWARE: u8 = 0; // 3字节, 固件版本
-    pub const MODEL_NUMBER: u8 = 3; // u16, 型号
-    // ---- EPROM 读写（修改前先写 LOCK=0 解锁）----
-    pub const ID: u8 = 5; // u8, 舵机 ID
-    pub const BAUD_RATE: u8 = 6; // u8, 波特率索引 0=1M 4=115200 ...
-    pub const MIN_POSITION: u8 = 9; // u16, 最小角度限制
-    pub const MAX_POSITION: u8 = 11; // u16, 最大角度限制
-    pub const MAX_TEMPERATURE: u8 = 13; // u8, 最高温度保护
-    pub const MAX_VOLTAGE: u8 = 14; // u8, 最高电压, 单位 0.1V
-    pub const MIN_VOLTAGE: u8 = 15; // u8, 最低电压, 单位 0.1V
-    pub const MODE: u8 = 33; // u8, 0=位置模式 1=轮式模式
-    // ---- SRAM 读写 ----
-    pub const TORQUE_ENABLE: u8 = 40; // u8, 力矩开关 1=锁紧 0=释放
-    pub const ACCELERATION: u8 = 41; // u8, 加速度
-    pub const GOAL_POSITION: u8 = 42; // u16, 目标位置 0~4095
-    pub const GOAL_TIME: u8 = 44; // u16, 运行时间 ms
-    pub const GOAL_SPEED: u8 = 46; // u16, 运行速度 步/秒
-    pub const TORQUE_LIMIT: u8 = 48; // u16, 力矩限制
-    pub const LOCK: u8 = 55; // u8, EEPROM 锁：0=解锁 1=锁定
-    // ---- SRAM 只读 ----
-    pub const PRESENT_POSITION: u8 = 56; // u16, 当前位置 0~4095
-    pub const PRESENT_SPEED: u8 = 58; // u16, 当前速度
-    pub const PRESENT_LOAD: u8 = 60; // u16, 当前负载 bit0~9=大小 bit10=方向, 单位 0.1%
-    pub const PRESENT_VOLTAGE: u8 = 62; // u8, 当前电压, 单位 0.1V
-    pub const PRESENT_TEMPERATURE: u8 = 63; // u8, 当前温度 °C
-    pub const SERVO_STATUS: u8 = 65; // u8, 舵机状态（报警位）
-    pub const MOVING: u8 = 66; // u8, 是否运动中
-    pub const PRESENT_CURRENT: u8 = 69; // u16, 当前电流, 单位约 6.5mA
+    // ---- EPROM somente leitura ----
+    pub const FIRMWARE: u8 = 0; // 3 bytes, versão do firmware.
+    pub const MODEL_NUMBER: u8 = 3; // u16, modelo.
+    // ---- EPROM leitura/escrita (desbloqueie com LOCK=0 antes de alterar) ----
+    pub const ID: u8 = 5; // u8, ID do servo.
+    pub const BAUD_RATE: u8 = 6; // u8, índice da taxa baud: 0=1M, 4=115200...
+    pub const MIN_POSITION: u8 = 9; // u16, limite mínimo do ângulo.
+    pub const MAX_POSITION: u8 = 11; // u16, limite máximo do ângulo.
+    pub const MAX_TEMPERATURE: u8 = 13; // u8, proteção de temperatura máxima.
+    pub const MAX_VOLTAGE: u8 = 14; // u8, tensão máxima, unidade 0,1 V.
+    pub const MIN_VOLTAGE: u8 = 15; // u8, tensão mínima, unidade 0,1 V.
+    pub const MODE: u8 = 33; // u8, 0=modo posição, 1=modo roda.
+    // ---- SRAM leitura/escrita ----
+    pub const TORQUE_ENABLE: u8 = 40; // u8, torque: 1=travado, 0=liberado.
+    pub const ACCELERATION: u8 = 41; // u8, aceleração.
+    pub const GOAL_POSITION: u8 = 42; // u16, posição-alvo 0~4095.
+    pub const GOAL_TIME: u8 = 44; // u16, tempo de movimento em ms.
+    pub const GOAL_SPEED: u8 = 46; // u16, velocidade de movimento em passos/s.
+    pub const TORQUE_LIMIT: u8 = 48; // u16, limite de torque.
+    pub const LOCK: u8 = 55; // u8, bloqueio da EEPROM: 0=desbloqueada, 1=bloqueada.
+    // ---- SRAM somente leitura ----
+    pub const PRESENT_POSITION: u8 = 56; // u16, posição atual 0~4095.
+    pub const PRESENT_SPEED: u8 = 58; // u16, velocidade atual.
+    pub const PRESENT_LOAD: u8 = 60; // u16, bits 0~9=valor, bit 10=sentido, unidade 0,1%.
+    pub const PRESENT_VOLTAGE: u8 = 62; // u8, tensão atual, unidade 0,1 V.
+    pub const PRESENT_TEMPERATURE: u8 = 63; // u8, temperatura atual em °C.
+    pub const SERVO_STATUS: u8 = 65; // u8, estado do servo (bits de alarme).
+    pub const MOVING: u8 = 66; // u8, indica se está em movimento.
+    pub const PRESENT_CURRENT: u8 = 69; // u16, corrente atual, aproximadamente 6,5 mA por unidade.
 }
 
-/// 一次读回的舵机实时状态（从地址 56 连续读 15 字节解析而来）。
+/// Estado em tempo real do servo, decodificado a partir de 15 bytes lidos desde o endereço 56.
 #[derive(Debug, Clone)]
 pub struct ServoStatus {
     pub position: u16,    // 0~4095
-    pub speed: i16,       // 步/秒（带方向）
-    pub load: i16,        // 0.1%，带方向
+    pub speed: i16,       // passos/s (com sentido).
+    pub load: i16,        // 0,1% (com sentido).
     pub voltage: f32,     // V
     pub temperature: u8,  // °C
-    pub servo_status: u8, // 非 0 表示有报警（过压/过流/过热等）
+    pub servo_status: u8, // Diferente de zero indica alarme (sobretensão, sobrecorrente, superaquecimento etc.).
     pub moving: bool,
     pub current_ma: f32, // mA
 }
 
 impl ServoStatus {
-    /// 位置 0~4095 换算成角度（度）。
+    /// Converte a posição 0~4095 em ângulo (graus).
     pub fn angle_deg(&self) -> f32 {
         self.position as f32 * 360.0 / 4096.0
     }
 }
 
-/// 打开后的总线。所有与舵机的通讯都通过它进行。
+/// Barramento aberto. Toda a comunicação com os servos passa por ele.
 pub struct StsBus {
     port: Box<dyn SerialPort>,
-    /// 单次读包的最长等待时间
+    /// Tempo máximo de espera para uma leitura de pacote.
     timeout: Duration,
 }
 
 impl StsBus {
-    /// 打开串口，例如 StsBus::open("/dev/ttyUSB0", 1_000_000)
+    /// Abre a porta serial, por exemplo StsBus::open("/dev/ttyUSB0", 1_000_000).
     pub fn open(path: &str, baud: u32) -> io::Result<Self> {
         let port = serialport::new(path, baud)
             .data_bits(serialport::DataBits::Eight)
@@ -98,7 +98,7 @@ impl StsBus {
         !bytes.iter().fold(0u8, |acc, b| acc.wrapping_add(*b))
     }
 
-    /// 发送一帧指令包。
+    /// Envia um quadro de instrução.
     fn send_packet(&mut self, id: u8, inst: u8, params: &[u8]) -> io::Result<()> {
         let len = params.len() as u8 + 2;
         let mut pkt = Vec::with_capacity(6 + params.len());
@@ -109,7 +109,7 @@ impl StsBus {
         self.port.flush()
     }
 
-    /// 在截止时间前读满 n 个字节。
+    /// Lê n bytes antes do prazo limite.
     fn read_n(&mut self, n: usize, deadline: Instant) -> io::Result<Vec<u8>> {
         let mut buf = vec![0u8; n];
         let mut got = 0;
@@ -121,7 +121,7 @@ impl StsBus {
                     if Instant::now() >= deadline {
                         return Err(io::Error::new(
                             ErrorKind::TimedOut,
-                            "等待舵机应答超时",
+                            "Tempo esgotado aguardando resposta do servo",
                         ));
                     }
                 }
@@ -131,10 +131,10 @@ impl StsBus {
         Ok(buf)
     }
 
-    /// 接收一帧应答包，返回 (id, error, 参数区)。
+    /// Recebe um quadro de resposta e retorna (id, error, parâmetros).
     fn recv_packet(&mut self) -> io::Result<(u8, u8, Vec<u8>)> {
         let deadline = Instant::now() + self.timeout;
-        // 1. 逐字节滑动，找到帧头 0xFF 0xFF
+        // 1. Desliza byte a byte até encontrar o cabeçalho 0xFF 0xFF.
         let mut prev = self.read_n(1, deadline)?[0];
         loop {
             let cur = self.read_n(1, deadline)?[0];
@@ -146,7 +146,7 @@ impl StsBus {
         // 2. id + length
         let head = self.read_n(2, deadline)?;
         let (id, len) = (head[0], head[1] as usize);
-        // 3. error + params + checksum（length 已包含 error 和 checksum 这 2 字节）
+        // 3. error + parâmetros + checksum (length já inclui esses dois bytes).
         let body = self.read_n(len, deadline)?;
         let mut all = vec![id, len as u8];
         all.extend_from_slice(&body);
@@ -154,7 +154,7 @@ impl StsBus {
             let hex: Vec<String> = all.iter().map(|b| format!("{b:02X}")).collect();
             return Err(io::Error::new(
                 ErrorKind::InvalidData,
-                format!("校验和错误, 收到字节: {}", hex.join(" ")),
+                format!("Checksum inválido; bytes recebidos: {}", hex.join(" ")),
             ));
         }
         let error = body[0];
@@ -162,10 +162,11 @@ impl StsBus {
         Ok((id, error, params))
     }
 
-    /// 接收一帧应答包。部分转接板会把发送内容回显到 RX：回显包与发送包
-    /// 字节完全一致（"error 位置"恰好等于指令码）。但注意：舵机带报警时
-    /// 的 ping 应答（error=0x01）与 ping 回显在字节上无法区分——所以策略是：
-    /// 若第一包疑似回显，再等第二包；等不到就把第一包当作真实应答。
+    /// Recebe um quadro de resposta. Alguns adaptadores ecoam no RX os bytes enviados; o quadro ecoado
+    /// é idêntico ao enviado (o campo "error" coincide com o código de instrução). Porém, a resposta
+    /// a ping de um servo em alarme (error=0x01) não pode ser distinguida do eco de ping apenas pelos
+    /// bytes. Estratégia: se o primeiro quadro parecer um eco, aguarda um segundo; se não chegar,
+    /// trata o primeiro como a resposta real.
     fn recv_non_echo(&mut self, sent_id: u8, sent_inst: u8, sent_params: &[u8]) -> io::Result<(u8, u8, Vec<u8>)> {
         let first = self.recv_packet()?;
         let looks_like_echo = first.0 == sent_id && first.1 == sent_inst && first.2 == sent_params;
@@ -173,13 +174,13 @@ impl StsBus {
             return Ok(first);
         }
         match self.recv_packet() {
-            Ok(second) => Ok(second), // 有第二包：第一包是回显
-            Err(e) if e.kind() == ErrorKind::TimedOut => Ok(first), // 没有第二包：第一包就是应答
+            Ok(second) => Ok(second), // Se há um segundo quadro, o primeiro era o eco.
+            Err(e) if e.kind() == ErrorKind::TimedOut => Ok(first), // Sem segundo quadro, o primeiro é a resposta.
             Err(e) => Err(e),
         }
     }
 
-    /// 设置 RTS / DTR 控制线（部分转接板用它做收发方向或使能）。
+    /// Configura as linhas de controle RTS / DTR (alguns adaptadores as usam para direção ou habilitação da transmissão).
     pub fn set_rts(&mut self, on: bool) -> io::Result<()> {
         self.port
             .write_request_to_send(on)
@@ -191,8 +192,8 @@ impl StsBus {
             .map_err(|e| io::Error::new(ErrorKind::Other, e.to_string()))
     }
 
-    /// 广播扫描：返回有应答的舵机 ID 列表。
-    #[allow(dead_code)] // 作为库 API 保留；CLI 用带进度条的版本
+    /// Faz uma varredura do barramento e retorna os IDs dos servos que responderem.
+    #[allow(dead_code)] // Mantido como API da biblioteca; a CLI usa a versão com barra de progresso.
     pub fn scan(&mut self, from: u8, to: u8) -> Vec<u8> {
         let mut found = Vec::new();
         for id in from..=to {
@@ -203,11 +204,11 @@ impl StsBus {
         found
     }
 
-    /// 诊断用：发送任意指令包，把随后 500ms 内收到的所有原始字节原样返回。
-    /// 返回 (发送的字节, 收到的字节)。
+    /// Para diagnóstico: envia um quadro arbitrário e retorna os bytes brutos recebidos nos 500 ms seguintes.
+    /// Retorna (bytes enviados, bytes recebidos).
     pub fn raw_exchange(&mut self, id: u8, inst: u8, params: &[u8]) -> io::Result<(Vec<u8>, Vec<u8>)> {
         self.port.clear(serialport::ClearBuffer::Input)?;
-        // 重新拼一遍发送内容用于显示
+        // Remonta o conteúdo enviado para exibição.
         let len = params.len() as u8 + 2;
         let mut sent = vec![0xFF, 0xFF, id, len, inst];
         sent.extend_from_slice(params);
@@ -230,9 +231,9 @@ impl StsBus {
         Ok((sent, out))
     }
 
-    /// 探测某个 ID 的舵机是否在线。
-    /// 注意：应答包的 error 字节是舵机的报警状态（如 bit0=电压异常），
-    /// 带报警的舵机仍然算"在线"。
+    /// Verifica se há um servo online em determinado ID.
+    /// O byte error da resposta representa o estado de alarme do servo (por exemplo, bit0=tensão anormal);
+    /// mesmo com alarme, o servo é considerado online.
     pub fn ping(&mut self, id: u8) -> io::Result<bool> {
         self.port.clear(serialport::ClearBuffer::Input)?;
         self.send_packet(id, INST_PING, &[])?;
@@ -243,8 +244,8 @@ impl StsBus {
         }
     }
 
-    /// 从舵机读 len 个字节（len <= 250）。
-    /// error 字节（报警状态）不视为失败，数据照常返回。
+    /// Lê len bytes do servo (len <= 250).
+    /// O byte error (estado de alarme) não é considerado falha; os dados são retornados normalmente.
     pub fn read(&mut self, id: u8, addr: u8, len: u8) -> io::Result<Vec<u8>> {
         self.port.clear(serialport::ClearBuffer::Input)?;
         self.send_packet(id, INST_READ, &[addr, len])?;
@@ -252,7 +253,7 @@ impl StsBus {
         if rid != id {
             return Err(io::Error::new(
                 ErrorKind::InvalidData,
-                format!("应答 ID 不匹配: 期望 {id}, 收到 {rid}"),
+                format!("ID da resposta divergente: esperado {id}, recebido {rid}"),
             ));
         }
         Ok(params)
@@ -262,18 +263,18 @@ impl StsBus {
         Ok(self.read(id, addr, 1)?[0])
     }
 
-    /// u16 为小端序（低字节在前）。
+    /// u16 usa little-endian (byte menos significativo primeiro).
     pub fn read_u16(&mut self, id: u8, addr: u8) -> io::Result<u16> {
         let b = self.read(id, addr, 2)?;
         Ok(u16::from_le_bytes([b[0], b[1]]))
     }
 
-    /// 写若干字节（写 SRAM 寄存器，舵机无应答时属正常）。
+    /// Grava bytes (em registradores SRAM; é normal o servo não responder).
     pub fn write(&mut self, id: u8, addr: u8, data: &[u8]) -> io::Result<()> {
         let mut params = vec![addr];
         params.extend_from_slice(data);
         self.send_packet(id, INST_WRITE, &params)?;
-        // 写指令的应答（若开启）直接丢弃，不阻塞
+        // Descarta a resposta à instrução de gravação (se habilitada), sem bloquear.
         let _ = self.recv_packet();
         Ok(())
     }
@@ -282,39 +283,39 @@ impl StsBus {
         self.write(id, addr, &[v])
     }
 
-    #[allow(dead_code)] // 库 API 保留
+    #[allow(dead_code)] // Mantido como API da biblioteca.
     pub fn write_u16(&mut self, id: u8, addr: u8, v: u16) -> io::Result<()> {
         self.write(id, addr, &v.to_le_bytes())
     }
 
-    /// 力矩开关：true=锁紧（可控制），false=释放（可手掰）。
+    /// Controle de torque: true=travado (controlável), false=liberado (pode ser movido à mão).
     pub fn set_torque(&mut self, id: u8, enable: bool) -> io::Result<()> {
         self.write_u8(id, reg::TORQUE_ENABLE, enable as u8)
     }
 
-    /// 让舵机转到目标位置（0~4095），speed 为步/秒，time_ms 为期望耗时。
-    /// 与官方 SDK 的 WritePosEx 一致：从 ACCELERATION(41) 起一次性写 7 字节。
+    /// Move o servo para a posição-alvo (0~4095); speed em passos/s e time_ms como duração desejada.
+    /// Segue o WritePosEx do SDK oficial: grava sete bytes de uma vez a partir de ACCELERATION(41).
     pub fn move_to(&mut self, id: u8, pos: u16, speed: u16, time_ms: u16) -> io::Result<()> {
         self.set_torque(id, true)?;
         let pos = pos.min(4095);
         let mut data = Vec::with_capacity(7);
-        data.push(50); // 加速度
+        data.push(50); // Aceleração.
         data.extend_from_slice(&pos.to_le_bytes());
         data.extend_from_slice(&time_ms.to_le_bytes());
         data.extend_from_slice(&speed.to_le_bytes());
         self.write(id, reg::ACCELERATION, &data)
     }
 
-    /// 一次读回地址 56 起的 15 字节并解析成 ServoStatus。
+    /// Lê de uma vez 15 bytes desde o endereço 56 e decodifica em ServoStatus.
     pub fn read_status(&mut self, id: u8) -> io::Result<ServoStatus> {
         let b = self.read(id, reg::PRESENT_POSITION, 15)?;
-        // b[0..2]  位置   b[2..4] 速度  b[4..6] 负载
-        // b[6] 电压 b[7] 温度  b[8] 写标志  b[9] 状态
-        // b[10] 运动中  b[11..13] 保留  b[13..15] 电流
+        // b[0..2] posição   b[2..4] velocidade  b[4..6] carga
+        // b[6] tensão b[7] temperatura  b[8] indicador de gravação  b[9] estado
+        // b[10] em movimento  b[11..13] reservado  b[13..15] corrente
         let position = u16::from_le_bytes([b[0], b[1]]);
         let speed = sts_signed(i16::from_le_bytes([b[2], b[3]]));
         let load_raw = u16::from_le_bytes([b[4], b[5]]);
-        // 负载：bit0~9 为大小（0.1%），bit10 为方向
+        // Carga: bits 0~9 indicam o valor (0,1%); bit 10 indica o sentido.
         let load = if load_raw & 0x0400 != 0 {
             -((load_raw & 0x03FF) as i16)
         } else {
@@ -335,7 +336,7 @@ impl StsBus {
     }
 }
 
-/// 飞特协议中 2 字节有符号数：bit15 为符号位，低 15 位为数值。
+/// Inteiro com sinal de dois bytes no protocolo Feetech: bit15 é o sinal e os 15 bits inferiores são o valor.
 fn sts_signed(v: i16) -> i16 {
     if v & (1 << 15) != 0 {
         -(v & !(1 << 15))
