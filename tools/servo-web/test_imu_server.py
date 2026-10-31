@@ -171,8 +171,8 @@ class WebSocketTests(ServerEnvironment):
                 for _ in range(8):
                     ws.receive_json()
         text = Path(server.log_path()).read_text(encoding="utf-8")
-        self.assertIn("[IMU][警告] synthetic SDK diagnostic", text)
-        self.assertEqual(text.count("状态 demo/live"), 1)
+        self.assertIn("[IMU][AVISO] synthetic SDK diagnostic", text)
+        self.assertEqual(text.count("Estado demo/live"), 1)
         self.assertTrue(any(entry["cat"] == "IMU" and entry["level"] == "warn" for entry in server.LOG))
         self.assertEqual(len(list((self.tmp / "logs").glob("*.log"))), 1)
 

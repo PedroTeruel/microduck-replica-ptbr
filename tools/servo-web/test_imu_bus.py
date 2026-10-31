@@ -1,7 +1,8 @@
-"""--imu-bus：从舵机总线读 IMU 小板 ID 200。
+"""--imu-bus: lê a IMU ID 200 pelo barramento dos servos.
 
-两层：BusImuService 的判据（跟主控 / imu200.py 同一套），以及 server 的状态轮询
-走真的 feetech.py + 协议级模拟器 sim_bus + 假小板 imu200.SimImu200。不接硬件。
+Testa duas camadas: os critérios de BusImuService (iguais aos do controlador e de imu200.py) e a
+consulta de estado do servidor usando feetech.py real, o simulador de protocolo sim_bus e a placa
+simulada imu200.SimImu200. Não requer hardware.
 Run: python -m pytest -q test_imu_bus.py
 """
 import contextlib
@@ -44,19 +45,19 @@ class DecisionTests(unittest.TestCase):
         self.assertEqual(f["sample_count"], 7)
 
     def test_spec_vector_blocks(self):
-        # 总线协议.md §10 的两个应答数据段
+        # Dois blocos de resposta da seção 10 do documento de protocolo do barramento.
         ready = bytes.fromhex("6400ceff03000000000020360700 00".replace(" ", ""))
         self.assertTrue(self.svc.feed(ready, now=1.0)["live"])
         not_ready = bytes(12) + bytes([0, 0x01, 0])
         f = self.svc.feed(not_ready, now=1.02)
         self.assertEqual(f["status"], "stale")
-        self.assertIn("融合还没出数", f["message"])
+        self.assertIn("fusão da IMU ainda não produziu dados", f["message"])
 
     def test_board_faults_and_bad_blocks(self):
-        cases = [(block(bits=imu_bus.BIT_IMU_COMM_FAIL), "通信失败"),
-                 (block(bits=imu_bus.BIT_SELF_TEST_FAIL), "自检失败"),
-                 (block(reserved=9), "保留字节"),
-                 (block(quat=(1.0, 1.0, 0.0)), "主控会拒绝")]
+        cases = [(block(bits=imu_bus.BIT_IMU_COMM_FAIL), "falha de comunicação com o chip"),
+                 (block(bits=imu_bus.BIT_SELF_TEST_FAIL), "falha no autoteste da IMU"),
+                 (block(reserved=9), "reservado não é zero"),
+                 (block(quat=(1.0, 1.0, 0.0)), "controlador rejeitaria este quaternion")]
         for data, hint in cases:
             with self.subTest(hint=hint):
                 f = imu_bus.BusImuService().feed(data, now=1.0)
@@ -68,23 +69,23 @@ class DecisionTests(unittest.TestCase):
         f = self.svc.feed(block(bits=imu_bus.BIT_READER_TOO_SLOW), now=1.0)
         self.assertTrue(f["live"])
         self.assertIn("BIT3", f["message"])
-        # 调试台自己 10 Hz 读：BIT3 每帧都亮是正常的，不能提示"读得太慢"（审查第 2 条）
+        # O console lê a 10 Hz: BIT3 aceso em todos os quadros é normal e não deve indicar leitura lenta (revisão, item 2).
         slow_console = imu_bus.BusImuService(poll_hz=10)
         f = slow_console.feed(block(bits=imu_bus.BIT_READER_TOO_SLOW), now=1.0)
         self.assertTrue(f["live"])
         self.assertNotIn("BIT3", f["message"])
-        self.assertEqual(f["status_bits"], imu_bus.BIT_READER_TOO_SLOW)   # 原始状态位照样给
+        self.assertEqual(f["status_bits"], imu_bus.BIT_READER_TOO_SLOW)   # Os bits de estado brutos continuam sendo fornecidos.
         self.assertIn("BIT3", imu_bus.BusImuService(poll_hz=50).feed(
             block(bits=imu_bus.BIT_READER_TOO_SLOW), now=1.0)["message"])
 
     def test_frozen_window_like_master(self):
         for k in range(imu_bus.FROZEN_FRAMES - 1):
-            f = self.svc.feed(block(counter=k), now=1 + k * 0.02)   # 计数在变也没用：它在 12 字节窗口外
+            f = self.svc.feed(block(counter=k), now=1 + k * 0.02)   # A mudança do contador não conta: ele fica fora da janela de 12 bytes.
             self.assertTrue(f["live"], k)
         f = self.svc.feed(block(counter=99), now=2.0)
         self.assertEqual(f["status"], "stale")
         self.assertIn("frozen", f["message"])
-        f = self.svc.feed(block(gyro=(101, -50, 3)), now=2.02)     # 低位一跳就恢复
+        f = self.svc.feed(block(gyro=(101, -50, 3)), now=2.02)     # Uma variação nos bits baixos já recupera a leitura.
         self.assertTrue(f["live"])
 
     def test_misses_take_200_out_and_ping_brings_it_back(self):
@@ -93,7 +94,7 @@ class DecisionTests(unittest.TestCase):
             self.assertTrue(self.svc.include_in_sync())
         f = self.svc.feed(None, now=2.0)
         self.assertFalse(self.svc.include_in_sync())
-        self.assertIn("单独 PING", f["message"])
+        self.assertIn("PING", f["message"])
         self.assertTrue(self.svc.due_probe(now=2.0))
         self.assertFalse(self.svc.due_probe(now=2.0 + imu_bus.RETRY_S / 2))
         self.assertFalse(self.svc.probe_result(False))
@@ -139,7 +140,7 @@ class ServerPollingTests(unittest.TestCase):
             port.clock = 150.0
             st = server.read_states_with_imu(JOINTS, self.svc)
         ids, addr, n = calls[-1]
-        self.assertEqual((ids[0], addr, n), (200, 56, 15))            # 200 排第一，地址 56，长度 15
+        self.assertEqual((ids[0], addr, n), (200, 56, 15))            # ID 200 primeiro, endereço 56, comprimento 15.
         self.assertEqual(ids[1:], JOINTS)
         self.assertTrue(all(st[i] is not None and "pos" in st[i] for i in JOINTS))
         status = self.svc.get_status()
@@ -152,10 +153,10 @@ class ServerPollingTests(unittest.TestCase):
             for k in range(imu_bus.MISS_DEGRADE + 2):
                 port.clock += 20
                 st = server.read_states_with_imu(JOINTS, self.svc)
-            self.assertNotIn(200, calls[-1][0])                        # 出列后舵机单独读
+            self.assertNotIn(200, calls[-1][0])                        # Depois de removê-la da lista, os servos são lidos separadamente.
             self.assertTrue(all(st[i] is not None for i in JOINTS))
             self.assertEqual(self.svc.get_status()["status"], "disconnected")
-            # 板子恢复应答：下一次 PING 把它放回同一条 sync_read
+            # Quando a placa voltar a responder, o próximo PING a reinclui no mesmo sync_read.
             port.servos[imu_bus.IMU_ID].answer = True
             self.svc.last_probe = None
             server.read_states_with_imu(JOINTS, self.svc)
@@ -166,16 +167,16 @@ class ServerPollingTests(unittest.TestCase):
 
 
     def test_polls_without_servos_and_never_sends_an_empty_list(self):
-        # 审查第 1 条：台架上只接小板，扫描没扫到舵机（PRESENT 空）也要轮询
+        # Revisão, item 1: consultar a placa no banco mesmo quando nenhum servo foi encontrado (PRESENT vazio).
         with patch.object(server, "CLIENTS", {object()}), patch.object(server, "PRESENT", []), \
                 patch.object(server, "IMU_SERVICE", self.svc):
             self.assertTrue(server.stream_should_poll())
         with patch.object(server, "CLIENTS", {object()}), patch.object(server, "PRESENT", []), \
                 patch.object(server, "IMU_SERVICE", None):
-            self.assertFalse(server.stream_should_poll())                 # 不开 IMU 时照旧
+            self.assertFalse(server.stream_should_poll())                 # Sem IMU, mantém o comportamento anterior.
         with patch.object(server, "CLIENTS", set()), patch.object(server, "IMU_SERVICE", self.svc):
-            self.assertFalse(server.stream_should_poll())                 # 没网页连着不读
-        # 只有小板、而且它出列了：不发空 ID 表的 sync_read，只按时 PING
+            self.assertFalse(server.stream_should_poll())                 # Sem clientes web conectados, não faz leitura.
+        # Só há a placa e ela foi removida: não envia sync_read com lista de IDs vazia; apenas faz PING no intervalo previsto.
         port, bus, calls = self.sim_bus(answer=False)
         with patch.object(server, "BUS", bus):
             for _ in range(imu_bus.MISS_DEGRADE + 3):
