@@ -74,9 +74,9 @@ class PostureTest(unittest.TestCase):
     def test_timeout_and_lost_reply_stay_fenced_until_verified_or_manual_reset(self):
         p = self.tracker()
         token = p.begin("sit", sample(), 10.)
-        p.uncertain(token, "回执丢失")
+        p.uncertain(token, "resposta perdida")
         self.assertTrue(p.pending)
-        self.assertIn("回执", p.error)
+        self.assertIn("resposta", p.error)
         self.assertTrue(p.check_timeout(40.))
         self.assertTrue(p.pending)
         with self.assertRaises(Refused):
@@ -157,7 +157,7 @@ class FakePostureTest(unittest.IsolatedAsyncioTestCase):
                 conn = ops.new_conn()
                 await asyncio.to_thread(ops.handle, {"op": "drive", "open": True, "seq": 1}, conn=conn)
                 cid = "e" * 32
-                ops.motion_studio.store.save({"version": 2, "id": cid, "name": "坐站", "created": "2026-10-25",
+                ops.motion_studio.store.save({"version": 2, "id": cid, "name": "Sentar e levantar", "created": "2026-10-25",
                     "duration_s": .2, "fingerprint": fingerprint(ops), "events": [
                         {"t": 0., "method": "studio.posture", "params": {"target": "sit"}},
                         {"t": .1, "method": "studio.posture", "params": {"target": "stand"}}]})
