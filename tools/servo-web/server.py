@@ -622,7 +622,7 @@ def calibrate_by_offset(i, target, trail):
                 off, _ = wait_off_change(i, off)
                 trail.append(f"falhou; deslocamento restaurado para {o0}")
             except Exception as e:
-                log(f"#{i}: também falhou a restauração do deslocamento após a alternativa: {type(e).__name__}: {e}", "校准", "error", exc=True)
+                log(f"#{i}: também falhou a restauração do deslocamento após a alternativa: {type(e).__name__}: {e}", "Calibração", "error", exc=True)
 
 
 def calibrate_one(i, before, target=2048):
@@ -859,7 +859,7 @@ def _calibrate_mid_all(ids, ref=None):
         if i not in targets:
             bad[i] = "Servo ausente na pose de referência"
             continue
-        if not 0 <= targets[i] <= 4095:               # 姿态文件是能手改的 JSON，改错一个数就校到离谱的读数上
+        if not 0 <= targets[i] <= 4095:               # O JSON da pose pode ser editado manualmente; um valor incorreto levaria a uma calibração absurda.
             bad[i] = f"Alvo {targets[i]} fora do intervalo 0–4095; servo não movido"
             continue
         if "offset" not in b:
@@ -902,76 +902,78 @@ def _calibrate_mid_all(ids, ref=None):
 
 
 def undo_calibration():
-    """（见下）。整段持 CALIB_LOCK。"""
+    """(Veja a função abaixo.) Mantém CALIB_LOCK durante toda a operação."""
     with CALIB_LOCK:
         return _undo_calibration()
 
 
 def _undo_calibration():
-    """把最近一次备份里的偏移写回去（关扭矩 → 解锁 → 写 31 → 加锁），目标位置改成当前读数，扭矩状态照旧。"""
+    """Restaura os deslocamentos do backup mais recente (desativa torque → desbloqueia
+    → grava 31 → bloqueia), alinha os alvos às leituras atuais e mantém o estado do torque."""
     d = calib_dir()
     files = sorted(f for f in os.listdir(d) if f.startswith("eeprom-")) if os.path.isdir(d) else []
     if not files:
-        log("没有可撤销的中位校准" + ("（模拟模式只撤销模拟里做的校准）" if is_fake() else ""), "校准", "warn")
+        log("Nenhuma calibração central disponível para desfazer" + (" (no modo simulado, desfaz somente calibrações simuladas)" if is_fake() else ""), "Calibração", "warn")
         return {"type": "calib_result", "ok": [], "bad": {}, "backup": None}
     fn = files[-1]
     with open(os.path.join(d, fn), encoding="utf-8") as f:
         rec = json.load(f)
-    log(f"开始撤销：把 calib/{fn}（{rec.get('time', '?')}）里的偏移写回去", "校准")
+    log(f"Iniciando reversão: restaurando os deslocamentos de calib/{fn} ({rec.get('time', '?')})", "Calibração")
     ok, bad = [], {}
     for k, row in rec["servos"].items():
         i = int(k)
         if "offset" not in row:
-            log(f"#{i} 备份里没有偏移（{row.get('error', '?')}），跳过", "校准", "warn")
+            log(f"#{i}: backup sem deslocamento ({row.get('error', '?')}); ignorado", "Calibração", "warn")
             continue
-        trail, step, on = [], "读当前状态", False
+        trail, step, on = [], "ler estado atual", False
         try:
             on = BUS.read_u8(i, 40) == 1
             off0, p0 = BUS.read_u16(i, 31), read_pos(i)
             if on:
-                step = "关扭矩"
+                step = "desativar torque"
                 BUS.write_u8(i, 40, 0)
-                if BUS.read_u8(i, 40) != 0:     # 跟校准一样：这包丢了，改偏移就等于让关节满速跑
+                if BUS.read_u8(i, 40) != 0:     # Como na calibração, alterar o deslocamento com torque ativo pode mover a junta em velocidade máxima.
                     BUS.write_u8(i, 40, 0)
                     if BUS.read_u8(i, 40) != 0:
-                        raise feetech.BusError("关扭矩没生效（回读不是 0），不敢写偏移")
-                trail.append("关扭矩✓")
-            step = "解锁"
-            trail.append("解锁" + _ack(BUS.unlock(i)))
-            step = "写偏移"
-            trail.append(f"写偏移{fmt_off(row['offset'])}" + _ack(BUS.write_u16(i, 31, row["offset"])))
-            step = "读回"
-            wait_off_change(i, feetech.sign15(off0))   # 轮询落地，别固定睡 20 ms 让关节多垂
+                        raise feetech.BusError("Não foi possível desativar o torque (leitura de retorno diferente de 0); gravação do deslocamento cancelada.")
+                trail.append("Torque desativado ✓")
+            step = "desbloquear"
+            trail.append("Desbloquear " + _ack(BUS.unlock(i)))
+            step = "gravar deslocamento"
+            trail.append(f"Deslocamento {fmt_off(row['offset'])}" + _ack(BUS.write_u16(i, 31, row["offset"])))
+            step = "ler retorno"
+            wait_off_change(i, feetech.sign15(off0))   # Aguarda a aplicação sem impor 20 ms fixos de queda adicional.
             off1, p1 = BUS.read_u16(i, 31), read_pos(i)
-            step = "写目标"
-            trail.append(f"目标{p1}" + _ack(BUS.write_u16(i, 42, enc_sm(p1))))
+            step = "gravar alvo"
+            trail.append(f"Alvo {p1}" + _ack(BUS.write_u16(i, 42, enc_sm(p1))))
             if on:
-                step = "开扭矩"
-                trail.append("开扭矩" + _ack(BUS.write_u8(i, 40, 1)))
+                step = "ativar torque"
+                trail.append("Ativar torque " + _ack(BUS.write_u8(i, 40, 1)))
             good = off1 == row["offset"]
-            (ok.append(i) if good else bad.__setitem__(i, f"偏移写了 {row['offset']} 读回 {off1}"))
-            log(f"#{i} 偏移 {fmt_off(off0)}→{fmt_off(off1)}（备份值 {fmt_off(row['offset'])}） 读数 {p0}→{p1} · " + " ".join(trail),
-                "校准", "info" if good else "warn")
+            (ok.append(i) if good else bad.__setitem__(i, f"deslocamento gravado {row['offset']}, leitura de retorno {off1}"))
+            log(f"#{i} deslocamento {fmt_off(off0)}→{fmt_off(off1)} (backup {fmt_off(row['offset'])}); leitura {p0}→{p1} · " + " ".join(trail),
+                "Calibração", "info" if good else "warn")
         except Exception as e:
-            bad[i] = f"卡在「{step}」：{type(e).__name__}: {e}"
-            log(f"#{i} 撤销{bad[i]}（扭矩{'没恢复' if on else '本来就关着'}）", "校准", "error", exc=True)
+            bad[i] = f"Falha na etapa \"{step}\": {type(e).__name__}: {e}"
+            log(f"#{i}: reversão falhou — {bad[i]} (torque {'não restaurado' if on else 'já estava desativado'})", "Calibração", "error", exc=True)
         finally:
-            try:                                       # 跟校准同样的收尾：目标对准当前读数再恢复扭矩
+            try:                                       # Como na calibração, alinha o alvo à leitura atual antes de restaurar o torque.
                 p = read_pos(i)
                 BUS.write_u16(i, 42, enc_sm(p))
                 if on and BUS.read_u8(i, 40) != 1:
                     BUS.write_u8(i, 40, 1)
             except Exception as e:
-                log(f"#{i} 撤销收尾失败，这颗可能卸着力：{type(e).__name__}: {e}", "校准", "error", exc=True)
+                log(f"#{i}: falha ao finalizar a reversão; o servo pode estar sem torque: {type(e).__name__}: {e}", "Calibração", "error", exc=True)
             try:
                 BUS.lock(i)
             except Exception as e:
-                log(f"#{i} 加锁失败：{type(e).__name__}: {e}", "校准", "error", exc=True)
+                log(f"#{i}: falha ao bloquear: {type(e).__name__}: {e}", "Calibração", "error", exc=True)
     if rec.get("sim"):
-        pass                                           # 模拟里校的：当时就没挪姿态，撤销也不挪
+        pass                                           # Na simulação, as poses não foram ajustadas e também não serão alteradas ao desfazer.
     elif "shifted" in rec:
-        # 当次挪过的要挪回来；校准之后新存的姿态是按新坐标系存的，也得挪回去，
-        # 不然撤销完它们指向的物理姿势整体偏了 delta 步，一发就把关节顶到限位
+        # Reverte os ajustes feitos nesta operação e os das poses salvas depois da
+        # calibração, que usam o novo sistema de coordenadas; sem isso, poderiam levar
+        # as juntas aos limites mecânicos após desfazer.
         later = []
         t0 = rec.get("time", "")
         for p in list_poses():
@@ -981,12 +983,12 @@ def _undo_calibration():
                 later.append(p["file"])
         moved = shift_saved_poses(rec.get("deltas", {}), sign=-1, only=set(rec["shifted"]) | set(later))
         if moved:
-            log(f"存的姿态换算回原来的零点：{moved}" + (f"（其中 {later} 是校准之后存的，按新零点存的也要挪）" if later else ""), "姿态")
+            log(f"Poses salvas ajustadas de volta ao zero original: {moved}" + (f" ({later} foram salvas após a calibração e também precisaram de ajuste)" if later else ""), "Poses")
     elif any(rec.get("deltas", {}).values()):
-        log("这份备份是 0.8.0 以前的，没记当时挪了哪些姿态，姿态不自动挪回，需要的话手动核对", "姿态", "warn")
+        log("Este backup é anterior à versão 0.8.0 e não registra quais poses foram ajustadas; elas não foram revertidas automaticamente. Confira-as manualmente se necessário.", "Poses", "warn")
     os.rename(os.path.join(d, fn), os.path.join(d, "undone-" + fn))
-    log(f"撤销完（{fn} 已改名 undone-{fn}）：{len(ok)} 颗偏移写回" + (f"；失败 {sorted(bad)}" if bad else ""),
-        "校准", "warn" if bad else "info")
+    log(f"Reversão concluída ({fn} renomeado para undone-{fn}): deslocamento restaurado em {len(ok)} servos" + (f"; falhas em {sorted(bad)}" if bad else ""),
+        "Calibração", "warn" if bad else "info")
     return {"type": "calib_result", "ok": ok, "bad": {str(k): v for k, v in bad.items()}, "backup": fn}
 
 
@@ -1002,7 +1004,7 @@ def list_poses():
                                 "goals": {r["id"]: r["pos"] for r in p.get("rows", [])},
                                 "steps": p.get("steps")})
                 except Exception as e:
-                    log(f"姿态文件 {fn} 读不了：{type(e).__name__}: {e}", "姿态", "warn")
+                    log(f"Não foi possível ler o arquivo de pose {fn}: {type(e).__name__}: {e}", "Poses", "warn")
     return out
 
 
@@ -1016,28 +1018,29 @@ def save_pose(name):
     with open(os.path.join(POSES_DIR, fn), "w", encoding="utf-8") as f:
         json.dump({"name": safe, "time": time.strftime("%Y-%m-%d %H:%M"), "rows": rows}, f, ensure_ascii=False, indent=1)
     missing = [i for i, v in st.items() if not v]
-    log(f"姿态已存 poses/{fn}（{len(rows)} 颗）" + (f"；读不到 {missing}，没存进去" if missing else ""), "姿态", "warn" if missing else "info")
+    log(f"Pose salva em poses/{fn} ({len(rows)} servos)" + (f"; não foi possível ler {missing}, que não foram salvos" if missing else ""), "Poses", "warn" if missing else "info")
     return fn
 
 
 def delete_pose(fn):
-    """不真删：挪进 poses/.trash/，文件名前加时间，删错了从那里拿回来。只认 poses/ 里的 .json。"""
+    """Não exclui permanentemente: move para poses/.trash/ com data e hora no nome,
+    permitindo recuperar arquivos removidos por engano. Aceita somente .json de poses/."""
     if not fn or os.path.basename(fn) != fn or not fn.endswith(".json"):
-        raise ValueError(f"不认识的姿态文件 {fn!r}")
+        raise ValueError(f"Arquivo de pose desconhecido: {fn!r}")
     src = os.path.join(POSES_DIR, fn)
     if not os.path.isfile(src):
-        raise ValueError(f"poses/ 里没有 {fn}")
+        raise ValueError(f"{fn} não existe em poses/")
     trash = os.path.join(POSES_DIR, ".trash")
     os.makedirs(trash, exist_ok=True)
     dst = os.path.join(trash, f"{time.strftime('%Y%m%d-%H%M%S')}-{fn}")
     os.replace(src, dst)
-    log(f"姿态已删除：{fn}（挪到 poses/.trash/，要找回就挪回来）", "姿态")
+    log(f"Pose removida: {fn} (movida para poses/.trash/; mova-a de volta para recuperá-la)", "Poses")
 
 
 async def logfile(request):
     path = log_path()
     if not os.path.exists(path):
-        return JSONResponse({"error": "今天还没有日志"}, status_code=404)
+        return JSONResponse({"error": "Ainda não há logs de hoje."}, status_code=404)
     return FileResponse(path, media_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-store"})
 
 
@@ -1051,11 +1054,16 @@ async def info(request):
 
 
 def torque_on_aligned(ids):
-    """开扭矩前先把目标（42）对准当前读数。扭矩关着时用手掰过关节、或者关着时发过姿势 / 校准过，
-    目标寄存器里还是旧值，一开扭矩舵机就按放开的速度冲过去。
-    顺序：读扭矩 → 关着的读位置 → 写目标 = 位置（带应答）→ 直接读 42 核对 → 开扭矩。
-    核对读 42 本身，不看状态里的 67：67 在真机上跟不跟得上没验证过。本来就开着的不动它的目标（可能正在走）。
-    读不到位置、目标写不进去的那颗不开。返回 (开了的, {id: 目标}, {id: 没开的原因})。"""
+    """Antes de ativar o torque, alinha a posição-alvo (42) à leitura atual. Se a junta
+    tiver sido movida à mão ou recebido uma pose/calibração com o torque desligado, o
+    registrador de alvo ainda pode conter um valor antigo e o servo avançará rapidamente
+    ao reativar o torque.
+    Ordem: lê o torque → lê posição dos servos desligados → grava alvo = posição (com
+    resposta) → confere diretamente o registrador 42 → ativa o torque. Confere 42, não
+    o valor 67 do estado, pois ainda não foi verificado se 67 acompanha o hardware real.
+    Não altera alvos de servos que já estejam ativados (podem estar em movimento). Não
+    ativa servos cuja posição não possa ser lida ou cujo alvo não possa ser gravado.
+    Retorna (IDs ativados, {id: alvo}, {id: motivo da falha})."""
     tq = BUS.sync_read(ids, 40, 1)
     already = [i for i in ids if tq.get(i) and tq[i][1][0] == 1]
     need = [i for i in ids if i not in already]
@@ -1063,7 +1071,7 @@ def torque_on_aligned(ids):
     st = BUS.states(need) if need else {}
     for i in need:
         if not st.get(i):
-            bad[i] = "读不到位置，没开扭矩（开了可能冲向旧目标）"
+            bad[i] = "Não foi possível ler a posição; torque não ativado (o servo poderia avançar para um alvo antigo)"
             continue
         p = st[i]["pos"]
         try:
@@ -1074,9 +1082,9 @@ def torque_on_aligned(ids):
                     aligned[i] = p
                     break
             else:
-                bad[i] = f"目标写 {p} 读回 {got}，没开扭矩"
+                bad[i] = f"Alvo gravado como {p}, mas leitura de retorno {got}; torque não ativado"
         except Exception as e:
-            bad[i] = f"写目标出错（{type(e).__name__}: {e}），没开扭矩"
+            bad[i] = f"Falha ao gravar o alvo ({type(e).__name__}: {e}); torque não ativado"
     on = already + [i for i in need if i in aligned]
     if on:
         BUS.sync_write(40, 1, [(i, bytes([1])) for i in on])
@@ -1088,13 +1096,13 @@ def do_scan(ids):
     found = [i for i in ids if BUS.ping(i) is not None]
     PRESENT = found
     lost = [i for i in ids if i not in found] if len(ids) <= 32 else []
-    log(f"扫描 {ids[0]}..{ids[-1]}：在线 {len(found)} 颗 {found}" + (f"；不在线 {lost}" if lost else ""),
-        "总线", "warn" if lost else "info")
+    log(f"Varredura de {ids[0]}..{ids[-1]}: {len(found)} servos online {found}" + (f"; offline {lost}" if lost else ""),
+        "Barramento", "warn" if lost else "info")
     return found
 
 
 def do_timing(n=200):
-    """sync_read 全部在线舵机 n 次，看耗时和失败。"""
+    """Executa sync_read em todos os servos online n vezes e mede duração e falhas."""
     ids = PRESENT or IDS
     times, fails = [], 0
     for _ in range(n):
@@ -1106,12 +1114,12 @@ def do_timing(n=200):
     res = {"n": n, "ids": len(ids), "min_ms": round(times[0], 2), "avg_ms": round(sum(times) / n, 2),
            "p99_ms": round(times[max(0, int(n * 0.99) - 1)], 2), "max_ms": round(times[-1], 2), "fails": fails,
            "stats": dict(BUS.stats)}
-    log(f"时序测试：{res}", "总线", "warn" if fails else "info")
+    log(f"Teste de temporização: {res}", "Barramento", "warn" if fails else "info")
     return res
 
 
-SIM_IMU_OWNED = False   # 当前 IMU_SERVICE 是不是页面「模拟」里接上的（启动参数给的不归它管）
-SIM_IMU_LOCK = threading.Lock()   # 两个标签页同时点、或者跟「连接串口」撞上，别各改一半
+SIM_IMU_OWNED = False   # Indica se IMU_SERVICE foi conectado pelo controle Simulação da página; IMUs configuradas na inicialização não pertencem a ele.
+SIM_IMU_LOCK = threading.Lock()   # Evita conflitos entre abas simultâneas e a conexão serial.
 
 
 def imu_config_frame():
@@ -1120,25 +1128,29 @@ def imu_config_frame():
 
 
 def drop_sim_imu(why):
-    """接上真串口时把模拟里接的虚拟小板拔掉：真总线上没有它，留着页面会一直显示假姿态。启动参数给的 IMU 不动。"""
+    """Ao conectar a porta serial real, remove a placa virtual da simulação, que não
+    existe no barramento real e faria a página exibir uma orientação falsa. Não altera
+    a IMU especificada nos argumentos de inicialização."""
     global IMU_SERVICE, SIM_IMU_OWNED
     with SIM_IMU_LOCK:
         if not SIM_IMU_OWNED:
             return False
         IMU_SERVICE, SIM_IMU_OWNED = None, False
-    log(f"{why}：模拟里接的虚拟 IMU 小板已拔掉；真 IMU 用启动参数 --imu-bus / --imu-swd / --imu-jlink", "IMU")
+    log(f"{why}: placa IMU virtual da simulação desconectada; configure uma IMU real com --imu-bus / --imu-swd / --imu-jlink", "IMU")
     return True
 
 
 def sim_imu_mode():
-    """模拟 IMU 现在是：off 不接 / on 虚拟小板在线 / lost 虚拟小板掉线；不是模拟接上的返回 None。"""
+    """Estado da IMU simulada: off = desconectada, on = placa virtual online, lost =
+    placa virtual desconectada. Retorna None se a IMU não foi conectada pela simulação."""
     if not SIM_IMU_OWNED or IMU_SERVICE is None:
         return "off" if is_fake() and IMU_SERVICE is None else None
     return "on" if getattr(BUS, "imu200", None) is not None else "lost"
 
 
 def set_sim_imu(mode):
-    """模拟模式下接 / 拔虚拟 IMU 小板。走的是 --imu-bus 同一条路：虚拟小板挂在假总线上答 ID 200。"""
+    """Conecta ou remove a placa IMU virtual no modo simulado. Usa o mesmo caminho de
+    --imu-bus: a placa virtual responde no ID 200 do barramento simulado."""
     with SIM_IMU_LOCK:
         return _set_sim_imu(mode)
 
@@ -1147,41 +1159,42 @@ def _set_sim_imu(mode):
     global IMU_SERVICE, SIM_IMU_OWNED
     import imu_bus
     if not is_fake():
-        raise ValueError("接了真串口，不能用虚拟 IMU；真 IMU 用启动参数 --imu-bus / --imu-swd / --imu-jlink")
+        raise ValueError("A porta serial real está conectada; não é possível usar uma IMU virtual. Configure a IMU real com --imu-bus / --imu-swd / --imu-jlink.")
     if IMU_SERVICE is not None and not SIM_IMU_OWNED:
-        raise ValueError("服务启动时已经指定了 IMU（启动参数），页面里不改")
+        raise ValueError("A IMU já foi especificada nos argumentos de inicialização e não pode ser alterada pela página.")
     if mode == "off":
         IMU_SERVICE, SIM_IMU_OWNED = None, False
         BUS.imu200 = None
-        log("模拟：拔掉虚拟 IMU 小板，页面隐藏姿态面板", "IMU")
+        log("Simulação: placa IMU virtual removida; painel de orientação ocultado.", "IMU")
     elif mode in ("on", "lost"):
         if IMU_SERVICE is None:
             IMU_SERVICE, SIM_IMU_OWNED = imu_bus.BusImuService(poll_hz=FAKE_STREAM_HZ), True
         if mode == "on":
             if BUS.imu200 is None:
                 BUS.imu200 = imu_bus.FakeImu200()
-            log("模拟：接上虚拟 IMU 小板（假总线上的 ID 200，跟 --imu-bus 同一条路）", "IMU")
+            log("Simulação: placa IMU virtual conectada (ID 200 do barramento simulado, mesmo caminho de --imu-bus).", "IMU")
         else:
             BUS.imu200 = None
-            log("模拟：虚拟小板掉线 —— 看调试台怎么把 200 出列、改成单独 PING", "IMU")
+            log("Simulação: placa virtual desconectada — verifica como o painel remove o ID 200 da leitura conjunta e passa a executar PING separado.", "IMU")
     else:
-        raise ValueError(f"不认识的模拟 IMU 模式：{mode}")
+        raise ValueError(f"Modo de IMU simulada desconhecido: {mode}")
     return imu_config_frame()
 
 
 def handle(cmd):
-    """WebSocket 指令，同步执行（在线程里跑）。返回要回给前端的 dict 或 None。"""
+    """Executa uma instrução WebSocket de forma síncrona (em uma thread). Retorna o
+    dicionário a enviar ao frontend ou None."""
     op = cmd.get("op")
     if op == "sim_imu":
         set_sim_imu(cmd.get("mode"))
-        return None                  # ws_endpoint 把新配置广播给所有页面
+        return None                  # ws_endpoint transmite a nova configuração para todas as páginas.
     if op == "imu_protocol":
         service = IMU_SERVICE
         if service is None or imu_backend(service) != "bus":
-            raise ValueError("只有启用 --imu-bus 时才能切换总线协议")
+            raise ValueError("Só é possível alternar o protocolo do barramento quando --imu-bus está ativado.")
         protocol = cmd.get("protocol")
         if protocol not in ("dxl2", "feetech"):
-            raise ValueError("协议必须是 dxl2 或 feetech")
+            raise ValueError("O protocolo deve ser dxl2 ou feetech.")
         # Wait for an in-flight serial transaction to finish before changing
         # protocol, so the old request cannot be mistaken for the new one.
         if isinstance(BUS, FakeBus):
@@ -1189,7 +1202,7 @@ def handle(cmd):
         else:
             with BUS._io:
                 changed = service.set_protocol(protocol)
-        log(f"IMU 总线协议{'切换为 ' + protocol if changed else '保持 ' + protocol}", "IMU")
+        log(f"Protocolo do barramento da IMU {'alterado para ' + protocol if changed else 'mantido como ' + protocol}", "IMU")
         return imu_config_frame()
     if op == "goal":
         BUS.write_u16(int(cmd["id"]), 42, int(cmd["pos"]) & 0xFFFF)
@@ -1197,8 +1210,9 @@ def handle(cmd):
         items = [(int(i), struct.pack("<H", int(p) & 0xFFFF)) for i, p in cmd["goals"].items()]
         BUS.sync_write(42, 2, items)
     elif op == "goals_stream":
-        # 连续流：每帧给目标位置，同时把速度上限设成"正好在 dt 内走到"，加速度最大。
-        # 舵机就以匹配的速度连续走，不会每帧冲一下停一下。结束时发 stream_end 放开速度。
+        # Fluxo contínuo: cada quadro define a posição-alvo e ajusta o limite de velocidade
+        # para alcançá-la em dt, com aceleração máxima. Assim, o servo se move de forma
+        # contínua, sem arrancadas e paradas entre quadros. Ao terminar, stream_end libera a velocidade.
         dt = max(0.01, float(cmd.get("dt", 0.05)))
         want = {int(i): int(p) & 0xFFFF for i, p in cmd["goals"].items()}
         fresh = [i for i in want if i not in STREAM_LAST]
@@ -1208,7 +1222,7 @@ def handle(cmd):
                 STREAM_LAST[i] = (st[i]["pos"] if st.get(i) else want[i])
         items = []
         for i, p in want.items():
-            sps = abs(p - STREAM_LAST[i]) / dt * 1.2          # 留 20% 余量，宁可早到一点
+            sps = abs(p - STREAM_LAST[i]) / dt * 1.2          # Margem de 20% para chegar um pouco antes.
             reg = max(3, min(32767, int(round(sps / SPEED_UNIT))))
             items.append((i, bytes([0]) + struct.pack("<H", p) + struct.pack("<H", 0) + struct.pack("<H", reg)))
             STREAM_LAST[i] = p
@@ -1220,9 +1234,12 @@ def handle(cmd):
         for i in ids:
             STREAM_LAST.pop(i, None)
     elif op == "goals_profile":
-        # 平滑运动：一次写 41..47 = 加速度(1) 目标位置(2) 时间(2)=0 速度(2)，舵机自己走梯形曲线到终点。
-        # 速度按 |终点-当前| / 秒数 算，单位由相位 BIT2 定（SPEED_UNIT 步/秒 每单位）。
-        # 发完立刻返回，不在这里等——等的话会把后面的指令（比如灵动的头部流）全堵住。页面等完自己发 goals_verify 和 release。
+        # Movimento suave: grava 41..47 em um pacote — aceleração (1), posição-alvo (2),
+        # duração (2, igual a 0) e velocidade (2). O servo percorre uma curva trapezoidal.
+        # Calcula a velocidade como |alvo-atual| / duração, conforme a unidade definida
+        # pelo BIT2 da fase (SPEED_UNIT passos/s por unidade).
+        # Retorna imediatamente para não bloquear comandos seguintes, como o fluxo da cabeça.
+        # A página aguarda e envia goals_verify e release.
         seconds = max(0.2, float(cmd.get("seconds", 2)))
         acc = max(1, min(254, int(cmd.get("acc", 30))))
         want = {int(i): int(p) & 0xFFFF for i, p in cmd["goals"].items()}
@@ -1230,20 +1247,20 @@ def handle(cmd):
         items, speeds = [], {}
         for i, p in want.items():
             cur = st[i]["pos"] if st.get(i) else p
-            sps = abs(p - cur) / seconds                       # 步/秒
+            sps = abs(p - cur) / seconds                       # passos/s
             reg = max(1, min(32767, int(round(sps / SPEED_UNIT)))) if sps > 0 else 1
             speeds[i] = reg
             items.append((i, bytes([acc]) + struct.pack("<H", p) + struct.pack("<H", 0) + struct.pack("<H", reg)))
         BUS.sync_write(41, 7, items)
         for i in want:
             STREAM_LAST.pop(i, None)
-        log(f"平滑 {seconds}s acc={acc} 速度单位={SPEED_UNIT:g}步/s → " + " ".join(f"{i}:{want[i]}@{speeds[i]}" for i in want), "运动")
+        log(f"Movimento suave {seconds}s, aceleração={acc}, unidade de velocidade={SPEED_UNIT:g} passos/s → " + " ".join(f"{i}:{want[i]}@{speeds[i]}" for i in want), "Movimento")
     elif op == "release":
         ids = [int(i) for i in cmd.get("ids", [])] or (PRESENT or IDS)
         release_speed(ids)
         for i in ids:
             STREAM_LAST.pop(i, None)
-    elif op == "goals_verify":  # 同上，但回读舵机里的目标位置，没收到的重发，最多 4 轮
+    elif op == "goals_verify":  # Igual ao anterior, mas lê os alvos no servo e reenvia os ausentes por até 4 rodadas.
         want = {int(i): int(p) & 0xFFFF for i, p in cmd["goals"].items()}
         for attempt in range(4):
             BUS.sync_write(42, 2, [(i, struct.pack("<H", p)) for i, p in want.items()])
@@ -1253,7 +1270,7 @@ def handle(cmd):
             if not want:
                 break
         if want:
-            log(f"目标回读：{len(want)} 颗 4 轮后目标仍没写进去 {sorted(want)}", "运动", "warn")
+            log(f"Leitura de retorno dos alvos: não foi possível gravar em {len(want)} servos após 4 tentativas: {sorted(want)}", "Movimento", "warn")
         return {"type": "goals_verify", "missing": sorted(want), "attempts": attempt + 1}
     elif op == "torque":
         if cmd.get("ids"):
@@ -1262,12 +1279,12 @@ def handle(cmd):
             ids = [int(cmd["id"])] if cmd.get("id") is not None else (PRESENT or IDS)
         if int(cmd["on"]):
             on, aligned, bad = torque_on_aligned(ids)
-            log(f"扭矩开 → {on}" + (f"；开之前目标对准当前位置：" + " ".join(f"#{i}→{p}" for i, p in aligned.items()) if aligned else "")
-                + (f"；没开 " + " ".join(f"#{i}（{w}）" for i, w in bad.items()) if bad else ""), "运动", "warn" if bad else "info")
+            log(f"Torque ativado → {on}" + ("; alvos alinhados às posições atuais antes da ativação: " + " ".join(f"#{i}→{p}" for i, p in aligned.items()) if aligned else "")
+                + ("; não ativados: " + " ".join(f"#{i} ({w})" for i, w in bad.items()) if bad else ""), "Movimento", "warn" if bad else "info")
             return {"type": "torque", "on": 1, "ids": on, "aligned": {str(i): p for i, p in aligned.items()},
                     "bad": {str(i): w for i, w in bad.items()}}
         BUS.sync_write(40, 1, [(i, bytes([0])) for i in ids])
-        log(f"扭矩关 → {ids}", "运动")
+        log(f"Torque desativado → {ids}", "Movimento")
     elif op == "scan":
         return {"type": "scan", "present": do_scan(parse_ids(cmd.get("ids") or DEFAULT_IDS))}
     elif op == "scan_all":
@@ -1276,8 +1293,8 @@ def handle(cmd):
         sid = int(cmd["id"])
         d = BUS.dump(sid)
         r = d["raw"]
-        log(f"导出 #{sid}：固件 {r[0]}.{r[1]} 舵机 {r[3]}.{r[4]} END={r[2]} 模式={r[33]} 相位={r[18]} "
-            f"P/D/I={r[21]}/{r[22]}/{r[23]} 偏移={fmt_off(r[31] | r[32] << 8)} 扭矩={r[40]} 锁={r[55]} 应答级别={r[8]}", "寄存器")
+        log(f"Exportação #{sid}: firmware {r[0]}.{r[1]}, servo {r[3]}.{r[4]}, END={r[2]}, modo={r[33]}, fase={r[18]} "
+            f"P/D/I={r[21]}/{r[22]}/{r[23]}, deslocamento={fmt_off(r[31] | r[32] << 8)}, torque={r[40]}, bloqueio={r[55]}, nível de resposta={r[8]}", "Registradores")
         return {"type": "dump", "id": sid, **d}
     elif op == "write_reg":
         sid, addr, size, val = int(cmd["id"]), int(cmd["addr"]), int(cmd.get("size", 1)), int(cmd["value"])
@@ -1294,19 +1311,19 @@ def handle(cmd):
                 BUS.lock(sid)
         new = rd(sid, addr)
         same = new == val & (0xFF if size == 1 else 0xFFFF)
-        log(f"#{sid} 写 {addr}「{name}」{old} → {val}{_ack(err)}，读回 {new}" + ("（解锁写入，已重新加锁）" if unlock else "")
-            + ("" if same else "（读回跟写的不一样：只读？超范围？扭矩开关写 128 这类命令值本来就读不回）"),
-            "寄存器", "info" if same else "warn")
+        log(f"#{sid} gravação {addr} ({name}) {old} → {val}{_ack(err)}, leitura de retorno {new}" + (" (gravado com desbloqueio; bloqueio restaurado)" if unlock else "")
+            + ("" if same else " (leitura diferente do valor gravado: registrador somente leitura, fora da faixa ou valor de comando como 128 na chave de torque)"),
+            "Registradores", "info" if same else "warn")
     elif op == "reboot":
         sid = int(cmd["id"])
         BUS.write_u8(sid, 40, 0)
         BUS.reboot(sid)
-        log(f"#{sid} 重启 0x08（先关了扭矩，约 0.8 s 后回来）", "寄存器")
+        log(f"#{sid} reinicializado com 0x08 (torque desligado; retorno em cerca de 0,8 s)", "Registradores")
     elif op == "calibrate":
         return calibrate_mid_all([int(cmd["id"])], cmd.get("ref") or None)
     elif op == "set_id":
         ok = BUS.set_id(int(cmd["old"]), int(cmd["new"]))
-        log(f"改 ID {cmd['old']} → {cmd['new']}：" + ("新 ID ping 得通" if ok else "新 ID ping 不通"), "寄存器", "info" if ok else "error")
+        log(f"Alteração de ID {cmd['old']} → {cmd['new']}: " + ("PING respondeu no novo ID" if ok else "PING sem resposta no novo ID"), "Registradores", "info" if ok else "error")
         return {"type": "scan", "present": do_scan(IDS)}
     elif op == "timing":
         return {"type": "timing", **do_timing(int(cmd.get("n", 200)))}
@@ -1324,7 +1341,7 @@ def handle(cmd):
     elif op == "reconnect":
         port = str(cmd.get("port") or PORT or "")
         if not port:
-            return {"type": "reconnect", "ok": False, "msg": "先选一个串口"}
+            return {"type": "reconnect", "ok": False, "msg": "Selecione uma porta serial primeiro."}
         r = open_bus(port, int(cmd.get("baud") or BAUD))
         return {"type": "reconnect", **r, "port": PORT, "fake": is_fake(), "present": PRESENT,
                 "ports": list_ports()}
@@ -1335,7 +1352,7 @@ def handle(cmd):
         sid, d = int(cmd["id"]), (-1 if int(cmd["dir"]) < 0 else 1)
         dirs[sid] = d
         save_dirs(dirs)
-        log(f"方向 #{sid} → {d:+d}（已存 directions.json）", "方向")
+        log(f"Direção #{sid} → {d:+d} (salva em directions.json)", "Direções")
         return {"type": "dirs", "dirs": dirs}
     elif op == "save_pose":
         save_pose(str(cmd.get("name") or "pose"))
@@ -1343,12 +1360,12 @@ def handle(cmd):
     elif op == "poses":
         return {"type": "poses", "poses": list_poses()}
     elif op == "page_log":
-        log(str(cmd.get("msg", ""))[:500], str(cmd.get("cat") or "页面"), cmd.get("level") if cmd.get("level") in ("info", "warn", "error") else "info")
+        log(str(cmd.get("msg", ""))[:500], str(cmd.get("cat") or "Página"), cmd.get("level") if cmd.get("level") in ("info", "warn", "error") else "info")
     elif op == "delete_pose":
         delete_pose(str(cmd.get("file") or ""))
         return {"type": "poses", "poses": list_poses()}
     else:
-        log(f"未知指令 {cmd}", "系统", "warn")
+        log(f"Instrução desconhecida: {cmd}", "Sistema", "warn")
     return None
 
 
@@ -1374,7 +1391,7 @@ def read_states_with_imu(ids, service):
         else:
             answered = BUS.ping(imu_bus.IMU_ID) is not None
         if service.probe_result(answered):
-            log(f"ID 200 的 {service.protocol} PING 有应答了，恢复 IMU 轮询", "IMU")
+            log(f"PING do ID 200 pelo protocolo {service.protocol} respondeu; retomando a consulta da IMU.", "IMU")
         with_imu = service.include_in_sync()
     if isinstance(BUS, FakeBus):
         st = BUS.states(servo_ids)
@@ -1407,21 +1424,24 @@ def read_states_with_imu(ids, service):
 
 
 def stream_should_poll():
-    """这一拍要不要读总线。--imu-bus 时没扫到舵机也要读：台架上可能只接了小板（ID 200 不在扫描范围里）。"""
+    """Decide se deve ler o barramento neste ciclo. Com --imu-bus, consulta mesmo sem
+    detectar servos: a bancada pode ter apenas a placa (ID 200 não entra na varredura)."""
     return bool(CLIENTS) and (bool(PRESENT) or imu_backend(IMU_SERVICE) == "bus") \
         and not CALIB_LOCK.locked()
 
 
 async def stream():
-    """按 STREAM_HZ 广播全部舵机状态和新日志。读不到的舵机攒 3 秒报一次，同一个错误 5 秒内只记一次。"""
+    """Transmite estados de todos os servos e novas mensagens de log a STREAM_HZ.
+    Relata servos sem leitura após 3 segundos e registra cada erro no máximo uma vez a cada 5 segundos."""
     sent_n = LOG_N
     miss, miss_t0 = {}, time.monotonic()
     err_last, err_t = "", 0.0
     while True:
         t0 = time.monotonic()
         if stream_should_poll():
-            # 校准期间不抢总线：一次 sync_read 遇上掉包能占几百毫秒，
-            # 正好卡在关扭矩的窗口里，关节就垂下去了
+            # Não disputa o barramento durante a calibração: um sync_read com pacote
+            # perdido pode bloquear por centenas de milissegundos e fazer a junta ceder
+            # justamente enquanto o torque está desligado.
             try:
                 if imu_backend(IMU_SERVICE) == "bus":
                     st = await asyncio.to_thread(read_states_with_imu, PRESENT, IMU_SERVICE)
@@ -1434,12 +1454,12 @@ async def stream():
             except Exception as e:
                 text = f"{type(e).__name__}: {e}"
                 if text != err_last or t0 - err_t > 5:
-                    log(f"刷新状态出错：{text}", "总线", "error", exc=True)
+                    log(f"Falha ao atualizar o estado: {text}", "Barramento", "error", exc=True)
                     err_last, err_t = text, t0
         if t0 - miss_t0 >= 3:
             if miss:
-                log("3 秒内读不到：" + " ".join(f"#{i}×{n}" for i, n in sorted(miss.items()))
-                    + f"（每秒读 {STREAM_HZ} 次；累计超时 {BUS.stats.get('timeout')}、校验错 {BUS.stats.get('bad_checksum')}）", "总线", "warn")
+                log("Sem leitura por 3 segundos: " + " ".join(f"#{i}×{n}" for i, n in sorted(miss.items()))
+                    + f" (consultas por segundo: {STREAM_HZ}; timeouts acumulados: {BUS.stats.get('timeout')}, erros de checksum: {BUS.stats.get('bad_checksum')})", "Barramento", "warn")
             miss, miss_t0 = {}, t0
         if CLIENTS and LOG_N > sent_n:
             items = [e for e in LOG if e["n"] > sent_n]
@@ -1450,12 +1470,12 @@ async def stream():
         await asyncio.sleep(max(0.0, 1.0 / hz - (time.monotonic() - t0)))
 
 
-# 指令 → 日志分类；QUIET 是拖滑块、流式这种高频指令，不逐条记
-OP_CAT = {"goal": "运动", "goals": "运动", "goals_stream": "运动", "stream_end": "运动", "goals_profile": "运动",
-          "release": "运动", "goals_verify": "运动", "torque": "运动", "scan": "总线", "scan_all": "总线", "timing": "总线",
-          "dump": "寄存器", "write_reg": "寄存器", "reboot": "寄存器", "set_id": "寄存器", "calibrate": "校准",
-          "calib_mid_all": "校准", "calib_undo": "校准", "calib_plan": "校准", "sim_imu": "IMU", "set_dir": "方向", "save_pose": "姿态", "poses": "姿态",
-          "delete_pose": "姿态", "log": "系统", "page_log": "页面"}
+# Instrução → categoria do log; QUIET reúne comandos frequentes, como arrastar controles e transmitir dados.
+OP_CAT = {"goal": "Movimento", "goals": "Movimento", "goals_stream": "Movimento", "stream_end": "Movimento", "goals_profile": "Movimento",
+          "release": "Movimento", "goals_verify": "Movimento", "torque": "Movimento", "scan": "Barramento", "scan_all": "Barramento", "timing": "Barramento",
+          "dump": "Registradores", "write_reg": "Registradores", "reboot": "Registradores", "set_id": "Registradores", "calibrate": "Calibração",
+          "calib_mid_all": "Calibração", "calib_undo": "Calibração", "calib_plan": "Calibração", "sim_imu": "IMU", "set_dir": "Direções", "save_pose": "Poses", "poses": "Poses",
+          "delete_pose": "Poses", "log": "Sistema", "page_log": "Página"}
 QUIET = {"goal", "goals", "goals_stream", "stream_end", "poses", "log", "release", "page_log"}
 
 
@@ -1468,23 +1488,24 @@ async def ws_endpoint(ws):
                                    "version": VERSION, "imu_enabled": IMU_SERVICE is not None,
                                    "imu_protocol": getattr(IMU_SERVICE, "protocol", None),
                                    "sim_imu": sim_imu_mode()}))
-    CLIENTS.add(ws)  # hello 必须先于后台广播，前端先收到功能配置
+    CLIENTS.add(ws)  # Envia hello antes da transmissão em segundo plano para que o frontend receba primeiro a configuração.
     try:
         while True:
             cmd = json.loads(await ws.receive_text())
             op = cmd.get("op")
             if op not in QUIET:
-                log(f"收到 {json.dumps(cmd, ensure_ascii=False)[:300]}", OP_CAT.get(op, "系统"), "debug")
+                log(f"Recebido {json.dumps(cmd, ensure_ascii=False)[:300]}", OP_CAT.get(op, "Sistema"), "debug")
             try:
                 reply = await asyncio.to_thread(handle, cmd)
             except Exception as e:
-                msg = f"{op} 出错：{type(e).__name__}: {e}"
-                log(msg, OP_CAT.get(op, "系统"), "error", exc=True)
+                msg = f"Falha em {op}: {type(e).__name__}: {e}"
+                log(msg, OP_CAT.get(op, "Sistema"), "error", exc=True)
                 reply = {"type": "error", "msg": msg}
             if reply:
                 await ws.send_text(json.dumps(reply))
             if op in ("sim_imu", "reconnect", "imu_protocol"):
-                # 成功失败都广播：失败时页面下拉框要退回实际状态；别的标签页也跟着变
+                # Transmite sucesso e falha: em caso de falha, a lista da página volta ao
+                # estado real e as demais abas também são atualizadas.
                 await broadcast(json.dumps(imu_config_frame()))
     except WebSocketDisconnect:
         pass
@@ -1493,7 +1514,8 @@ async def ws_endpoint(ws):
 
 
 class ImuLogHandler(logging.Handler):
-    """J-Link SDK/桥接器也写现有的分类日志，保留一条排查时间线。"""
+    """Também grava mensagens do SDK/bridge J-Link nas categorias de log existentes,
+    mantendo uma linha do tempo de diagnóstico."""
 
     def emit(self, record):
         level = ("error" if record.levelno >= logging.ERROR else
@@ -1503,7 +1525,8 @@ class ImuLogHandler(logging.Handler):
 
 
 def imu_backend(service):
-    """服务用的探针后端名（jlink / swd），拿不到就是 None；只认字符串，免得把怪对象塞进 JSON。"""
+    """Retorna o nome do backend de sonda usado pelo serviço (jlink / swd), ou None.
+    Aceita somente strings para evitar serializar objetos inesperados em JSON."""
     backend = getattr(service, "backend", None)
     return backend if isinstance(backend, str) else None
 
@@ -1515,7 +1538,8 @@ def imu_error_frame(message, backend=None):
 
 
 async def imu_stream(service, startup_error=None):
-    """独立读状态/广播任务：串口超时不会拖慢 IMU，异常也不影响舵机流。"""
+    """Tarefa independente para consultar e transmitir o estado; timeouts seriais não
+    atrasam a IMU e exceções não interrompem o fluxo dos servos."""
     previous = None
     error_last, error_time = "", 0.0
     while True:
@@ -1526,12 +1550,12 @@ async def imu_stream(service, startup_error=None):
             if state != previous:
                 level = "error" if frame.get("status") == "error" else (
                     "info" if frame.get("live") else "warn")
-                log(f"状态 {frame.get('mode')}/{frame.get('status')}：{frame.get('message', '')}", "IMU", level)
+                log(f"Estado {frame.get('mode')}/{frame.get('status')}: {frame.get('message', '')}", "IMU", level)
                 previous = state
             if CLIENTS:
                 await broadcast(json.dumps(frame))
         except Exception as exc:
-            message = f"读取 IMU 状态失败：{type(exc).__name__}: {exc}"
+            message = f"Falha ao ler o estado da IMU: {type(exc).__name__}: {exc}"
             now = time.monotonic()
             if message != error_last or now - error_time >= 5:
                 log(message, "IMU", "error", exc=True)
@@ -1542,7 +1566,8 @@ async def imu_stream(service, startup_error=None):
 
 
 async def imu_stream_dynamic():
-    """模拟模式：虚拟 IMU 可以在页面上随时接上 / 拔掉，推送任务跟着 IMU_SERVICE 换。"""
+    """No modo simulado, é possível conectar/remover a IMU virtual pela página a
+    qualquer momento; a tarefa de transmissão acompanha IMU_SERVICE."""
     current, task = None, None
     try:
         while True:
@@ -1567,7 +1592,7 @@ async def lifespan(app):
     handler = None
     logger = logging.getLogger("imu_bridge")
     old_level, old_propagate = logger.level, logger.propagate
-    # pyOCD 自己的日志很啰嗦，只收警告以上，跟桥接器同一条 IMU 时间线
+    # Os logs do pyOCD são muito detalhados; registra somente avisos e erros na mesma linha do tempo da IMU.
     pyocd_logger = logging.getLogger("pyocd")
     pyocd_old = (pyocd_logger.level, pyocd_logger.propagate)
     pyocd_handler = None
@@ -1585,12 +1610,12 @@ async def lifespan(app):
             startup_error = None
             try:
                 service.start()
-                log("姿态读取已启动（演示数据）" if service.demo else
-                    "SWD 姿态读取已启动（pyOCD）" if imu_backend(service) == "swd" else
-                    "总线 IMU 已启用：ID 200 跟舵机在同一条 sync_read 里读（有网页连着才轮询）"
-                    if imu_backend(service) == "bus" else "J-Link 姿态读取已启动", "IMU")
+                log("Leitura de orientação iniciada (dados de demonstração)" if service.demo else
+                    "Leitura de orientação SWD iniciada (pyOCD)" if imu_backend(service) == "swd" else
+                    "IMU do barramento ativada: ID 200 consultado junto com os servos em sync_read (somente enquanto houver uma página conectada)"
+                    if imu_backend(service) == "bus" else "Leitura de orientação J-Link iniciada", "IMU")
             except Exception as exc:
-                startup_error = f"启动 IMU 失败：{type(exc).__name__}: {exc}"
+                startup_error = f"Falha ao iniciar a IMU: {type(exc).__name__}: {exc}"
                 log(startup_error, "IMU", "error", exc=True)
             tasks.append(asyncio.create_task(imu_stream(service, startup_error)))
         else:
@@ -1603,9 +1628,9 @@ async def lifespan(app):
         if service is not None:
             try:
                 await asyncio.to_thread(service.stop)
-                log("姿态读取已停止，探针连接已释放", "IMU")
+                log("Leitura de orientação interrompida; conexão com a sonda liberada.", "IMU")
             except Exception as exc:
-                log(f"停止 IMU 失败：{type(exc).__name__}: {exc}", "IMU", "error", exc=True)
+                log(f"Falha ao interromper a IMU: {type(exc).__name__}: {exc}", "IMU", "error", exc=True)
             finally:
                 logger.removeHandler(handler)
                 logger.setLevel(old_level)
@@ -1629,34 +1654,35 @@ app = Starlette(routes=[
 
 def parse_args(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", help="串口，如 COM5 / /dev/ttyUSB0 / /dev/ttyS2")
+    ap.add_argument("--port", help="Porta serial, por exemplo COM5 / /dev/ttyUSB0 / /dev/ttyS2")
     ap.add_argument("--baud", type=int, default=1_000_000)
-    ap.add_argument("--ids", default=DEFAULT_IDS, help="要管的 ID，如 20-24,30-34,10-14")
-    ap.add_argument("--fake", action="store_true", help="不接舵机，界面演示")
+    ap.add_argument("--ids", default=DEFAULT_IDS, help="IDs dos servos a controlar, por exemplo 20-24,30-34,10-14")
+    ap.add_argument("--fake", action="store_true", help="Demonstração da interface sem servos conectados")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--http-port", type=int, default=8080)
     imu = ap.add_mutually_exclusive_group()
     imu.add_argument("--imu-jlink", type=Path, metavar="CONFIG.json",
-                     help="用本机配置文件启用 J-Link IMU 读数，数据仍走当前 /ws")
+                     help="Ativa a leitura da IMU J-Link usando um arquivo de configuração local; os dados continuam pelo /ws atual")
     imu.add_argument("--imu-swd", nargs="?", const="auto", metavar="UID",
-                     help="用 pyOCD 经 ST-Link / DAPLink 读 IMU（只插一个调试器时可省略 UID；J-Link 用 --imu-jlink）")
+                     help="Lê a IMU por pyOCD via ST-Link / DAPLink (UID opcional quando só há um depurador conectado; use --imu-jlink para J-Link)")
     imu.add_argument("--imu-bus", action="store_true",
-                     help="从舵机总线读 IMU 小板 ID 200（默认飞特协议；HD-1910 舵机仍走飞特协议）")
-    imu.add_argument("--imu-demo", action="store_true", help="合成 IMU 数据，不连接 J-Link")
+                     help="Lê a placa IMU no ID 200 pelo barramento dos servos (protocolo Feetech padrão; os servos HD-1910 continuam usando Feetech)")
+    imu.add_argument("--imu-demo", action="store_true", help="Gera dados de IMU simulados sem conectar um J-Link")
     ap.add_argument("--imu-bus-protocol", choices=("dxl2", "feetech"), default="feetech",
-                    help="IMU 总线协议；默认 feetech；dxl2 用于兼容卖家提供的 DXL2 固件")
+                    help="Protocolo do barramento da IMU; padrão: feetech; dxl2 oferece compatibilidade com firmware DXL2 fornecido pelo vendedor")
     return ap.parse_args(argv)
 
 
 def create_imu_service(args):
-    # 不启用时不导入桥接器，也不需要 J-Link SDK / pyOCD。
+    # Sem ativação, não importa o bridge nem exige J-Link SDK ou pyOCD.
     imu_swd = getattr(args, "imu_swd", None)
     imu_bus = getattr(args, "imu_bus", False)
     if not args.imu_jlink and not args.imu_demo and imu_swd is None and not imu_bus:
         return None
     if imu_bus:
         from imu_bus import BusImuService
-        # 跟 stream() 实际读总线的频率一致：模拟 30 Hz、真串口 50 Hz（启动时没给串口也按模拟算）
+        # Usa a mesma frequência com que stream() realmente consulta o barramento:
+        # 30 Hz na simulação e 50 Hz na serial real (sem porta inicial, considera simulação).
         return BusImuService(poll_hz=FAKE_STREAM_HZ if args.fake or not args.port else STREAM_HZ,
                              protocol=getattr(args, "imu_bus_protocol", "feetech"))
     from imu_bridge import BridgeService, DEFAULT_FIRMWARE, validate_probe_settings
@@ -1664,38 +1690,38 @@ def create_imu_service(args):
         return BridgeService(demo=True)
     if imu_swd is not None:
         if not imu_swd.strip():
-            raise ValueError("--imu-swd 后面的 UID 不能为空；只插一个调试器时直接写 --imu-swd")
+            raise ValueError("O UID após --imu-swd não pode estar vazio; se houver apenas um depurador conectado, use somente --imu-swd.")
         import importlib.util
         if importlib.util.find_spec("pyocd") is None:
-            raise ValueError("--imu-swd 需要 pyOCD：pip install pyocd")
+            raise ValueError("--imu-swd requer pyOCD: pip install pyocd")
         if not DEFAULT_FIRMWARE.is_file():
-            raise ValueError(f"IMU 固件文件不存在：{DEFAULT_FIRMWARE}")
+            raise ValueError(f"Arquivo de firmware da IMU não encontrado: {DEFAULT_FIRMWARE}")
         return BridgeService(backend="swd", probe_id=imu_swd.strip())
     path = args.imu_jlink.resolve()
     try:
         config = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:
-        raise ValueError(f"IMU 配置读取失败 {path}: {exc}") from exc
+        raise ValueError(f"Falha ao ler a configuração da IMU {path}: {exc}") from exc
     if not isinstance(config, dict):
-        raise ValueError("IMU 配置必须是 JSON 对象")
+        raise ValueError("A configuração da IMU deve ser um objeto JSON.")
     unknown = set(config) - {"dll", "probe_serial", "firmware", "hz", "resume"}
     if unknown:
-        raise ValueError("未知 IMU 配置项：" + ", ".join(sorted(unknown)))
+        raise ValueError("Chaves desconhecidas na configuração da IMU: " + ", ".join(sorted(unknown)))
     if not isinstance(config.get("dll"), str) or not config["dll"].strip():
-        raise ValueError("IMU 配置必须填写本机 JLink_x64.dll 路径 dll")
+        raise ValueError("A configuração da IMU deve informar o caminho local da JLink_x64.dll no campo dll.")
     serial = config.get("probe_serial")
     if isinstance(serial, bool) or not isinstance(serial, int) or serial <= 0:
-        raise ValueError("IMU 配置必须填写自己的正整数 probe_serial，不自动选择探针")
+        raise ValueError("A configuração da IMU deve informar o probe_serial próprio como inteiro positivo; a sonda não é selecionada automaticamente.")
     resume = config.get("resume", False)
     if not isinstance(resume, bool):
-        raise ValueError("IMU 配置 resume 必须是 true 或 false")
+        raise ValueError("O campo resume da configuração da IMU deve ser true ou false.")
     hz = config.get("hz", 20)
     if isinstance(hz, bool) or not isinstance(hz, (int, float)) or not math.isfinite(hz) or not 1 <= hz <= 20:
-        raise ValueError("IMU 配置 hz 必须是 1 到 20 之间的有限数值")
+        raise ValueError("O campo hz da configuração da IMU deve ser um número finito entre 1 e 20.")
 
     def config_path(value):
         if not isinstance(value, str) or not value.strip():
-            raise ValueError("IMU 文件路径必须是非空字符串")
+            raise ValueError("O caminho do arquivo da IMU deve ser uma string não vazia.")
         candidate = Path(value).expanduser()
         return (candidate if candidate.is_absolute() else path.parent / candidate).resolve()
 
@@ -1703,7 +1729,7 @@ def create_imu_service(args):
     dll, serial = validate_probe_settings(dll, serial)
     firmware = config_path(config["firmware"]) if "firmware" in config else DEFAULT_FIRMWARE
     if not firmware.is_file():
-        raise ValueError(f"IMU 固件文件不存在：{firmware}")
+        raise ValueError(f"Arquivo de firmware da IMU não encontrado: {firmware}")
     return BridgeService(dll_path=dll, serial=serial, firmware=firmware, hz=float(hz), resume=resume)
 
 
@@ -1713,17 +1739,17 @@ def main(argv=None):
     try:
         IMU_SERVICE = create_imu_service(a)
     except (ValueError, RuntimeError, OSError) as exc:
-        raise SystemExit(f"IMU 配置错误：{exc}") from exc
+        raise SystemExit(f"Erro na configuração da IMU: {exc}") from exc
     IDS = parse_ids(a.ids)
     BAUD = a.baud
-    log(f"舵机调试台 v{VERSION} 启动，日志写在 {log_path()}", "系统")
+    log(f"Painel de depuração dos servos v{VERSION} iniciado; log em {log_path()}", "Sistema")
     if a.fake or not a.port:
-        fallback_fake("没给 --port（或用了 --fake）" if not a.port else "--fake")
+        fallback_fake("--port não especificado (ou --fake usado)" if not a.port else "--fake")
     elif not open_bus(a.port, a.baud)["ok"]:
-        # 串口打不开（USB 没插、口号变了、被别的程序占着）也要把页面起起来，
-        # 插好以后在页面顶栏选串口点「连接」就行，不用重启服务
-        fallback_fake(f"串口 {a.port} 打不开")
-    print(f"舵机调试台 v{VERSION} · 浏览器开 http://127.0.0.1:{a.http_port}  （局域网用本机 IP）", flush=True)
+        # Mantém a página disponível se a serial não abrir (USB desconectado, porta
+        # alterada ou ocupada). Depois, selecione a porta no topo e clique em Conectar.
+        fallback_fake(f"Não foi possível abrir a porta serial {a.port}")
+    print(f"Painel de depuração dos servos v{VERSION} · abra http://127.0.0.1:{a.http_port} no navegador (use o IP local na rede)", flush=True)
     uvicorn.run(app, host=a.host, port=a.http_port, log_level="warning")
 
 
