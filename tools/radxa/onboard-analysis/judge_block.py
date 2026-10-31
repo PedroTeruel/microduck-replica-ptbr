@@ -1,17 +1,17 @@
-"""上机用的判据脚本（只读、只用标准库）：一段 duck_rec 录像（50 Hz RobotState jsonl）按停止规则出数。
-用法：python judge_block.py 录像.jsonl [起始秒 结束秒]（秒 = 相对文件第一帧的 wall 秒）
+"""Script de critérios para avaliação no robô (somente leitura e biblioteca padrão): aplica as regras de parada a um trecho de gravação duck_rec (RobotState JSONL, 50 Hz).
+Uso: python judge_block.py video.jsonl [segundo_inicial segundo_final] (segundos relativos ao wall do primeiro quadro do arquivo).
 
-10-15 第二版：按真机影子数据和独立审核改的台阶规则，来龙去脉见 docs/HD1910-20261015-IMU乱跳根因与陀螺融合上机.md §5.5。
-台阶 = 用陀螺把上一帧重力外推 20 ms，与本帧差 >5°，只数直立走路帧（policy == walk、未卸力、safety.fallen 假）。
-  发布那一路 = safety.gravity（gyro 模式下就是策略看到的融合姿态），配本帧陀螺（两者都过了三点中值，延迟对齐）。
-  影子那一路 = imu.fusion.fused（chip 模式下的融合原值，没过中值），配下一帧陀螺（录像的陀螺过了中值、晚一帧）。
-每次台阶按它前后 ±2 帧的融合判定分类：
-  硬：判定里有 realign_long / realign_gap / fallback / follow（融合能整步跳的只有这四种）→ 1 次就回 chip，不受任何豁免；
-  软：判定只有 accepted / rejected / slew（这几种融合只做积分或每帧 ≤0.1° 的修正，不可能整步跳）：
-      摔倒上升沿前 1.0 s 内、或上一帧发布倾角 ≥30°（已经在倒、倒地判断还没跟上）→ 豁免，只记下；
-      其余每块 ≥3 次 → 回 chip；1–2 次 → 记下、块后逐个看。
-另列：直立走路帧里出现硬判定的帧（配合块前后计数：realign/fallback 涨了要能在录像里对上倒地后 / HOME 时，对不上按真跳处理）。
-静站：policy == held、未卸力、|ω| < 20°/s 的连续帧按 10 s 分窗，每窗 θ 中位 ≤0.5°、P90 ≤1°（倾斜、推动的帧自然被 |ω| 去掉）。
+Regra de degraus da versão de 10-15, revisada com dados-sombra do robô real e revisão independente; consulte a seção 5.5 do documento de integração da IMU para o histórico.
+Degrau = diferença >5° entre a gravidade deste quadro e a gravidade do quadro anterior extrapolada por 20 ms com o giroscópio. Conta somente quadros de marcha em pé (policy == walk, torque ativo, safety.fallen falso).
+  Caminho publicado = safety.gravity (no modo gyro, é a postura fundida vista pela política), com o giroscópio deste quadro; ambos passam pela mediana de três pontos e têm o atraso alinhado.
+  Caminho-sombra = imu.fusion.fused (valor fundido bruto no modo chip, sem filtro de mediana), com o giroscópio do quadro seguinte (na gravação, o giroscópio filtrado chega um quadro depois).
+Cada degrau é classificado pelas decisões de fusão nos ±2 quadros ao redor:
+  Rígido: inclui realign_long / realign_gap / fallback / follow (somente esses quatro podem saltar um quadro completo na fusão); um único caso exige voltar ao modo chip, sem exceções.
+  Suave: inclui somente accepted / rejected / slew (fazem apenas integração ou correções de até 0,1° por quadro; não podem causar salto de um quadro inteiro):
+      dentro de 1,0 s antes do início de uma queda ou com inclinação publicada no quadro anterior ≥30° (o robô já está tombando, mas a detecção ainda não acompanhou): isento, apenas registrado;
+      caso contrário, 3 ou mais por segmento exigem voltar ao modo chip; 1–2 são registrados e devem ser analisados individualmente após o segmento.
+Também lista quadros em pé e caminhando com decisão rígida (compare as contagens antes/depois do segmento: aumentos de realign/fallback devem corresponder na gravação a uma queda ou ao estado HOME; se não corresponderem, trate como salto real).
+Em repouso: divide quadros contínuos com policy == held, torque ativo e |ω| < 20°/s em janelas de 10 s. Em cada janela, mediana θ ≤0,5° e P90 ≤1° (quadros inclinados ou empurrados são removidos naturalmente pelo limite de |ω|).
 """
 import json, math, sys
 
@@ -50,7 +50,7 @@ for line in open(sys.argv[1], encoding='utf-8'):
     if 'imu' in r and 'safety' in r and 'wall' in r: rows.append(r)
 rows.sort(key=lambda r: r['wall'])
 if not rows:
-    sys.exit('录像里没有状态帧')
+    sys.exit('Nenhum quadro de estado foi encontrado na gravação')
 T0 = rows[0]['wall']
 if len(sys.argv) >= 4:
     a, b = float(sys.argv[2]), float(sys.argv[3]); rows = [r for r in rows if a <= r['wall'] - T0 <= b]
@@ -65,17 +65,17 @@ def verdicts_near(i):
 
 
 def classify(i):
-    """硬 / 豁免 / 软，和说明。"""
+    """rigidez / isenção / suavidade e justificativa."""
     vs = verdicts_near(i)
     if HARD & set(vs):
-        return '硬', vs
+        return 'Rígida', vs
     t = rows[i]['wall']
     nf = min((f - t for f in falls if f >= t), default=None)
     if nf is not None and nf <= PRE_FALL:
-        return '豁免(摔前%.2fs)' % nf, vs
+        return 'Isenta (%.2f s antes da queda)' % nf, vs
     if tilt(rows[i - 1]['safety']['gravity']) >= TILT_EXEMPT:
-        return '豁免(上一帧倾角%.0f°)' % tilt(rows[i - 1]['safety']['gravity']), vs
-    return '软', vs
+        return 'Isenta (inclinação do quadro anterior: %.0f°)' % tilt(rows[i - 1]['safety']['gravity']), vs
+    return 'Suave', vs
 
 
 up_frames, up_time = 0, 0.0
@@ -95,45 +95,45 @@ for i in range(1, len(rows)):
         if e2 > STEP_DEG:
             shadow.append((i, e2))
 
-print(f'帧 {len(rows)}；模式 {sorted(modes)}；直立走路 {up_frames} 帧 / {up_time:.0f} s；摔倒上升沿 {len(falls)} 次：{[round(f - T0, 1) for f in falls]}')
+print(f'Quadros: {len(rows)}; modos: {sorted(modes)}; marcha em pé: {up_frames} quadros / {up_time:.0f} s; início de quedas: {len(falls)} — {[round(f - T0, 1) for f in falls]}')
 
 
 def report(name, steps, judge):
-    counts = {'硬': 0, '软': 0, '豁免': 0}
+    counts = {'Rígida': 0, 'Suave': 0, 'Isenta': 0}
     lines = []
     for i, e in steps:
         cls, vs = classify(i)
-        counts['豁免' if cls.startswith('豁免') else cls] += 1
+        counts['Isenta' if cls.startswith('Isenta') else cls] += 1
         nxt = wdeg(rows[i + 1]) if i + 1 < len(rows) else float('nan')
-        lines.append('   t=%.2f  %.1f°  %s  |ω| %.0f→%.0f°/s  判定±2帧 %s' % (rows[i]['wall'] - T0, e, cls, wdeg(rows[i]), nxt, vs))
-    print(f'{name}：>5° 台阶 {len(steps)} 次 → 硬 {counts["硬"]}、软 {counts["软"]}、豁免 {counts["豁免"]}')
+        lines.append('   t=%.2f  %.1f°  %s  |ω| %.0f→%.0f°/s  decisões em ±2 quadros %s' % (rows[i]['wall'] - T0, e, cls, wdeg(rows[i]), nxt, vs))
+    print(f'{name}: {len(steps)} degraus >5° → rígidos {counts["Rígida"]}, suaves {counts["Suave"]}, isentos {counts["Isenta"]}')
     for l in lines[:30]: print(l)
-    if len(lines) > 30: print('   …（共 %d 条）' % len(lines))
+    if len(lines) > 30: print('   … (%d itens no total)' % len(lines))
     if judge:
-        if counts['硬']:
-            print('   → 回 chip：有硬台阶（融合整步对齐附近的跳）')
-        elif counts['软'] >= SOFT_MAX:
-            print(f'   → 回 chip：软台阶 {counts["软"]} 次 ≥{SOFT_MAX}（判据或轴向有系统性问题）')
-        elif counts['软']:
-            print(f'   → 继续，但块后逐个看这 {counts["软"]} 次')
+        if counts['Rígida']:
+            print('   → Volte ao modo chip: houve degrau rígido (salto de um quadro perto do realinhamento da fusão)')
+        elif counts['Suave'] >= SOFT_MAX:
+            print(f'   → Volte ao modo chip: {counts["Suave"]} degraus suaves ≥{SOFT_MAX} (possível problema sistemático nos critérios ou no eixo)')
+        elif counts['Suave']:
+            print(f'   → Continue, mas analise individualmente estes {counts["Suave"]} casos após o segmento')
         else:
-            print('   → 没触发')
+            print('   → Nenhum critério acionado')
 
 
-report('发布那一路（safety.gravity，策略看到的）', pub, judge='gyro' in modes)
+report('Caminho publicado (safety.gravity, visto pela política)', pub, judge='gyro' in modes)
 if 'chip' in modes:
-    print('   （chip 模式下发布的是芯片姿态，上面只作基线，不触发停止规则）')
-    report('影子那一路（imu.fusion.fused，配下一帧陀螺）', shadow, judge=False)
+    print('   (no modo chip, a postura publicada vem do chip; acima serve apenas de referência e não aciona a regra de parada)')
+    report('Caminho-sombra (imu.fusion.fused, pareado com o giroscópio do próximo quadro)', shadow, judge=False)
 
 hard_frames = [(r['wall'] - T0, fus(r).get('verdict'), up(r)) for r in rows if fus(r).get('verdict') in HARD]
 if hard_frames:
     up_hard = [h for h in hard_frames if h[2]]
-    print(f'硬判定帧（录像每帧只带最后一条报告的判定）：共 {len(hard_frames)} 帧，其中直立走路帧 {len(up_hard)}')
+    print(f'Quadros com decisão rígida (a gravação mantém somente a última decisão reportada por quadro): {len(hard_frames)} no total, {len(up_hard)} durante marcha em pé')
     for t, v, u in hard_frames[:15]:
         after = [round(t - (f - T0), 2) for f in falls if 0 <= t - (f - T0) <= 10]
-        print('   t=%.2f  %s  %s%s' % (t, v, '直立走路' if u else '非直立走路', ('  倒地后 %ss' % after[-1]) if after else ''))
+        print('   t=%.2f  %s  %s%s' % (t, v, 'marcha em pé' if u else 'fora da marcha em pé', ('  %s s após a queda' % after[-1]) if after else ''))
     if up_hard:
-        print('   → 直立走路帧里有硬判定：对照计数和录像，不是倒地后/HOME 时的 → 回 chip')
+        print('   → Há uma decisão rígida durante marcha em pé: confira as contagens e a gravação. Se não ocorreu após uma queda ou em HOME, volte ao modo chip')
 
 vs_all, vs_up = {}, {}
 for r in rows:
@@ -142,9 +142,9 @@ for r in rows:
         vs_all[v] = vs_all.get(v, 0) + 1
         if up(r): vs_up[v] = vs_up.get(v, 0) + 1
 if vs_all:
-    print('判定（全部帧）:', vs_all); print('判定（直立走路帧）:', vs_up)
+    print('Decisões (todos os quadros):', vs_all); print('Decisões (quadros de marcha em pé):', vs_up)
 
-# 静站：held、未卸力、|ω|<20°/s 的连续帧按 10 s 分窗
+# Repouso em pé: divide em janelas de 10 s os quadros contínuos held, com torque ativo e |ω|<20°/s.
 wins, cur = [], []
 for r in rows:
     ok = r['policy'] == 'held' and not r['safety']['limp'] and wdeg(r) < 20 and 'theta_deg' in fus(r)
@@ -168,7 +168,7 @@ if wins:
         worst = (max(worst[0], med), max(worst[1], p90))
         if med > 0.5 or p90 > 1.0: bad.append((round(wv[0]['wall'] - T0, 1), round(med, 3), round(p90, 3)))
     tot = sum(wv[-1]['wall'] - wv[0]['wall'] for wv in wins)
-    print(f'HOME 静站：{len(wins)} 个窗（共 {tot:.0f} s），最差窗 θ 中位 {worst[0]:.3f}°、P90 {worst[1]:.3f}°'
-          + (f'；超标窗 {bad} → 回 chip' if bad else '；都在中位 ≤0.5°、P90 ≤1° 以内'))
+    print(f'Repouso em HOME: {len(wins)} janelas (total de {tot:.0f} s); pior janela: mediana θ {worst[0]:.3f}°, P90 {worst[1]:.3f}°'
+          + (f'; janelas fora do limite {bad} → voltar ao modo chip' if bad else '; todas dentro dos limites de mediana ≤0,5° e P90 ≤1°'))
 else:
-    print('没有 HOME 静站窗（held、未卸力、|ω|<20°/s、≥5 s）')
+    print('Não há janelas de repouso HOME (held, torque ativo, |ω|<20°/s e duração ≥5 s)')
