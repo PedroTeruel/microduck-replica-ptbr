@@ -113,7 +113,7 @@ class FeetechBus:
             self.trace(f"→ #{sid} {INSTR_NAMES.get(instr, hex(instr))} {hexs(pkt)}{note}")
 
     def _read_status(self, expect_id=None):
-        """读一个应答帧，返回 (id, error, params)。"""
+        """Lê um quadro de resposta e retorna (id, error, params)."""
         # Procura FF FF.
         hdr = b""
         deadline = time.monotonic() + self.ser.timeout * 3
