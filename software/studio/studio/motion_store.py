@@ -22,26 +22,26 @@ CLEANUP = (("robot.move", {"vx": 0., "vy": 0., "vyaw": 0.}), ("robot.head", HEAD
 def number(value, lo, hi):
     # Compare integer bounds before float conversion: hostile JSON integers can be enormous.
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not lo <= value <= hi or not math.isfinite(value):
-        raise Refused("动作记录里有越界或非有限数字")
+        raise Refused("O registro de movimento contém um número fora do limite ou não finito.")
     return value
 
 
 def name(value):
     if not isinstance(value, str) or not value.strip() or len(value.strip()) > 32 or any(ord(c) < 32 for c in value):
-        raise Refused("名称要有 1–32 个字符")
+        raise Refused("O nome deve ter de 1 a 32 caracteres.")
     return value.strip()
 
 
 def validate_event(raw):
     if not isinstance(raw, dict) or set(raw) != {"t", "method", "params"}:
-        raise Refused("动作事件字段不对")
+        raise Refused("Campos do evento de movimento inválidos.")
     number(raw["t"], 0, MAX_SECONDS)
     method, p = raw["method"], raw["params"]
     if not isinstance(p, dict):
-        raise Refused("动作参数要是对象")
+        raise Refused("Os parâmetros do movimento devem ser um objeto.")
     if method == "studio.posture":
         if set(p) != {"target"} or p["target"] not in ("sit", "stand"):
-            raise Refused("坐站事件只能包含 sit / stand 目标")
+            raise Refused("Eventos de sentar/levantar só podem ter o destino sit ou stand.")
         return raw
     if method == "robot.move":
         bounds = {"vx": (-.6, .6), "vy": (-.6, .6), "vyaw": (-3., 3.)}
@@ -51,7 +51,7 @@ def validate_event(raw):
         if set(p) == {"active"} and p["active"] is False:
             return raw
         if p.get("active") is not True:
-            raise Refused("身体模式要明确写 active")
+            raise Refused("O modo do corpo deve especificar active explicitamente.")
         bounds = {"z": (-.025, .010), "roll": (-.26, .26), "pitch": (-.26, .26)}
     elif method == "robot.mouth":
         bounds = {"open": (0, 1)}
@@ -60,12 +60,12 @@ def validate_event(raw):
             return raw
         if p.get("tag") == "wheee" and set(p) == {"tag", "hold"} and isinstance(p["hold"], bool):
             return raw
-        raise Refused("不认识的声音事件")
+        raise Refused("Evento de áudio desconhecido.")
     else:
         # Skills need a verified completion/cancellation API before they can be recorded.
-        raise Refused("不认识的动作事件；模型技能尚无完成状态")
+        raise Refused("Evento de movimento desconhecido; habilidades do modelo ainda não têm estado de conclusão.")
     if set(p) != set(bounds) | ({"active"} if method == "robot.pose" else set()):
-        raise Refused("动作参数字段不对")
+        raise Refused("Campos dos parâmetros do movimento inválidos.")
     for key, (lo, hi) in bounds.items():
         number(p[key], lo, hi)
     return raw
@@ -74,32 +74,32 @@ def validate_event(raw):
 def validate_clip(raw):
     keys = {"version", "id", "name", "created", "duration_s", "fingerprint", "events"}
     if not isinstance(raw, dict) or set(raw) != keys or type(raw["version"]) is not int or raw["version"] not in (1, 2):
-        raise Refused("动作记录版本或字段不对")
+        raise Refused("Versão ou campos do registro de movimento inválidos.")
     if not isinstance(raw["id"], str) or not ID.fullmatch(raw["id"]):
-        raise Refused("动作记录编号不对")
+        raise Refused("Identificador do registro de movimento inválido.")
     if not isinstance(raw["fingerprint"], str) or not HASH.fullmatch(raw["fingerprint"]):
-        raise Refused("动作记录缺少模型和配置指纹")
+        raise Refused("O registro de movimento não contém as impressões digitais do modelo e da configuração.")
     name(raw["name"])
     if not isinstance(raw["created"], str) or not 1 <= len(raw["created"]) <= 40:
-        raise Refused("创建时间不对")
+        raise Refused("Horário de criação inválido.")
     duration = number(raw["duration_s"], 0, MAX_SECONDS)
     events = raw["events"]
     if not isinstance(events, list) or not 1 <= len(events) <= MAX_EVENTS:
-        raise Refused("动作事件数量不对（最多 6,000 条）")
+        raise Refused("Número de eventos de movimento inválido (máximo de 6.000).")
     previous = 0.
     for event in events:
         validate_event(event)
         if raw["version"] == 1 and event["method"] == "studio.posture":
-            raise Refused("坐站事件需要 v2 动作记录")
+            raise Refused("Eventos de sentar/levantar exigem um registro de movimento v2.")
         if event["t"] < previous or event["t"] > duration:
-            raise Refused("动作事件时间逆序或超出时长")
+            raise Refused("Os horários dos eventos estão fora de ordem ou excedem a duração.")
         previous = event["t"]
     try:
         payload = json.dumps(raw, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
     except (TypeError, ValueError):
-        raise Refused("动作记录不能编码") from None
+        raise Refused("Não foi possível codificar o registro de movimento.") from None
     if len(payload) > MAX_BYTES:
-        raise Refused("动作记录超过 1 MiB")
+        raise Refused("O registro de movimento excede 1 MiB.")
     return copy.deepcopy(raw)
 
 
@@ -122,17 +122,17 @@ class MotionStore:
         for path in sorted(self.folder.glob("*.json")):
             try:
                 if not ID.fullmatch(path.stem) or path.stat().st_size > MAX_BYTES:
-                    raise Refused("文件名或大小不对")
+                    raise Refused("Nome ou tamanho do arquivo inválido.")
                 with path.open("r", encoding="utf-8") as f:
                     clip = validate_clip(json.load(f, object_pairs_hook=_unique_pairs))
                 if path.stem != clip["id"]:
-                    raise Refused("文件名和记录编号不符")
+                    raise Refused("O nome do arquivo não corresponde ao identificador do registro.")
                 if len(self._clips) < MAX_RECORDINGS:
                     self._clips[clip["id"]] = clip
             except (OSError, ValueError, Refused, RecursionError) as e:
                 self.skipped += 1
                 if log:
-                    log.warn("跳过损坏的网页动作记录", cat="Controle", step=str(path), raw=str(e)[:200])
+                log.warn("Registro de movimento web corrompido ignorado", cat="Controle", step=str(path), raw=str(e)[:200])
 
     def summaries(self):
         with self._lk:
@@ -142,12 +142,12 @@ class MotionStore:
     def get(self, cid):
         with self._lk:
             if not isinstance(cid, str) or cid not in self._clips:
-                raise Refused("找不到这条动作记录")
+                raise Refused("Registro de movimento não encontrado.")
             return copy.deepcopy(self._clips[cid])
 
     def _write(self, clip):
         if self.folder is None:
-            raise Refused("这只鸭子没配 state 目录，存不了")
+            raise Refused("Este robô não tem um diretório state configurado; não é possível salvar.")
         tmp = None
         try:
             self.folder.mkdir(parents=True, exist_ok=True)
@@ -158,7 +158,7 @@ class MotionStore:
                 os.fsync(f.fileno())
             os.replace(tmp, self.folder / (clip["id"] + ".json"))
         except OSError as e:
-            raise Refused(f"动作记录存不进去：{e}") from None
+            raise Refused(f"Não foi possível salvar o registro de movimento: {e}") from None
         finally:
             if tmp and os.path.exists(tmp):
                 os.unlink(tmp)
@@ -167,7 +167,7 @@ class MotionStore:
         clip = validate_clip(raw)
         with self._lk:
             if clip["id"] not in self._clips and len(self._clips) >= MAX_RECORDINGS:
-                raise Refused("最多保存 20 条动作记录：先删一条")
+                raise Refused("É possível salvar no máximo 20 registros de movimento. Exclua um registro primeiro.")
             self._write(clip)
             self._clips[clip["id"]] = clip
 
@@ -179,9 +179,9 @@ class MotionStore:
     def delete(self, cid):
         with self._lk:
             if not isinstance(cid, str) or cid not in self._clips:
-                raise Refused("找不到这条动作记录")
+                raise Refused("Registro de movimento não encontrado.")
             try:
                 (self.folder / (cid + ".json")).unlink(missing_ok=True)
             except OSError as e:
-                raise Refused(f"动作记录删不掉：{e}") from None
+                raise Refused(f"Não foi possível excluir o registro de movimento: {e}") from None
             del self._clips[cid]
