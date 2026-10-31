@@ -1,67 +1,67 @@
-# 动作实验室验收 · 2026-10-23
+# Validação do Laboratório de Ações · 23/10/2026
 
-首版已在现有训练台接入实验性的 HD1910 单脚平衡：选择支撑脚、抬脚高度和保持时间，使用原有训练、暂停/继续、检查点、评估和导出流程。后续按用户要求增加独立的 `#/actions` 动作实验室，收录当前三个内置配方。社区发布与自动安装尚未实现。
+A primeira versão integrou ao painel de treinamento existente um experimento de equilíbrio em uma perna para HD1910. O usuário escolhe a perna de apoio, a altura do pé levantado e o tempo de sustentação e usa o fluxo existente de treinamento, pausa/retomada, checkpoints, avaliação e exportação. A pedido do usuário, depois foi criada a página independente `#/actions`, com as três receitas internas atuais. Publicação pela comunidade e instalação automática ainda não existem.
 
-## 独立动作库Página验收
+## Validação da biblioteca independente de ações
 
-目录元数据提交 `6ca4d5f`、界面提交 `109083a` 已通过 `a8e498f` 合入 `studio-dev`，入口仍为原来的 8094 服务。新增内容只涉及目录、导航和文档，没有改变已验证的训练引擎。
+Os metadados do catálogo, commit `6ca4d5f`, e a interface, commit `109083a`, foram integrados a `studio-dev` por `a8e498f`. A página continua no serviço existente, na porta 8094. As mudanças adicionaram somente catálogo, navegação e documentação; não alteraram o mecanismo de treinamento já validado.
 
-- Node 状态 e ParâmetrosTesteAtualização为 **21/21**；后端动作配方回归 **13/13**。
-- Edge / Playwright 分别在隔离演示Serviçoe原真实ServiçoVerificação：工作台入口、Esquerdo侧导航、直接访问、刷新、浏览器前进/后退，e分类、多关键词搜索、无Resultado清除。
-- 三个配方分别ValidaçãoModelo、文字e单脚目标示意。Diretório本身不创建 WebGL 视图，打开预览只加载一个视图，关闭后释放；关闭、Escape、Tab 焦点循环 e 焦点恢复por meio de。
-- 卡片e详情入口均打开正确配方 de 训练设置，默认短试跑。整个浏览 e 选择验收未发送任何创建任务 de  POST Por favor求。
-- Verificação 1440、768、390、320 像素宽度。手机五项导航无横向溢出，预览e训练抽屉 de 底部操作可见。几何断言等待抽屉入场动画结束；截图已人工Verificação。
-- 原服务确认 GPU 环境就绪、没有活动任务；旧平地实验 `caa6a1c5de10` 与单脚实验 `a930fbbab951` 保留，单脚结果仍为 0/8，实际视频可以播放。页面异常和失败资源均为零。
-- 独立代码审查无剩余 P1/P2。此次没有重复Inicialização GPU 训练，也未新增Comunidade在线发布功能。
+- Os testes Node de estado e atualização de parâmetros passaram: **21/21**. Os testes de regressão das receitas no backend passaram: **13/13**.
+- Edge/Playwright verificaram separadamente o serviço de demonstração isolado e o serviço real: entrada pela bancada, navegação lateral, acesso direto, atualização da página, voltar/avançar no navegador, categorias, busca por vários termos e limpeza quando não há resultados.
+- As três receitas validam prévias de modelo, texto e meta de equilíbrio em uma perna. O catálogo não cria uma visualização WebGL por conta própria: abrir a prévia carrega apenas uma visualização e fechá-la libera os recursos. Fechar, usar Escape, ciclo de foco por Tab e restauração do foco passaram.
+- Os cartões e detalhes abrem a configuração de treinamento da receita correta, com o teste curto como padrão. A navegação e a seleção não enviaram nenhuma requisição POST para criar tarefas.
+- Verificação em larguras de 1440, 768, 390 e 320 px. A navegação móvel com cinco itens não transbordou horizontalmente; os controles inferiores das gavetas de prévia e treinamento permaneceram visíveis. As verificações geométricas aguardaram o fim da animação de entrada; as capturas de tela foram conferidas manualmente.
+- O serviço original estava com GPU pronta e sem tarefas ativas. O experimento antigo de terreno plano `caa6a1c5de10` e o experimento de uma perna `a930fbbab951` foram preservados. O resultado do equilíbrio continuou em 0/8 e o vídeo pôde ser reproduzido. Não houve erros de página nem recursos com falha.
+- A revisão de código independente não encontrou problemas restantes P1/P2. Não foi iniciado outro treinamento na GPU e não foi adicionada publicação online pela comunidade.
 
-证据位于外层 `本地记录/training-action-lab-20261023/catalog-browser.mjs`、`catalog-validation/` 与 `catalog-validation-stable/`，含报告和桌面、手机截图。收录流程见 [贡献配方](recipe-contribution.md)。
+As evidências estão no diretório externo `本地记录/training-action-lab-20261023/catalog-browser.mjs`, em `catalog-validation/` e `catalog-validation-stable/`, com relatórios e capturas para desktop e celular. O processo de inclusão está descrito em [Como adicionar uma receita](recipe-contribution.md).
 
-## Validação范围
+## Escopo da validação
 
-- Windows 后端 73 项：70 por meio de、3 项 Linux 专属跳过；WSL 后端 73/73 por meio de。
-- Node 状态 e ParâmetrosTeste 18/18 por meio de。
-- 引擎Parâmetros、Configuração、脚底几何、HD1910  e  NaN 回归 46/46 por meio de。
-- 真正 CUDA  de  4 环境、30 步Testepor meio de：Direito脚Comando、61 维 actor、14 维动作、50 Hz、critic/奖励有限、局部重置正常。
-- Edge / Playwright 在 1440  e  390 宽度Verificação目标编辑、厘米换算、配方独立草稿、复制、变参后短试跑门禁、演示评估标识e实际回放。无Página异常、横向溢出。
-- 独立规格 e 代码审查发现评估初始化随机种子问题，已修复并复测；没有剩余 P1/P2。
+- Backend Windows: 73 testes, 70 aprovados e 3 testes exclusivos de Linux ignorados; backend WSL: 73/73 aprovados.
+- Testes Node de estado e parâmetros: 18/18 aprovados.
+- Regressões de parâmetros do mecanismo, configuração, geometria da sola, HD1910 e NaN: 46/46 aprovadas.
+- Teste real com CUDA, 4 ambientes e 30 passos: comando para a perna direita, ator de 61 dimensões, ação de 14 dimensões, 50 Hz, critic/recompensa finitos e reinicialização parcial correta.
+- Edge/Playwright, em 1440 e 390 px: edição da meta, conversão de centímetros, rascunhos separados por receita, cópia, bloqueio do teste curto após mudar parâmetros, identificação de avaliação demonstrativa e reprodução real. Sem erros de página nem transbordamento horizontal.
+- A revisão independente da especificação e do código encontrou um problema na semente aleatória da inicialização da avaliação; ele foi corrigido e testado novamente. Não restaram problemas P1/P2.
 
-CPU Teste有原Configuração de  tuple/list 类型Aviso，GPU Teste有 actuator 名称也匹配 site  de 提示，均未阻止执行。ONNX Runtime  de  CPU 推理会打印 WSL GPU 设备探测Aviso，CPU 推理实际Concluído；这些提示不能作为 GPU 训练Falha de 证据。
+O teste em CPU emitiu um aviso existente sobre tipos tuple/list na configuração. O teste na GPU avisou que o nome do actuator também correspondia ao site. Nenhum dos avisos impediu a execução. A inferência em CPU do ONNX Runtime exibiu um aviso de detecção de dispositivo GPU do WSL, mas a inferência em CPU terminou normalmente. Esses avisos não demonstram falha do treinamento na GPU.
 
-## 真实训练 e 产物
+## Treinamento real e artefatos
 
-Hardware为 RTX 5060 Ti 16 GB、WSL2 Ubuntu 22.04，torch 2.9.1+cu128、mjlab 1.3.0、rsl-rl-lib 5.0.1。没有改动依赖锁Arquivo。
+Hardware: RTX 5060 Ti de 16 GB e WSL2 Ubuntu 22.04; torch 2.9.1+cu128, mjlab 1.3.0 e rsl-rl-lib 5.0.1. Os arquivos de lock das dependências não foram alterados.
 
-| 实验 | 目标 | Resultado |
+| Experimento | Meta | Resultado |
 | --- | --- | --- |
-| `1eddca56e439`，隔离服务 | 左脚支撑、抬脚 1 cm、保持 3 秒 | 64 环境 × 5 轮，7,680 采样，5 个 PT；实际评估和 ONNX 导出完成 |
-| `a930fbbab951`，原 8094 服务 | 右脚支撑、抬脚 0.5 cm、保持 1 秒 | 64 环境 × 5 轮，7,680 采样，含启动 28.9 秒，5 个 PT；实际评估、近景视频与导出完成 |
+| `1eddca56e439`, serviço isolado | Apoio na perna esquerda, pé elevado 1 cm, sustentação de 3 s | 64 ambientes × 5 iterações, 7.680 amostras, 5 arquivos PT; avaliação real e exportação ONNX concluídas |
+| `a930fbbab951`, serviço original 8094 | Apoio na perna direita, pé elevado 0,5 cm, sustentação de 1 s | 64 ambientes × 5 iterações, 7.680 amostras, 28,9 s incluindo inicialização, 5 arquivos PT; avaliação real, vídeo em close e exportação concluídos |
 
-正式入口实验 `a930fbbab951` 的最终验收：
+Validação final do experimento pela interface oficial `a930fbbab951`:
 
-- 8 次尝试均提前触发物理Falha，**Sucesso 0/8**，实际总计 250 步。每次预算包含Completo 4.5 秒周期；Falha会提前结束，并不是把每次固定裁成短视频。
-- 视频 960×540、50 FPS、250 帧、5 秒，Preservado全部 8 次尝试；浏览器实际播放Sucesso。镜头从默认 3 m 调整为 0.7 m，能清楚看到Pé。
-- 初始化 seed 42；逐次 reset seed 42–49。修正后 de 两次评估，各次终止步数相同，平均奖励只存在约 3.43e-8 浮点差。8 次共享一个初始化电压/电阻样本，不代表覆盖全部Hardware随机化分布。
-- Verificação点 76 个张量全部有限，actor 权重e观测归一化严格加载Sucesso。
-- ONNX checker、32 组零/随机输入 CPU 推理通过，输入 61 维、输出 14 维；PT/ONNX 最大绝对差 `4.0531158447265625e-6`，通过 `atol=1e-5, rtol=1e-4`。
-- 保存 de 环境 YAML、run.skill、skill.json、评估摘要、ONNX Comando元Dadose导出 ZIP  de 目标完全一致。
-- 导出契约明确标记 `runtime_adapter_required=true`、`hardware_validated=false`。输入输出维度相同不意味着可以直接用于原行走部署端。
+- As 8 tentativas terminaram antes do prazo por falha física: **0/8 sucessos**, 250 passos no total. O orçamento de cada tentativa incluía o ciclo completo de 4,5 s; as falhas encerraram a tentativa mais cedo, não houve corte arbitrário dos vídeos.
+- Vídeo de 960×540, 50 FPS, 250 quadros e 5 s, preservando as oito tentativas. O navegador reproduziu o vídeo. A câmera foi ajustada de 3 m para 0,7 m, deixando o pé claramente visível.
+- Semente de inicialização 42 e sementes de reset de 42 a 49. Após a correção, duas avaliações tiveram os mesmos passos de término em cada tentativa; a diferença média de recompensa foi de aproximadamente 3,43e-8, decorrente de ponto flutuante. As oito tentativas compartilharam uma amostra inicial de tensão/resistência e não cobrem toda a distribuição de randomização do hardware.
+- Os 76 tensores do checkpoint eram finitos; os pesos do ator e a normalização das observações foram carregados corretamente.
+- Checker ONNX e inferência em CPU com 32 conjuntos de entradas zero/aleatórias passaram. Entrada de 61 dimensões, saída de 14; diferença absoluta máxima entre PT e ONNX de `4.0531158447265625e-6`, dentro de `atol=1e-5, rtol=1e-4`.
+- O YAML do ambiente, `run.skill`, `skill.json`, resumo de avaliação e os metadados de comando ONNX no ZIP de exportação preservaram a mesma meta.
+- O contrato de exportação marca explicitamente `runtime_adapter_required=true` e `hardware_validated=false`. Ter as mesmas dimensões de entrada e saída não significa que o artefato possa ser usado diretamente pelo runtime de caminhada original.
 
-最终代表产物 SHA-256：
+Hashes SHA-256 dos artefatos representativos:
 
-- `model_4.pt`：`b785059649269a9f18065e18050122a3acd571d06f5a96b387d8883cffab3b1e`
-- `policy.onnx`：`2076ce787aaf20fc1b9c3dd83eba229d3d6dae09e6471739e7701c5b72e3c878`
-- `rl-video-step-0.mp4`：`f547716356ba95f66bb76bef357277fda04151fdc054ab8a3691d3d0a90d8da6`
+- `model_4.pt`: `b785059649269a9f18065e18050122a3acd571d06f5a96b387d8883cffab3b1e`
+- `policy.onnx`: `2076ce787aaf20fc1b9c3dd83eba229d3d6dae09e6471739e7701c5b72e3c878`
+- `rl-video-step-0.mp4`: `f547716356ba95f66bb76bef357277fda04151fdc054ab8a3691d3d0a90d8da6`
 
-## 集成 e 证据
+## Integração e evidências
 
-在独立工作区开发，从 `9d0fe05` 开始；引擎 `2e5a3f1`、启动随机种子修复 `9261167`、近景镜头修复 `a168cc2` 已合入 `studio-dev`。同时保留了中控状态条的其他提交和 `software/studio/docs/` 未跟踪文件。仅在原服务没有活动任务时重启，继续使用原状态目录，旧行走实验 `caa6a1c5de10` 可读取。临时 8095/8096 服务已结束，用户继续使用 8094。
+O desenvolvimento ocorreu em um espaço de trabalho separado, iniciado em `9d0fe05`. O mecanismo `2e5a3f1`, a correção da semente aleatória de inicialização `9261167` e o ajuste de câmera em close `a168cc2` foram integrados a `studio-dev`. Outros commits da barra de estado do controlador e arquivos não rastreados em `software/studio/docs/` também foram preservados. O serviço original só foi reiniciado sem tarefas ativas; o diretório de estado foi mantido e o experimento de caminhada antigo `caa6a1c5de10` continuou acessível. Os serviços temporários 8095/8096 foram encerrados; o usuário continuou usando 8094.
 
-外层 `本地记录/training-action-lab-20261023/` 保存浏览器脚本、运行日志、截图及隔离验证；`stable-validation/` 保存正式入口的检查脚本、产物报告与最终截图。真实 run.json/产物仍保存在原 `本地记录/training-local-20261023/state/runs/a930fbbab951/`。模型和视频没有加入 Git。
+O diretório externo `本地记录/training-action-lab-20261023/` contém scripts do navegador, logs, capturas e validação isolada. `stable-validation/` contém scripts de verificação da interface oficial, relatórios de artefatos e capturas finais. O `run.json` real e os artefatos continuam em `本地记录/training-local-20261023/state/runs/a930fbbab951/`. Modelos e vídeos não foram incluídos no Git.
 
-Windows worktree  de  Git Caminho不能由 WSL Git 直接解析，Execução记录 git_commit 仍可能为 null；FonteArquivo SHA-256 Preservado。新记录已经把实际InstalaçãoVersãoe锁Arquivo em  de 平台候选Versão分开保存，避免把 cu129 锁Arquivo候选写成实际InstalaçãoVersão。
+O caminho Git do worktree Windows não pode ser resolvido diretamente pelo Git no WSL; por isso, `git_commit` pode continuar nulo no registro da execução. Os hashes SHA-256 dos arquivos de origem foram preservados. O registro separa as versões realmente instaladas do arquivo de lock de candidatos multiplataforma, para não indicar a versão candidata cu129 como instalada de fato.
 
-## 结论边界
+## Limites das conclusões
 
-本轮证明可Configuração目标贯通真实训练、保存、Completo周期尝试、实际回放 e 导出。**没有证明策略已经学会单脚平衡**。Modelo几何可达到 5–20 mm 抬脚，但未证明可靠静态平衡；短训练Falha被如实展示。
+Esta rodada demonstra que a meta passou pelo treinamento real, salvamento, tentativas do ciclo completo, reprodução e exportação. **Ela não demonstra que a política aprendeu o equilíbrio em uma perna.** A geometria do modelo permite elevar o pé entre 5 e 20 mm, mas não comprova equilíbrio estático confiável. As falhas do treinamento curto foram apresentadas sem ocultação.
 
-长训练收敛、新任务 de 真实长训暂停/恢复、云平台e真机部署仍需分别Validação。现有暂停/恢复回归在ServiçoTeste em por meio de，不应表述为Concluído了这些额外实测。跳跃、精准转圈、视频模仿 e Comunidade配方发布仍不在Atual可Execução范围。
+Convergência em treinamento longo, pausa/retomada durante um treinamento longo real da nova tarefa, uso em plataforma de nuvem e implantação em robô físico precisam de validações próprias. Os testes existentes de pausa/retomada foram feitos no serviço de teste e não devem ser descritos como medições reais adicionais. Saltos, giros precisos, imitação por vídeo e publicação de receitas da comunidade ainda não fazem parte do que está disponível.
