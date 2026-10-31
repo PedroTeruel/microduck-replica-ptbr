@@ -1,239 +1,237 @@
 # Microduck Studio
 
-装在鸭子上的网页中控。电脑或手机浏览器打开 `http://<鸭子 IP>:8000/` 就能看鸭子现在的状态、一键卸力，也能站立/走路、配对蓝牙手柄（走官方 `robotctl pad pair`）、标定舵机、校准 IMU 方向、把这两样和方向一次写进主程序，按「上手清单」做装机检查。鸭子开热点等配网时，还能用手机选家里的 WiFi、填密码。
+Painel de controle web instalado no robô. Abra `http://<IP do robô>:8000/` no navegador do computador ou celular para ver o estado atual, aliviar o torque com um toque, colocar o robô em pé ou fazê-lo andar, parear um controle Bluetooth (usando o comando oficial `robotctl pad pair`), calibrar os servos e a orientação da IMU, gravar esses dados no programa principal e seguir a lista de primeiros passos. Enquanto o robô estiver com o ponto de acesso ativo aguardando a configuração da rede, também é possível escolher o Wi-Fi da casa e informar a senha pelo celular.
 
-## 它做什么、不做什么
+## O que o Studio faz e o que não faz
 
-- 平时跟鸭子主程序 robotd 说话（`/run/robotd.sock`，接口 v40）；舵机页要直接调舵机，先让 robotd 交出总线，用完再交还。
-- PáginaSuperior de 一切状态都来自 robotd  de 回读：比如「已卸力 ✓」要等 busStatus 里扭矩确认关了才显示，不是「按过了」就算。
-- 停掉 Studio 不影响鸭子；停掉 robotd **不会**让Servo卸力（Servo保持最后 de 指令），Página会提示。
-- **Studio 退出不卸力**：Servo页 de 总线会话开着时 Studio 退出（重启、升级），只关串口，保持着 de Servo照样保持。
-  开总线时在 state 目录写 `servo-session.json`（串口、开始时间、谁开的），点「交还主程序」成功才删；Studio 起来时见到它、
-  robotd 又不在，就自动重新接管总线（只读打开，不改扭矩），每一页顶Superior de 提示条照旧；接管不Superior，提示条写
-  「Superior次退出时可能还有Servo保持着，去Servo页接管后才能卸力」，顶Superior de 卸力按钮带你去Servo页。robotd 在：它起来时已经全部松开，删掉标记。
-- Servo会话期间每 5 秒看一眼 robotd  de  socket：被手动起来了（它会把Servo全部松开、跟 Studio 抢串口）就记错误、Studio 关总线（不写Servo），
-  提示条变红。要回主程序，点「交还主程序」，别手动 `systemctl start robotd`。
+- A comunicação normal com o programa principal `robotd` usa `/run/robotd.sock` (protocolo v40). Para controlar os servos diretamente na página correspondente, o `robotd` precisa liberar o barramento; ao terminar, o Studio o devolve.
+- Todo estado exibido pela página vem de uma leitura de retorno do `robotd`. Por exemplo, “torque aliviado ✓” só aparece depois que `busStatus` confirma que o torque está desligado; clicar no botão não basta.
+- Encerrar o Studio não afeta o robô. Encerrar o `robotd` **não** alivia o torque: os servos mantêm o último comando, e a página informa essa condição.
+- **Encerrar o Studio não alivia o torque.** Se o Studio for encerrado, reiniciado ou atualizado enquanto a sessão do barramento estiver aberta, ele fecha apenas a porta serial; os servos continuam mantendo o torque. Ao abrir o barramento, o Studio grava `servo-session.json` no diretório de estado, com a porta serial, o horário de início e quem abriu a sessão. O arquivo só é removido depois que “Devolver ao programa principal” termina com sucesso. Se o Studio iniciar e encontrar esse arquivo, mas o `robotd` não estiver ativo, ele retoma o barramento em modo somente leitura, sem alterar o torque, e mantém o aviso no topo das páginas. O aviso explica que ainda pode haver servos mantendo torque da sessão anterior e orienta a retomar o controle na página Servo antes de aliviar o torque; o botão de alívio também leva a essa página. Se o `robotd` já estiver ativo, ele já terá liberado todos os servos, então o marcador é removido.
+- Durante uma sessão com os servos, o Studio verifica a cada 5 segundos o socket do `robotd`. Se alguém iniciar o serviço manualmente, ele libera os servos e disputa a porta serial; o Studio registra o conflito, fecha o barramento sem enviar comandos aos servos e exibe um aviso vermelho. Para devolver o controle ao programa principal, use “Devolver ao programa principal”; não execute `systemctl start robotd` manualmente.
 
 ## Diretório
 
 ```
-run.py              启动入口（python3 -I run.py …）：把 deps/ 放进搜索路径再进 studio
-run_tests.py        跑全部测试
+run.py              Inicialização (`python3 -I run.py …`): adiciona `deps/` ao caminho de busca e inicia o Studio
+run_tests.py        Executa todos os testes
 studio/
-  log.py            日志：分类、分级、毫秒时间、去重、脱敏、按天滚动；命令记「发出 → 回执 · 耗时」
-  auth.py           管理员密码（scrypt）、登录会话、失败退避、Host/Origin 校验
-  rpc.py            robotd/configd 的 JSON-RPC 连接（一条连接一次一个请求）
-  robotd.py         连接：轮询 / 实时状态流 / 命令 / configd 各一条常驻；卸力每次新开一条（robotd 重启后不会撞上死连接）
-  estop.py          卸力状态机：ready → pending → confirmed / unavailable；只认「卸力回执之后才发出的」回读
-  state.py          把原始数据汇总成推给页面的状态（姿势、电量、舵机、IMU、手柄、待办、配网）
-  models.py         模型库、默认恢复、实际切换回读、手柄改键
-  model_package.py  模型部署包解析与 robotd 无硬件预检
-  sensors.py        摄像头来源配置与 ToF 按需快照（独立于运动控制）
-  net.py            配网：读 netcheck 的 net.json、configd 的 net.status / scan / connect / forget、开关热点
-  app.py            网页服务：静态文件、登录、日志、诊断包、WebSocket
-web/                页面（Preact + htm，three.js 画 3D 鸭子；全部本地文件，不走 CDN；wifi.js 是连 WiFi 卡片和设置；
-                    probe.svg 是连 WiFi 以后找鸭子新地址用的小图）
-deps/               钉死版本的 Python 依赖（starlette、uvicorn 等，见 deps/VERSIONS.txt）
+  log.py            Registros: categorias, níveis, horário em milissegundos, deduplicação, ocultação de dados sensíveis e rotação diária; comandos registram envio, resposta e duração
+  auth.py           Senha de administrador (scrypt), sessão de login, espera progressiva após falhas e validação de Host/Origin
+  rpc.py            Conexão JSON-RPC com `robotd` e `configd` (uma solicitação por conexão)
+  robotd.py         Conexões persistentes separadas para consulta periódica, fluxo de estado, comandos e `configd`; o alívio de torque abre uma conexão nova para evitar conexões obsoletas após reiniciar o `robotd`
+  estop.py          Máquina de estados do alívio de torque: `ready` → `pending` → `confirmed` / `unavailable`; aceita apenas leituras solicitadas depois da resposta ao comando de alívio
+  state.py          Converte dados brutos no estado enviado à página: postura, bateria, servos, IMU, controle, tarefas pendentes e rede
+  models.py         Biblioteca de modelos, restauração do padrão, confirmação da troca efetiva e remapeamento dos botões do controle
+  model_package.py  Leitura de pacotes de implantação de modelos e verificação prévia do `robotd` sem hardware
+  sensors.py        Configuração da origem da câmera e snapshots sob demanda do ToF, independentes do controle de movimento
+  net.py            Configuração de rede: lê o `net.json` do netcheck e usa `net.status`, `scan`, `connect` e `forget` do configd para gerenciar redes e o ponto de acesso
+  app.py            Servidor web: arquivos estáticos, login, registros, pacote de diagnóstico e WebSocket
+web/                Interface (Preact + htm; renderiza o robô 3D com three.js; arquivos locais, sem CDN; `wifi.js` implementa o cartão e as configurações de Wi-Fi;
+                    `probe.svg` é usado para localizar o novo endereço do robô depois da conexão ao Wi-Fi)
+deps/               Dependências Python com versões fixas (starlette, uvicorn etc.; consulte `deps/VERSIONS.txt`)
 dev/
-  record_robotd.py  在鸭子上只读录一份 robotd 的真实回包（给假 robotd 和测试用）
-  fake_robotd.py    假 robotd + 假 configd：回放录的数据，电脑上不接鸭子也能跑
-tests/              单元测试 + 真机录的数据 fixtures/now-20261018.jsonl
+  record_robotd.py  Grava somente leitura respostas reais do `robotd` no robô, para uso com o `fake_robotd` e nos testes
+  fake_robotd.py    Simula `robotd` e `configd`, reproduzindo os dados gravados para executar no computador sem o robô
+tests/              Testes unitários e dados gravados no robô em `fixtures/now-20261018.jsonl`
 ```
 
-## 在电脑Superior跑（不接鸭子）
+## Executar no computador (sem conectar o robô)
 
-需要 Python 3.13（跟板子一样；Windows 上是 `py -3.13`）。
+É necessário ter Python 3.13, a mesma versão usada na placa. No Windows, use `py -3.13`.
 
 ```bash
 py -3.13 -I dev/fake_robotd.py --fixture tests/fixtures/now-20261018.jsonl \
-    --net-mode hotspot --net-state-file ./state-dev/net.json   # 假 robotd + 假热点配网，听 17001/17002
+    --net-mode hotspot --net-state-file ./state-dev/net.json   # robotd e ponto de acesso simulados; escuta nas portas 17001/17002
 py -3.13 -I run.py --listen 127.0.0.1:18080 --robotd tcp:127.0.0.1:17001 --configd tcp:127.0.0.1:17002 \
     --net-state ./state-dev/net.json --dev-autologin --state-dir ./state-dev --log-dir ./logs-dev
 ```
 
-浏览器开 `http://127.0.0.1:18080/`。`--dev-autologin` 只认本机请求、只能配 `127.0.0.1`，方便截图测试；鸭子上不要用。
-假 robotd 可以用 `--mode commissioning|motion` 选主程序模式（出厂场景是 `--mode commissioning --calib factory`），用 `--posture limp|policy|commissioning|starting` 换姿势；`--net-mode hotspot|wifi|none` 写一份假 net.json。
-标定模式照 fork 的真实行为：起来后先回启动报告（`phase=configuring_bus`），第一次读成功才回实时快照；`--commissioning-stuck-status` 模拟旧 fork（启动报告永远不清，Studio 一直看到「启动中」）。
-不给 `--net-state` 时读 `/run/microduck/net.json`；文件不在（电脑上、老镜像）就不显示 WiFi。不给 `--duck-label` 时，界面用主机名（鸭子上是 `duck-xxxx`）。
+Abra `http://127.0.0.1:18080/` no navegador. `--dev-autologin` aceita apenas solicitações locais e só pode ser usado com `127.0.0.1`; serve para testes de captura de tela e não deve ser ativado no robô.
+No `fake_robotd`, `--mode commissioning|motion` seleciona o modo do programa principal (para simular a configuração de fábrica, use `--mode commissioning --calib factory`), e `--posture limp|policy|commissioning|starting` altera a postura. `--net-mode hotspot|wifi|none` grava um `net.json` simulado.
+O modo de calibração simula o comportamento real do fork: primeiro retorna o relatório de inicialização (`phase=configuring_bus`) e, após a primeira leitura bem-sucedida, passa a retornar snapshots de estado em tempo real. `--commissioning-stuck-status` simula versões antigas do fork, que nunca limpam o relatório e deixam o Studio indicar “iniciando” continuamente.
+Sem `--net-state`, o programa lê `/run/microduck/net.json`; se o arquivo não existir (por exemplo, no computador ou em uma imagem antiga), a seção Wi-Fi não será exibida. Sem `--duck-label`, a interface usa o nome do host (no robô, `duck-xxxx`).
 
-Windows 的 Python 没有 Unix socket，所以地址写成 `tcp:主机:端口`；鸭子上是 `unix:/run/robotd.sock`（默认）。
+O Python no Windows não oferece sockets Unix; por isso, informe o endereço como `tcp:host:porta`. No robô, o padrão é `unix:/run/robotd.sock`.
 
-## 摄像头e ToF
+## Câmera e ToF
 
-Esquerdo侧「手柄」之后是「摄像头」「ToF」两个独立Página，手机底栏也有入口。
+Depois de “Controle”, na barra lateral esquerda, há páginas independentes para “Câmera” e “ToF”; no celular, elas também aparecem na barra inferior.
 
-总览／手柄页的状态栏依次显示电池、舵机、IMU、摄像头、ToF、手柄、主板。摄像头仅通过本机 mediad socket 的只读 `hello` 判断“服务在线”，不把配置文件或测试画面当作真实摄像头已连接；点开页面才能查看实际视频。ToF 根据新帧显示在线，fake/sim 明确标为模拟数据。状态栏每10秒检查一次，切页或后台取消，过期状态清空；检查不会请求视频帧、建立 WebRTC 或启动系统服务。
+As páginas Visão geral e Controle mostram, nesta ordem, os estados da bateria, dos servos, da IMU, da câmera, do ToF, do controle e da placa principal. Para a câmera, o Studio verifica se o serviço está ativo por meio de uma mensagem `hello` somente leitura no socket local do `mediad`; um arquivo de configuração ou uma imagem de teste não confirma a conexão de uma câmera real. Abra a página da câmera para ver o vídeo. O ToF é considerado ativo quando chega um novo quadro; dados `fake`/`sim` são identificados como simulados. A barra verifica os serviços a cada 10 segundos e cancela a verificação ao trocar de página ou enviar o app para segundo plano. Estados vencidos são limpos. Essa verificação não solicita quadros, não estabelece WebRTC e não inicia serviços do sistema.
 
-当前镜像尚无“开机自动识别摄像头／ToF 硬件，再按检测结果启停服务”的统一策略。firstboot 的自动识别针对 IMU；镜像默认 `media.source="test"` 避免缺摄像头反复崩溃，但媒体服务仍可能运行。网页未连接可能是网络或服务问题，不能直接据此认定没装硬件并关闭服务。
+As imagens atuais ainda não têm uma política unificada que detecte câmera e ToF na inicialização e ative ou desative os serviços conforme o resultado. A detecção automática do `firstboot` é voltada à IMU. A imagem usa `media.source="test"` por padrão para evitar falhas repetidas quando não há câmera, mas o serviço de mídia ainda pode estar ativo. Uma falha de conexão na página pode indicar um problema de rede ou de serviço; ela não confirma a ausência do hardware e não deve levar ao desligamento do serviço.
 
-总览往Inferior滑到手柄区，Esquerdo侧 3D 鸭子abaixo有摄像头预览，Direito侧Preservado手柄 e 遥控。桌面Esquerdo栏整体吸顶，按可用高度安排姿态e视频，空间不足时随Página滚动；手机Superior按手柄图、3D、摄像头、遥控 de 顺序排列。只有预览卡在屏幕内、总览可见，且只读Verificação报告Configuração为摄像头、视频Serviço在线时，才自动接入既有 WebRTC 视频。Teste源、未知FonteeServiço离线显示占位，每10秒重新Verificação，不自动播放Teste图案。切页、滚出卡片或进入后台会取消Leitura并释放视频Conexão；独立摄像头页仍可主动播放Teste源。该布局复用同一套视频客户端，不Inicialização系统Serviço，也不等于已实现摄像头Hardware热插拔自动Configuração。
+Na Visão geral, role até a área do controle: a prévia da câmera fica abaixo do robô 3D, à esquerda, e os controles permanecem à direita. Em telas de computador, a coluna esquerda fica fixa no topo e distribui a postura e o vídeo conforme o espaço disponível; se faltar espaço, a página rola. No celular, os elementos aparecem nesta ordem: imagem do controle, robô 3D, câmera e controle remoto. O vídeo WebRTC existente só se conecta automaticamente quando o cartão de prévia está visível, a Visão geral está aberta, a verificação somente leitura informa que a origem configurada é uma câmera e o serviço de vídeo está ativo. Para a origem de teste, origem desconhecida ou serviço indisponível, aparece um espaço reservado; a verificação se repete a cada 10 segundos, sem reproduzir automaticamente o padrão de teste. Trocar de página, tirar o cartão da tela ou enviar o app para segundo plano cancela a leitura e libera a conexão de vídeo. A página independente da câmera ainda permite iniciar a reprodução da origem de teste. O layout reutiliza o mesmo cliente de vídeo, não inicia serviços do sistema e não implementa detecção e configuração automáticas quando a câmera é conectada ou desconectada fisicamente.
 
-- **摄像头**：接现有 mediad  de 局域网 WebRTC 视频（默认信令端口 8443），pode开始、停止e重新Conexão。Página等实际画面开始Atualização才显示播放；切走或进入后台会释放Conexão。只Leitura视频 e 画面元Dados，不打开电脑/手机摄像头，不发送运动指令。画面按Execução端报告 de Instalação角度显示。
-- **来源标记**：镜像的 `[media] source="test"` 表示测试图案，能播放也不能代表真实摄像头接好了。配置为 camera 时也只显示「配置：摄像头」，配置文件不能证明当前运行状态；视频服务标为模拟设备时另行注明。当前版本会忽略旧的 `media.camera` 开关，Studio 不据此猜测真实来源。
-- **ToF**：通过 `/run/tofd/tof.sock` 的 `tof.stream` 获取 8×8 距离分区，显示有效格数、最近/最远有效毫米值及逐格原始状态。5/9 且距离为正才计入统计；无目标（255）和测量失败分别显示。服务未连接、未接传感器、等待首帧、格式错误和过期数据均有独立说明。fake/sim 数据会标注「模拟数据」。
-- 传感器Leitura独立于 robotd  de 运动Conexão，只在相关Página可见时进行；没有自动避障、导航或后台录像功能，不更改系统ServiçoeConfiguração。
+**Câmera:** conecta ao vídeo WebRTC local da rede fornecido pelo `mediad` (porta de sinalização padrão 8443). É possível iniciar, parar e restabelecer a conexão. A página só indica reprodução depois que os quadros reais começam a chegar; trocar de página ou enviar o app para segundo plano libera a conexão. O Studio apenas lê o vídeo e seus metadados: não ativa a câmera do computador ou celular e não envia comandos de movimento. A imagem é exibida com o ângulo de instalação informado pelo sistema que executa o vídeo.
 
-高级安装可通过 `--tof unix:/run/tofd/tof.sock`、`--camera-socket unix:/run/mediad/media.sock` 和 `--camera-signaling-port 8443` 指定本机服务；`--tof none` 或 `--camera-socket none` 明确关闭对应的只读探测。开发测试可将 socket 指向受控的 `tcp:127.0.0.1:端口`。网页不接受任意 socket 或视频服务器地址。摄像头信令使用打开 Studio 的主机名，远程仅转发 8000 端口的 SSH 隧道不会自动转发视频链路。
+**Identificação da origem:** `[media] source="test"` na imagem indica um padrão de teste; conseguir reproduzi-lo não comprova que uma câmera real esteja conectada. Quando a origem configurada é `camera`, a página informa “configuração: câmera”, mas o arquivo de configuração não comprova o estado atual. Se o serviço de vídeo indicar um dispositivo simulado, isso será informado separadamente. A versão atual ignora a opção antiga `media.camera`; o Studio não a usa para inferir a origem real.
 
-本地 `tests/test_sensors_e2e.py` 使用明确标记的假 ToF 和浏览器 RTC 测试实现，验证真实网页播放、导航、错误及资源释放；这些软件测试不代替摄像头、编码器和 ToF 硬件验收。
+**ToF:** recebe a grade de distâncias 8×8 de `tof.stream` pelo socket `/run/tofd/tof.sock`. Mostra a quantidade de células válidas, as distâncias válidas mínima e máxima em milímetros e o estado bruto de cada célula. Só entram nas estatísticas células com estado 5/9 e distância positiva. “Sem alvo” (255) e falha de medição são exibidos separadamente. Há mensagens distintas para serviço desconectado, sensor ausente, espera pelo primeiro quadro, formato inválido e dados vencidos. Dados `fake`/`sim` são identificados como simulados.
 
-## Web动作录制、回放 e 灵动
+A leitura dos sensores é independente da conexão de movimento do `robotd` e só ocorre enquanto a página correspondente está visível. Não há desvio automático de obstáculos, navegação nem gravação em segundo plano; a configuração dos serviços do sistema não é alterada.
 
-遥控区增加「动作录制 e 回放」。先按原流程站稳并准备好走，关闭实体手柄后，点击「开始录制」，操作Web摇杆、头/身体/嘴部、叫声，或点击“Sentar／Levantar”（Web十字Inferior也可）。只录“Sentar→站起”也能保存成一段；坐站期间等状态提示确认后再操作Inferior一步。pode同时打开「灵动」生成随机 de 小幅头嘴动作，开始坐站时会先停止灵动。暂停录制不计入等待时间，结束后输入名称保存。
+Em instalações avançadas, use `--tof unix:/run/tofd/tof.sock`, `--camera-socket unix:/run/mediad/media.sock` e `--camera-signaling-port 8443` para indicar os serviços locais. `--tof none` ou `--camera-socket none` desativa explicitamente a verificação somente leitura correspondente. Em testes de desenvolvimento, o socket pode apontar para um endpoint TCP controlado, como `tcp:127.0.0.1:porta`. A página não aceita endereços arbitrários de socket ou servidor de vídeo. A sinalização da câmera usa o nome de host de onde o Studio foi aberto; um túnel SSH remoto que encaminhe somente a porta 8000 não encaminha automaticamente o fluxo de vídeo.
 
-从列表选择一段，播放 1、3 或 5 次；suporta暂停、继续、停止、改名、删除，保存Conteúdo在刷新或重启后Preservado。灵动也可单独开启。运动仍由 robotd 执行，Web不会接管Servo总线，也不会因为开启灵动就自动站起或Superior力。
+O teste local `tests/test_sensors_e2e.py` usa um ToF simulado explicitamente identificado e uma implementação RTC de teste no navegador para verificar a reprodução na página, a navegação, os erros e a liberação de recursos. Esses testes de software não substituem a validação do hardware da câmera, do codificador e do ToF.
 
-记录最终获准发送 de Controle指令 e 节奏，不保证重复相同空间路线；不录摄像头视频、麦克风音频、Superior力/卸力、开始走/停止策略或设置修改。Sentare站起作为明确目标步骤保存，回放时LeituraAtual姿态，不盲目重按切换键；等新鲜策略阶段e连续实际/目标关节回读确认后再执行Inferior一步，等待时回放时间轴暂停。含坐站 de 记录以 v2 保存，旧 v1 记录仍可读；回退到仅suporta v1  de 程序会略过 v2，恢复新程序后仍可Leitura，不应删除原记录。
+## Gravação e reprodução de movimentos pela Web
 
-以坐着结束 de 记录可播放一次；选择多次循环时，最后é necessário录回站姿，否则Página会解释原因，不自动补一个站起步骤。普通暂停/停止或离开Web只取消后续步骤、清除连续Controle，已经交给主程序 de 坐站仍会Concluído；若需立即卸力，使用现有急停。坐站阶段/回读不明确、15 秒等待超时或回执丢失时停止后续步骤并Instruções原因，不自动重试切换。
+Na área de controle remoto, há a função “Gravar e reproduzir movimentos”. Siga o procedimento habitual para deixar o robô firme e pronto para andar; desligue o controle físico, toque em “Iniciar gravação” e use o joystick web, os controles da cabeça, do corpo e da boca, os sons ou os botões “Sentar/Levantar” (também disponíveis na cruz de direção web). É possível salvar uma gravação contendo apenas a transição de sentado para em pé. Durante essa transição, aguarde a confirmação do estado antes de executar a etapa seguinte. Também é possível ativar “Movimento expressivo”, que gera movimentos aleatórios e leves da cabeça e da boca; esse recurso é interrompido antes de iniciar uma transição entre sentado e em pé. O tempo em pausa não entra na duração da gravação. Ao terminar, informe um nome para salvá-la.
 
-踢腿、翻滚、捡取等Modelo技能仍不录制，普通遥控 de 技能不受影响。刚做过这些Modelo技能后，é necessário手动停止策略、重新开始走并等新鲜回读确认就绪，再Inicialização录制/灵动，不能用猜测 de 持续时间判断技能Concluído。
+Selecione uma gravação na lista e reproduza-a 1, 3 ou 5 vezes. É possível pausar, continuar, parar, renomear e excluir; o conteúdo salvo permanece após atualizar a página ou reiniciar o Studio. “Movimento expressivo” também pode ser ativado separadamente. O `robotd` continua executando os movimentos; a interface Web não assume o barramento dos servos, não coloca o robô em pé nem alivia o torque ao ativar esse recurso.
 
-一次只有一个Página会话。按键/摇杆手动接管会先停止自动回放；实体手柄Conexão、Web离开遥控区、后台、失焦、断线、急停或状态异常都会停止自动输出，重连不续播。暂停清除速度e头/身体/嘴部目标，继续时恢复暂停处 de 锁存姿态，速度等待后续新鲜动作帧；Modelo/ControleConfiguração变化后不再回放旧片段。每轮结尾回 em 、退出身体锁存并合嘴，迟到 de 连续目标会合并，避免补发一串过时动作。
+Uma gravação guarda os comandos de controle aceitos e seus intervalos, mas não garante a repetição do mesmo trajeto no espaço. Ela não inclui vídeo da câmera, áudio do microfone, comandos para aplicar ou aliviar torque, início ou parada da estratégia de movimento nem alterações de configuração. Sentar e levantar são salvos como etapas com objetivo explícito. Na reprodução, o Studio lê a postura atual e não repete cegamente o botão de alternância; só executa a etapa seguinte depois de confirmar uma fase de estratégia recente e leituras consecutivas das posições reais e desejadas das articulações. Enquanto aguarda, a linha do tempo fica pausada. Gravações que incluem sentar e levantar são salvas no formato v2; gravações antigas v1 continuam legíveis. Uma versão do programa que só aceite v1 ignora as gravações v2; depois de restaurar a versão nova, elas voltam a ser lidas. Não exclua os arquivos originais.
 
-每段最多 60 秒、6,000 个事件、1 MiB；最多 20 段，名称最长 32 字符。版本化 JSON 文件保存在 Studio state 目录的 `motion-recordings/`，原子写入；损坏记录跳过并在页面提示，不影响其他控制或可用记录。卸载/升级时需保留此用户数据目录。
+Uma gravação que termina com o robô sentado pode ser reproduzida uma vez. Para repeti-la várias vezes, a última sequência precisa terminar com o robô em pé; caso contrário, a página explica o motivo e não acrescenta uma etapa automática para levantá-lo. Pausar, parar ou sair da interface cancela as etapas seguintes e limpa os comandos contínuos, mas uma transição entre sentado e em pé já enviada ao programa principal ainda será concluída. Para aliviar o torque imediatamente, use a parada de emergência existente. Se a fase ou a leitura da postura não estiver clara, a espera exceder 15 segundos ou a resposta se perder, as etapas seguintes são interrompidas e o motivo é informado; a alternância não é repetida automaticamente.
 
-实现拆分为 `studio/motion_store.py`（文件校验/保存）、`studio/motion_studio.py`（会话/时间轴/灵动）、`studio/motion_posture.py`（坐站目标和回读判断）、`web/motion-studio.js`（界面）与 `web/motion-heartbeat.js`（页面存活）。通过既有 `pad.op` 的 `op=motion` 接入，原 `pad.motion` 状态不改名。当前开发与验收记录见 [网页动作实现计划](../../docs/superpowers/plans/2026-10-25-web-motion-studio.md)及[坐站扩展计划](../../docs/superpowers/plans/2026-10-25-web-posture-recording.md)；本地模拟通过和实际鸭子验收分别记录。
+Habilidades de modelos, como chutar, rolar e pegar objetos, não são gravadas; o controle manual dessas habilidades continua funcionando. Depois de executar uma habilidade de modelo, pare a estratégia manualmente, reinicie a caminhada e aguarde leituras recentes que confirmem que o robô está pronto antes de começar uma gravação ou ativar “Movimento expressivo”. Não estime a conclusão da habilidade pelo tempo decorrido.
 
-2026-10-25：c18783c 已部署到Atual鸭子 de 原Controle网址，只重启 Studio；351 项SoftwareVerificação e 静态资源/UsuárioDados/ControleServiço身份回读por meio de。该设备有Web登录保护，未为核对快照而绕过登录，实际动作效果仍待Usuário确认。源码冻结包、备份 e 回退范围见[部署验收](../../docs/superpowers/verification/2026-10-25-web-motion-studio.md)。Imageme通用在线升级未Atualização。
+Só pode haver uma sessão de página por vez. Uma intervenção manual nos botões ou no joystick interrompe primeiro a reprodução automática. A conexão de um controle físico, a saída da área de controle remoto, o envio do app para segundo plano, a perda de foco ou de conexão, a parada de emergência ou um estado anormal também interrompem os comandos automáticos; reconectar não retoma a reprodução. A pausa limpa os alvos de velocidade, cabeça, corpo e boca. Ao continuar, restaura a postura mantida no ponto da pausa e aguarda novos comandos de velocidade. Se o modelo ou as configurações de controle mudarem, o trecho antigo não será reproduzido. Ao final de cada ciclo, o robô volta a emitir som, libera a postura mantida do corpo e fecha a boca. Comandos contínuos atrasados são agrupados para evitar o envio de uma sequência de movimentos obsoletos.
 
-同日用户截图确认入口后，发现停止策略的技能恢复屏障错误地等待静态配置开关关闭。db970dd 已按 `bus.policy_enabled` 实时运行状态修正，并提示确认停下后点“开始走”；205 项后端及完整浏览器恢复/录放流程通过，已更新到原鸭子，仅重启 Studio。真实头嘴动作效果仍待用户确认，详见同一验收记录的后续修正。
+Cada gravação pode ter no máximo 60 segundos, 6.000 eventos e 1 MiB; são permitidas até 20 gravações, com nomes de até 32 caracteres. Os arquivos JSON versionados ficam em `motion-recordings/`, no diretório de estado do Studio, e são gravados atomicamente. Gravações danificadas são ignoradas e sinalizadas na página, sem afetar os controles nem os demais arquivos válidos. Preserve esse diretório de dados do usuário ao desinstalar ou atualizar o Studio.
 
-同日后续 aa825fc 已把Sentar/站起加入录制，389 项SoftwareVerificação e 独立审查por meio de并部署。Usuário确认“能保存，回放坐站也正常”；真机范围、状态等待e v2 回退边界见[坐站验收](../../docs/superpowers/verification/2026-10-25-web-posture-recording.md)。
+A implementação está dividida entre `studio/motion_store.py` (validação e salvamento de arquivos), `studio/motion_studio.py` (sessões, linha do tempo e movimento expressivo), `studio/motion_posture.py` (objetivos de postura e validação das leituras), `web/motion-studio.js` (interface) e `web/motion-heartbeat.js` (atividade da página). O recurso usa o comando existente `pad.op` com `op=motion`; o nome do estado `pad.motion` permanece inalterado. Os registros atuais de desenvolvimento e validação estão no [plano de movimentos pela Web](../../docs/superpowers/plans/2026-10-25-web-motion-studio.md) e no [plano de extensão para sentar e levantar](../../docs/superpowers/plans/2026-10-25-web-posture-recording.md); a simulação local e a validação no robô são documentadas separadamente.
 
-## 台架模式：主控没烧，用飞特Depuração板在电脑Superior调Servo
+2026-10-25: a versão `c18783c` foi implantada no robô atual pelo endereço de controle já utilizado; somente o Studio foi reiniciado. As 351 verificações de software passaram, e foram confirmadas as identidades do serviço de controle, dos recursos estáticos e dos dados do usuário. O dispositivo exige login na Web; não se ignorou essa proteção para conferir snapshots, portanto o efeito real dos movimentos ainda aguarda confirmação do usuário. O pacote congelado do código-fonte, o backup e o escopo da reversão estão registrados na [validação da implantação](../../docs/superpowers/verification/2026-10-25-web-motion-studio.md). A imagem não foi atualizada pelo mecanismo geral de atualização remota.
 
-把飞特Depuração板（或 USB 转 TTL）插到电脑Superior，接好ServoeAlimentação，Depois：
+No mesmo dia, após a confirmação do acesso por uma captura de tela do usuário, foi identificado que a barreira de recuperação após parar uma habilidade aguardava incorretamente o desligamento de uma opção de configuração estática. A versão `db970dd` corrigiu o fluxo com base no estado de execução de `bus.policy_enabled` e passou a orientar o usuário a confirmar a parada antes de tocar em “Começar a andar”. As 205 verificações de backend e o fluxo completo de recuperação, gravação e reprodução no navegador passaram. A correção foi instalada no robô original, com reinicialização somente do Studio. O efeito real dos movimentos da cabeça e da boca ainda aguarda confirmação; consulte a atualização correspondente no mesmo registro de validação.
+
+Uma atualização posterior do mesmo dia, `aa825fc`, acrescentou sentar e levantar às gravações. As 389 verificações de software e uma revisão independente passaram, e a atualização foi implantada. O usuário confirmou que conseguiu salvar e que a reprodução das transições entre sentado e em pé funcionou. O escopo da validação no robô, as esperas por estado e a compatibilidade reversa do formato v2 estão descritos na [validação de sentar e levantar](../../docs/superpowers/verification/2026-10-25-web-posture-recording.md).
+
+## Modo de bancada: controlar os servos pelo computador com a placa de depuração Feetech, sem gravar o controlador principal
+
+Conecte a placa de depuração Feetech (ou um adaptador USB para TTL) ao computador e ligue os servos à alimentação. Em seguida, execute:
 
 ```bash
 py -3.13 -I run.py --bench
 ```
 
-它不连主程序，自动打开浏览器进「Servo」页；在页头 de 「串口」Inferior拉里选 COM 口，点「Conexão」就能调（跟 servo-web 一样）。
-没接Hardware想先看看：串口选「演示（没接Servo）」，Studio 在Software里假装有 15 颗Servo。
+Esse modo não se conecta ao programa principal e abre automaticamente a página “Servo” no navegador. Selecione a porta COM no menu “Porta serial”, no topo da página, e toque em “Conectar” para controlar os servos, como no `servo-web`.
+Para conhecer a interface sem conectar o hardware, escolha “Demonstração (sem servos)” no menu da porta serial. O Studio simulará 15 servos.
 
-## 装到鸭子Superior
+## Instalar no robô
 
-1. 拷贝：把 `software/studio` 整个目录拷到鸭子的 `/home/radxa/studio-dev`（`scp -r`、U 盘解压包都行）。
-2. 自检：在鸭子上运行 `python3 -I run.py --selfcheck`（只读：打印版本，对 robotd / configd / padd 各问一次）。
-3. 装 root 小助手：`cd deploy && sudo sh install.sh radxa`。0.7.2 的小助手负责舵机总线交接、手柄配对、热点开关、`calib-read` / `calib-commit`（把标定写进主程序、切运动模式）、`ssh-status` / `ssh-password`（「更多」页的 SSH 开关），以及 `imu-recalibrate`（重新校验已保存的 IMU 安装方向）；关热点前会写 `/run/microduck/studio-connecting.json`，让 netcheck 在连接期间别插手。从舵机页交还时，标定模式的实时快照也算主程序起来了（0.5.1 只认运动模式的 `control`，标定模式下每次都等满 30 秒判「起不来」）。步骤、卸载和上机核对见 `deploy/INSTALL.md`。
-4. 开机服务：照 `deploy/microduck-studio.service` 文件头的命令装：
+1. **Copie os arquivos:** copie o diretório inteiro `software/studio` para `/home/radxa/studio-dev` no robô. Você pode usar `scp -r` ou extrair um pacote de uma unidade USB.
+2. **Faça a verificação inicial:** no robô, execute `python3 -I run.py --selfcheck`. Essa verificação somente leitura mostra as versões e consulta uma vez cada serviço: `robotd`, `configd` e `padd`.
+3. **Instale o auxiliar com privilégios de root:** execute `cd deploy && sudo sh install.sh radxa`. A versão 0.7.2 do auxiliar faz a transferência do barramento dos servos, o pareamento do controle, o controle do ponto de acesso, os comandos `calib-read` e `calib-commit` (gravação da calibração no programa principal e troca para o modo de movimento), `ssh-status` e `ssh-password` (controle de SSH na página “Mais”) e `imu-recalibrate` (nova validação da orientação de instalação salva da IMU). Antes de desligar o ponto de acesso, o auxiliar grava `/run/microduck/studio-connecting.json` para que o netcheck não interfira durante a conexão. Ao devolver o controle pela página Servo, um snapshot em tempo real do modo de calibração também confirma que o programa principal iniciou. A versão 0.5.1 só reconhecia `control` no modo de movimento e, no modo de calibração, aguardava 30 segundos até declarar falha. Consulte `deploy/INSTALL.md` para ver as etapas, a desinstalação e as verificações no robô.
+4. **Configure o serviço na inicialização:** siga o comando no cabeçalho de `deploy/microduck-studio.service` para instalá-lo:
 
    ```bash
    sudo install -m 644 microduck-studio.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now microduck-studio
    ```
 
-   撤：
+   Para remover o serviço:
 
    ```bash
    sudo systemctl disable --now microduck-studio && sudo rm /etc/systemd/system/microduck-studio.service && sudo systemctl daemon-reload
    ```
 
-5. 打开 `http://<鸭子 IP>:8000/`，按页面上的「上手清单」走。
+5. Abra `http://<IP do robô>:8000/` e siga a lista de primeiros passos da página.
 
-手柄配对的主路是 root 小助手调官方 `/usr/local/bin/robotctl pad pair --json`：`/var/lib/robot/weird-ble` 板上它会先停 `btd`、给蓝牙适配器断电再开，配完把 `btd` 起回来。没装或旧版小助手时退回 configd → bluetoothctl；这块板这样可能配不上，向导会提示重装小助手，或者在鸭子上运行 `sudo robotctl pad pair`。
+O fluxo principal para parear o controle usa o auxiliar de root, que chama o comando oficial `/usr/local/bin/robotctl pad pair --json`. Na placa `/var/lib/robot/weird-ble`, o comando para primeiro o `btd`, desliga e religa o adaptador Bluetooth e reinicia o `btd` depois do pareamento. Se o auxiliar não estiver instalado ou for de uma versão antiga, o Studio tenta usar `configd` e `bluetoothctl`. Esse método alternativo pode falhar nessa placa; nesse caso, o assistente orienta reinstalar o auxiliar ou executar `sudo robotctl pad pair` no robô.
 
-配对Resultado不等于按键已经就绪。helper/configd 返回已绑定后，向导在等待Conexãoe padd 输入时最多补做两次目标手柄 de ConexãoPor favor求，每次最多 5 秒且不超过Atual等待窗口；不清除配对、不重启蓝牙。只有同一 MAC  de  padd 输入报告才能确认就绪，其他已Conexão手柄不算。状态ServiçoAtualização较慢、或输入刚在超时边界到达时，以实际输入为准；同一手柄稍后恢复也会清掉向导旧 de “未Conexão／读不到按键”提示。Usuário已取消、padd 未Execução或开始走路时，不继续补连。旧版没有输入旁路 de 降级Instruções仍明确标注“没法再核对”。
+Um resultado de pareamento bem-sucedido não significa que os botões já estejam funcionando. Depois que o auxiliar ou o `configd` informa que o controle foi vinculado, o assistente pode solicitar até duas vezes que o controle selecionado se conecte enquanto aguarda a conexão e os dados de entrada do `padd`. Cada tentativa dura no máximo 5 segundos e respeita o limite de espera atual; o pareamento não é apagado e o Bluetooth não é reiniciado. A prontidão só é confirmada quando a entrada do `padd` informa o mesmo endereço MAC; a conexão de outro controle não conta. Se o serviço demorar para atualizar o estado ou a entrada chegar no limite do tempo, vale a entrada efetivamente recebida. Se o mesmo controle voltar a funcionar depois, o aviso antigo de “desconectado/não foi possível ler os botões” também é removido. Se o usuário cancelar, o `padd` não estiver ativo ou a caminhada começar, o Studio não faz novas tentativas. Em versões antigas sem acesso direto às entradas, a orientação informa que não foi possível confirmar o funcionamento.
 
-这项补连针对Web配对流程；手柄已经配过、只是休眠时，先短按 Home / Xbox 键唤醒，不必每次忘掉重配。此项修复不提供后台无限重连，也不代表断电后所有型号 de 回连行为已逐一验收。
+Essa reconexão é específica do fluxo de pareamento pela Web. Se o controle já estiver pareado, mas suspenso, pressione brevemente o botão Home/Xbox para despertá-lo; não é necessário removê-lo e pareá-lo de novo. Essa correção não cria tentativas ilimitadas de reconexão em segundo plano nem confirma que todos os modelos reconectem após uma queda de energia.
 
-出厂镜像让 robotd 跑标定模式：`/etc/systemd/system/robotd.service.d/zzzz-zz-microduck-commissioning.conf` 里 `ExecStart` 带 `--commissioning`。这样 `calibration-status` 和 `busStatus.last_sample` 马上能读，IMU 页粗校、舵机页中位都能做。上手清单第 3 步写成功后，小助手删掉这个文件、`daemon-reload`、重启 robotd，主程序回到运动模式。`systemctl show robotd -p ExecStart` 里有 `--commissioning`、但那个文件不在时，小助手拒绝自动切（`foreign_commissioning`），去日志页导出诊断包。
+A imagem de fábrica executa o `robotd` no modo de calibração: `ExecStart` inclui `--commissioning` no arquivo `/etc/systemd/system/robotd.service.d/zzzz-zz-microduck-commissioning.conf`. Assim, `calibration-status` e `busStatus.last_sample` ficam disponíveis imediatamente, permitindo fazer a calibração inicial da IMU e centralizar os servos. Depois que a etapa 3 da lista de primeiros passos grava os dados com sucesso, o auxiliar remove esse arquivo, executa `daemon-reload` e reinicia o `robotd`, que volta ao modo de movimento. Se `systemctl show robotd -p ExecStart` mostrar `--commissioning`, mas o arquivo não existir, o auxiliar recusa a troca automática (`foreign_commissioning`); exporte um pacote de diagnóstico pela página de registros.
 
-IMU 页 de 「IMU Instalação方向」始终Preservado入口：已经保存并Validação过 de Instalação四元数，也能点「重新标定方向」。先扶住鸭子并卸力，二次确认后，运动模式por meio de新版 root 小助手暂时回到标定模式；已经在标定模式 de 直接重新采集。沿用原来 de 静止 3 秒、整个躯干前倾 15–30° 采 3 秒、计算方向e主程序Validação。**点击「交给主程序Validação」前，先把实物回正并停住**，再按提示前倾。小助手 de 重标定恢复会话保持卸力；出厂标定模式也suportaInferior述站姿采数，站着精校流程Inalterado。
+A página IMU mantém disponível a seção “Orientação de instalação da IMU” mesmo depois de salvar e validar o quaternion de instalação; use “Recalibrar orientação” para refazer a calibração. Segure o robô e alivie o torque. Depois da segunda confirmação, o auxiliar de root atualizado muda temporariamente do modo de movimento para o modo de calibração; se o robô já estiver nesse modo, a captura pode recomeçar diretamente. O procedimento continua igual: mantenha o robô imóvel por 3 segundos, incline todo o tronco para a frente entre 15° e 30° e capture por mais 3 segundos; então a orientação é calculada e validada pelo programa principal. **Antes de tocar em “Enviar para validação pelo programa principal”, coloque o robô novamente na posição vertical e aguarde até que fique parado**; depois, incline-o para a frente conforme as instruções. A sessão de recuperação da recalibração pelo auxiliar mantém o torque aliviado. O modo de calibração de fábrica também permite a captura na postura em pé; o procedimento de ajuste fino nessa postura não mudou.
 
-总线 ID 200 的 IMU 由主程序启动时自动识别，支持 FT6、IMU-to-DXL（Feetech）；SFLP 124/12（Dynamixel 2.0）。标定、运动模式的 IMU 页都显示实际协议和板卡。板卡名称表示识别到的寄存器布局，不证明厂商。需要手动指定时改主程序配置 `bus.imu_protocol = "auto" / "feetech" / "dxl2"`，网页没有运行中切换协议的按钮。I²C 的 BNO085、LSM6DSV16X 流程不变。
+O programa principal detecta automaticamente na inicialização a IMU no barramento de ID 200. Há suporte para FT6 e IMU-to-DXL (Feetech), além de SFLP 124/12 (Dynamixel 2.0). A página IMU mostra o protocolo e o tipo de placa detectados, tanto no modo de calibração quanto no modo de movimento. O nome da placa descreve o layout de registradores detectado e não comprova o fabricante. Para especificar o protocolo manualmente, altere a configuração do programa principal para `bus.imu_protocol = "auto"`, `"feetech"` ou `"dxl2"`; a interface Web não permite trocar o protocolo durante a execução. Os procedimentos para BNO085 e LSM6DSV16X via I²C permanecem iguais.
 
-Qinmo 的一次性网页选择、受控重连和必须完成的安装方向验证见[使用指南](../../docs/Qinmo-IMU-网页使用.md)。配置类型与实际连接分别显示；Qinmo 明确标为已配置，不能凭 ID200 或布局自动认证厂商。新版 helper 0.7.2 还保留 `imu_bus_profile`（缺省 legacy），同为 Feetech 的类型变化也会使旧方向和待写结果失效。本地软件验证不代表实物验收，未部署或更新已发布镜像。
+Consulte o [guia de uso](../../docs/Qinmo-IMU-网页使用.md) para a seleção única da Qinmo na interface Web, a reconexão controlada e a validação obrigatória da orientação de instalação. O tipo configurado e a conexão efetiva são exibidos separadamente. Qinmo é identificada explicitamente como configuração; nem o ID 200 nem o layout de registradores servem para confirmar automaticamente o fabricante. O auxiliar 0.7.2 também preserva `imu_bus_profile` (padrão `legacy`); uma mudança no tipo de dispositivo, mesmo entre dispositivos Feetech, invalida a orientação antiga e o resultado pendente de gravação. A validação local de software não equivale à validação no hardware; a imagem publicada não foi implantada nem atualizada.
 
-总线安装方向的 `imu_bus_protocol` 由主程序验证成功后写入；旧标定没有这个字段时只兼容 Feetech。检测到的协议不匹配时，页面提示重新标定，跳过第 2 步也不能把旧方向当成已验证。主程序通过运动模式的失能状态保留重做入口。第 3 步与小助手 0.7.1 保留并读回该字段；重做完成可采用新绑定，取消恢复原文件。协议、板卡布局或原始身份字节改变，会作废当前采集、在途计算和旧的站姿校准结果。DXL2 板卡不提供采样序号、状态位、传感器读数年龄；主程序使用主机接收新鲜度和原始字节冻结检查，页面不填造这些诊断值。
+O programa principal grava `imu_bus_protocol` depois de validar a orientação de instalação do barramento. Calibrações antigas sem esse campo só são compatíveis com Feetech. Se o protocolo detectado não corresponder, a página orienta recalibrar; pular a etapa 2 não faz com que a orientação antiga seja considerada validada. O programa principal mantém a opção de refazer a calibração quando os motores estão desabilitados no modo de movimento. A etapa 3 e o auxiliar 0.7.1 preservam e leem esse campo. Depois de recalibrar, a nova associação pode ser usada; se a operação for cancelada, o arquivo original é restaurado. Uma alteração no protocolo, no layout da placa ou nos bytes brutos de identificação invalida a captura atual, qualquer cálculo em andamento e a antiga calibração de postura em pé. As placas DXL2 não fornecem número de sequência da amostra, bits de estado ou idade da leitura do sensor. O programa principal verifica a atualidade do dado recebido pelo host e se os bytes brutos permanecem estáveis; a página não inventa esses valores de diagnóstico.
 
-出厂标定模式做第一次Instalação方向标定，也pode先手动点「站姿使能」：等 HOME 保持站稳（误差 ≤5°），双手扶住整个躯干采静止e前倾，再回正交给主程序Validação。允许已卸力或明确站稳两种状态；起身 em 、扭矩未知、运动 em  e 卸力待确认仍拒绝。por meio de小助手从运动模式进入 de 重标定恢复会话仍要求全程卸力，避免恢复模式时重启主程序影响站姿。采数不会自动Superior力或发起运动。
+Na primeira calibração da orientação de instalação pelo modo de calibração de fábrica, também é possível tocar manualmente em “Ativar postura em pé”. Aguarde a postura HOME estabilizar (erro ≤5°), segure o tronco com as duas mãos, capture os dados com o robô parado e inclinado para a frente, volte à posição vertical e envie os dados para validação pelo programa principal. São aceitos os estados de torque aliviado ou de postura em pé confirmada. O procedimento é recusado se o robô estiver se levantando, se o torque for desconhecido, se estiver em movimento ou se o alívio do torque ainda não tiver sido confirmado. Quando o auxiliar coloca o robô no modo de calibração a partir do modo de movimento para uma sessão de recuperação da recalibração, o torque precisa permanecer aliviado durante todo o procedimento; assim, a reinicialização do programa principal ao restaurar o modo não altera a postura em pé. A captura não alivia o torque nem inicia movimentos automaticamente.
 
-重标定会话Preservadooriginal标定eInicializaçãoConfiguração，刷新Web或重启 Studio 后可继续，也可「取消并恢复原Parâmetros」。Validaçãopor meio de后逐项读回Atual芯片e新方向，只恢复原来 de 运动Licença e Execução模式，Servo零位（包括非 2048  de 零位）、方向、限位、其他 IMU e未知Configuração均Preservado；恢复Sucesso仍保持卸力。Falha会Preservado恢复入口，不会把未读回 de 方向报成Concluído。此流程é necessário同时Atualização Studio、root 小助手e sudoers；不会调用Superior手清单第 3 步来重写Servo标定。
+A sessão de recalibração preserva a calibração original e as configurações iniciais. É possível continuá-la depois de atualizar a página ou reiniciar o Studio, ou escolher “Cancelar e restaurar os parâmetros originais”. Após a validação pelo programa principal, cada item é lido de volta para confirmar o sensor atual e a nova orientação. Só são restaurados o modo de movimento e as permissões que estavam ativos originalmente. Os zeros dos servos (inclusive os diferentes de 2048), as direções, os limites, outras IMUs e as configurações desconhecidas são preservados. Mesmo após uma restauração bem-sucedida, o torque continua aliviado. Em caso de falha, a opção de restauração permanece disponível e uma orientação que não tenha sido lida de volta não é informada como concluída. Esse fluxo exige atualizar o Studio, o auxiliar de root e o `sudoers`; ele não usa a etapa 3 da lista de primeiros passos para regravar a calibração dos servos.
 
-**标定模式的状态要新版 fork**：fork robotd 一起来先写一份启动报告（`{"mode":"commissioning","phase":"configuring_bus",...}`），`robot.busStatus` 只要它的 phase 还是启动阶段就一直回它；第一次读成功以后才回标定模式的实时快照（phase 是 `ready` / `moving` / `read_error` / `stop_unconfirmed` / `power_pending`，带 `last_sample`）。旧版 fork 的标定模式从来不清启动报告，Studio 会永远看到「启动中」、拿不到 `last_sample`（10-20 真机验收就是这样）；fork 已经改成第一次读成功以后清掉，用 20261020 之后的镜像（或重装那份 robotd）。Studio 这边：实时快照的这几个 phase 都算「主程序起来了」（`read_error` 是起来了、只是读舵机出错，照原样写主程序的原话）；连续报启动阶段超过 30 秒（从这次连上算），总览头图改成「主程序一直报『启动中』」、给「去日志页」，顶栏、待办、上手清单头上也不再说「通常 10 秒」。
+**O modo de calibração exige uma versão atualizada do fork.** Ao iniciar, o `robotd` do fork grava um relatório de inicialização (`{"mode":"commissioning","phase":"configuring_bus",...}`). `robot.busStatus` continua retornando esse relatório enquanto a fase indicar inicialização. Depois da primeira leitura bem-sucedida, passa a retornar snapshots em tempo real do modo de calibração, com `last_sample` e uma destas fases: `ready`, `moving`, `read_error`, `stop_unconfirmed` ou `power_pending`. Versões antigas do fork nunca limpavam o relatório, então o Studio mostrava “iniciando” indefinidamente e não recebia `last_sample` (como ocorreu na validação no robô em 20/10). O fork foi corrigido para limpar o relatório depois da primeira leitura bem-sucedida; use uma imagem posterior a 20/10/2026 ou reinstale aquele `robotd`. No Studio, todas as fases dos snapshots em tempo real indicam que o programa principal iniciou. `read_error` significa que ele iniciou, mas houve um erro na leitura dos servos; a mensagem original do programa principal é mantida. Se o programa continuar informando uma fase de inicialização por mais de 30 segundos após a conexão, a Visão geral informa que ele continua “iniciando” e oferece um atalho para a página de registros. O cabeçalho, as tarefas pendentes e a lista de primeiros passos também deixam de dizer que a inicialização “normalmente leva 10 segundos”.
 
-Bateria用台架Alimentação供电时，在「设置 → Bateria」里把型号选成「台架Alimentação」：只显示电压，不算电量、也不报电量。
-Studio 默认没有密码，同一网络里谁都能打开。在「更多 → 登录密码」里可以直接设置；设过以后要先登录才能改，也可以清掉。命令行 `python3 -I run.py set-password` 仍然可用，但要用 radxa 用户运行，别加 `sudo`（root 写的密码文件 Studio 读不了）。
+Quando o robô estiver alimentado por uma fonte de bancada, selecione “Fonte de bancada” em “Configurações → Bateria”. O Studio exibirá a tensão, sem calcular nem informar o nível de carga.
+Por padrão, o Studio não tem senha e qualquer pessoa na mesma rede pode abri-lo. Defina uma senha em “Mais → Senha de login”. Depois disso, será necessário fazer login para alterá-la; também é possível removê-la. O comando `python3 -I run.py set-password` continua disponível, mas deve ser executado como usuário `radxa`, sem `sudo` (o Studio não consegue ler um arquivo de senha criado pelo root).
 
-## Superior手清单：去做、已Concluído、跳过
+## Lista de primeiros passos: fazer, marcar como concluído ou pular
 
-每一行任何时候都有三个按钮（Usuário 10-20：「可能有人之前做过重新走一遍」「允许人家直接跳过」）：
+Cada item sempre tem três botões (solicitação do usuário em 20/10: permitir refazer uma etapa já feita e permitir ignorar uma etapa):
 
-- **去做**：去那一步 de Página；测出了问题 de 行写「重新做」。
-- **已Concluído**：我以前做过（比如二号鸭零位早用 Studio  de Servo页校过），这一行 ✓、写「你标了已Concluído（时间）」。以前 de 「已经校过，核对一Inferior」就是它。
-- **跳过**：先不做，这一行 ↷。
+- **Fazer:** abre a página daquela etapa. Se a verificação encontrar um problema, o item oferece a opção “Fazer novamente”.
+- **Marcar como concluído:** indica que a etapa já foi feita, por exemplo, que o zero dos servos do segundo robô foi ajustado na página Servo do Studio. O item recebe uma marca ✓ e registra “Você marcou como concluído” com a data e a hora. Essa opção substitui a antiga confirmação de que a calibração já tinha sido feita e só precisava ser conferida.
+- **Pular:** deixa a etapa para depois e marca o item com ↷.
 
-标过 de 行给「重新做」e「取消」（跳过 de 是「取消跳过」）。标记绑这一步 de 指纹（Servo零位、IMU 方向、标定、手柄……），指纹变了就不算、回到「该做」；标 de 时候读不到指纹，等读到了再绑Superior。
-以前锁着 de 情况——主程序说没做完、读不到（?）、测出了问题、测急停、调Servo时——现在都能点，但「已Concluído」「跳过」要点两次，第二Inferior按钮Superior写后果（「确定跳过？主程序说标定没做完：跳过了鸭子也站不起来」这种），后端没收到确认也拒。
-第 1 步标了已Concluído或跳过，第 3 步「写进主程序」 de 准备情况里「Servo零位」算满足（15 颗按 2048 写零位，零位要是用 Studio  de Servo页校过 de 才对）。
-第 2 步标了已完成或跳过、主程序里正在用的那颗 IMU 方向没确认、IMU 页也没站着校过（没有 `imu-pending.json`）时，第 3 步**按默认装法写这颗 IMU 并标成已确认**（10-21 真机验收：全点跳过以后 fork 要 IMU 方向已确认才肯进运动模式，鸭子一直停在标定模式）：
+Um item marcado oferece as opções “Fazer novamente” e “Cancelar” (para um item pulado, “Cancelar pulo”). A marca é associada à impressão digital daquela etapa — zero dos servos, orientação da IMU, calibração, controle e assim por diante. Se essa impressão digital mudar, a marca deixa de valer e o item volta ao estado “Pendente”. Se não for possível ler a impressão digital quando o item for marcado, ela será associada assim que estiver disponível.
 
-- 总线小板（`bus`）：文件里现有的 `imu_mount_quat`（出厂就是官方装法 `[0.7071067811865476, 0, 0.7071067811865476, 0]`）；
-- BNO085（`bno08x`）：`[0.5, 0.5, 0.5, 0.5]`，fork `duck-control/src/trunk_imu.rs` 的 `BNO08X_DEFAULT_MOUNT`；
-- LSM6DSV16X（`lsm6dsv16x`）：`[0.7071067811865476, 0, 0.7071067811865476, 0]`，复刻推荐装法（模块 x 朝下、z 朝前，二号鸭 10-17 实测）。fork 自己给的默认是单位四元数（「小板没有公认的朝上方向」），不用它。
+Mesmo em situações antes bloqueadas — o programa principal informar que a etapa não foi concluída, não ser possível ler o estado, haver uma falha de medição, uma parada de emergência ou um ajuste dos servos em andamento — os botões continuam disponíveis. Porém, “Marcar como concluído” e “Pular” exigem dois toques. O segundo botão descreve a consequência, por exemplo: “Tem certeza de que deseja pular? O programa principal informa que a calibração está incompleta; o robô poderá não conseguir ficar em pé”. O backend também recusa a ação se não receber a confirmação.
 
-准备情况里写「你标了第 2 步已完成：IMU 按默认装法写（芯片：哪种装法）。装得不一样的，站起来会往一边倒——写完以后在 IMU 页站着校一次，再写一次主程序」；点「写进主程序」的第二下写「确定？IMU 按默认装法写」。IMU 页站着校过（有 `imu-pending.json`）就照旧用它，主程序里方向已确认就照旧用主程序的；IMU 页记下的是另一颗芯片的、或者主程序还没报用的是哪颗，不猜，照旧挡住。小助手 `calib-commit` 照旧只收 `imu: {source, quat}`。这样**跳过第 1、2 步 → 第 3 步写进主程序 → 运动模式**一路能通。
+Se a etapa 1 for marcada como concluída ou pulada, o requisito “zero dos servos” será considerado atendido na etapa 3, “Gravar no programa principal”. Isso só é adequado quando o zero dos 15 servos em 2048 está correto, ou seja, quando ele já foi ajustado na página Servo do Studio.
 
-## 打开 Studio  de 地址怎么选
+Se a etapa 2 for marcada como concluída ou pulada, mas a orientação da IMU em uso no programa principal não estiver confirmada e a página IMU não tiver uma calibração em pé pendente (arquivo `imu-pending.json` ausente), a etapa 3 **grava a orientação padrão de montagem da IMU e a marca como confirmada**. Na validação no robô em 21/10, o fork exigia que a orientação estivesse confirmada para entrar no modo de movimento; ao pular todas as etapas, o robô permanecia no modo de calibração. Os valores padrão são:
 
-开着 Clash 系统代理的 Windows 电脑打不开 `duck-xxxx.local`（走了代理，502）；不带点的 `duck-xxxx` 能开（Windows 用 LLMNR 问到鸭子，代理按 `<local>` 绕过）。所以页面上按设备写：
+* Placa do barramento (`bus`): o valor existente de `imu_mount_quat` no arquivo; a montagem oficial de fábrica é `[0.7071067811865476, 0, 0.7071067811865476, 0]`.
+* BNO085 (`bno08x`): `[0.5, 0.5, 0.5, 0.5]`, valor `BNO08X_DEFAULT_MOUNT` em `duck-control/src/trunk_imu.rs` do fork.
+* LSM6DSV16X (`lsm6dsv16x`): `[0.7071067811865476, 0, 0.7071067811865476, 0]`, montagem recomendada para a réplica, com o eixo x do módulo voltado para baixo e o eixo z para a frente; verificada no segundo robô em 17/10. O padrão definido pelo próprio fork é o quaternion identidade, com a observação de que a placa não tem uma orientação para cima estabelecida; esse padrão não é usado.
 
-- Windows 电脑：`http://duck-xxxx:8000/`（开着代理也能打开）；
-- 苹果手机、Mac：`http://duck-xxxx.local:8000/`；
-- 安卓手机，或者都打不开：去路由器的设备列表找 `duck-xxxx`，用它的 IP；
-- 电脑开着 Clash  de  TUN 模式还打不开：在 Clash 里把局域网（192.168.0.0/16）设成直连。
+Na preparação, a página informa: “Você marcou a etapa 2 como concluída: será gravada a montagem padrão da IMU (sensor: montagem correspondente). Se a montagem física for diferente, o robô poderá pender para um lado ao ficar em pé. Depois de gravar, calibre a IMU em pé na página correspondente e grave novamente no programa principal”. O segundo toque em “Gravar no programa principal” pede confirmação explícita de que a montagem padrão será gravada. Se a página IMU tiver uma calibração em pé pendente (`imu-pending.json`), ela continua sendo usada. Se o programa principal já confirmar a orientação, esse valor também continua sendo usado. Se a página IMU tiver dados de outro sensor ou o programa principal ainda não identificar qual sensor está em uso, o Studio não tenta adivinhar e bloqueia a operação como antes. O auxiliar `calib-commit` continua aceitando somente `imu: {source, quat}`. Assim, o fluxo **pular as etapas 1 e 2 → gravar na etapa 3 → entrar no modo de movimento** pode ser concluído.
 
-「更多」页有一块「这只鸭子的地址」，列出现在能用的 IP（configd `net.status` 的 `ip4`，热点模式是 10.42.0.1）、`duck-xxxx`、`duck-xxxx.local`，每个能复制；总览顶栏鼠标停在鸭子名字上也看得到 IP。连 WiFi 的列表里滤掉了鸭子自己的热点（按 net.json 的 `hotspot_ssid`；没有就滤「`Microduck-` 开头、已保存」的）。
+## Escolher o endereço para abrir o Studio
 
-**连 WiFi 以后自动跳到鸭子的新地址**（10-21 用户：「连 WiFi 弄了三下」）：点了连接，页面记下要找的 `http://duck-xxxx:8000/` 和 `http://duck-xxxx.local:8000/`（主机名来自 net.json，端口跟 `--listen` 一致）。
-Página跟鸭子 de Conexão断了（WebSocket 断了，ou 5 秒没收到消息）以后，卡片换成「鸭子正在连『家里 WiFi』……Por favor把这台设备连回『家里 WiFi』（电脑插着网线 de 不用管），找到鸭子会自动打开」，列出这两个地址（能点）e「找不到时：去路由器设备列表找 duck-xxxx  de  IP」。
-每 2 秒用 `new Image()` 加载 `<地址>probe.svg?t=<时间>`（`web/probe.svg`，跟别的静态文件一样不用登录、不缓存；跨域加载图片不要 CORS），哪个先加载成功就跳过去；一次探测最多等 6 秒，没回话之前不重复探同一个地址。
-最多找 3 分钟，找不到就换回原来那段按设备打开 de Instruções。Página重新连Superior原来 de 地址（Ponto de acesso回来了，Instruções没连Superior）时停止探测，照旧显示Falha原因。
+Em um computador Windows com o proxy do sistema Clash ativado, `duck-xxxx.local` pode não abrir porque a solicitação passa pelo proxy e resulta em erro 502. O endereço `duck-xxxx`, sem o ponto, pode funcionar: o Windows localiza o robô por LLMNR e o proxy ignora nomes incluídos em `<local>`. Use o endereço adequado ao dispositivo:
 
-## Imagem里 vs 手动装
+- **Computador Windows:** `http://duck-xxxx:8000/` (também pode funcionar com o proxy ativado).
+- **iPhone ou Mac:** `http://duck-xxxx.local:8000/`.
+- **Celular Android ou falha nos outros endereços:** encontre `duck-xxxx` na lista de dispositivos do roteador e use o endereço IP.
+- **Computador com o modo TUN do Clash ativado:** se ainda não abrir, configure a rede local (`192.168.0.0/16`) como conexão direta no Clash.
 
-「连 WiFi」卡片依赖复刻Imagem里 de 几样东西，不是 Studio 自己带 de ：
+Na página “Mais”, a seção “Endereços deste robô” lista os endereços disponíveis: o IP atual (campo `ip4` de `net.status` do `configd`; no modo de ponto de acesso, `10.42.0.1`), `duck-xxxx` e `duck-xxxx.local`. Cada um pode ser copiado. Também é possível ver o IP ao passar o cursor sobre o nome do robô na barra superior da Visão geral. A lista de redes Wi-Fi omite o ponto de acesso do próprio robô, usando `hotspot_ssid` no `net.json`; se o campo não existir, omite redes salvas cujo nome comece com `Microduck-`.
 
-- netcheck 写的配网状态 `/run/microduck/net.json`；
-- NetworkManager 里的 `Microduck-Hotspot` 热点配置；
-- configd 以 `--allow-user btd,radxa` 运行，Studio 才有权限调 `net.scan` / `net.connect` / `net.forget`；
-- mDNS 配置，手机才能用 `duck-xxxx.local` 找到鸭子。
+**Redirecionamento automático depois de conectar ao Wi-Fi** (solicitação do usuário em 21/10, após precisar se reconectar três vezes): ao iniciar a conexão, a página guarda os endereços `http://duck-xxxx:8000/` e `http://duck-xxxx.local:8000/` que deverá localizar. O nome do host vem do `net.json`, e a porta corresponde a `--listen`.
 
-按 `deploy/INSTALL.md` 手动装 Studio 和 root 小助手、但没有复刻镜像 overlay 的鸭子，没有这几样，页面就不显示「连 WiFi」卡片；总览、手柄、舵机、IMU、日志这些照常使用。
+Quando a conexão com o robô cai — porque o WebSocket foi desconectado ou não chegaram mensagens por 5 segundos —, o cartão informa que o robô está se conectando ao Wi-Fi da casa e pede que o computador ou celular também se conecte a essa rede. Ele lista os dois endereços clicáveis e orienta encontrar o IP de `duck-xxxx` na lista de dispositivos do roteador caso a busca falhe.
 
-## 页面和 Studio 之间的约定（WebSocket `/ws`）
+A cada 2 segundos, o Studio tenta carregar `<endereço>probe.svg?t=<horário>` com `new Image()`. O arquivo `web/probe.svg`, como os demais arquivos estáticos, não exige login e não é armazenado em cache; imagens entre origens diferentes podem ser carregadas sem CORS. O primeiro endereço a responder abre automaticamente. Cada tentativa aguarda no máximo 6 segundos e o mesmo endereço não é consultado novamente enquanto essa tentativa não terminar.
 
-握手时Verificação Host e Origin，不对就拒绝握手（浏览器只看到 1006，日志里写原因）；没登录 de 先接受再用 4401 关掉，Página看到 4401 就跳登录页。
+A busca dura no máximo 3 minutos. Se nenhum endereço responder, o Studio volta às instruções habituais de acesso para cada dispositivo. A busca é interrompida se a página se reconectar ao endereço original — por exemplo, se o ponto de acesso voltar — e a página mantém a informação sobre a falha.
 
-| 方向 | 消息 | Instruções |
+## Diferenças entre a imagem do sistema e a instalação manual
+
+O cartão “Conectar ao Wi-Fi” depende de componentes incluídos na imagem do sistema da réplica; eles não fazem parte do Studio:
+
+- estado de configuração da rede gravado pelo netcheck em `/run/microduck/net.json`;
+- configuração do ponto de acesso `Microduck-Hotspot` no NetworkManager;
+- `configd` iniciado com `--allow-user btd,radxa`, que permite ao Studio executar `net.scan`, `net.connect` e `net.forget`;
+- configuração mDNS, necessária para localizar o robô pelo endereço `duck-xxxx.local` no celular.
+
+Se o Studio e o auxiliar de root forem instalados manualmente conforme `deploy/INSTALL.md`, mas os overlays da imagem da réplica estiverem ausentes, esses componentes não estarão disponíveis e o cartão “Conectar ao Wi-Fi” não será exibido. As páginas Visão geral, Controle, Servo, IMU e Registros continuam funcionando normalmente.
+
+## Protocolo entre a página e o Studio (WebSocket `/ws`)
+
+Durante a negociação da conexão, o Studio valida `Host` e `Origin`; se algum deles não corresponder, recusa a negociação (o navegador recebe somente o código 1006, e o motivo fica nos registros). Se o usuário ainda não tiver feito login, a conexão é aceita e encerrada em seguida com o código 4401; ao receber 4401, a página abre o login.
+
+| Direção | Mensagem | Descrição |
 |---|---|---|
-| Studio → 页面 | `{"t":"hello","version","duck"}` | 连上先发一次 |
-| | `{"t":"state", …}` | 页面可见时 10 Hz；字段见 `studio/state.py` 的 `summarize` |
-| | `{"t":"hb"}` | 页面在后台时 1 Hz（这时不订阅 robotd 的实时状态，省 CPU） |
-| | `{"t":"log","entry":{…}}` | 新日志 |
-| | `{"t":"result","id","ok","reason","data"}` | 命令回执；扫 WiFi 的网络列表等数据放在 `data` |
-| | `{"t":"pad", …}` | 手柄快照：手柄那一块在屏幕上时 10 Hz，不在 1 Hz（总览的手柄格要用）；长列表没变时带 `lists_same`、不带列表 |
-| 页面 → Studio | `{"t":"hb","seq","visible","route","pad_visible"}` | 每秒一次；进出手柄区那一刻马上再发一次。`pad_visible` = 手柄那一块在屏幕上（#/pad 只是总览上的锚点） |
-| | `{"t":"cmd","id","name","args"}` | relax、servo.*、imu.op、calib.op（`preview` / `commit`：上手清单第 3 步）、pad.op、onboard.op（上手清单的 `done` 已完成、`skip` 跳过、`undone` / `unskip` 取消，`{step, confirmed}`：要点两次的第二下才带 `confirmed: true`；老的 `confirm_servo` 还认）、net.op（`scan` / `connect` / `forget`） |
+| Studio → página | `{"t":"hello","version","duck"}` | Enviada uma vez ao conectar |
+| | `{"t":"state", …}` | Estado enviado a 10 Hz quando a página está visível; campos documentados em `summarize` no arquivo `studio/state.py` |
+| | `{"t":"hb"}` | Heartbeat a 1 Hz quando a página está em segundo plano; nessa situação, não há inscrição no estado em tempo real do `robotd`, reduzindo o uso da CPU |
+| | `{"t":"log","entry":{…}}` | Novo registro |
+| | `{"t":"result","id","ok","reason","data"}` | Resposta a um comando; dados como a lista de redes Wi-Fi encontradas ficam em `data` |
+| | `{"t":"pad", …}` | Snapshot do controle: enviado a 10 Hz quando a área do controle está visível na tela e a 1 Hz quando não está, para atualizar o cartão do controle na Visão geral. Se listas longas não mudarem, a mensagem inclui `lists_same` e omite as listas |
+| Página → Studio | `{"t":"hb","seq","visible","route","pad_visible"}` | Enviado uma vez por segundo e novamente assim que a área do controle aparece ou desaparece. `pad_visible` indica se a área está na tela; `#/pad` é apenas uma âncora na Visão geral |
+| | `{"t":"cmd","id","name","args"}` | Comandos `relax`, `servo.*`, `imu.op`, `calib.op` (`preview`/`commit`, etapa 3 da lista), `pad.op`, `onboard.op` (`done` para marcar como concluído, `skip` para pular, `undone`/`unskip` para cancelar; `{step, confirmed}` exige dois toques, e o comando antigo `confirm_servo` continua aceito) e `net.op` (`scan`/`connect`/`forget`) |
 
-舵机会话在 `state` 里的几个字段（每一页顶上的提示条用）：`servo_session`（开着才有：`holding` 几颗保持着、`unknown` 几颗读不到扭矩、
-`restored` 是不是 Studio 重启后接着管的）、`servo_handback_s`（交还以后、主程序连上以前一直有）、`servo_orphan`（上次退出时开着、这次没接管上）、
-`servo_conflict_s`（会话期间 robotd 被手动起来了，10 分钟内）。`servo.close {if_idle:true}`（离开舵机页）只在 15 颗扭矩当场读到都是 0、
-没有别的页面在舵机页、没在校准 / 运动时才交还；`servo.close {}`（点「交还主程序」）先等在路上的舵机操作做完再卸力交还。
+Os campos de `state` relacionados à sessão dos servos são usados na faixa de aviso no topo das páginas: `servo_session` só aparece quando há uma sessão ativa e contém `holding` (quantos servos continuam mantendo torque), `unknown` (quantos tiveram o torque desconhecido) e `restored` (se o Studio retomou o controle depois de reiniciar); `servo_handback_s` fica ativo depois da devolução e até o programa principal se conectar; `servo_orphan` indica que o barramento estava aberto no encerramento anterior e ainda não foi retomado; `servo_conflict_s` informa que o `robotd` foi iniciado manualmente durante a sessão, dentro dos últimos 10 minutos. Ao sair da página Servo, `servo.close {if_idle:true}` só devolve o barramento quando uma leitura naquele instante confirmar torque 0 nos 15 servos, nenhuma outra página estiver usando a página Servo e não houver calibração nem movimento em andamento. O comando `servo.close {}` (botão “Devolver ao programa principal”) aguarda a conclusão das operações pendentes dos servos, alivia o torque e devolve o barramento.
 
-`state.starting_s` / `state.starting_long`：主程序从这次连上起连续报启动阶段多少秒、超没超过 30 秒（总览头图、顶栏、待办改口「一直报启动中」用）。
+`state.starting_s` e `state.starting_long` informam por quantos segundos o programa principal relatou continuamente uma fase de inicialização desde a conexão atual e se esse período ultrapassou 30 segundos. Esses campos são usados para atualizar a Visão geral, a barra superior e as tarefas pendentes com o aviso de inicialização prolongada.
 
-`state.net` 是配网状态：`known=false` 表示没有 net.json（整块 WiFi 隐藏）；否则有 `mode`（wifi / hotspot / none）、当前 `ssid` / `signal` / `ip4`、`hostname`、
-`url_local`（`duck-xxxx.local`，端口跟 `--listen` 一致）、`url_host`（不带点的 `duck-xxxx`）、`ip_now`（现在能用的 IP：热点模式是热点地址）、
-`urls`（「这只鸭子的地址」那几行：`{kind: ip / host / local, url, note}`）、鸭子热点 `hotspot {ssid, ip, psk}`、上次结果 `last_try`、`busy`。`net.op scan` 滤掉鸭子自己的热点。`net.op connect` 先回「开始切换」（页面拿 `url_host` / `url_local` 当以后要找的地址），真正关热点、调 configd 在后台做；
-结果写到 state 目录的 `net-last-try.json`（不含密码）。家里的 WiFi 密码只从页面传到 configd 一次，不进日志、state 或诊断包。
+`state.net` representa o estado da rede. `known=false` indica que não há `net.json` e oculta toda a seção de Wi-Fi. Caso contrário, inclui `mode` (`wifi`, `hotspot` ou `none`), `ssid`, `signal` e `ip4` atuais, `hostname`, `url_local` (`duck-xxxx.local`, na porta definida por `--listen`), `url_host` (`duck-xxxx`, sem ponto), `ip_now` (IP disponível no momento; no modo de ponto de acesso, o endereço desse ponto), `urls` (itens da seção “Endereços deste robô”, no formato `{kind: ip / host / local, url, note}`), `hotspot {ssid, ip, psk}` do ponto de acesso do robô, `last_try` com o resultado da última tentativa e `busy`. `net.op scan` remove da lista o ponto de acesso do próprio robô. `net.op connect` primeiro responde “Iniciando a troca”; a página usa `url_host` e `url_local` como endereços para localizar o robô depois. O desligamento do ponto de acesso e a solicitação ao `configd` ocorrem em segundo plano. O resultado é gravado em `net-last-try.json`, no diretório de estado, sem incluir a senha. A senha do Wi-Fi da casa é enviada uma única vez da página ao `configd` e não é incluída nos registros, no estado nem no pacote de diagnóstico.
 
-已保存的加密网络也要每次填密码：官方 configd 遇到加密网络、没给密码就回 `unsupported`。密码错了会先 `net.forget` 掉这次写坏的配置，再马上开回热点；
-`timeout`、`other`、Studio 自己等 configd 超时，也会马上开回热点。Studio 等 60 秒没回话单独记「鸭子的配网程序 60 秒没回话」，不跟 configd 的 `timeout` 混在一起。
-小助手关热点前写 `/run/microduck/studio-connecting.json`（90 秒内 netcheck 不插手），开热点成功后删掉。
+Mesmo redes criptografadas já salvas exigem que a senha seja informada novamente: o `configd` oficial retorna `unsupported` quando recebe uma rede protegida sem senha. Se a senha estiver incorreta, o Studio remove com `net.forget` a configuração inválida criada pela tentativa e reativa imediatamente o ponto de acesso. Ele também reativa o ponto de acesso em caso de `timeout`, `other` ou de seu próprio tempo limite aguardando o `configd`. Uma espera de 60 segundos sem resposta do serviço de configuração da rede do robô é registrada separadamente como ausência de resposta; ela não é confundida com o `timeout` do `configd`.
+Antes de desligar o ponto de acesso, o auxiliar grava `/run/microduck/studio-connecting.json` para impedir que o netcheck interfira durante 90 segundos. O marcador é removido depois que o ponto de acesso é ativado com sucesso.
 
-Página判断「连不Superior」只看收到消息 de 间隔（1 秒变灰、3 秒报警），不看两边 de 钟（鸭子 de 钟可能是 1970 年）。
+A página determina se a conexão foi perdida pelo intervalo entre as mensagens recebidas (fica esmaecida após 1 segundo e exibe um alerta após 3 segundos). Os relógios dos dois dispositivos não são comparados, pois o relógio do robô pode estar configurado para 1970.
 
 ## Logs
 
