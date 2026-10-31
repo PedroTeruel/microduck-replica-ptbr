@@ -1,208 +1,181 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>自定义动作训练指南 · Microduck Studio</title>
+  <title>Guia do Laboratório de Ações · Microduck Studio</title>
   <link rel="icon" href="/duck.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/guide.css">
 </head>
 <body class="guide-page">
-  <a class="skip-guide" href="#guide-content">跳到正文</a>
+  <a class="skip-guide" href="#guide-content">Pular para o conteúdo</a>
   <header class="guide-top">
-    <a class="brand" href="/#/workspace"><img src="/duck.svg" width="26" height="26" alt=""><span>Studio<small>训练指南</small></span></a>
-    <a class="btn small" href="/#/workspace">返回训练台</a>
+    <a class="brand" href="/#/workspace"><img src="/duck.svg" width="26" height="26" alt=""><span>Studio<small>Guia de treinamento</small></span></a>
+    <a class="btn small" href="/#/workspace">Voltar ao painel</a>
   </header>
   <div class="guide-layout">
-    <aside class="guide-index"><nav aria-label="指南目录"><b>自定义动作</b><div class="toc">
-<ul>
-<li><a href="#_1">动作实验室：从第一个动作开始</a><ul>
-<li><a href="#1">1. 零基础先这样玩</a><ul>
-<li><a href="#v8">已训练好的模型与官方 V8</a></li>
-<li><a href="#_2">训练时看哪些数据</a></li>
-</ul>
-</li>
-<li><a href="#2">2. 三个选项是什么意思</a></li>
-<li><a href="#3">3. 怎么判断真的学会了</a></li>
-<li><a href="#4">4. 想玩更多奇怪动作怎么办</a></li>
-<li><a href="#5">5. 官方是怎么训练的</a></li>
-<li><a href="#6">6. 进阶：自己添加动作</a></li>
-<li><a href="#7">7. 命令行短试跑</a></li>
-<li><a href="#8">8. 导出后还差什么</a></li>
-</ul>
-</li>
-</ul>
-</div>
-</nav><a class="guide-source" href="/custom-actions.md" download>下载 Markdown 文档 ↓</a></aside>
-    <main id="guide-content" class="guide-content"><div class="guide-kicker">MICRODUCK / 从想法到动作</div><h1 id="_1">动作实验室：从第一个动作开始</h1>
-<p>适用：HD1910 Microduck · 2026-10-23</p>
-<h2 id="1">1. 零基础先这样玩</h2>
-<p>从左侧导航或训练台首页进入「动作实验室」。这是独立的动作配方库：可以搜索、按分类筛选、查看预览或文字说明。选择「单脚平衡」后使用这个配方，先用推荐目标：<strong>左脚支撑、另一只脚抬高 1 厘米、保持 3 秒</strong>。左右以机器人自身为准。</p>
+    <aside class="guide-index"><nav aria-label="Índice do guia"><b>Laboratório de Ações</b><div class="toc"><ul class="toc-list"><li class="toc-level-1"><a href="#laboratório-de-ações-comece-com-sua-primeira-ação">Laboratório de Ações: comece com sua primeira ação</a></li><li class="toc-level-2"><a href="#1-primeiros-passos">1. Primeiros passos</a></li><li class="toc-level-3"><a href="#modelos-treinados-e-v8-oficial">Modelos treinados e V8 oficial</a></li><li class="toc-level-3"><a href="#recursos-exibidos-durante-o-treinamento">Recursos exibidos durante o treinamento</a></li><li class="toc-level-2"><a href="#2-o-que-significam-as-três-opções">2. O que significam as três opções</a></li><li class="toc-level-2"><a href="#3-como-saber-se-a-ação-foi-aprendida">3. Como saber se a ação foi aprendida</a></li><li class="toc-level-2"><a href="#4-como-experimentar-outras-ações">4. Como experimentar outras ações</a></li><li class="toc-level-2"><a href="#5-como-o-projeto-oficial-treina">5. Como o projeto oficial treina</a></li><li class="toc-level-2"><a href="#6-avançado-adicionar-uma-ação">6. Avançado: adicionar uma ação</a></li><li class="toc-level-2"><a href="#7-teste-curto-pela-linha-de-comando">7. Teste curto pela linha de comando</a></li><li class="toc-level-2"><a href="#8-o-que-falta-depois-da-exportação">8. O que falta depois da exportação</a></li></ul></div></nav><a class="guide-source" href="/custom-actions.md" download>Baixar documento Markdown ↓</a></aside>
+    <main id="guide-content" class="guide-content"><div class="guide-kicker">MICRODUCK / DA IDEIA À AÇÃO</div><h1 id="laboratório-de-ações-comece-com-sua-primeira-ação">Laboratório de Ações: comece com sua primeira ação</h1>
+<p>Para: HD1910 Microduck · 23/10/2026</p>
+<h2 id="1-primeiros-passos">1. Primeiros passos</h2>
+<p>Abra “Laboratório de Ações” pela navegação lateral ou pela página inicial do Studio. Essa biblioteca independente de receitas permite buscar, filtrar por categoria e consultar prévias ou instruções em texto. Escolha “Equilíbrio em uma perna” e comece com a meta recomendada: <strong>apoio na perna esquerda, elevar a outra perna 1 cm e sustentar por 3 segundos</strong>. Esquerda e direita são sempre relativas ao robô.</p>
 <ol>
-<li><strong>选一个动作目标。</strong> 调整支撑脚、抬脚高度和保持时间。三维图帮助理解目标，不是物理仿真或训练结果。</li>
-<li><strong>点「开始短试跑」。</strong> 使用 64 个环境、5 轮，确认环境、训练和保存正常工作。几轮试跑通常学不会这个动作。</li>
-<li><strong>试跑通过后开始正式训练。</strong> 可以先保留推荐参数。轮数进度表示计算做了多少，不表示学会了多少。</li>
-<li><strong>选检查点，再点「评估」。</strong> 平衡评估运行 8 次尝试，每次包含准备、抬脚、保持和落脚。查看成功次数和实际回放。</li>
-<li><strong>根据回放调整。</strong> 先从低抬脚、短保持开始；改变目标后重新短试跑。保存不同实验，比较各自的目标和结果。</li>
+<li><strong>Escolha a meta da ação.</strong> Ajuste a perna de apoio, a altura de elevação e o tempo de sustentação. O modelo 3D ajuda a entender a meta; não é uma simulação física nem um resultado de treinamento.</li>
+<li><strong>Clique em “Iniciar teste curto”.</strong> São usados 64 ambientes e 5 iterações para confirmar que o ambiente, o treinamento e o salvamento funcionam. Algumas iterações geralmente não bastam para aprender a ação.</li>
+<li><strong>Depois que o teste curto passar, inicie o treinamento real.</strong> Você pode manter os parâmetros recomendados. O progresso em iterações indica quanto do cálculo foi concluído, não quanto a ação foi aprendida.</li>
+<li><strong>Selecione um checkpoint e clique em “Avaliar”.</strong> A avaliação do equilíbrio executa oito tentativas, cada uma com preparação, elevação, sustentação e apoio do pé. Confira o número de sucessos e a reprodução real.</li>
+<li><strong>Ajuste com base no vídeo.</strong> Comece com pouca elevação e sustentação curta. Se mudar a meta, execute outro teste curto. Salve experimentos separados para comparar metas e resultados.</li>
 </ol>
-<p>没有检查点评估视频时，转动三维小鸭不能判断它是否已经学会。演示模式使用合成数据，只用于熟悉页面；练动作需要真实 GPU 模式。</p>
-<h3 id="v8">已训练好的模型与官方 V8</h3>
-<p>动作实验室的「预训练模型」页签收录官方 V8 策略集合和 kissqy V167 发布的 HD1910 模型。可以按来源、动作类型或关键词查找，查看版本、硬件、检查点编号、获取地址和许可。部分 kissqy 权重在其完整发布包内，详情列出包内位置。</p>
-<p><strong>官方策略集合已到 V8，但本训练台新建实验仍从零训练，不会自动载入 V8。</strong> 官方 V8 清单适配 XL330；kissqy 自训版本适配 HD1910，这两类权重不能仅凭名称或相同输入维度互换。V8 默认 VelStand 包含行走、零速站立和倒地恢复，集合中还保留早期独立行走/站立模型。<a href="https://huggingface.co/pollen-robotics/microduck-policies/blob/665ae4eb20bfe13bca1ef4ea6d4bb6b4a096e448/manifest.json">官方 V8 清单</a></p>
-<p>「获取 ONNX」打开发布者的权重文件；「查看发布包」打开原始包页面，不会自动安装或修改机器人。当前目录尚未提供外部模型的本地仿真评估或续训。ONNX 用于推理，没有完整 PPO 训练状态；继续训练需要兼容的 PT 检查点、配置与归一化等数据，不能把 ONNX 当作同一个文件上传。</p>
-<h3 id="_2">训练时看哪些数据</h3>
-<p>详情页的「执行端资源」显示当前 GPU 型号、占用、温度、显存，CPU 型号、占用和温度，以及内存用量。约每 3 秒刷新；读取不到的项目会显示原因。WSL 的 CPU 温度通常不可读，CPU/内存是虚拟机可见范围，GPU 是整卡读数，包含其他进程。查看已结束实验时，资源数据仍是此刻的机器状态，不是那次训练的历史占用。</p>
-<p>训练轮数与采样速度来自该实验日志。刚启动、还没有输出第一轮时暂时没有吞吐量；结束实验保留最后一次已记录指标。轮数不是物理仿真步数，也不是动作成功率。</p>
-<h2 id="2">2. 三个选项是什么意思</h2>
+<p>Sem um vídeo de avaliação de checkpoint, girar o pato 3D não permite saber se ele aprendeu. A demonstração usa dados sintéticos e serve apenas para conhecer a interface; para treinar a ação, use o modo real com GPU.</p>
+<h3 id="modelos-treinados-e-v8-oficial">Modelos treinados e V8 oficial</h3>
+<p>A aba “Modelos pré-treinados” do Laboratório de Ações reúne a coleção oficial de políticas V8 e os modelos HD1910 do lançamento kissqy V167. Pesquise por origem, tipo de ação ou palavras-chave. Os detalhes mostram versão, hardware, identificador do checkpoint, link de obtenção e licença. Alguns pesos kissqy estão dentro do pacote completo de lançamento; os detalhes indicam sua localização no pacote.</p>
+<p><strong>A coleção oficial de políticas chegou à V8, mas novos experimentos neste Studio ainda começam do zero; o V8 não é carregado automaticamente.</strong> O manifesto oficial V8 se destina a XL330, enquanto os modelos treinados por kissqy se destinam a HD1910. Não se deve trocar esses pesos só porque os nomes ou dimensões de entrada coincidem. O modelo padrão VelStand do V8 combina caminhada, postura parada e recuperação após queda; a coleção também mantém modelos antigos separados de caminhada e postura. <a href="https://huggingface.co/pollen-robotics/microduck-policies/blob/665ae4eb20bfe13bca1ef4ea6d4bb6b4a096e448/manifest.json">Manifesto oficial V8</a></p>
+<p>“Obter ONNX” abre o arquivo de pesos do publicador; “Ver pacote de lançamento” abre a página do pacote original. Nenhuma dessas opções instala o modelo nem altera o robô. O catálogo atual não oferece simulação local, avaliação ou retomada de treinamento para modelos externos. ONNX serve para inferência e não contém o estado completo do treinamento PPO. Para continuar um treinamento, são necessários checkpoints PT compatíveis, configuração, normalização e outros dados; não basta enviar ONNX como se fosse o mesmo arquivo.</p>
+<h3 id="recursos-exibidos-durante-o-treinamento">Recursos exibidos durante o treinamento</h3>
+<p>“Recursos do executor” nos detalhes mostra modelo, uso, temperatura e memória da GPU; modelo, uso e temperatura da CPU; e uso da memória RAM. A atualização ocorre aproximadamente a cada três segundos, e a interface explica quando não consegue ler um campo. A temperatura da CPU normalmente não está disponível no WSL. CPU e memória representam o que a máquina virtual consegue acessar; a GPU mostra o uso da placa inteira, incluindo outros processos. Ao abrir um experimento encerrado, os recursos ainda mostram o estado atual da máquina, e não o consumo histórico daquele treinamento.</p>
+<p>Iterações e velocidade de amostragem vêm do log do experimento. Logo após a inicialização, antes da primeira iteração aparecer, ainda não há uma taxa de processamento. Ao encerrar o experimento, a última métrica registrada permanece disponível. Número de iterações não equivale a passos da simulação física nem à taxa de sucesso da ação.</p>
+<h2 id="2-o-que-significam-as-três-opções">2. O que significam as três opções</h2>
 <table>
 <thead>
 <tr>
-<th>选项</th>
-<th>当前范围</th>
-<th>含义</th>
+<th>Opção</th>
+<th>Faixa atual</th>
+<th>Significado</th>
 </tr>
 </thead>
-<tbody>
-<tr>
-<td>支撑脚</td>
-<td>左脚 / 右脚</td>
-<td>这只脚留在地面，另一只脚抬起</td>
+<tbody><tr>
+<td>Perna de apoio</td>
+<td>Esquerda / direita</td>
+<td>É a perna que permanece no chão enquanto a outra se eleva</td>
 </tr>
 <tr>
-<td>抬脚高度</td>
-<td>0.5–2 厘米</td>
-<td>抬起脚的脚底相对地面的目标距离</td>
+<td>Altura de elevação</td>
+<td>0,5–2 cm</td>
+<td>Distância desejada entre a sola do pé elevado e o chão</td>
 </tr>
 <tr>
-<td>保持时间</td>
-<td>1–5 秒</td>
-<td>满足站稳条件时持续保持，不是整个动作总时长</td>
+<td>Tempo de sustentação</td>
+<td>1–5 segundos</td>
+<td>Tempo mantendo a postura estável; não é a duração total da ação</td>
 </tr>
-</tbody>
-</table>
-<p>动作顺序为：双脚准备 → 抬脚 → 保持 → 落脚并恢复双脚支撑。完整周期约为「保持时间 + 3.5 秒」。这定义了任务目标；策略自己寻找关节控制方法，不照抄预览姿势。</p>
-<p>这是<strong>实验性仿真配方</strong>。模型可以达到这些抬脚高度，但不证明策略能够稳定完成，也不证明实物具有相同表现。质量、惯量、供电和舵机误差仍会影响结果。导入鸭子档案用于记录核对，当前不会自动改写物理模型。</p>
-<h2 id="3">3. 怎么判断真的学会了</h2>
-<p>奖励曲线上升表示策略更符合训练评分。动作验收另外检查：指定脚持续支撑、另一只脚离地、身体姿态和速度受控、保持足够时间，最后恢复双脚支撑。倒下后脚悬空、瞬间抬脚或保持后摔倒都不能算完整成功。</p>
-<p>报告保留每次尝试的结果、保持时间和失败原因，视频包含所有尝试。<strong>0/8 也会如实显示</strong>。8 次是便于反复检查的小样本；部署前还需要更多初始姿态、扰动和实机验证。</p>
+</tbody></table>
+<p>A sequência é: preparação com os dois pés → elevação → sustentação → apoio e recuperação com os dois pés. O ciclo completo dura aproximadamente o tempo de sustentação mais 3,5 segundos. Esse é o objetivo da tarefa; a política encontra como controlar as articulações, não copia a pose da prévia.</p>
+<p>Esta é uma <strong>receita experimental de simulação</strong>. O modelo comporta as alturas de elevação indicadas, mas isso não prova que a política consiga manter o equilíbrio nem que o hardware real tenha o mesmo comportamento. Massa, inércia, alimentação e erros dos servos também afetam o resultado. Um perfil de pato importado fica salvo para consulta; o sistema não altera automaticamente o modelo físico.</p>
+<h2 id="3-como-saber-se-a-ação-foi-aprendida">3. Como saber se a ação foi aprendida</h2>
+<p>Uma curva de recompensa crescente indica que a política está se aproximando da pontuação de treinamento. A avaliação da ação também verifica se o pé designado permanece apoiado, se o outro pé sai do chão, se a postura e a velocidade do corpo ficam controladas pelo tempo necessário e se o robô termina recuperado sobre os dois pés. Ficar com o pé suspenso depois de cair, levantá-lo apenas por um instante ou cair após a sustentação não conta como sucesso completo.</p>
+<p>O relatório preserva o resultado, o tempo de sustentação e a causa de falha de cada tentativa, com vídeo de todas elas. <strong>Um resultado de 0/8 também é mostrado sem ocultação.</strong> Oito tentativas formam uma amostra pequena para repetir a verificação; antes da implantação, ainda são necessárias validações com mais posturas iniciais, perturbações e hardware real.</p>
 <table>
 <thead>
 <tr>
-<th>回放里的现象</th>
-<th>下一步</th>
+<th>O que aparece no vídeo</th>
+<th>Próximo passo</th>
 </tr>
 </thead>
-<tbody>
-<tr>
-<td>一开始就倒</td>
-<td>检查模型、任务和数值；不要只增加轮数</td>
+<tbody><tr>
+<td>Cai logo no começo</td>
+<td>Confira o modelo, a tarefa e os valores; não aumente apenas o número de iterações</td>
 </tr>
 <tr>
-<td>能站住，没有抬脚</td>
-<td>检查目标与训练进展，尝试更低的目标</td>
+<td>Fica em pé, mas não levanta o pé</td>
+<td>Confira a meta e o progresso do treinamento; tente uma meta de elevação menor</td>
 </tr>
 <tr>
-<td>抬起后很快放下</td>
-<td>先缩短保持时间，检查支撑与倾斜条件</td>
+<td>Abaixa o pé logo depois de levantá-lo</td>
+<td>Reduza primeiro o tempo de sustentação e confira o apoio e a inclinação do corpo</td>
 </tr>
 <tr>
-<td>保持完成，落脚时倒下</td>
-<td>返回阶段尚未学好，完整动作仍算失败</td>
+<td>Sustenta, mas cai ao apoiar o pé</td>
+<td>A fase de retorno ainda não foi aprendida; o ciclo completo conta como falha</td>
 </tr>
 <tr>
-<td>分数高，动作却不对</td>
-<td>保留视频和配置，调整任务规则，不能用分数代替验收</td>
+<td>A pontuação é alta, mas o movimento está errado</td>
+<td>Preserve o vídeo e a configuração, ajuste as regras da tarefa e não use a pontuação como substituto da avaliação</td>
 </tr>
-</tbody>
-</table>
-<p>暂停会保留进程和显存。关闭浏览器不会结束训练；暂停也不会自动关闭云电脑或停止平台计费。停止后可以从已保存的检查点继续。</p>
-<h2 id="4">4. 想玩更多奇怪动作怎么办</h2>
-<p><strong>不需要先学会写代码，也不必先用 AI。</strong> 已接入的动作可以直接选模板、改参数、运行和看回放。完全新的动作需要先把任务规则接入引擎；现阶段不能输入一句话就自动训练任意动作。</p>
-<p>动作实验室的后续方向是社区共建的<strong>动作配方库</strong>：作者写好动作目标、训练规则和验证方法，经过审核后收录；其他用户选择配方并调整参数，就能自己训练。目前提供三个内置训练配方和二十个上游预训练模型条目。模型通过原发布方获取；社区网页投稿和自动安装还未实现。</p>
+</tbody></table>
+<p>Pausar mantém os processos e a memória da GPU. Fechar o navegador não encerra o treinamento; pausar também não desliga o computador em nuvem nem interrompe a cobrança da plataforma. Depois de encerrar, é possível continuar a partir de um checkpoint salvo.</p>
+<h2 id="4-como-experimentar-outras-ações">4. Como experimentar outras ações</h2>
+<p><strong>Não é preciso começar aprendendo a programar nem usando uma IA.</strong> Para ações já integradas, basta escolher uma receita, ajustar parâmetros, executar o treinamento e assistir à avaliação. Uma ação totalmente nova precisa ser integrada às regras do mecanismo; ainda não é possível descrever uma ação em uma frase e pedir que o sistema treine qualquer movimento automaticamente.</p>
+<p>A direção futura do Laboratório de Ações é uma <strong>biblioteca comunitária de receitas</strong>. Autores definirão a meta da ação, as regras de treinamento e o método de validação; após revisão, a receita será incluída para que outras pessoas possam selecioná-la e ajustar parâmetros. Atualmente há três receitas de treinamento internas e vinte modelos pré-treinados do upstream. Os modelos são obtidos dos publicadores originais; envio pela comunidade e instalação automática ainda não estão implementados.</p>
 <table>
 <thead>
 <tr>
-<th>想法</th>
-<th>当前入口或下一步</th>
+<th>Ideia</th>
+<th>Opção atual ou próximo passo</th>
 </tr>
 </thead>
-<tbody>
-<tr>
-<td>左脚站、右脚站，改变高度和时间</td>
-<td>动作实验室的单脚平衡</td>
+<tbody><tr>
+<td>Apoiar na perna esquerda ou direita e variar altura e duração</td>
+<td>Equilíbrio em uma perna no Laboratório de Ações</td>
 </tr>
 <tr>
-<td>平地行走、适应起伏地形</td>
-<td>现有行走配方</td>
+<td>Caminhar no plano ou adaptar-se a terreno irregular</td>
+<td>Receitas existentes de caminhada</td>
 </tr>
 <tr>
-<td>摆头、招手、固定顺序表演</td>
-<td>可考虑关节关键帧编排；本训练台暂未提供这个编辑器</td>
+<td>Mover a cabeça, acenar ou executar uma sequência fixa</td>
+<td>Pode ser feito com uma coreografia de keyframes de articulação; este Studio ainda não inclui esse editor</td>
 </tr>
 <tr>
-<td>跳一下再站稳</td>
-<td>尚未接入；先检查舵机输出和落地条件</td>
+<td>Pular e aterrissar em pé</td>
+<td>Ainda não integrado; primeiro valide os limites dos servos e as condições de aterrissagem</td>
 </tr>
 <tr>
-<td>精准转满一圈后停下</td>
-<td>尚未接入；需累计转角与停止条件</td>
+<td>Girar exatamente uma volta e parar</td>
+<td>Ainda não integrado; exige acompanhar o ângulo acumulado e definir a condição de parada</td>
 </tr>
 <tr>
-<td>上传舞蹈视频让小鸭模仿</td>
-<td>暂不支持；需要动作映射和模仿训练</td>
+<td>Enviar um vídeo de dança para o pato imitar</td>
+<td>Ainda não suportado; requer mapeamento de movimentos e treinamento por imitação</td>
 </tr>
-</tbody>
-</table>
-<p>描述新动作时，写清：<strong>从什么姿势开始 → 哪个部位怎么动 → 保持多久 → 最后停在哪个姿势 → 什么情况算失败</strong>。例如：“双脚站好，右脚支撑，左脚抬起 1 厘米，保持 2 秒，再双脚站好，期间不能靠头撑地。”</p>
-<h2 id="5">5. 官方是怎么训练的</h2>
-<p>官方使用 PPO 强化学习，在大量仿真环境里尝试动作，通过奖励调整策略，再导出 ONNX。开发新动作时，先选相近任务、确认物理条件、定义目标与验收，再做短试跑。<a href="https://github.com/pollen-robotics/microduck_rl">官方项目</a> · <a href="https://github.com/pollen-robotics/microduck_rl/blob/develop/AGENTS.md#building-a-new-env--the-workflow">官方开发指南</a></p>
-<p>训练台把已实现的任务包装成可选配方。单脚平衡是本仓库新增的 HD1910 实验任务。官方还有 SitStand、StandUp、BallKick、Roulade 等任务，但需要适配 HD1910；Spin 使用轮滑模型，不能直接套在当前脚掌上。<a href="https://github.com/pollen-robotics/microduck_rl/blob/develop/src/mjlab_microduck/tasks/__init__.py">官方任务注册表</a></p>
-<h2 id="6">6. 进阶：自己添加动作</h2>
-<p>只想试已有动作，可以跳过这一节。</p>
+</tbody></table>
+<p>Ao descrever uma ação nova, especifique: <strong>pose inicial → movimento de cada parte → duração → pose final → condições de falha</strong>. Exemplo: “Comece de pé com os dois pés no chão, apoie na perna direita, levante a esquerda 1 cm por 2 segundos e termine de pé sobre os dois pés; não use a cabeça para se apoiar no chão”.</p>
+<h2 id="5-como-o-projeto-oficial-treina">5. Como o projeto oficial treina</h2>
+<p>O projeto oficial usa aprendizado por reforço PPO. Ele experimenta movimentos em muitas simulações, ajusta a política com base nas recompensas e depois exporta ONNX. Para desenvolver uma ação, comece por uma tarefa semelhante, confirme as condições físicas, defina a meta e os critérios de avaliação e execute um teste curto. <a href="https://github.com/pollen-robotics/microduck_rl">Projeto oficial</a> · <a href="https://github.com/pollen-robotics/microduck_rl/blob/develop/AGENTS.md#building-a-new-env--the-workflow">Guia oficial de desenvolvimento</a></p>
+<p>O Studio transforma tarefas implementadas em receitas selecionáveis. O equilíbrio em uma perna é uma tarefa experimental HD1910 criada neste repositório. O projeto oficial também tem tarefas SitStand, StandUp, BallKick e Roulade, mas elas precisam ser adaptadas a HD1910. A tarefa Spin usa um modelo com pés de roda e não pode ser aplicada diretamente aos pés atuais. <a href="https://github.com/pollen-robotics/microduck_rl/blob/develop/src/mjlab_microduck/tasks/__init__.py">Registro oficial de tarefas</a></p>
+<h2 id="6-avançado-adicionar-uma-ação">6. Avançado: adicionar uma ação</h2>
+<p>Se você só quer experimentar as ações existentes, pode pular esta seção.</p>
 <ol>
-<li>测量模型、关节范围、执行器和接触，确认目标可达，再验证扰动后能否站稳。</li>
-<li>从 HD1910 配置复用执行器与观测接口，新增任务和独立实验名。</li>
-<li>定义目标命令、奖励和失败条件；成功判定独立于奖励，并覆盖最后的恢复阶段。</li>
-<li>测试配置、左右脚、边界值以及“错误动作不能成功”。</li>
-<li>跑 64 环境、5 轮，检查日志、检查点、完整周期评估和导出。</li>
-<li>先练容易的目标，再根据回放决定是否提高难度。</li>
-<li>接入有限的动作参数，保证训练、续训、评估和导出使用同一目标。</li>
+<li>Meça o modelo, a faixa das articulações, os atuadores e os contatos. Confirme que a meta é alcançável e valide a estabilidade após perturbações.</li>
+<li>Reutilize a configuração de atuadores e a interface de observação HD1910; crie uma tarefa e um nome de experimento separados.</li>
+<li>Defina o comando da meta, as recompensas e as condições de falha. A condição de sucesso deve ser independente da recompensa e incluir a fase final de recuperação.</li>
+<li>Teste a configuração, as pernas esquerda/direita, valores de limite e se movimentos incorretos são rejeitados como sucesso.</li>
+<li>Execute 64 ambientes por 5 iterações e confira logs, checkpoints, avaliação do ciclo completo e exportação.</li>
+<li>Comece com uma meta fácil e só aumente a dificuldade depois de avaliar o vídeo.</li>
+<li>Integre parâmetros de ação limitados e garanta que treinamento, retomada, avaliação e exportação usem a mesma meta.</li>
 </ol>
-<p>以下路径相对于 <code>software/training/</code>：</p>
+<p>Os caminhos abaixo são relativos a <code>software/training/</code>:</p>
 <table>
 <thead>
 <tr>
-<th>文件</th>
-<th>作用</th>
+<th>Arquivo</th>
+<th>Função</th>
 </tr>
 </thead>
-<tbody>
-<tr>
+<tbody><tr>
 <td><code>src/mjlab_microduck/balance_parameters.py</code></td>
-<td>参数、周期、成功判定和命令约定</td>
+<td>Parâmetros, ciclo, critérios de sucesso e contrato dos comandos</td>
 </tr>
 <tr>
 <td><code>src/mjlab_microduck/tasks/microduck_balance_env_cfg.py</code></td>
-<td>HD1910 平衡环境与实验配置</td>
+<td>Ambiente de equilíbrio HD1910 e configuração do experimento</td>
 </tr>
 <tr>
 <td><code>src/mjlab_microduck/tasks/mdp.py</code></td>
-<td>命令、奖励和物理测量</td>
+<td>Comando, recompensa e medições físicas</td>
 </tr>
 <tr>
 <td><code>src/mjlab_microduck/tasks/__init__.py</code></td>
-<td>任务注册</td>
+<td>Registro da tarefa</td>
 </tr>
 <tr>
 <td><code>scripts/export.py</code></td>
-<td>保留观测归一化与目标导出</td>
+<td>Preserva a normalização das observações e exporta a meta</td>
 </tr>
-</tbody>
-</table>
-<p>训练台配方在 <code>software/training-studio/training_studio/config.py</code>。日志与检查点按配方解析目录；只增加网页卡片不能形成可训练动作。</p>
-<h2 id="7">7. 命令行短试跑</h2>
-<p>适用于依赖已准备好的 Linux / WSL2，在 <code>software/training/</code> 目录执行。以下命令会真实占用 GPU。</p>
+</tbody></table>
+<p>A receita do Studio fica em <code>software/training-studio/training_studio/config.py</code>. Logs e checkpoints são resolvidos por diretório de receita; adicionar apenas um cartão na página não cria uma ação treinável.</p>
+<h2 id="7-teste-curto-pela-linha-de-comando">7. Teste curto pela linha de comando</h2>
+<p>Este procedimento requer dependências preparadas no Linux/WSL2 e deve ser executado em <code>software/training/</code>. Os comandos abaixo usarão a GPU de verdade.</p>
 <pre><code class="language-bash">uv run --frozen list-envs
 
 uv run --frozen train Mjlab-Balance-Flat-MicroDuck-HD1910 \
@@ -212,11 +185,12 @@ uv run --frozen train Mjlab-Balance-Flat-MicroDuck-HD1910 \
   --env.commands.twist.lift-height-m 0.01 \
   --env.commands.twist.hold-seconds 3
 </code></pre>
-<p>本地依赖冻结为 mjlab 1.3.0，上游版本见 <code>UPSTREAM.md</code>。网上最新文档中的任务名不代表本地支持，以当前 <code>list-envs</code> 为准。</p>
-<h2 id="8">8. 导出后还差什么</h2>
-<p>导出包保留检查点、动作目标、训练配置、评估证据和带观测归一化的 ONNX。平衡策略仍使用 <strong>61 维观测、14 维动作、50 Hz</strong>，但目标命令的含义已经改变。</p>
-<p><strong>维度相同不代表能直接装进现有行走控制器。</strong> 部署端需按包中的命令约定提供支撑侧、抬脚目标和动作阶段，并核对关节顺序、零位与输出。单脚平衡真机部署尚未完成验证；先确认仿真结果，再进行受控实机测试。</p></main>
+<p>As dependências locais estão fixadas em mjlab 1.3.0; consulte <code>UPSTREAM.md</code> para a versão upstream. Os nomes de tarefas na documentação online mais recente não garantem suporte local; use a saída atual de <code>list-envs</code>.</p>
+<h2 id="8-o-que-falta-depois-da-exportação">8. O que falta depois da exportação</h2>
+<p>O pacote exportado preserva o checkpoint, a meta da ação, a configuração de treinamento, as evidências de avaliação e o ONNX com normalização das observações. A política de equilíbrio continua usando <strong>observação de 61 dimensões, ação de 14 dimensões e 50 Hz</strong>, mas o significado dos comandos mudou.</p>
+<p><strong>Dimensões iguais não significam compatibilidade direta com o controlador de caminhada existente.</strong> O lado de implantação precisa interpretar o contrato de comandos do pacote para fornecer a perna de apoio, a meta de elevação e a fase da ação, além de conferir a ordem das articulações, os zeros e as saídas. A implantação do equilíbrio em uma perna ainda não foi validada em hardware real. Primeiro confirme os resultados em simulação e depois faça um teste físico controlado.</p>
+</main>
   </div>
-  <footer class="guide-bottom">说明基于本仓库冻结训练环境。新增动作须完成适配与验证后才能加入训练配方。</footer>
+  <footer class="guide-bottom">Este guia se baseia no ambiente de treinamento fixado pelo repositório. Novas ações precisam ser adaptadas e validadas antes de serem adicionadas às receitas.</footer>
 </body>
 </html>
