@@ -776,13 +776,13 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                     accepted, reason = False, "Talvez houvesse servos habilitados quando o Studio foi fechado. Assuma o barramento na página de servos antes de relaxar o torque (ou desligue a alimentação em uma emergência)."
                 else:
                     accepted, reason = await robotd.relax(by)
-            except Exception as e:  # noqa: BLE001 —— 不该发生；发生了也要给页面一个回执
+            except Exception as e:  # noqa: BLE001 — não deveria ocorrer; se ocorrer, ainda é preciso enviar uma resposta à página.
                 log.error("Falha do Studio ao processar o comando de relaxamento de torque", cat="Comando", raw=f"{type(e).__name__}: {e}", exc=True,
                           hint="É um erro do Studio. Primeiro use o botão − do controle ou desligue a alimentação; depois exporte o pacote de diagnóstico.")
                 accepted, reason = False, f"Erro do Studio: {type(e).__name__}"
             try:
                 await send({"t": "result", "id": cid, "ok": accepted, "reason": reason})
-            except Exception:  # noqa: BLE001 —— 页面已经断了：卸力照样发出去了，回执送不到无所谓
+            except Exception:  # noqa: BLE001 — a página já se desconectou; o relaxamento foi enviado mesmo assim e não há problema se a resposta não chegar.
                 pass
 
         async def run_servo(name, cid, args=None):
@@ -1135,10 +1135,10 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                             and name in {'pad.op', 'tune.op', 'servo.open', 'servo.op', 'calib.op'}
                             and not safe_during_update(name, args)):
                         await send({'t':'result','id':cid,'ok':False,
-                                    'reason':'IMU 标定 / 类型切换会话未结束：先验证完成或取消；卸力仍可使用'})
+                                    'reason':'A sessão de calibração/troca de tipo da IMU não terminou: valide a conclusão ou cancele primeiro. O relaxamento continua disponível.'})
                         continue
                     if name not in COMMANDS:
-                        await send({"t": "result", "id": cid, "ok": False, "reason": f"这一版还不支持「{name}」"})
+                        await send({"t": "result", "id": cid, "ok": False, "reason": f"Esta versão ainda não oferece suporte a “{name}”"})
                         continue
                     if name == "imu.op":
                         task = asyncio.create_task(run_imu_op(cid, msg.get("args") or {}))
@@ -1169,7 +1169,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "onboard.op":
-                        # 不在这里 await：写盘慢的时候也不能挡住后面来的卸力（代码审查 #6 同一个道理）
+                        # Não aguarda aqui: uma gravação lenta em disco não pode bloquear um comando de relaxamento recebido depois (mesma razão da revisão de código #6).
                         task = asyncio.create_task(run_onboard_op(cid, msg.get("args") or {}))
                         cmd_tasks.add(task)
                         update_commands.add(task)
@@ -1177,7 +1177,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "net.op":
-                        # 扫 WiFi 最坏约 10 秒、连 WiFi 在后台跑：都不挡住同一页面的卸力
+                        # A busca de redes Wi-Fi pode levar até 10 s e a conexão ocorre em segundo plano; nenhuma delas bloqueia o relaxamento na mesma página.
                         task = asyncio.create_task(run_net_op(cid, msg.get("args") or {}))
                         cmd_tasks.add(task)
                         update_commands.add(task)
@@ -1213,16 +1213,16 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                         task.add_done_callback(cmd_tasks.discard)
                         continue
                     if name == "relax":
-                        # 卸力不在这里 await（代码审查 #6）：同一页面连按不排队，页面断了也不会把它取消
+                        # Não aguarda o relaxamento aqui (revisão de código #6): cliques repetidos na mesma página não entram em fila, e a desconexão não cancela a operação.
                         task = asyncio.create_task(run_relax(cid))
                         cmd_tasks.add(task)
                         update_commands.add(task)
                         task.add_done_callback(update_commands.discard)
                         task.add_done_callback(cmd_tasks.discard)
                         continue
-                    # 进了 COMMANDS 却忘了写分支：明说，别默认当卸力（手柄页审查：每秒 10 次的 move 会全变成卸力）
-                    log.error(f"指令「{name}」在 COMMANDS 里但没有处理分支", cat="Sistema", hint="这是 Studio 的 bug，导出诊断包发出来")
-                    await send({"t": "result", "id": cid, "ok": False, "reason": f"Studio 没写「{name}」怎么处理（bug）"})
+                    # Um comando foi incluído em COMMANDS sem uma ramificação de tratamento: informa o erro, em vez de tratá-lo como relaxamento (revisão da página do controle: os 10 comandos move por segundo seriam convertidos em relaxamento).
+                    log.error(f"Comando “{name}” está em COMMANDS, mas não tem uma ramificação de tratamento", cat="Sistema", hint="É um erro do Studio. Exporte o pacote de diagnóstico e compartilhe.")
+                    await send({"t": "result", "id": cid, "ok": False, "reason": f"O Studio não definiu como tratar “{name}” (erro)"})
 
         tasks = [asyncio.create_task(f()) for f in (sender, log_forwarder, receiver)]
         try:
@@ -1230,7 +1230,7 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             for t in done:
                 exc = t.exception()
                 if exc and not isinstance(exc, (WebSocketDisconnect, RuntimeError)):
-                    log.warn("页面连接出错", cat="Conexão", raw=f"{type(exc).__name__}: {exc}")
+                    log.warn("Erro na conexão da página", cat="Conexão", raw=f"{type(exc).__name__}: {exc}")
         finally:
             for t in tasks:
                 t.cancel()
@@ -1240,13 +1240,13 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 pad.mark_gone(pad_conn)
                 asyncio.get_running_loop().run_in_executor(None, pad.drop_client, pad_conn, by)
             update_viewers()
-            log.info(f"页面断开（{by}，还剩 {len(clients)} 个）", cat="Conexão", dedup=False)
+            log.info(f"Página desconectada ({by}; restam {len(clients)})", cat="Conexão", dedup=False)
 
-    # ---- 舵机会话：标记文件（审查 D1）、交还、离开、看 robotd（审查 D9） ----
+    # ---- Sessão de servos: arquivo marcador (revisão D1), devolução, saída e monitoramento do robotd (revisão D9) ----
 
     def marker_write(by):
-        """开总线时写（线程里调）：先写临时文件再改名。回 True / False；写不进去只记 warn
-        （重启以后就不知道上次还开着，但会话不能因此关掉：舵机可能正保持着）。"""
+        """Grava ao abrir o barramento (chamado em uma thread): primeiro escreve em um arquivo temporário e depois renomeia. Retorna True/False; se não conseguir gravar, registra apenas um aviso
+        (após reiniciar, não saberá que a sessão anterior estava aberta, mas não pode fechá-la por isso: os servos podem estar habilitados)."""
         if marker is None:
             return True
         data = {"v": 1, "port": servo.port, "sim": bool(servo.sim), "at": time.time(), "by": by,
@@ -1258,15 +1258,15 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             os.replace(tmp, marker)
             return True
         except OSError as e:
-            log.warn("舵机会话的标记没写进去", cat="Barramento", step=str(marker), raw=f"{type(e).__name__}: {e}",
-                     hint="Studio 重启以后就不知道上次还有舵机保持着；看看 state 目录满没满、有没有权限")
+            log.warn("Falha ao gravar o marcador da sessão de servos", cat="Barramento", step=str(marker), raw=f"{type(e).__name__}: {e}",
+                     hint="Após reiniciar, o Studio não saberá se havia servos habilitados na sessão anterior. Verifique o espaço e as permissões do diretório state.")
             return False
 
     async def remember_marker(by):
-        """写会话标记并把它写没写进去记到 servo.marker_error（页面提示条用）。"""
+        """Grava o marcador da sessão e registra o resultado em servo.marker_error (usado no aviso da página)."""
         ok = await asyncio.to_thread(marker_write, by)
         servo.marker_error = None if ok else (
-            "会话标记没写进去：Studio 重启后不知道这里还开着。别重启 Studio，用完点「交还主程序」")
+            "Não foi possível gravar o marcador da sessão: após reiniciar, o Studio não saberá que ela ainda está aberta. Não reinicie o Studio; ao terminar, clique em “Devolver ao programa principal”.")
         return ok
 
     def marker_drop():
@@ -1277,11 +1277,11 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         except FileNotFoundError:
             pass
         except OSError as e:
-            log.warn("舵机会话的标记删不掉", cat="Barramento", step=str(marker), raw=f"{type(e).__name__}: {e}",
-                     hint="下次 Studio 起来会以为上次还开着、去接管一次总线；看看 state 目录的权限")
+            log.warn("Não foi possível remover o marcador da sessão de servos", cat="Barramento", step=str(marker), raw=f"{type(e).__name__}: {e}",
+                     hint="Na próxima inicialização, o Studio presumirá que a sessão anterior continua aberta e tentará assumir o barramento. Verifique as permissões do diretório state.")
 
     def marker_read():
-        """(在不在, 内容)：内容 None = 文件坏了（读不出、不是 JSON 对象）。"""
+        """(existe, conteúdo): conteúdo None significa que o arquivo está inválido (não foi possível ler ou não contém um objeto JSON)."""
         if marker is None:
             return False, None
         try:
@@ -1297,13 +1297,13 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         return True, d if isinstance(d, dict) else None
 
     async def robotd_up():
-        """robotd 的 socket 连得上吗（连上就关，不说话）。台架模式没有 robotd。"""
+        """Verifica se é possível conectar ao socket do robotd (fecha imediatamente sem enviar dados). O modo de bancada não tem robotd."""
         addr = getattr(robotd, "addr", "none")
         if not addr or addr == "none":
             return False
         try:
             _, w = await asyncio.wait_for(open_conn(addr), 1.0)
-        except Exception:  # noqa: BLE001 —— 连不上、超时都算不在
+        except Exception:  # noqa: BLE001 — falha de conexão ou timeout significa que está indisponível.
             return False
         try:
             w.close()
@@ -1312,55 +1312,55 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         return True
 
     async def handed_back(why, by=None):
-        """总线已经卸力、关了：恢复跟主程序的轮询、起主程序、按结果删 / 留标记、记一行（每次都记：审查 D13）。"""
+        """O torque do barramento já foi relaxado e ele foi fechado: restaura a consulta ao programa principal, inicia-o, remove ou mantém o marcador conforme o resultado e registra o evento (sempre; revisão D13)."""
         servo.handed_back_at = time.monotonic()
         servo.orphan = None
         servo.marker_error = None
         servo.giveback_error = servo.giveback_hint = None
         robotd.set_paused(False)
-        log.info(f"交还主程序：{why}", cat="Barramento", dedup=False)
-        # 一键交还：起主程序（小助手 bus-give-back soft：撤旗、起 robotd、等启动四步成功）。
-        # 标记等起完再删：没起来、旗还在的话留着，Studio 重启才能接着管（审查 #4）
+        log.info(f"Barramento devolvido ao programa principal: {why}", cat="Barramento", dedup=False)
+        # Devolução em um clique: inicia o programa principal (helper bus-give-back soft: remove o sinalizador, inicia robotd e aguarda as quatro etapas de inicialização).
+        # Só remove o marcador após a inicialização; se não iniciar e o sinalizador permanecer, mantém o arquivo para que o Studio possa retomar o controle após reiniciar (revisão #4).
         ok, gb_why = await asyncio.to_thread(_bus_give_back, by or "Studio", servo)
         if ok:
             await asyncio.to_thread(marker_drop)
             if servo.helper_available is False:
-                log.warn("交还了；没装小助手，主程序要手动起：sudo systemctl start robotd", cat="Barramento", dedup=False)
+                log.warn("Barramento devolvido; helper não instalado. Inicie o programa principal manualmente: sudo systemctl start robotd", cat="Barramento", dedup=False)
             else:
-                log.info("主程序起来了", cat="Barramento", dedup=False)
+                log.info("Programa principal iniciado", cat="Barramento", dedup=False)
         else:
             servo.giveback_error = gb_why
             flag = await asyncio.to_thread(helper.flag_present)
             if flag:
-                servo.giveback_hint = ("旗还在：手动 start robotd 会被挡住。再进一次舵机页、再点交还；"
-                                       "或者重启鸭子（旗在 /run，重启就没了）")
+                servo.giveback_hint = ("O sinalizador ainda está ativo: uma inicialização manual do robotd será bloqueada. Abra novamente a página de servos e devolva o barramento;"
+                                       "ou reinicie o Microduck (o sinalizador fica em /run e será removido na reinicialização).")
             elif getattr(servo, "giveback_stuck", False):
-                servo.giveback_hint = "主程序在回话，只是一直报启动阶段：多半是旧版主程序的毛病，去日志页看它最后说了什么"
+                servo.giveback_hint = "O programa principal responde, mas permanece na fase de inicialização. Provavelmente é um problema de uma versão antiga; confira a última mensagem na página de registros."
                 await asyncio.to_thread(marker_drop)
             else:
-                servo.giveback_hint = "手动 sudo systemctl start robotd，或者再进一次舵机页再交还"
+                servo.giveback_hint = "Execute sudo systemctl start robotd manualmente ou abra novamente a página de servos e devolva o barramento."
                 await asyncio.to_thread(marker_drop)
-            log.error(f"主程序没起来：{gb_why}", cat="Barramento", dedup=False, hint=servo.giveback_hint)
+            log.error(f"O programa principal não iniciou: {gb_why}", cat="Barramento", dedup=False, hint=servo.giveback_hint)
 
     async def hand_back(why, by=None):
-        """点「交还主程序」：先置 closing、等在路上的舵机操作做完（等不到不交还），再在总线上全部卸力并回读确认
-        （不指望主程序启动时卸力，审查 S1），再关总线、起主程序（handed_back，审查 D2）。"""
+        """Ao clicar em “Devolver ao programa principal”: marca closing, aguarda as operações de servo em andamento (se não terminarem, não devolve), relaxa todos os servos no barramento e confirma pela leitura de retorno
+        (não depende do relaxamento durante a inicialização do programa principal; revisão S1), fecha o barramento e inicia o programa principal (handed_back; revisão D2)."""
         if servo is None or servo.state != "open":
             return True, None
         ok, reason = await asyncio.to_thread(servo.hand_back_bus, why, before_close=lambda: robotd.set_paused(False))
         if not ok:
-            log.error("没交还主程序", cat="Barramento", raw=reason, hint="等校准 / 动作做完再点「交还主程序」", dedup=False)
+            log.error("Não foi possível devolver ao programa principal", cat="Barramento", raw=reason, hint="Aguarde a conclusão da calibração/movimento e clique em “Devolver ao programa principal”.", dedup=False)
             return False, reason
-        servo.handback_note = reason          # 成功时第二个值是「哪几颗没确认卸力」的提示；全确认是 None
+        servo.handback_note = reason          # Em caso de sucesso, o segundo valor informa quais servos não tiveram o relaxamento confirmado; None significa que todos foram confirmados.
         await handed_back(why, by)
         return True, None
 
     async def leave_servos(why, ws=None, by=None):
-        """离开舵机页 / 没人在看：别的页面还在舵机页、校准 / 运动在跑、当场读到有保持的或读不到的 → 不交还，回 (False, 原因)；
-        否则卸力、关总线、起主程序，回 (True, None)（审查 D2、D3）。"""
+        """Ao sair da página de servos ou quando ninguém a estiver vendo: se outra página ainda estiver nela, houver calibração/movimento em andamento, algum servo estiver habilitado ou não for possível ler o estado, não devolve e retorna (False, motivo);
+        caso contrário, relaxa os servos, fecha o barramento, inicia o programa principal e retorna (True, None) (revisões D2 e D3)."""
         others = sum(1 for w, c in clients.items() if w is not ws and c.get("route") == "/servos")
         if others:
-            return False, f"还有 {others} 个页面在舵机页"
+            return False, f"Ainda há {others} páginas abertas na página de servos"
         verdict, info = await asyncio.to_thread(servo.leave, why, before_close=lambda: robotd.set_paused(False))
         if verdict == "handed_back":
             await handed_back(why, by)
@@ -1370,8 +1370,8 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         return False, info["why"]
 
     async def robotd_conflict():
-        """会话期间 robotd 被手动起来了（审查 D9）：它起来就把舵机全部松开、还跟 Studio 抢同一个串口。
-        Studio 关总线（不写舵机）、删标记、恢复轮询，提示条变红。"""
+        """O robotd foi iniciado manualmente durante a sessão (revisão D9): ao iniciar, ele relaxa todos os servos e disputa a mesma porta serial com o Studio.
+        O Studio fecha o barramento sem escrever nos servos, remove o marcador, restaura a consulta e exibe o aviso em vermelho."""
         async with servo_gate:
             if servo.state != "open" or servo.closing:
                 return
@@ -1380,12 +1380,12 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             await asyncio.to_thread(marker_drop)
             servo.marker_error = None
             robotd.set_paused(False)
-        log.error("主程序被手动起来了：它会把舵机全部松开、跟 Studio 抢串口", cat="Barramento", step="会话期间查 robotd 的 socket",
-                  hint="Studio 已经关掉舵机总线（没写舵机）。下次别手动起 robotd：先在页面上点「交还主程序」", dedup=False)
+        log.error("O programa principal foi iniciado manualmente: ele relaxará todos os servos e disputará a porta serial com o Studio", cat="Barramento", step="verificação do socket do robotd durante a sessão",
+                  hint="O Studio já fechou o barramento de servos sem escrever neles. Não inicie o robotd manualmente da próxima vez; clique em “Devolver ao programa principal” na página.", dedup=False)
 
     async def servo_restore():
-        """Studio 起来时：上次退出时舵机会话开着（有标记）→ robotd 不在就重新接管总线（只读打开，不改扭矩），恢复会话
-        和提示条；接管不上 → 记成 orphan（提示条、卸力按钮引导去舵机页）；robotd 在 → 它起来时已经全部松开，删标记（审查 D1）。"""
+        """Na inicialização do Studio: se a sessão de servos anterior permaneceu aberta (marcador presente) e o robotd estiver parado, assume novamente o barramento (somente leitura, sem alterar o torque) e restaura a sessão
+        e o aviso. Se não conseguir assumir, registra como orphan (aviso e botão de relaxamento orientam o usuário à página de servos). Se o robotd estiver ativo, ele já terá relaxado todos os servos ao iniciar; remove o marcador (revisão D1)."""
         if servo is None:
             return
         if updates.installing():
@@ -1395,16 +1395,16 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         if not there:
             return
         if data is None:
-            log.warn("舵机会话的标记坏了：照上次开着处理（用默认的串口）", cat="Barramento", step=str(marker),
-                     hint="多半是写到一半断电了；不影响用")
+            log.warn("Marcador da sessão de servos inválido; tratando como sessão ainda aberta (usando a porta serial padrão)", cat="Barramento", step=str(marker),
+                     hint="Provavelmente houve uma queda de energia durante a gravação; isso não impede o uso.")
             data = {}
         here = boot_id()
         if isinstance(data, dict) and data.get("boot_id") and here and data["boot_id"] != here:
-            log.info("上次开机留下的舵机会话标记：断过电，舵机早就松了，作废", cat="Barramento", dedup=False)
+            log.info("Marcador da sessão de servos deixado pela inicialização anterior: houve perda de energia, os servos já foram relaxados; descartando o marcador", cat="Barramento", dedup=False)
             await asyncio.to_thread(marker_drop)
             return
         if await robotd_up():
-            log.info("上次 Studio 退出时舵机会话开着；主程序现在在跑（它起来时会把舵机全部松开）：不接管", cat="Barramento",
+            log.info("A sessão de servos permanecia aberta quando o Studio foi fechado; o programa principal está em execução (ele relaxa todos os servos ao iniciar): não assumindo", cat="Barramento",
                      dedup=False)
             await asyncio.to_thread(marker_drop)
             return
@@ -1412,42 +1412,40 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         async with servo_gate:
             if servo.state == "open":
                 return
-            robotd.set_paused(True, "调舵机（接着上次的会话）")
-            # 恢复会话跟网页进舵机页一个样：先 bus_take 立旗（robotd 起不来、管理锁在、确认串口空），再开串口。
-            # 不立旗就开串口，robotd 一起来会跟 Studio 抢同一个总线
-            taken, take_why = await asyncio.to_thread(_bus_take, "Studio 重启后接着管", servo)
+            robotd.set_paused(True, "controle de servos (retomando a sessão anterior)")
+            # Retomar a sessão segue o mesmo fluxo de abrir a página de servos: primeiro bus_take sinaliza a posse (impede a inicialização do robotd, mantém o bloqueio administrativo e confirma que a porta serial está livre), depois abre a porta.
+            # Sem o sinalizador, o robotd poderia iniciar e disputar o mesmo barramento com o Studio.
+            taken, take_why = await asyncio.to_thread(_bus_take, "retomar após reiniciar o Studio", servo)
             if not taken:
                 ok, why = False, take_why
                 servo.orphan = {"why": take_why, "at": time.monotonic()}
                 robotd.set_paused(False)
-                # bus-take 半路失败可能已经把旗立了：起主程序回滚（撤旗 + 起 robotd），别留个旗让主程序一直起不来
-                asyncio.create_task(asyncio.to_thread(_bus_give_back, "Studio 重启后接着管", servo))
+                # bus-take pode ter criado o sinalizador antes de falhar: reinicia o programa principal para reverter (remove o sinalizador e inicia robotd).
+                asyncio.create_task(asyncio.to_thread(_bus_give_back, "retomar após reiniciar o Studio", servo))
             else:
-                ok, why = await asyncio.to_thread(servo.open, "Studio 重启后接着管", port, True)
+                ok, why = await asyncio.to_thread(servo.open, "retomar após reiniciar o Studio", port, True)
                 if ok:
                     servo.orphan = None
                     servo.handed_back_at = None
                     servo.handback_note = servo.giveback_error = servo.giveback_hint = None
-                    await remember_marker(data.get("by") if isinstance(data.get("by"), str) else "Studio 重启后接着管")
+                    await remember_marker(data.get("by") if isinstance(data.get("by"), str) else "retomar após reiniciar o Studio")
                 else:
                     servo.orphan = {"why": why, "at": time.monotonic()}
                     robotd.set_paused(False)
-                    # 主程序停了、总线却没开成：起回来，别留个旗让主程序一直起不来
-                    asyncio.create_task(asyncio.to_thread(_bus_give_back, "Studio 重启后接着管", servo))
+                    # O programa principal foi pausado, mas o barramento não abriu: reinicia-o para não deixar o sinalizador impedir sua inicialização.
+                    asyncio.create_task(asyncio.to_thread(_bus_give_back, "retomar após reiniciar o Studio", servo))
         if ok:
-            log.info(f"会话恢复：上次 Studio 退出时舵机会话开着，重新接管了总线（只读打开，没改扭矩；{servo.holding()} 颗保持着）",
+            log.info(f"Sessão restaurada: o Studio retomou o barramento que permanecia aberto ao sair (somente leitura, sem alterar o torque; {servo.holding()} servos habilitados)",
                      cat="Barramento", dedup=False)
         else:
-            log.error("上次 Studio 退出时舵机会话开着，这次没接管上：可能还有舵机保持着", cat="Barramento", raw=why, dedup=False,
-                      hint="去舵机页接管后才能卸力；急的话关电源")
+            log.error("A sessão de servos permanecia aberta ao fechar o Studio, mas não foi retomada; ainda pode haver servos habilitados", cat="Barramento", raw=why, dedup=False,
+                      hint="Assuma o barramento na página de servos antes de relaxar o torque; em uma emergência, desligue a alimentação.")
 
     async def servo_watch():
-        """每秒一拍：
-        - 舵机页没人在看超过 SERVO_IDLE_S：没有舵机保持着（当场读，读不到的当在保持）就自动交还（页面关了、断网时主程序
-          别一直停着、手柄一直不能用）。有保持着的：不交还、不卸力（用户定过「没人操作不自动卸力」；交还会让 robotd 起来时
-          全部松开），只记一行 warn（同一句 1 分钟只记一次）；
-        - 会话期间 5 秒看一眼 robotd 起没起来（审查 D9）；
-        - 交还以后 / 没接管上的标记：主程序连上（交还之后有新回包）才清掉提示（审查 D12）。"""
+        """Um ciclo por segundo:
+        - Se ninguém estiver na página de servos por SERVO_IDLE_S e não houver servos habilitados (lê no momento; leitura indisponível conta como habilitado), devolve automaticamente o barramento, para que o programa principal não fique parado e o controle indisponível após fechar a página ou perder a conexão. Se houver servos habilitados, não devolve nem relaxa o torque (decisão do usuário: não relaxar automaticamente quando ninguém está operando; a inicialização do robotd relaxaria todos os servos); registra apenas um aviso, no máximo uma vez por minuto;
+        - verifica a cada 5 segundos se o robotd iniciou durante a sessão (revisão D9);
+        - para marcadores de devolução ou de retomada pendente, remove o aviso somente quando o programa principal conecta (há uma resposta nova após a devolução; revisão D12)."""
         since = None
         last_probe = last_try = 0.0
         while True:
@@ -1459,13 +1457,13 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 since = None
                 fresh = robotd.present is True and robotd.bus.at is not None
                 if servo.handed_back_at is not None and fresh and robotd.bus.at > servo.handed_back_at and not robotd.paused:
-                    servo.handed_back_at = None                    # 主程序连上了：「已交还……手动起 robotd」那句收起来
+                    servo.handed_back_at = None                    # O programa principal conectou; remove o aviso “devolvido... inicie robotd manualmente”.
                     servo.handback_note = None
                     servo.giveback_error = servo.giveback_hint = None
                 if servo.orphan and fresh and robotd.bus.at > servo.orphan["at"] and not robotd.paused:
-                    servo.orphan = None                            # 主程序起来了（它会全部松开）：不用再去接管
+                    servo.orphan = None                            # O programa principal iniciou (e relaxou todos os servos); não é mais necessário assumir o barramento.
                     await asyncio.to_thread(marker_drop)
-                    log.info("上次退出时开着的舵机会话：主程序起来了（它会把舵机全部松开），不用再接管", cat="Barramento", dedup=False)
+                    log.info("Sessão de servos deixada aberta ao sair: o programa principal iniciou e relaxou todos os servos; não é necessário assumir o barramento", cat="Barramento", dedup=False)
                 continue
             probe = servo.probe_robotd if servo.probe_robotd is not None else not servo.sim
             if probe and now - last_probe >= ROBOTD_PROBE_S and not servo.closing:
@@ -1479,19 +1477,19 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             elif since is None:
                 since = now
             elif now - since > SERVO_IDLE_S and now - last_try >= 5.0:
-                last_try = now                                     # 有保持着的时候 5 秒再看一次（当场读扭矩）
+                last_try = now                                     # Se houver servos habilitados, tenta novamente após 5 s (faz uma leitura imediata do torque).
                 async with servo_gate:
                     if servo.state != "open":
                         continue
-                    done, kept = await leave_servos(f"舵机页 {SERVO_IDLE_S:.0f} 秒没人在看，也没有舵机保持着", by="Studio 自动交还")
+                    done, kept = await leave_servos(f"ninguém na página de servos por {SERVO_IDLE_S:.0f} s e nenhum servo habilitado", by="devolução automática do Studio")
                 if done:
                     since = None
                 else:
-                    log.warn(f"舵机页没人在看，但{kept}：不自动交还、不卸力", cat="Barramento", raw=kept,
-                             hint="要交还点页面顶上的「交还主程序」；交还以后舵机会全部松开，先扶住")
+                    log.warn(f"Ninguém está na página de servos, mas {kept}: não devolvendo nem relaxando o torque automaticamente", cat="Barramento", raw=kept,
+                             hint="Para devolver, clique em “Devolver ao programa principal” no topo da página; todos os servos serão relaxados, então segure o Microduck.")
 
     async def pad_feed():
-        """robotd 的回读 10 Hz 交给手柄页的后端，不管有没有页面在看（测急停、动作、卸力后 2 秒的保护都靠它）。"""
+        """Envia a leitura de retorno do robotd a 10 Hz ao backend da página do controle, mesmo quando nenhuma página estiver aberta (o teste de parada de emergência, os movimentos e a proteção de 2 s após relaxar o torque dependem disso)."""
         while True:
             await asyncio.sleep(1 / STATE_HZ)
             try:
@@ -1500,25 +1498,25 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
                 robotd.set_background_music(pad.motion_studio.background_music())
                 pad.feed_robot(robot_view(robotd))
             except Exception as e:  # noqa: BLE001
-                log.error("把主程序的状态交给手柄页时出错", cat="Controle", raw=f"{type(e).__name__}: {e}", exc=True,
-                          hint="这是 Studio 的问题，导出诊断包发出来")
+                log.error("Falha ao enviar o estado do programa principal ao controle", cat="Controle", raw=f"{type(e).__name__}: {e}", exc=True,
+                          hint="É um problema do Studio. Exporte o pacote de diagnóstico e compartilhe.")
                 await asyncio.sleep(1.0)
 
     async def onboard_loop():
-        """上手清单、主板温度的回差：0.5 秒判一次（只改内存），记录变了在线程里写盘（审查 O6：只在这一处判、只在这里写）。"""
+        """Atualiza a histerese do guia inicial e da temperatura da placa a cada 0,5 s (altera apenas a memória); grava os registros em uma thread quando mudarem (revisão O6: a avaliação e a gravação ocorrem somente aqui)."""
         while True:
             await asyncio.sleep(ONBOARD_TICK_S)
             try:
-                # 读文件（servo-calib 目录、robotd 不报温度时的 /sys/class/thermal）放线程里：SD 卡一卡不能挡住
-                # 同一个事件循环里的卸力（代码审查 C9-1）。tick 本身只用内存
+                # Lê arquivos (diretório servo-calib e /sys/class/thermal quando o robotd não informa a temperatura) em uma thread: uma demora no cartão SD não pode bloquear
+                # o comando de relaxamento no mesmo loop de eventos (revisão de código C9-1). O tick em si usa apenas a memória.
                 await asyncio.to_thread(onboard.io, onboard.need_board(robotd))
                 if pad is not None:
-                    pad.battery_shutdown = onboard.battery_shutdown   # 手柄页的低电文案照 robotd 配置说（任务 1 附）
+                    pad.battery_shutdown = onboard.battery_shutdown   # A mensagem de bateria fraca na página do controle segue a configuração do robotd (tarefa 1).
                 if onboard.tick(robotd, pad, servo):
                     await asyncio.to_thread(onboard.save)
             except Exception as e:  # noqa: BLE001
-                log.error("上手清单判的时候出错", cat="Sistema", raw=f"{type(e).__name__}: {e}", exc=True,
-                          hint="这是 Studio 的问题，导出诊断包发出来；不影响站和走")
+                log.error("Falha ao avaliar o guia inicial", cat="Sistema", raw=f"{type(e).__name__}: {e}", exc=True,
+                          hint="É um problema do Studio. Exporte o pacote de diagnóstico e compartilhe; isso não afeta ficar em pé nem andar.")
                 await asyncio.sleep(5.0)
 
     @contextlib.asynccontextmanager
@@ -1527,13 +1525,13 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
         watch = asyncio.create_task(servo_watch())
         feed = asyncio.create_task(pad_feed()) if pad is not None else None
         ob_task = asyncio.create_task(onboard_loop()) if onboard is not None else None
-        bat_task = asyncio.create_task(battery.loop()) if battery is not None else None   # 电量估算 1 Hz（审查 B-R7）
-        tune_task = asyncio.create_task(tune.loop()) if tune is not None else None     # 调参卡读文件 2 秒一次（线程里）
+        bat_task = asyncio.create_task(battery.loop()) if battery is not None else None   # Estimativa de bateria a 1 Hz (revisão B-R7).
+        tune_task = asyncio.create_task(tune.loop()) if tune is not None else None     # Lê os arquivos do painel de calibração a cada 2 s (em uma thread).
         robotd.start()
         if net is not None:
             net.start()
-        restore = asyncio.create_task(servo_restore())        # 上次退出时舵机会话开着：接着管（审查 D1）
-        log.info(f"Studio {VERSION} 启动 · Python {platform.python_version()} · {platform.node()}", cat="Sistema",
+        restore = asyncio.create_task(servo_restore())        # Retoma a sessão de servos deixada aberta ao sair (revisão D1).
+        log.info(f"Studio {VERSION} iniciado · Python {platform.python_version()} · {platform.node()}", cat="Sistema",
                  dedup=False)
         yield
         await updates.stop_readiness()
@@ -1550,15 +1548,15 @@ def build_app(*, auth, robotd, log, web_dir, duck, names=(), state_dir=None, dev
             feed.cancel()
             await asyncio.to_thread(pad.close)
         if servo is not None and servo.state != "closed":
-            # Studio 退出不卸力（审查 D1）：只关串口，保持着的舵机照样保持；标记留着，下次起来接着管
+            # Ao sair, o Studio não relaxa o torque (revisão D1): fecha apenas a porta serial, mantém os servos habilitados e preserva o marcador para retomar a sessão na próxima inicialização.
             n = servo.holding()
             await asyncio.to_thread(servo.close)
-            log.info(f"Studio 退出：舵机会话开着（{n} 颗保持着），不卸力；下次起来会接着管", cat="Barramento", dedup=False)
+            log.info(f"Studio encerrado: sessão de servos aberta ({n} habilitados); torque mantido e sessão retomada na próxima inicialização", cat="Barramento", dedup=False)
         if net is not None:
             await net.stop()
         await robotd.stop()
         auth.flush()
-        log.info("Studio 停止", cat="Sistema", dedup=False)
+        log.info("Studio encerrado", cat="Sistema", dedup=False)
         log.flush()
 
     routes = [
@@ -1592,15 +1590,15 @@ def _run(cmd, timeout=5):
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return (r.stdout or "") + (r.stderr or "")
     except (OSError, subprocess.TimeoutExpired) as e:
-        return f"（没拿到：{type(e).__name__}: {e}）"
+        return f"(não foi possível obter: {type(e).__name__}: {e})"
 
 
 def _diag_zip(log, snap, raw):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("先看我.txt", "Microduck Studio 诊断包\n\n"
-                   "里面有：最近两天的 Studio 日志、导出时的状态、robotd 原始回包、版本、robotd/padd 的系统日志。\n"
-                   "注意：含鸭子的序列号和局域网 IP。发到公开的群之前，介意的话先删掉 system.txt 和 robotd-raw.json。\n")
+        z.writestr("Leia-me primeiro.txt", "Pacote de diagnóstico do Microduck Studio\n\n"
+                   "Contém: registros do Studio dos últimos dois dias, estado no momento da exportação, respostas brutas do robotd, versão e registros do sistema do robotd/padd.\n"
+                   "Atenção: inclui o número de série do Microduck e o IP da rede local. Se preferir, remova system.txt e robotd-raw.json antes de compartilhar em um grupo público.\n")
         for p in log.files(days=2):
             z.write(p, f"logs/{p.name}")
         z.writestr("state.json", json.dumps(snap, ensure_ascii=False, indent=1, default=str))
@@ -1619,7 +1617,7 @@ def _diag_zip(log, snap, raw):
 
 
 def precompress(web_dir):
-    """meshes.bin 先压一份 .gz（只在 .gz 比原文件旧时重压）。"""
+    """Gera primeiro uma versão .gz de meshes.bin (só comprime novamente se o .gz for mais antigo que o arquivo original)."""
     raw = Path(web_dir) / "model" / "meshes.bin"
     gz = raw.with_suffix(".bin.gz")
     try:
@@ -1627,6 +1625,6 @@ def precompress(web_dir):
             with open(raw, "rb") as f, gzip.open(gz, "wb", compresslevel=9) as g:
                 g.write(f.read())
     except OSError:
-        # 网页目录只读（装到 /opt、换专用用户以后）：不压了，直接给原文件
+        # O diretório da página é somente leitura (após instalar em /opt e mudar para um usuário dedicado): não comprime; entrega o arquivo original.
         return None
     return gz
