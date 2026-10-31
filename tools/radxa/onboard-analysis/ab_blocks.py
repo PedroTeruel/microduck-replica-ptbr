@@ -1,34 +1,34 @@
-"""今晚 A/B 用：每块录像数摔倒、算每分钟摔几次，最后把 chip 和 gyro 各自加总，判断差别算不算数（只读）。
+"""Análise A/B: conta as quedas de cada gravação, calcula quedas por minuto e compara os totais dos modos chip e gyro (somente leitura).
 
-用法：
-  python ab_blocks.py chip1=录像1.jsonl gyro1=录像2.jsonl chip2=... gyro2=...
-  python ab_blocks.py chip1=录像.jsonl@120-300     # 只看这份录像开头起第 120～300 秒（按 wall 墙钟算）
-标签必须以 chip 或 gyro 开头才进对比；旧录像用 old 开头，只出单块数。别的开头报错、不进对比。
-每块实际是什么模式从录像里认：imu.fusion 带 fused → chip 模式；带 chip → gyro 模式；没有 imu.fusion → 旧版。
-标签和录像里的模式对不上会报 [错误]，这块不进对比。
+Uso:
+  python ab_blocks.py chip1=video1.jsonl gyro1=video2.jsonl chip2=... gyro2=...
+  python ab_blocks.py chip1=video.jsonl@120-300     # analisa somente do segundo 120 ao 300 desta gravação, medido por wall
+As etiquetas devem começar com chip ou gyro para entrar na comparação; gravações antigas podem usar old e serão apenas resumidas individualmente. Outros prefixos são inválidos e excluídos.
+O modo efetivo é identificado na gravação: imu.fusion com fused indica chip; com chip indica gyro; sem imu.fusion indica versão antiga.
+Se a etiqueta não corresponder ao modo gravado, registra [erro] e exclui o trecho.
 
-口径：
-  直立走路帧 = policy == walk、未卸力（safety.limp 假）、未倒地（safety.fallen 假）。
-  计时只算直立走路帧里倾角 ≤30° 的（摔后躺着、斜靠、被人扶着的不算）；时间按 wall 差算，>0.1 s 的空档不计时。
-  一次摔倒 = 直立走路帧之后 safety.fallen 上升沿；离上一次倒地结束不到 3 s 的上升沿算同一次（倒地判定会来回跳）。
-            非走路状态（held / homing 等）或卸力时的上升沿单独列出，不计入。日志里写每次距上次倒地多久，卡 3 s 边界的可复核。
-  推杆摔 = 上升沿前 2 s 内推过摇杆的摔倒。
-  主指标 = 每推杆分钟摔倒 = 推杆摔 / 推摇杆分钟数（推杆时间两种模式由操作者控制得一样；站着不推杆的时间长短跟模式无关）。
-  参考   = 每直立走路分钟摔倒 = 全部摔倒 / 直立走路分钟数。两种分母结论不一致要当场说出来。
-  走路段 = 连续的直立走路帧（中间空档 <0.2 s 算连续）；段尾 1 s 内接着摔倒的算「以摔倒结束」。
-  芯片台阶 = 用本帧陀螺把上一帧重力外推，与本帧差 >5°（judge_block / glitch_rate 同口径），只数直立走路帧。
-            芯片那一路：chip 模式和旧版用 safety.gravity；gyro 模式用 imu.fusion.chip，补上和 safety.gravity 一样的
-            归一化 + 逐分量三点中值，两种模式才可比。verdict == disabled 的帧发布的已是芯片姿态，按 chip 算。
-  发布台阶 = 同样的判据用在 safety.gravity（策略实际看到的），gyro 模式下应接近 0。
-  摔前有台阶 = 摔倒前 1.5 s 内芯片那一路有台阶（没有基线：任意推杆时刻往前 1.5 s 有台阶的比例本身就有 12–47%，只作参考）。
-  机身颤（护栏）= 推着摇杆、倾角 ≤30° 的直立走路段（每段 ≥1.5 s），且段尾 2 s 内没摔，机身横滚、俯仰角速度 RMS（°/s）；
-            gyro 不高于 chip 一成。含摔前踉跄的原口径另列作参考（那个会把摔倒率再数一遍）。
-  一块里少数模式的直立走路帧 >1 s → 这块不进对比（中途改过键，要按改键时刻切块）。
-对比：两种模式各自加总，率比 = gyro / chip；p 值用精确条件二项检验（总摔倒数固定时，落在 gyro 的份额是否偏离时间占比），
-      95% 区间用 Clopper-Pearson。块数和顺序上机前定好（chip、gyro、gyro、chip…），别边看 p 值边决定加不加块。
-日志：分类、分级写到第一个录像同目录的 ab_blocks.log；报告同时追加到 ab_report.txt。
-10-15 第一版经独立审核，按审核改：old/不认识的标签不进对比、gyro 芯片路补中值、
-  倾角 ≤30° 计时、推杆分母、护栏去掉摔前段、disabled 按 chip、混模式整块不进、参数写错不崩、同一文件重复用提示。
+Critérios:
+  Quadro de marcha em pé = policy == walk, torque ativo (safety.limp falso) e sem queda (safety.fallen falso).
+  Conta somente quadros de marcha em pé com inclinação ≤30° (exclui robô tombado, inclinado ou sendo segurado); o tempo é calculado pela diferença de wall e lacunas >0,1 s não contam.
+  Uma queda = transição de safety.fallen para verdadeiro após quadros de marcha em pé; transições a menos de 3 s do fim da queda anterior pertencem ao mesmo evento (a detecção de queda pode oscilar).
+            Transições fora da caminhada (held, homing etc.) ou com torque desativado são listadas separadamente e não entram na contagem. O registro informa o intervalo desde a queda anterior para permitir revisar os casos próximos ao limite de 3 s.
+  Queda após comando do joystick = queda precedida pelo acionamento do joystick nos 2 s anteriores à transição.
+  Métrica principal = quedas por minuto de joystick acionado = quedas após comando / minutos de acionamento (o operador deve manter igual o tempo de acionamento nos dois modos; o tempo parado sem acionar não depende do modo).
+  Referência = quedas por minuto de marcha em pé = todas as quedas / minutos de marcha em pé. Informe se as conclusões divergirem entre os dois denominadores.
+  Segmento de caminhada = sequência contínua de quadros de marcha em pé (lacunas <0,2 s são permitidas); uma queda até 1 s após o fim marca o segmento como encerrado por queda.
+  Degrau do chip = extrapola a gravidade do quadro anterior usando o giroscópio deste quadro e compara com a gravidade atual; diferença >5° (mesmo critério de judge_block / glitch_rate), contando somente quadros de marcha em pé.
+            Caminho do chip: usa safety.gravity nos modos chip e antigo; no modo gyro, usa imu.fusion.chip e aplica o mesmo processamento de safety.gravity:
+            normalização e mediana de três pontos por componente. Assim os modos ficam comparáveis. Em verdict == disabled, a postura publicada já vem do chip; classifique como chip.
+  Degrau publicado = mesmo critério aplicado a safety.gravity (o valor visto pela política); deve ficar perto de zero no modo gyro.
+  Degrau pré-queda = degrau no caminho do chip até 1,5 s antes da queda. Sem referência de base: a proporção em qualquer intervalo aleatório de 1,5 s após acionar o joystick já é 12–47%; use somente como referência.
+  Tremor do tronco (limite de proteção) = RMS (°/s) das velocidades angulares de rolagem e inclinação em trechos de marcha em pé com joystick acionado, inclinação ≤30°, duração ≥1,5 s e sem queda nos 2 s após o fim;
+            gyro não deve exceder chip em mais de 10%. A métrica original, que inclui tropeços pré-queda, também é listada como referência (ela pode contar novamente o próprio evento de queda).
+  Se quadros de marcha em pé no modo minoritário excederem 1 s, exclui o trecho (houve mudança de modo; divida a gravação no instante da mudança).
+Comparação: soma separadamente cada modo e calcula a razão gyro/chip. O valor p usa teste binomial condicional exato (com total de quedas fixo, verifica se a proporção de quedas no gyro diverge da proporção de tempo).
+      O intervalo de 95% usa Clopper-Pearson. Defina antes da execução o número e a ordem dos trechos (chip, gyro, gyro, chip...); não decida adicionar trechos após observar o valor p.
+Registros: classificação e nível em ab_blocks.log, no diretório da primeira gravação; o relatório é anexado a ab_report.txt.
+Primeira versão de 10-15 revisada de forma independente e atualizada conforme a revisão: etiquetas old/desconhecidas excluídas; mediana aplicada ao caminho chip do gyro;
+  tempo limitado a inclinação ≤30°; denominador pelo tempo de joystick acionado; indicador de proteção exclui trecho pré-queda; disabled conta como chip; trechos com modos misturados excluídos; erros de parâmetros tratados; aviso para reutilização da mesma gravação.
 """
 import json
 import math
@@ -36,16 +36,16 @@ import os
 import sys
 import time
 
-GAP = 0.1            # 帧间隔超过这个不计时
-SEG_GAP = 0.2        # 走路段内允许的空档
-MERGE = 3.0          # 倒地判定来回跳的合并窗口
-PRE_FALL = 1.5       # 摔前看多久
+GAP = 0.1            # Intervalos entre quadros acima deste valor não contam no tempo.
+SEG_GAP = 0.2        # Lacuna permitida dentro de um segmento de caminhada.
+MERGE = 3.0          # Janela para agrupar oscilações na detecção de queda.
+PRE_FALL = 1.5       # Intervalo observado antes da queda.
 STEP_DEG = 5.0
 SHAKE_MIN = 1.5
-TILT_MAX = 30.0      # 计时/机身颤只算倾角 ≤30° 的直立走路帧（摔后躺着、被扶着的不算）
-STICK_RECENT = 2.0   # 上升沿前这么久内推过摇杆 → 算「推杆摔」
-SHAKE_SKIP = 2.0     # 机身颤只用段尾之后这么久内没摔的段
-MIX_MAX = 50         # 非多数模式的直立走路帧超过这么多（1 s）→ 这块报错
+TILT_MAX = 30.0      # Tempo e tremor consideram somente marcha em pé com inclinação ≤30° (exclui robô tombado ou sendo segurado).
+STICK_RECENT = 2.0   # Acionamento do joystick neste intervalo antes da transição classifica a queda como precedida por comando.
+SHAKE_SKIP = 2.0     # Tremor considera somente segmentos sem queda durante este intervalo após o fim.
+MIX_MAX = 50         # Mais quadros que este limite no modo minoritário (1 s) causam erro no trecho.
 
 LOG = None
 
@@ -86,7 +86,7 @@ def frame_mode(r):
     if f.get('fused') is not None:
         return 'chip'
     if f.get('chip') is not None:
-        # disabled 时发布的已经是芯片（bno08x.rs sample()/HostImuSample.quat），按 chip 算
+        # Em disabled, o valor publicado já vem do chip (bno08x.rs sample()/HostImuSample.quat); classifique como chip.
         return 'chip' if f.get('verdict') == 'disabled' else 'gyro'
     return '?'
 
@@ -97,8 +97,8 @@ def _norm(v):
 
 
 def chip_gravs(rows, mode):
-    """芯片那一路每帧的重力。gyro 模式下 imu.fusion.chip 没过中值，这里补上和
-    safety.gravity 一样的处理（先归一化、再逐分量三点中值，断档后重新起头），两种模式才可比。"""
+    """Gravidade por quadro no caminho do chip. No modo gyro, imu.fusion.chip não passa pela mediana; aplique aqui o mesmo processamento que
+    safety.gravity (normalização e mediana de três pontos por componente, reiniciada após lacunas) para permitir comparar os dois modos."""
     if mode != 'gyro':
         return [r['safety']['gravity'] for r in rows]
     raw = []
@@ -129,7 +129,7 @@ def upright(r):
 
 
 def upright_t(r):
-    """计时用：直立走路且倾角 ≤ TILT_MAX。台阶仍按 upright() 数，免得把芯片跳到 30° 以外的帧漏掉。"""
+    """Usado na contagem de tempo: marcha em pé e inclinação ≤ TILT_MAX. Os degraus ainda usam upright() para não excluir quadros em que o salto do chip excedeu 30°."""
     return upright(r) and tilt(r) <= TILT_MAX
 
 
@@ -151,7 +151,7 @@ def load(path, window):
                 rows.append(r)
     rows.sort(key=lambda r: r['wall'])
     if bad:
-        log('读取', 'WARN', '%s：%d 行不是 JSON，已跳过' % (path, bad))
+        log('Leitura', 'WARN', '%s: %d linhas não são JSON e foram ignoradas' % (path, bad))
     if not rows:
         return rows
     if window:
@@ -164,8 +164,8 @@ def analyze(label, path, window):
     rows = load(path, window)
     out = {'label': label, 'path': path, 'frames': len(rows)}
     if len(rows) < 2:
-        log('读取', 'ERROR', '%s：帧太少（%d）' % (label, len(rows)))
-        out['error'] = '帧太少'
+        log('Leitura', 'ERROR', '%s: poucos quadros (%d)' % (label, len(rows)))
+        out['error'] = 'Poucos quadros'
         return out
     modes = {}
     for r in rows:
@@ -174,23 +174,23 @@ def analyze(label, path, window):
     mode = max(modes, key=modes.get)
     out['modes'] = modes
     out['mode'] = mode
-    # 标签只认 chip/gyro/old 开头；只有 chip/gyro 开头的才进对比（见 main）
+    # Aceita etiquetas iniciadas por chip/gyro/old; somente chip/gyro entram na comparação (consulte main).
     want = next((m for m in ('chip', 'gyro', 'old') if label.startswith(m)), None)
     out['want'] = want
     if want is None:
-        log('参数', 'ERROR', '%s：标签要以 chip / gyro / old 开头，这块不进对比' % label)
-        out['error'] = '标签不认识'
+        log('Parâmetros', 'ERROR', '%s: a etiqueta deve começar com chip / gyro / old; trecho excluído' % label)
+        out['error'] = 'Etiqueta desconhecida'
     if len(modes) > 1:
-        log('分段', 'WARN', '%s：一块里有多种模式 %s（中途改过键？），按多数 %s 算' % (label, modes, mode))
-        # 少数模式在直立走路里超过 1 s → 不进对比，免得混块
+        log('Segmentação', 'WARN', '%s: o trecho contém vários modos %s (o modo pode ter mudado durante a gravação); usando o modo predominante %s' % (label, modes, mode))
+        # Se o modo minoritário aparecer por mais de 1 s durante marcha em pé, exclui o trecho para evitar misturar modos.
         minority_up = sum(1 for r in rows if upright(r) and frame_mode(r) != mode)
         if minority_up > MIX_MAX:
-            log('分段', 'ERROR', '%s：非 %s 模式的直立走路帧 %d 帧（>%d），这块不进对比；请按改键时刻切块' % (
+            log('Segmentação', 'ERROR', '%s: %d quadros de marcha em pé no modo diferente de %s (>%d); trecho excluído. Separe no instante da mudança' % (
                 label, mode, minority_up, MIX_MAX))
-            out['error'] = '混了别的模式（%d 帧直立走路）' % minority_up
+            out['error'] = 'Trecho mistura outro modo (%d quadros de marcha em pé)' % minority_up
     if want in ('chip', 'gyro') and mode != want:
-        log('分段', 'ERROR', '%s：标签是 %s，录像里是 %s，这块不进对比' % (label, want, mode))
-        out['error'] = '模式对不上（录像里是 %s）' % mode
+        log('Segmentação', 'ERROR', '%s: etiqueta indica %s, mas a gravação está no modo %s; trecho excluído' % (label, want, mode))
+        out['error'] = 'Modo divergente (gravação em %s)' % mode
     verdicts = {}
     for r in rows:
         f = fusion(r)
@@ -225,12 +225,12 @@ def analyze(label, path, window):
         if g0 and g1 and step(g0, g1, w, dt) > STEP_DEG:
             chip_steps.append(c['wall'])
     if gaps:
-        log('读取', 'WARN', '%s：%d 处帧间隔 >%.1f s（录像断过），这些空档不计时' % (label, gaps, GAP))
+        log('Leitura', 'WARN', '%s: %d intervalos entre quadros >%.1f s (gravação interrompida); não contabilizados' % (label, gaps, GAP))
     if t_tilted:
-        log('统计', 'INFO', '%s：直立走路状态但倾角 >%.0f° 的 %.1f s 不计时（摔后躺着/被扶着）' % (label, TILT_MAX, t_tilted))
+        log('Estatísticas', 'INFO', '%s: %.1f s em marcha em pé com inclinação >%.0f°; tempo excluído (robô tombado ou sendo segurado)' % (label, t_tilted, TILT_MAX))
     out.update(t_up=t_up, t_stick=t_stick, t_tilted=t_tilted, chip_steps=len(chip_steps), pub_steps=len(pub_steps))
 
-    # 倒地事件：先找 fallen 的连续段，再合并来回跳的
+    # Eventos de queda: identifica segmentos contínuos de fallen e agrupa as oscilações na detecção.
     runs, cur = [], None
     for i, r in enumerate(rows):
         f = bool(r['safety'].get('fallen'))
@@ -256,7 +256,7 @@ def analyze(label, path, window):
             ft = rows[a]['wall']
             falls.append(ft)
             since[ft] = gap_prev
-            # 上升沿前 STICK_RECENT 秒内推过摇杆 → 推杆摔（分母用推摇杆时间）
+            # Joystick acionado nos STICK_RECENT segundos antes da transição: queda após comando (denominador = tempo de acionamento).
             j = a - 1
             while j >= 0 and ft - rows[j]['wall'] <= STICK_RECENT:
                 if stick(rows[j]):
@@ -267,12 +267,12 @@ def analyze(label, path, window):
             other.append((rows[a]['wall'], rows[a]['policy'], rows[a]['safety']['limp']))
     w0 = rows[0]['wall']
     for wt, pol, limp in other:
-        log('摔倒', 'INFO', '%s：%.1f s 处倒地判定，状态 %s 卸力 %s，不计入' % (label, wt - w0, pol, limp))
+        log('Queda', 'INFO', '%s: detecção de queda em %.1f s, estado %s, torque desativado %s; não contabilizada' % (label, wt - w0, pol, limp))
     out['falls'] = len(falls)
     out['falls_stick'] = len(falls_stick)
     out['other_falls'] = len(other)
 
-    # 走路段
+    # Segmentos de caminhada.
     segs, cur = [], None
     for p, c in zip(rows, rows[1:]):
         if upright(c) and c['wall'] - p['wall'] <= SEG_GAP and (upright(p) or cur is None):
@@ -293,7 +293,7 @@ def analyze(label, path, window):
     out['segs_fall'] = sum(1 for _, h in ended if h)
     fall_durs = sorted(d for d, h in ended if h)
     out['median_to_fall'] = fall_durs[len(fall_durs) // 2] if fall_durs else None
-    # 块里第一次摔倒前累计直立走路了多久
+    # Tempo acumulado de marcha em pé antes da primeira queda do trecho.
     acc, first = 0.0, None
     if falls:
         for p, c in zip(rows, rows[1:]):
@@ -307,13 +307,13 @@ def analyze(label, path, window):
     out['pre_step'] = sum(1 for ft in falls if any(ft - PRE_FALL <= st < ft for st in chip_steps))
     for ft in falls:
         pre = [st for st in chip_steps if ft - PRE_FALL <= st < ft]
-        log('摔倒', 'INFO', '%s：%.1f s 摔倒（%s；距上次倒地结束 %s），摔前 %.1f s 内芯片台阶 %d 次' % (
-            label, ft - w0, '推杆' if ft in falls_stick else '没推杆',
+        log('Queda', 'INFO', '%s: queda em %.1f s (%s; intervalo desde o fim da queda anterior: %s); %d degraus do chip nos %.1f s anteriores' % (
+            label, ft - w0, 'com comando do joystick' if ft in falls_stick else 'sem comando do joystick',
             '—' if since[ft] is None else '%.1f s' % since[ft], PRE_FALL, len(pre)))
 
-    # 机身颤
-    # 护栏只用「段尾之后 SHAKE_SKIP 秒内没摔」的推杆段（倾角 ≤ TILT_MAX）：原版把摔前踉跄算进去，
-    # 护栏量的其实是摔倒本身。原版口径另存 *_all 供参考。
+    # Tremor do tronco.
+    # O limite de proteção considera somente segmentos com joystick acionado, inclinação ≤ TILT_MAX e sem queda durante SHAKE_SKIP após o fim. A métrica original incluía tropeços pré-queda,
+    # medindo na prática a própria queda; o valor original também é salvo em *_all para referência.
     def shake_segs(ok):
         ss, cur = [], []
         for r in rows:
@@ -336,7 +336,7 @@ def analyze(label, path, window):
             out['roll_rms' + key] = math.degrees(math.sqrt(sum(r['imu']['gyro'][0] ** 2 for r in fr) / len(fr)))
             out['pitch_rms' + key] = math.degrees(math.sqrt(sum(r['imu']['gyro'][1] ** 2 for r in fr) / len(fr)))
             out['shake_s' + key] = len(fr) / 50
-    log('统计', 'INFO', '%s：%s' % (label, {k: v for k, v in out.items() if k not in ('path',)}))
+    log('Estatísticas', 'INFO', '%s: %s' % (label, {k: v for k, v in out.items() if k not in ('path',)}))
     return out
 
 
@@ -379,7 +379,7 @@ def main():
     specs = []
     for a in args:
         if '=' not in a:
-            print('参数要写成 标签=文件[@起-止]：%s' % a, file=sys.stderr)
+            print('Use ETIQUETA=ARQUIVO[@INÍCIO-FIM]: %s' % a, file=sys.stderr)
             sys.exit(2)
         label, rest = a.split('=', 1)
         window = None
@@ -388,23 +388,23 @@ def main():
             try:
                 lo, hi = (float(v) for v in w.split('-'))
             except ValueError:
-                print('%s：时间窗要写成 @起-止（秒，例如 @120-300）：@%s' % (label, w), file=sys.stderr)
+                print('%s: a janela deve estar no formato @INÍCIO-FIM em segundos (exemplo: @120-300): @%s' % (label, w), file=sys.stderr)
                 sys.exit(2)
             if hi <= lo:
-                print('%s：时间窗结束要大于开始：@%s' % (label, w), file=sys.stderr)
+                print('%s: o fim da janela deve ser posterior ao início: @%s' % (label, w), file=sys.stderr)
                 sys.exit(2)
             window = (lo, hi)
         specs.append((label, rest, window))
     missing = [(label, rest) for label, rest, _ in specs if not os.path.isfile(rest)]
     if missing:
         for label, rest in missing:
-            print('%s：文件不存在 %s' % (label, rest), file=sys.stderr)
+            print('%s: arquivo inexistente %s' % (label, rest), file=sys.stderr)
         sys.exit(1)
     outdir = os.path.dirname(os.path.abspath(specs[0][1]))
     LOG = open(os.path.join(outdir, 'ab_blocks.log'), 'a', encoding='utf-8')
-    log('开始', 'INFO', ' '.join(args))
+    log('Início', 'INFO', ' '.join(args))
     blocks = [analyze(label, rest, window) for label, rest, window in specs]
-    # 同一份录像的重叠时间段进了对比两次 → 摔倒会被数两次；只在两块都进对比时报，写进报告
+    # Intervalos sobrepostos da mesma gravação seriam contados duas vezes; registra o aviso somente se ambos os trechos entram na comparação.
     overlap = []
     compared = lambda b: 'error' not in b and b.get('want') in ('chip', 'gyro') and b['mode'] in ('chip', 'gyro')
     for i in range(len(specs)):
@@ -416,20 +416,20 @@ def main():
             a0, a1 = specs[i][2] or (0, float('inf'))
             b0, b1 = specs[j][2] or (0, float('inf'))
             if a0 < b1 and b0 < a1:
-                msg = '%s 和 %s 用了同一份录像的重叠时间段，摔倒会被数两次' % (specs[j][0], specs[i][0])
-                log('参数', 'WARN', msg)
+                msg = '%s e %s usam intervalos sobrepostos da mesma gravação; as quedas seriam contadas duas vezes' % (specs[j][0], specs[i][0])
+                log('Parâmetros', 'WARN', msg)
                 overlap.append(msg)
 
     lines = []
-    lines.append('== A/B 报告 %s ==' % time.strftime('%Y-%m-%d %H:%M:%S'))
+    lines.append('== Relatório A/B %s ==' % time.strftime('%Y-%m-%d %H:%M:%S'))
     for msg in overlap:
-        lines.append('[警告] ' + msg)
+        lines.append('[Aviso] ' + msg)
     hdr = ('%-8s %-5s %7s %7s %4s %7s %5s %9s %9s %8s %8s %11s %11s' %
-           ('块', '模式', '直立走', '推摇杆', '摔', '每直立分', '段', '以摔结束', '摔前中位', '首摔前', '芯片台阶', '摔前有台阶', '颤 横滚/俯仰'))
+           ('Trecho', 'Modo', 'Marcha em pé', 'Joystick', 'Quedas', 'Quedas/min em pé', 'Segmentos', 'Termina em queda', 'Mediana pré-queda', 'Antes da 1ª queda', 'Degraus chip', 'Degraus pré-queda', 'Tremor rolagem/inclinação'))
     lines.append(hdr)
     for b in blocks:
         if 'error' in b and b.get('frames', 0) < 2:
-            lines.append('%-8s 出错：%s' % (b['label'], b['error']))
+            lines.append('%-8s Erro: %s' % (b['label'], b['error']))
             continue
         rate = b['falls'] / (b['t_up'] / 60) if b['t_up'] > 0 else None
         lines.append('%-8s %-5s %6.0fs %6.0fs %4d %7s %5d %9s %8ss %7ss %8d %11s %11s%s' % (
@@ -439,16 +439,16 @@ def main():
             ('%.0f/%.0f' % (b['roll_rms'], b['pitch_rms'])) if 'roll_rms' in b else '—',
             ('  ← ' + b['error']) if 'error' in b else ''))
         rate_s = b['falls_stick'] / (b['t_stick'] / 60) if b['t_stick'] > 0 else None
-        lines.append('%-8s       推杆摔 %d 次 / 推摇杆 %.0f s → 每推杆分钟 %s；倾角>%.0f° 不计时 %.0f s' % (
+        lines.append('%-8s       %d quedas após comando do joystick / %.0f s acionando → por minuto de acionamento: %s; %.0f s com inclinação >%.0f° excluídos' % (
             '', b['falls_stick'], b['t_stick'], fmt(rate_s, '%.2f'), TILT_MAX, b['t_tilted']))
         if b['mode'] == 'gyro':
-            lines.append('%-8s       发布台阶（策略看到的）%d 次；直立走路判定 %s' % ('', b['pub_steps'], b['verdicts_up']))
+            lines.append('%-8s       Degraus publicados (vistos pela política): %d; decisões durante marcha em pé: %s' % ('', b['pub_steps'], b['verdicts_up']))
         if b['other_falls']:
-            lines.append('%-8s       另有 %d 次倒地判定不在走路状态，不计入（明细见 ab_blocks.log）' % ('', b['other_falls']))
+            lines.append('%-8s       Mais %d detecções de queda fora do estado de caminhada, não contabilizadas (detalhes em ab_blocks.log)' % ('', b['other_falls']))
 
     tot = {}
     for b in blocks:
-        # old 开头（或不认识的标签）不进对比，哪怕录像里是 chip/gyro
+        # Etiquetas iniciadas por old (ou desconhecidas) não entram na comparação, mesmo se a gravação estiver em chip/gyro.
         if 'error' in b or b.get('want') not in ('chip', 'gyro') or b['mode'] not in ('chip', 'gyro'):
             continue
         t = tot.setdefault(b['mode'], {'falls': 0, 't': 0.0, 'falls_s': 0, 't_s': 0.0, 'n': 0,
@@ -467,18 +467,18 @@ def main():
     lines.append('')
     if 'chip' in tot and 'gyro' in tot and tot['chip']['t'] > 0 and tot['gyro']['t'] > 0:
         c, g = tot['chip'], tot['gyro']
-        # 两种分母各出一遍：直立走路（含站着不推杆）和推摇杆；两者结论不一致要当场说出来
-        for name, kf, kt in (('主指标·推摇杆', 'falls_s', 't_s'), ('参考·直立走路', 'falls', 't')):
+        # Exibe os dois denominadores: marcha em pé (inclui ficar parado) e tempo acionando o joystick. Informe divergências.
+        for name, kf, kt in (('Métrica principal · joystick acionado', 'falls_s', 't_s'), ('Referência · marcha em pé', 'falls', 't')):
             if c[kt] <= 0 or g[kt] <= 0:
-                lines.append('[%s] 有一边时间为 0，不出对比。' % name)
+                lines.append('[%s] um dos modos tem tempo zero; comparação não calculada.' % name)
                 continue
             rc, rg = c[kf] / (c[kt] / 60), g[kf] / (g[kt] / 60)
-            lines.append('[%s] chip %d 块 %.0f s 摔 %d 次 每分钟 %.2f；gyro %d 块 %.0f s 摔 %d 次 每分钟 %.2f' % (
+            lines.append('[%s] chip: %d trechos, %.0f s, %d quedas, %.2f por minuto; gyro: %d trechos, %.0f s, %d quedas, %.2f por minuto' % (
                 name, c['n'], c[kt], c[kf], rc, g['n'], g[kt], g[kf], rg))
             n = c[kf] + g[kf]
             share = g[kt] / (g[kt] + c[kt])
             if n == 0:
-                lines.append('[%s] 两边都没摔，比不出摔倒率。' % name)
+                lines.append('[%s] nenhum dos modos teve quedas; não é possível comparar as taxas.' % name)
                 continue
             p = binom_p_two_sided(g[kf], n, share)
             lo, hi = clopper_pearson(g[kf], n)
@@ -486,29 +486,29 @@ def main():
             rr_lo = lo / (1 - lo) * odds if lo < 1 else float('inf')
             rr_hi = hi / (1 - hi) * odds if hi < 1 else float('inf')
             rr = (rg / rc) if rc > 0 else float('inf')
-            verdict = ('gyro 摔得明显少' if rr < 1 else 'gyro 摔得明显多：停 gyro，查原因') if p < 0.05 else '差别还不够大，不能下结论'
-            lines.append('[%s] 率比 gyro/chip = %s，95%% 区间 %.2f～%s，p = %.3f → %s' % (
+            verdict = ('gyro teve claramente menos quedas' if rr < 1 else 'gyro teve claramente mais quedas: interrompa gyro e investigue a causa') if p < 0.05 else 'a diferença ainda não permite uma conclusão'
+            lines.append('[%s] razão gyro/chip = %s, intervalo de 95%% %.2f–%s, p = %.3f → %s' % (
                 name, fmt(rr, '%.2f', '∞'), rr_lo, '∞' if math.isinf(rr_hi) else '%.2f' % rr_hi, p, verdict))
         if c['shake_s'] > 0 and g['shake_s'] > 0:
             cr, cp = math.sqrt(c['roll2'] / c['shake_s']), math.sqrt(c['pitch2'] / c['shake_s'])
             gr, gp = math.sqrt(g['roll2'] / g['shake_s']), math.sqrt(g['pitch2'] / g['shake_s'])
             ok = gr <= cr * 1.1 and gp <= cp * 1.1
-            lines.append('机身颤（°/s RMS，没摔的推杆段）chip %.0f/%.0f（%.0f s），gyro %.0f/%.0f（%.0f s）→ 护栏%s%s' % (
-                cr, cp, c['shake_s'], gr, gp, g['shake_s'], '没超' if ok else '超了（gyro 比 chip 高一成以上）',
-                '；有一边不到 20 s，只作参考' if min(c['shake_s'], g['shake_s']) < 20 else ''))
+            lines.append('Tremor do tronco (RMS °/s, segmentos com joystick sem queda) chip %.0f/%.0f (%.0f s), gyro %.0f/%.0f (%.0f s) → limite de proteção %s%s' % (
+                cr, cp, c['shake_s'], gr, gp, g['shake_s'], 'dentro do limite' if ok else 'excedido (gyro está mais de 10% acima de chip)',
+                '; um modo tem menos de 20 s; resultado apenas indicativo' if min(c['shake_s'], g['shake_s']) < 20 else ''))
         else:
-            lines.append('机身颤：有一边没有「没摔的推杆段」（≥%.1f s），护栏判不了。' % SHAKE_MIN)
+            lines.append('Tremor do tronco: um modo não tem segmento com joystick sem queda (≥%.1f s); não é possível avaliar o limite de proteção.' % SHAKE_MIN)
         if c['shake_s_all'] > 0 and g['shake_s_all'] > 0:
-            lines.append('    参考（原口径，含摔前踉跄）chip %.0f/%.0f，gyro %.0f/%.0f' % (
+            lines.append('    Referência (métrica original, inclui tropeços pré-queda): chip %.0f/%.0f, gyro %.0f/%.0f' % (
                 math.sqrt(c['roll2_all'] / c['shake_s_all']), math.sqrt(c['pitch2_all'] / c['shake_s_all']),
                 math.sqrt(g['roll2_all'] / g['shake_s_all']), math.sqrt(g['pitch2_all'] / g['shake_s_all'])))
     else:
-        lines.append('还没有 chip 和 gyro 两种块，不出对比。')
+        lines.append('Ainda não há trechos nos modos chip e gyro; comparação não calculada.')
     report = '\n'.join(lines)
     print(report)
     with open(os.path.join(outdir, 'ab_report.txt'), 'a', encoding='utf-8') as fh:
         fh.write(report + '\n\n')
-    log('结束', 'INFO', '报告已追加到 %s' % os.path.join(outdir, 'ab_report.txt'))
+    log('Fim', 'INFO', 'Relatório anexado a %s' % os.path.join(outdir, 'ab_report.txt'))
 
 
 if __name__ == '__main__':
