@@ -1,56 +1,56 @@
-# Qinmo IMU 本地集成Validação
+# Validação da integração local do IMU Qinmo
 
-报告日期：2026-10-28，Asia/Tokyo。Usuário最终确认：默认自动识别现有板卡，IMU 页提供可选 de  Qinmo Configuração，保存后开机沿用；更换类型重新ValidaçãoInstalação方向。
+Data do relatório: 2026-10-28, fuso Asia/Tokyo. Confirmação final do usuário: detectar automaticamente a placa existente por padrão; oferecer Qinmo como opção na página do IMU; manter a escolha após salvar e reiniciar; ao trocar o tipo, repetir a validação da instalação.
 
-## 冻结Fonte e 交付范围
+## Fontes congeladas e escopo entregue
 
-- Studio/helper 实现：`058963af5a11b2ebfe6d84b4106d1435a22bbbc7`，已通过独立规格、质量审查；本地 `studio-dev` 从 `9ff314c` 快进到此实现。
-- 运行时：`bdf494ab3fd74898b5159419fbffe87113b4097c`，基于 `0791fcd44f71c705dc8bb0fbcde405593b52d19b`；独立规格、质量审查均通过。本地开发引用 `hd1910-v167-imu-dxl2` 已快进到该提交，原主工作区及未跟踪日志未改动。
-- 厂家协议1.2：QinmoTech/IMU-DXL 提交 `4644a9d19e07ac47f2c145c5e064c96683a5450b`。厂家未公开 MCU 固件；模拟对端均为规格模型。
-- helper 为 `0.7.2`。robotd 官方版本仍显示 `0.15.1`，实际适配身份是 `deployment-info` 的 `0791fcd-feetech-qinmo-control.45`，IPC API40，model API2；不能只凭 `--version` 判断已安装本适配。
+- Implementação do Studio/helper: `058963af5a11b2ebfe6d84b4106d1435a22bbbc7`, aprovada em revisão independente de especificação e qualidade. A branch local `studio-dev` avançou de `9ff314c` até essa implementação.
+- Runtime: `bdf494ab3fd74898b5159419fbffe87113b4097c`, baseado em `0791fcd44f71c705dc8bb0fbcde405593b52d19b`; aprovado nas revisões independentes de especificação e qualidade. A referência local de desenvolvimento `hd1910-v167-imu-dxl2` avançou até esse commit. A área de trabalho principal original e os logs não rastreados permaneceram intactos.
+- Protocolo do fabricante 1.2: commit `4644a9d19e07ac47f2c145c5e064c96683a5450b` da QinmoTech/IMU-DXL. O fabricante não publicou o firmware do microcontrolador; os dispositivos simulados seguem modelos da especificação.
+- helper na versão `0.7.2`. A versão oficial exibida pelo robotd continua `0.15.1`; a identidade real desta adaptação é `deployment-info` `0791fcd-feetech-qinmo-control.45`, IPC API 40 e model API 2. Não é possível determinar se a adaptação está instalada apenas com `--version`.
 
-Atual仅Concluído本地代码、ARM64 主程序 e 部署输入；未 SSH Atualização设备、烧卡、移动鸭子或更改公开发布资产。
+Foram concluídos somente o código local, o programa principal ARM64 e os arquivos de entrada para implantação. Não houve atualização por SSH, gravação de cartão, movimentação do Duck nem alteração de ativos de lançamento público.
 
-## 实现行为
+## Comportamento implementado
 
-默认 `imu_profile=legacy` 对应网页“自动识别（现有板卡）”。Qinmo 手动选择走原 IMU 页面，受控重连到标定模式；主/saved 配置保留其他字段，原参数和标定按字节备份。普通取消恢复原状态；启动恢复取消停留在可再次选择的出厂标定模式。手柄和已开启的 R3 语音在事务中排除，完成后按原状态恢复；卸力和实际全局空格路径保留。
+Por padrão, `imu_profile=legacy` corresponde à opção da interface “Detecção automática (placa existente)”. A escolha manual de Qinmo usa a página original do IMU e reconecta de forma controlada ao modo de calibração. As configurações principal e salva preservam os demais campos; os parâmetros originais e a calibração são copiados byte a byte. O cancelamento comum restaura o estado original. Se o processo for cancelado durante a inicialização, ele retorna ao modo de calibração de fábrica, onde é possível fazer uma nova seleção. O controle e a voz R3, quando ativos, ficam suspensos durante a transação e são restaurados ao estado anterior ao final. O alívio dos servos e o caminho global real da tecla de espaço são preservados.
 
-Qinmo 首版仅suporta飞特总线，PING/56/15、陀螺original值÷16.4、显式就绪 de 单位四元数、计数器新鲜度e15Servo共用20ms时限。原版/I²C换算Preservado。标定绑定Protocolo e Dados类型；未知、矛盾或畸形元Dados不能被当成旧板缺省值。采集、计算、Validação过程 em 观察到状态变化后，即使后来回到相同状态，旧异步Resultado也作废。
+A primeira versão Qinmo aceita somente o barramento Feetech. O PING usa o endereço 56 e comprimento 15; o valor bruto do giroscópio é dividido por 16,4; a orientação é um quaternion explícito, pronto e com unidades; a atualidade do contador e os 15 servos compartilham um limite de 20 ms. A conversão da versão original/I²C foi preservada. A calibração fica vinculada ao protocolo e ao tipo de dados. Metadados desconhecidos, contraditórios ou malformados não são tratados como valores padrão de uma placa antiga. Se o estado mudar durante aquisição, cálculo ou validação, o resultado assíncrono anterior é invalidado, mesmo que o estado depois retorne ao valor original.
 
-身份Instruções e 物理单位分开显示：FT6/自制板使用已知身份，通用DXL2只确认兼容布局，Qinmo显示已Configuração类型。未据此宣称自动认证厂家或自动识别任意量程。
+As instruções de identificação e as unidades físicas são exibidas separadamente: FT6 e placas personalizadas usam a identidade conhecida; DXL2 genérico confirma apenas um layout compatível; Qinmo exibe o tipo configurado. Isso não significa autenticação automática do fabricante nem detecção automática de qualquer faixa de medição.
 
-## 实际Validação e 限制
+## Validação realizada e limitações
 
-| Verificação | 实际Resultado e Fonte |
+| Verificação | Resultado observado e fonte |
 | --- | --- |
-| Rust核心/Parâmetros | 261/111por meio de；10项QinmoVerificaçãopor meio de；8项既有循环Modelo集成Verificação仍忽略 |
-| Execução时聚焦链路 | 原版/DXL2/Qinmo commissioning PTY、I²C、只读、Inicialização诊断、单实例、升级器接口Verificaçãopor meio de；详见Execução时交付记录 |
-| 完整daemon隔离对照 | 在生产逻辑等价的`1fb76af`上299通过、2忽略、17失败，失败用例名与固定旧基线相同；后续Rust仅增加测试并修改一条诊断文案。没有宣称整个Rust工作区全绿 |
-| Windows宽回归 | `f071ed1`上1229项，76跳过，244.110秒，OK。此轮早于后续元数据/异步上下文修正，不能当作最终提交的完整宽回归 |
-| 最终Linux聚焦回归 | `058963a`上183项通过：45项Qinmo、37后端、46提交、23旧redo、32 helper标定；Python3.12/POSIX检查文件权限等逻辑，设备目标仍为Python3.13 |
-| 最终实际浏览器 | `058963a`上Edge1项通过，覆盖默认/手选、单位、异常状态、取消/恢复、空格卸力以及错误信息变化时清空采集结果 |
-| 独立元Dados矩阵 | 48/48por meio de：native/顶层显式未知或畸形Protocolo、类型、Configuração类型拒绝旧标定e旧pending；真实缺省旧字段仍兼容 |
-| 真实发布Configuração格式 | 实际20261027主/savedArquivo×两种类型共4项por meio de；其他解析值、嵌套Modelo数组保持相同，重复选择字节幂等 |
-| 合入后检查 | canonical `studio-dev`上45项Qinmo检查通过，Windows有1项POSIX跳过；训练树哈希和3份私有未跟踪文档SHA保持不变 |
+| Núcleo Rust/parâmetros | 261 aprovados, 111 ignorados; 10 verificações Qinmo aprovadas; 8 verificações existentes de integração do modelo de loop continuam ignoradas |
+| Caminho em foco durante a execução | Aprovados os testes de commissioning em PTY para original/DXL2/Qinmo, I²C, somente leitura, diagnóstico de inicialização, instância única e interface do atualizador; detalhes no registro de entrega da execução |
+| Comparação isolada do daemon completo | Em `1fb76af`, equivalente à lógica de produção: 299 aprovados, 2 ignorados e 17 falhas. Os nomes dos casos que falharam coincidem com a linha de base antiga fixa; depois disso, o Rust recebeu apenas testes adicionais e uma alteração de texto de diagnóstico. Não se afirma que toda a área de trabalho Rust passou sem falhas |
+| Regressão ampla no Windows | 1.229 casos em `f071ed1`, 76 ignorados, 244,110 segundos, resultado OK. Essa rodada antecede correções posteriores de metadados e contexto assíncrono; não representa uma regressão ampla completa do commit final |
+| Regressão focada final no Linux | 183 aprovados em `058963a`: 45 Qinmo, 37 backend, 46 commit, 23 redo antigo e 32 calibração helper. As verificações de permissões de arquivo usam Python 3.12/POSIX; o dispositivo de destino continua usando Python 3.13 |
+| Navegador real final | 1 caso aprovado no Edge em `058963a`, cobrindo padrão/escolha manual, unidades, estados anormais, cancelamento/restauração, alívio pela tecla de espaço e limpeza dos resultados de aquisição quando a mensagem de erro muda |
+| Matriz independente de metadados | 48 de 48 aprovados: metadados nativos ou explícitos no nível superior, desconhecidos ou malformados, protocolo, tipo e tipo configurado rejeitam calibrações antigas e operações pendentes antigas; campos antigos realmente ausentes continuam compatíveis |
+| Formato real das configurações de lançamento | 4 casos aprovados com os arquivos principal/salvo reais de 20261027, para os dois tipos; os outros valores analisados e as matrizes aninhadas do modelo permaneceram iguais, e selecionar o mesmo item repetidamente é idempotente byte a byte |
+| Verificação após integração | 45 verificações Qinmo aprovadas na branch canônica `studio-dev`; uma verificação POSIX foi ignorada no Windows; hashes da árvore de treinamento e SHA de três documentos privados não rastreados permaneceram inalterados |
 
-宽回归日志Preservado了 Windows AF_UNIX 音频线程异常 e 资源Aviso；Teste进程最终退出0，不把日志描述为无Aviso。
+Os logs da regressão ampla preservam a exceção de thread de áudio Windows `AF_UNIX` e os avisos de recursos. O processo de teste terminou com código 0; os logs não são descritos como livres de avisos.
 
-## ARM64构建
+## Compilação ARM64
 
-从冻结Git归档构建，Rust1.99、锁定依赖，目标`aarch64-unknown-linux-gnu.2.31`。ELF检查为AArch64，最大GLIBC引用2.30。独立QEMU运行实际ARM64二进制，通过PTY/IPC验证正常、冻结、未就绪、坏四元数和坏校验五组情况，所有检查均阻止电机写入。
+A compilação foi feita a partir do arquivo Git congelado, com Rust 1.99, dependências bloqueadas e alvo `aarch64-unknown-linux-gnu.2.31`. A inspeção do ELF confirmou AArch64 e referência máxima à GLIBC 2.30. Em QEMU independente, o binário ARM64 real passou por validação PTY/IPC em cinco condições: normal, congelado, não pronto, quaternion inválido e checksum inválido. Em todos os casos, as verificações impediram gravações nos motores.
 
-`robotd-qinmo-arm64`：5564672字节，SHA256：
+`robotd-qinmo-arm64`: 5.564.672 bytes, SHA256:
 
 ```text
 febf44e2e5d4e573f4513f25a1ae6480b976c3988dd3d5e7cdfcf84d2a2d5063
 ```
 
-冻结运行时源码归档SHA256：`1ab2540c55fb0e22e688e52f15e55c4b7a7ee70f0d078275b6bc833faa32a0e6`。
+SHA256 do arquivo de fontes congeladas do runtime: `1ab2540c55fb0e22e688e52f15e55c4b7a7ee70f0d078275b6bc833faa32a0e6`.
 
-## 本地交付 e 实物验收
+## Entrega local e validação física
 
-本地工作区`artifacts/qinmo-imu-20261027/`保存构建脚本、原始日志、规格来源、独立结果和保护文件清单。源码冻结后由`package-local-adaptation.py`生成版本化维护输入；实际文件名、来源提交与SHA记录在`local-delivery.json`，包内`files.json`逐文件校验。包包含主程序和对应源码，供受控维护或下一版镜像构建使用。
+A área local `artifacts/qinmo-imu-20261027/` guarda o script de compilação, logs originais, fontes da especificação, resultados independentes e a lista de arquivos protegidos. Após congelar o código-fonte, `package-local-adaptation.py` gera os arquivos versionados de manutenção. Os nomes reais, commits de origem e hashes estão em `local-delivery.json`; `files.json` verifica cada arquivo do pacote. O pacote inclui o programa principal e as fontes correspondentes, para manutenção controlada ou compilação de uma imagem futura.
 
-AtualWeb签名升级器覆盖Studio/helper/duck-echo，未扩充到robotd。维护者需Instalação匹配 de 主程序 e Web/helper；无需强制重新烧卡。Instalação后按[Web指南](../../Qinmo-IMU-Web使用.md)选型 e 标定。
+O atualizador assinado do Web cobre Studio/helper/duck-echo e não foi ampliado para o robotd. A pessoa responsável pela manutenção deve instalar o programa principal e o Web/helper correspondentes; não é necessário gravar um novo cartão obrigatoriamente. Após a instalação, selecionar o tipo e calibrar conforme o [guia Web](../../Qinmo-IMU-Web使用.md).
 
-真实Qinmo板卡、共线长期稳定性、实际Instalação方向、Ficar em péeCaminhada尚未验收。现有公开20261027Imageme升级包保持原Versão；Inferior一次发布应创建新Versão并重新核验。
+A placa Qinmo real, a estabilidade prolongada no barramento compartilhado, a direção da instalação física e os testes de ficar em pé e caminhar ainda não foram validados. A imagem pública e o pacote de atualização de 20261027 continuam na versão original; uma publicação posterior deve criar uma nova versão e repetir as verificações.
