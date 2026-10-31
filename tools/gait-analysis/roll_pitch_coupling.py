@@ -1,5 +1,5 @@
-"""走路时横滚和俯仰是否「绑在一起」：陀螺 x（横滚角速度）对 y（俯仰角速度）的回归斜率，分频段算。
-若 IMU 绕竖直轴装偏 θ，各频段斜率都 ≈ tanθ（符号一致）；真实的身体前后摇摆只出现在步频附近。"""
+"""Verifica se a rolagem e a inclinação do tronco durante a marcha estão “acopladas”: calcula por faixa de frequência a inclinação da regressão entre x do giroscópio (velocidade angular de rolagem) e y (velocidade angular de inclinação).
+Se a IMU estiver girada em torno do eixo vertical por um ângulo θ, a inclinação em todas as faixas será aproximadamente tanθ, com o mesmo sinal; a oscilação real para a frente e para trás aparece somente perto da frequência dos passos."""
 import json, math, sys
 import numpy as np
 from scipy.signal import butter, sosfiltfilt
@@ -21,7 +21,7 @@ for spec in sys.argv[1:]:
         sos = butter(2, [lo, hi], 'bandpass', fs=50, output='sos')
         x = sosfiltfilt(sos, W[:, 0]); y = sosfiltfilt(sos, W[:, 1])
         k = np.dot(x, y) / np.dot(x, x); r = np.corrcoef(x, y)[0, 1]
-        out.append(f'{lo:g}-{hi:g}Hz 斜率 {k:+.2f}（相关 {r:+.2f}）')
+        out.append(f'{lo:g}-{hi:g} Hz: inclinação {k:+.2f} (correlação {r:+.2f})')
     x = roll - roll.mean(); y = pit - pit.mean()
-    out.append(f'角度 俯仰对横滚 斜率 {np.dot(x, y)/np.dot(x, x):+.2f}（相关 {np.corrcoef(x, y)[0,1]:+.2f}）')
+    out.append(f'Inclinação: regressão da inclinação do tronco sobre a rolagem {np.dot(x, y)/np.dot(x, x):+.2f} (correlação {np.corrcoef(x, y)[0,1]:+.2f})')
     print('  '.join(out))

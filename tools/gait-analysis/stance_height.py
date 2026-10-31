@@ -1,5 +1,5 @@
-"""撑地腿把机身撑多高：撑地时「躯干原点到撑地脚最低点」的竖直距离（IMU 转正），实际 vs 目标，左右分开。
-撑得越矮（比目标塌得越多），对侧迈步脚就越早落地、越抬不起来。"""
+"""Altura sustentada pela perna de apoio: distância vertical entre a origem do tronco e o ponto mais baixo do pé apoiado, com o tronco nivelado pela IMU. Compara valores reais e alvo, separando os lados.
+Quanto mais baixa a sustentação (maior a queda em relação ao alvo), mais cedo o pé oposto em balanço toca o chão e mais difícil fica levantá-lo."""
 import os
 import sys
 import numpy as np
@@ -24,7 +24,7 @@ for spec in sys.argv[2:]:
     held, walk = fc.load(src)
     if held:
         h = [zmin(q, fc.level(g)) for q, _, g in held[-150:]]
-        print(f'\n## {name}  站 HOME：左腿撑高 {-np.mean([x["left"] for x in h]):.1f} mm  右腿 {-np.mean([x["right"] for x in h]):.1f} mm')
+        print(f'\n## {name}  HOME: altura sustentada pela perna esquerda {-np.mean([x["left"] for x in h]):.1f} mm; perna direita {-np.mean([x["right"] for x in h]):.1f} mm')
     else:
         print(f'\n## {name}')
     A = []; T = []
@@ -34,4 +34,4 @@ for spec in sys.argv[2:]:
     for s in fc.SIDES:
         i = np.flatnonzero(st == s)
         a = -np.array([A[k][s] for k in i]); t = -np.array([T[k][s] for k in i])
-        print(f'  {fc.CN[s][0]}腿撑地 占走路时间 {len(i)/len(A)*100:3.0f}%   撑高 实际 中位 {np.median(a):5.1f} mm（最低 5% {np.percentile(a,5):5.1f}）  目标 {np.median(t):5.1f} mm   比目标塌 {np.median(t-a):4.1f} mm')
+        print(f'  Perna {fc.CN[s]} em apoio durante {len(i)/len(A)*100:3.0f}% da caminhada; altura real mediana {np.median(a):5.1f} mm (5º percentil {np.percentile(a,5):5.1f}); alvo {np.median(t):5.1f} mm; queda em relação ao alvo {np.median(t-a):4.1f} mm')

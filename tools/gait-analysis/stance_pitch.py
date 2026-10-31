@@ -1,5 +1,5 @@
-"""撑地时机身前后倾从哪来：撑地脚踩平时，机身俯仰 ≈ 撑地腿各关节让脚掌相对躯干转的角度。
-按关节拆：贡献 = 脚掌俯仰(HOME 只把该关节换成撑地时中位值) − 脚掌俯仰(HOME)；+ = 让机身往前栽。"""
+"""Investiga a origem da inclinação para a frente/trás do tronco durante o apoio: com o pé de apoio nivelado, a inclinação do tronco é aproximadamente o ângulo produzido pelas articulações da perna em relação ao tronco.
+Decompõe por articulação: contribuição = inclinação do pé (em HOME, substituindo somente essa articulação pela mediana durante o apoio) − inclinação do pé em HOME. Sinal positivo = inclina o tronco para a frente."""
 import math, os, sys
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -37,7 +37,7 @@ for spec in sys.argv[2:]:
     for s in fc.SIDES:
         i = np.flatnonzero(st == s); qm = np.median(Q[i], axis=0); tm = np.median(T[i], axis=0)
         parts = []
-        for n, j in zip(('髋俯仰', '膝', '踝'), fc.LEGIDX[s][2:5]):
+        for n, j in zip(('inclinação do quadril', 'joelho', 'tornozelo'), fc.LEGIDX[s][2:5]):
             q1 = HOME.copy(); q1[j] = qm[j]; t1 = HOME.copy(); t1[j] = tm[j]
-            parts.append(f'{n} 实际 {fp(q1, s) - fp(HOME, s):+5.1f}（目标 {fp(t1, s) - fp(HOME, s):+5.1f}）')
-        print(f'  {fc.CN[s][0]}腿撑地：机身前倾（IMU）中位 {np.median(bp[i]):+5.1f}°  撑地脚相对躯干俯仰 {fp(qm, s):+5.1f}°  = ' + '  '.join(parts))
+            parts.append(f'{n}: real {fp(q1, s) - fp(HOME, s):+5.1f} (alvo {fp(t1, s) - fp(HOME, s):+5.1f})')
+        print(f'  Perna {fc.CN[s]} em apoio: inclinação do tronco para a frente (IMU), mediana {np.median(bp[i]):+5.1f}°; inclinação do pé de apoio em relação ao tronco {fp(qm, s):+5.1f}° = ' + '  '.join(parts))

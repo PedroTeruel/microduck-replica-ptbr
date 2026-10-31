@@ -1,13 +1,13 @@
-"""走路质量分析（只读）：从 duck_rec 的 50 Hz 录像里找出「颤、晃」来自哪里。
-用法：python gait_quality.py run-xxx.jsonl [报告.txt]
-分段：policy=walk 且指令速度 hypot(vx, vy)>0.02 记为「走」，policy=walk 且指令为 0 记为「原地」。
-录像里 robotd 重启过（t 回退或有 rec_error 行）时在那里切段，不跨段。
-指标：
-  1. 目标抖动：关节目标逐拍变化量（deg/拍）的 RMS，和 >4 Hz 高频能量占比 —— 模型输出本身抖不抖
-  2. 跟踪：目标 − 实际 的 RMS，和互相关估计的滞后（ms）—— 舵机跟不跟得上
-  3. 躯干：陀螺仪 RMS、主频；重力方向前后/左右摆幅 —— 机身晃不晃、晃多快
-  4. 步频：左右膝差的主频
-  5. 时序：相邻帧间隔的抖动、丢拍
+"""Análise somente de leitura da qualidade da marcha: identifica as causas de tremores e balanços nas gravações de 50 Hz do duck_rec.
+Uso: python gait_quality.py run-xxx.jsonl [relatorio.txt]
+Segmentação: policy=walk com velocidade comandada hypot(vx, vy)>0.02 conta como caminhada; policy=walk com comando zero conta como parado.
+Se robotd reiniciar durante a gravação (tempo t retrocede ou aparece uma linha rec_error), inicia um novo segmento; não mistura os segmentos.
+Métricas:
+  1. Oscilação do alvo: RMS da variação do alvo articular por quadro (graus/quadro) e proporção de energia acima de 4 Hz — mostra se a saída do modelo oscila.
+  2. Rastreamento: RMS da diferença alvo − valor real e atraso estimado por correlação cruzada (ms) — mostra se os servos acompanham.
+  3. Tronco: RMS e frequência dominante do giroscópio; amplitude de balanço para a frente/trás e para os lados segundo a gravidade — mostra quanto e quão rápido o corpo oscila.
+  4. Frequência dos passos: frequência dominante da diferença entre os joelhos esquerdo e direito.
+  5. Temporização: variação dos intervalos entre quadros e quadros perdidos.
 """
 import json, math, sys
 import numpy as np
@@ -21,7 +21,7 @@ def p(*a):
     if out: out.write(s + '\n')
 
 R = []
-BREAK = {'_break': True}            # robotd 重启：t 回退或录像里记了 rec_error，段在这里断开
+BREAK = {'_break': True}            # Reinício do robotd: o tempo retrocede ou a gravação registra rec_error; o segmento é interrompido aqui.
 for l in open(sys.argv[1], encoding='utf-8', errors='replace'):
     try: d = json.loads(l)
     except ValueError: continue
@@ -29,7 +29,7 @@ for l in open(sys.argv[1], encoding='utf-8', errors='replace'):
         if R and R[-1] is not BREAK: R.append(BREAK)
         if 'rec_error' in d: continue
     if 't' in d and d.get('joints') and d.get('targets'): R.append(d)
-p(f'文件 {sys.argv[1]}：{sum(r is not BREAK for r in R)} 帧，robotd 重启 {sum(r is BREAK for r in R)} 次')
+p(f'Arquivo {sys.argv[1]}: {sum(r is not BREAK for r in R)} quadros; {sum(r is BREAK for r in R)} reinicializações do robotd')
 
 def segments(pred, min_len=50):
     segs, cur = [], []
@@ -53,7 +53,7 @@ def spectrum(x, fs=50.0):
 
 def analyse(name, segs):
     if not segs:
-        p(f'\n## {name}：没有这种片段'); return
+        p(f'\n## {name}: nenhum segmento encontrado'); return
     T = np.concatenate([np.array([r['targets'] for r in s]) for s in segs])
     J = np.concatenate([np.array([r['joints'] for r in s]) for s in segs])
     G = np.concatenate([np.array([r['imu']['gyro'] for r in s]) for s in segs])
@@ -61,12 +61,12 @@ def analyse(name, segs):
     t = np.concatenate([np.array([r['t'] for r in s]) for s in segs])
     dur = sum(s[-1]['t'] - s[0]['t'] for s in segs)
     cmd = np.concatenate([np.array([vx(r) for r in s]) for s in segs])
-    p(f'\n## {name}：{len(segs)} 段，共 {dur:.1f} s，指令 vx 平均 {cmd[:, 0].mean():.2f} m/s，vy {cmd[:, 1].mean():.2f}，yaw {cmd[:, 2].mean():.2f}')
+    p(f'\n## {name}: {len(segs)} segmentos, total de {dur:.1f} s; comandos médios: vx {cmd[:, 0].mean():.2f} m/s, vy {cmd[:, 1].mean():.2f}, yaw {cmd[:, 2].mean():.2f}')
     # 5. timing
     dts = np.concatenate([np.diff([r['t'] for r in s]) for s in segs]) * 1000
-    p(f'  时序：帧间隔 {dts.mean():.1f} ms，标准差 {dts.std():.2f} ms，最大 {dts.max():.1f} ms，>30 ms 的 {int((dts > 30).sum())} 次')
+    p(f'  Temporização: intervalo entre quadros {dts.mean():.1f} ms, desvio padrão {dts.std():.2f} ms, máximo {dts.max():.1f} ms, acima de 30 ms: {int((dts > 30).sum())} ocorrências')
     # 1. target jitter
-    p('  关节          目标逐拍变化RMS  目标>4Hz能量%  跟踪误差RMS  滞后ms  实际>4Hz能量%')
+    p('  Articulação   RMS variação-alvo  Energia-alvo >4 Hz (%)  RMS erro-rastreamento  Atraso (ms)  Energia-real >4 Hz (%)')
     for j in LEGS:
         dT = np.concatenate([np.diff(np.array([r['targets'][j] for r in s])) for s in segs])
         rms_step = math.degrees(np.sqrt(np.mean(dT ** 2)))
@@ -86,7 +86,7 @@ def analyse(name, segs):
     # 3. trunk
     pitch = np.degrees(np.arcsin(np.clip(g[:, 0] / np.linalg.norm(g, axis=1), -1, 1)))
     roll = np.degrees(np.arcsin(np.clip(-g[:, 1] / np.linalg.norm(g, axis=1), -1, 1)))
-    p(f'  躯干：前后倾 均值 {pitch.mean():+.1f}° 摆幅(5–95%) {np.percentile(pitch,95)-np.percentile(pitch,5):.1f}°；左右倾 均值 {roll.mean():+.1f}° 摆幅 {np.percentile(roll,95)-np.percentile(roll,5):.1f}°')
+    p(f'  Tronco: inclinação frente/trás média {pitch.mean():+.1f}°, amplitude (5–95%) {np.percentile(pitch,95)-np.percentile(pitch,5):.1f}°; inclinação lateral média {roll.mean():+.1f}°, amplitude {np.percentile(roll,95)-np.percentile(roll,5):.1f}°')
     for k, ax in enumerate('xyz'):
         peaks = []
         for s in segs:
@@ -94,7 +94,7 @@ def analyse(name, segs):
             if f is not None:
                 m = f > 0.3; peaks.append((f[m][np.argmax(F[m])], F[m & (f > 4)].sum() / F[m].sum()))
         if peaks:
-            p(f'  陀螺 {ax}：RMS {np.degrees(np.sqrt(np.mean(G[:, k] ** 2))):6.1f}°/s，主频 {np.median([a for a, _ in peaks]):.2f} Hz，>4Hz 能量 {100*np.mean([b for _, b in peaks]):.0f}%')
+            p(f'  Giroscópio {ax}: RMS {np.degrees(np.sqrt(np.mean(G[:, k] ** 2))):6.1f}°/s, frequência dominante {np.median([a for a, _ in peaks]):.2f} Hz, energia >4 Hz {100*np.mean([b for _, b in peaks]):.0f}%')
     # 4. step frequency from knee difference
     fr = []
     for s in segs:
@@ -102,8 +102,8 @@ def analyse(name, segs):
         f, F = spectrum(d)
         if f is not None:
             m = (f > 0.5) & (f < 5); fr.append(f[m][np.argmax(F[m])])
-    if fr: p(f'  步频（左右膝差主频）：{np.median(fr):.2f} Hz；膝差摆幅 {math.degrees(np.ptp(np.concatenate([[r["joints"][3]-r["joints"][13] for r in s] for s in segs]))):.0f}°')
+    if fr: p(f'  Frequência dos passos (frequência dominante da diferença entre os joelhos): {np.median(fr):.2f} Hz; amplitude da diferença {math.degrees(np.ptp(np.concatenate([[r["joints"][3]-r["joints"][13] for r in s] for s in segs]))):.0f}°')
 
-analyse('站 HOME（held）', held)
-analyse('模型接管、原地（指令 0）', standing)
-analyse('模型接管、在走（指令 > 0）', walking)
+analyse('HOME parado (held)', held)
+analyse('Modelo no controle, parado (comando 0)', standing)
+analyse('Modelo no controle, caminhando (comando > 0)', walking)

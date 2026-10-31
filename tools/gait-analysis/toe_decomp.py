@@ -1,5 +1,5 @@
-"""迈步最高点脚掌俯仰（相对本脚撑地时）按关节拆分：贡献 = ∂脚掌俯仰/∂关节 × (最高点关节角 − 撑地时关节角中位)。+ = 脚尖朝下。
-另给出机身俯仰变化的贡献（IMU）。"""
+"""Decompõe por articulação a inclinação do pé no ponto mais alto do balanço, em relação ao apoio do mesmo pé: contribuição = ∂inclinação do pé/∂articulação × (ângulo da articulação no ponto mais alto − mediana no apoio). Sinal positivo = ponta do pé para baixo.
+Também informa a contribuição da variação da inclinação do tronco (IMU)."""
 import math, os, sys
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -27,7 +27,7 @@ for spec in sys.argv[2:]:
     K = [kin(q) for q in Q]
     z = {s: np.array([float((k[s][0] @ l.T)[:, 2].min()) for k, l in zip(K, L)]) for s in fc.SIDES}
     st = np.where(z['left'] <= z['right'], 'left', 'right')
-    print(f'\n## {name}   脚尖朝下(+)/朝上(-) 的来源（°）')
+    print(f'\n## {name}   Origem da inclinação da ponta do pé para baixo (+) ou para cima (−), em graus')
     for s in fc.SIDES:
         o = 'right' if s == 'left' else 'left'
         idx = np.flatnonzero(st == o); segs = [g for g in np.split(idx, np.flatnonzero(np.diff(idx) > 1) + 1) if len(g) >= 3]
@@ -44,5 +44,5 @@ for spec in sys.argv[2:]:
                 con[n] += pitch(kin(q1)[s][1]) - p0
         con /= max(len(pk), 1)
         bst = np.median([pitch(L[k] @ K[k][s][1]) - pitch(K[k][s][1]) for k in np.flatnonzero(st == s)[::10]])
-        print(f'  {fc.CN[s]} 最高点比撑地时 {np.median(tot):+5.1f}°  =  ' + '  '.join(f'{fc.LEGNAME[n]} {con[n]:+5.1f}' for n in range(5))
-              + f'  机身俯仰变化 {np.median(body) - bst:+5.1f}')
+        print(f'  Pé {fc.CN[s]}: inclinação no pico em relação ao apoio {np.median(tot):+5.1f}° = ' + '  '.join(f'{fc.LEGNAME[n]} {con[n]:+5.1f}' for n in range(5))
+              + f'  variação da inclinação do tronco {np.median(body) - bst:+5.1f}')

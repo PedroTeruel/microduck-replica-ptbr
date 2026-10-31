@@ -1,10 +1,10 @@
-"""从走路录像里估计「关节目标 → 实际角度」的频率响应（只读）。
-模型每拍给的目标就是现成的激励信号，用 Welch 互谱算 H(f)=S_ty/S_tt：
-  幅值比 |H|：实际摆幅 / 目标摆幅（>1 说明舵机冲过头，<1 说明跟不上）
-  滞后 ms：相位换算成时间
-  相干 γ²：这个频率上的估计可不可信（>0.6 才看）
-只用 policy=walk 的连续片段（站着保持和走路都算），每段至少 3 s。
-用法：python walk_transfer.py 名称=录像.jsonl [名称=录像.jsonl ...]
+"""Estima, somente para leitura, a resposta em frequência entre o alvo articular e o ângulo real a partir de gravações de marcha.
+O alvo enviado pelo modelo a cada quadro serve como sinal de excitação. Usa o espectro cruzado de Welch para calcular H(f)=S_ty/S_tt:
+  módulo |H|: amplitude real / amplitude do alvo (>1 indica que o servo ultrapassou o alvo; <1 indica que não acompanhou)
+  atraso em ms: fase convertida em tempo
+  coerência γ²: confiabilidade da estimativa nessa frequência (considere somente valores >0,6)
+Usa segmentos contínuos com policy=walk (parado em posição sustentada ou caminhando), com pelo menos 3 s cada.
+Uso: python walk_transfer.py NOME=video.jsonl [NOME=video.jsonl ...]
 """
 import json
 import math
@@ -16,7 +16,7 @@ from scipy.signal import csd, welch
 LEG = {'hip_roll': (1, 11), 'hip_pitch': (2, 12), 'knee': (3, 13), 'ankle': (4, 14)}
 FREQS = (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0)
 FS = 50.0
-NPER = 64            # 1.28 s 窗，频率分辨率 0.78 Hz
+NPER = 64            # Janela de 1,28 s; resolução de frequência de 0,78 Hz.
 
 
 def segments(path, min_len=150):
@@ -28,7 +28,7 @@ def segments(path, min_len=150):
             continue
         if 't' not in r or not r.get('targets') or not r.get('joints'):
             continue
-        if r.get('policy') == 'walk' and not (cur and r['t'] < cur[-1]['t']):   # t 回退 = robotd 重启，断段
+        if r.get('policy') == 'walk' and not (cur and r['t'] < cur[-1]['t']):   # Se t retroceder, robotd reiniciou; inicia outro segmento.
             cur.append(r)
         elif r.get('policy') == 'walk':
             if len(cur) >= min_len: segs.append(cur)
@@ -62,15 +62,15 @@ def main():
         name, path = arg.split('=', 1)
         segs = segments(path)
         dur = sum(len(s) for s in segs) / FS
-        print(f'{name}: {len(segs)} 段 policy=walk，共 {dur:.0f} s')
+        print(f'{name}: {len(segs)} segmentos policy=walk, total de {dur:.0f} s')
         if not segs:
-            print(f'  {name}：没有 ≥{150 / FS:.0f} s 的连续 policy=walk 段，跳过')
+            print(f'  {name}: nenhum segmento contínuo policy=walk com pelo menos {150 / FS:.0f} s; ignorado')
             continue
         runs.append((name, segs, dur))
     if not runs:
-        sys.exit('没有可分析的录像')
+        sys.exit('Não há gravações para analisar')
     for joint, (li, ri) in LEG.items():
-        print(f'\n## {joint}（左右合并取平均）  每格：幅值比 / 滞后ms / 相干')
+        print(f'\n## {joint} (média dos lados esquerdo e direito)  Cada célula: módulo / atraso (ms) / coerência')
         print('   Hz   ' + ''.join(f'{n[:16]:>22}' for n, _, _ in runs))
         res = []
         for name, segs, _ in runs:
