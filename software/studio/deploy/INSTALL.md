@@ -113,7 +113,7 @@ Valores possíveis de `result`:
 
 ```
 {"schema": "microduck-handover/1", "requested_by": str, "boot_id": str, "mono_ms": int,
- "ttl_ms": int, "port": "/dev/ttyS2", "arm_registers": {"limit", "p", "d"}（可选）,
+ "ttl_ms": int, "port": "/dev/ttyS2", "arm_registers": {"limit", "p", "d"} (opcional),
  "joints": [{"id", "torque", "goal", "present", "offset", "load"?, "temp"?, "status"?} × 15]}
 ```
 
@@ -123,7 +123,7 @@ Valores possíveis de `result`:
 
 **Tempos limite:**
 
-| 时间 | 值 |
+| Tempo | Valor |
 |---|---|
 | Intervalo entre as duas leituras da condição | 0,2 s |
 | Espera para voltar à postura em pé | 3 s |
@@ -203,10 +203,10 @@ A desinstalação remove a regra do sudoers, o drop-in (e executa `daemon-reload
 **Primeiro, faça verificações somente leitura** (sem alterar nada):
 
 - `systemctl --version`（257）、`sudo -V | grep -i -E 'env_reset|secure_path'`、`ls -l /etc/sudoers.d`。
-- **systemd-run 那几个行为**：
-  - `systemd-run --wait --pipe --collect --quiet -p … /bin/sh -c 'exit 6'; echo $?`：`--wait` 会不会把服务的退出码带回来。小助手不靠这个，先读 last-result 里的 request_id 对号，对不上才用 systemd-run 的退出码；
-  - `--pipe` 下把调用方杀掉，服务里面的进程写 stdout 会拿到 EPIPE（小助手忽略 SIGPIPE），而不是被一起杀掉；
-  - 临时单元默认 `KillMode=control-group`，所以 `systemctl stop microduck-bus-hold` 会连 flock 和 sleep 一起停掉、锁跟着放掉。用 `flock -n /run/microduck-service-management.lock true; echo $?` 核对。
+- **Comportamentos do `systemd-run`:**
+  - `systemd-run --wait --pipe --collect --quiet -p … /bin/sh -c 'exit 6'; echo $?`: se `--wait` retorna o código de saída do serviço. O auxiliar não depende disso: primeiro compara o `request_id` em `last-result`; só usa o código de saída do `systemd-run` se não corresponder.
+  - Com `--pipe`, se o processo chamador for encerrado, o processo dentro do serviço recebe EPIPE ao escrever em stdout (o auxiliar ignora SIGPIPE), em vez de ser encerrado junto.
+  - A unidade temporária usa `KillMode=control-group` por padrão; portanto, `systemctl stop microduck-bus-hold` também para `flock` e `sleep` e libera o lock. Confira com `flock -n /run/microduck-service-management.lock true; echo $?`.
 
 **Etapa 1: testes no robô relacionados ao auxiliar:**
 
