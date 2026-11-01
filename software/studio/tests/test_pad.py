@@ -1052,7 +1052,7 @@ class EStopTest(PadTestBase):
         self.assertIn("padd", str(cm.exception))
 
 
-# ---------------- 网页遥控：摇杆 ----------------
+# ---------------- Controle remoto pela página: analógicos ----------------
 
 class MoveTest(PadTestBase):
     def test_sends_official_fields_clamped(self):
@@ -1069,7 +1069,7 @@ class MoveTest(PadTestBase):
         self.assertIsNone(self.ops.snapshot()["virtual"]["owner"])
         lim = self.ops.snapshot()["virtual"]["limits"]
         self.assertEqual((lim["v"], lim["w"]), (0.3, 1.5))
-        self.assertIn("官方默认", lim["src"])
+        self.assertIn("padrão oficial", lim["src"])
 
     def test_merging_keeps_only_the_newest(self):
         self.ops.handle({"op": "move", "vx": 0.1, "seq": 1})
@@ -1177,7 +1177,7 @@ class MoveTest(PadTestBase):
         self.ops._refresh_files()
         lim = self.ops.snapshot()["virtual"]["limits"]
         self.assertEqual(lim["v"], D.V_CEIL)
-        self.assertIn("上限", lim["src"])
+        self.assertIn("limite", lim["src"])
         # Um valor inválido (revisão 2, I3) não lança exceção; ignore o parâmetro e informe na página.
         files[D.PADD_UNIT] = "ExecStart=/x/padd --max-linear 1.2.3 --max-angular 1.0\n"
         self.ops._refresh_files()
@@ -1186,7 +1186,7 @@ class MoveTest(PadTestBase):
         self.assertIn("1.2.3", lim["src"])
 
 
-# ---------------- Levantar / caminhar / sentar / habilidades / áudio ----------------
+# ---------------- Ficar em pé / caminhar / sentar / habilidades / áudio ----------------
 
 class MotionTest(PadTestBase):
     def pose(self, posture, keep_guard=False, **kw):
@@ -1206,38 +1206,38 @@ class MotionTest(PadTestBase):
         b = self.buttons()
         self.assertTrue(b["stand"]["ok"])
         self.assertEqual(b["stand"]["call"], "robot.init")
-        self.assertIn("站起来", b["walk"]["why"])
-        self.assertIn("站起来", b["sit"]["why"])
-        self.ops.handle({"op": "stand"}, by="电脑")
+        self.assertIn("Ficar em pé", b["walk"]["why"])
+        self.assertIn("Ficar em pé", b["sit"]["why"])
+        self.ops.handle({"op": "stand"}, by="Computador")
         self.assertEqual(self.robot.calls[-1], ("robot.init", {}))
-        # 站好保持：能「开始走」；坐下要策略在跑（main.rs:4231-4235），先说清楚
+        # Em pé mantendo a postura, pode começar a andar; para sentar, a política precisa estar em execução.
         self.pose("holding")
         b = self.buttons()
         self.assertFalse(b["stand"]["ok"])
         self.assertTrue(b["walk"]["ok"])
-        self.assertIn("开始走", b["sit"]["why"])
+        self.assertIn("Começar a andar", b["sit"]["why"])
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "sit"})
         self.ops.handle({"op": "walk"})
-        self.assertEqual(self.robot.calls[-1], ("robot.enable", {"on": True, "toggle": False}))   # 不用 toggle
-        # 策略在跑：按钮变成「停下」；坐下 = sit_toggle
+        self.assertEqual(self.robot.calls[-1], ("robot.enable", {"on": True, "toggle": False}))   # Não usar toggle.
+        # Com a política em execução, o botão vira Parar; para sentar, usa sit_toggle.
         self.pose("policy")
         b = self.buttons()
         self.assertEqual(b["walk"]["op"], "walk_stop")
         self.assertTrue(b["sit"]["ok"])
         self.ops.handle({"op": "sit"})
         self.assertEqual(self.robot.calls[-1], ("robot.do", {"skill": "sit_toggle"}))
-        # 坐着：站起来也是 sit_toggle，不能发 init（lib.rs:2362-2370）
+        # Sentado, ficar em pé também usa sit_toggle; não deve enviar init.
         self.pose("sitting", pol={"sitting": True})
         b = self.buttons()
         self.assertEqual(b["stand"]["call"], "robot.do sit_toggle")
         self.ops.handle({"op": "stand"})
         self.assertEqual(self.robot.calls[-1], ("robot.do", {"skill": "sit_toggle"}))
         log = self.log.recent(50, cats=["Comando"])
-        self.assertTrue(any("站起来" in e["msg"] and "成功" in e["msg"] for e in log))
+        self.assertTrue(any("Ficar em pé" in e["msg"] and "Concluída" in e["msg"] for e in log))
 
     def test_walk_stop_zeros_speed_then_disables(self):
-        """审查二 I5：真要等到速度归零才发 enable off（把等的那段删掉这条就过不了）。"""
+        """A solicitação enable off só deve ser enviada depois que a velocidade chegar a zero."""
         self.pose("walking", applied=[0.2, 0, 0])
         seen = {}
 
@@ -1259,16 +1259,18 @@ class MotionTest(PadTestBase):
         self.pose("policy")
         self.robot.replies["robot.do"] = {"accepted": False, "reason": "the policy is not driving — press Start on the pad"}
         with self.assertRaises(P.Refused) as cm:
-            self.ops.handle({"op": "sit"}, by="手机")
-        self.assertIn("开始走", str(cm.exception))
+            self.ops.handle({"op": "sit"}, by="Celular")
+        self.assertIn("Começar a andar", str(cm.exception))
         last = self.ops.snapshot()["motion"]["last"]
-        self.assertEqual((last["ok"], last["by"]), (False, "手机"))
+        self.assertEqual((last["ok"], last["by"]), (False, "Celular"))
         err = [e for e in self.log.recent(20, cats=["Comando"]) if e["level"] == "error"]
         self.assertTrue(err and "the policy is not driving" in err[-1]["msg"])
 
     def test_blocked_states(self):
-        for kw, word in (({"paused": "调舵机"}, "调舵机"), ({"present": False}, "没在跑"),
-                         ({"bus": bus(mode="commissioning")}, "调试"), ({"bus": bus(phase="waiting_for_bus")}, "启动")):
+        for kw, word in (({"paused": "servo_session"}, "Os servos estão sendo ajustados"),
+                         ({"present": False}, "não está em execução"),
+                         ({"bus": bus(mode="commissioning")}, "comissionamento"),
+                         ({"bus": bus(phase="waiting_for_bus")}, "ainda está iniciando")):
             with self.subTest(word=word):
                 self.pose("limp", **kw)
                 with self.assertRaises(P.Refused) as cm:
@@ -1280,7 +1282,7 @@ class MotionTest(PadTestBase):
         self.pose("limp", keep_guard=True)
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "stand"})
-        self.assertIn("卸力", str(cm.exception))
+        self.assertIn("torque", str(cm.exception))
 
     def test_skills_from_policies(self):
         self.pose("policy")
@@ -1295,7 +1297,7 @@ class MotionTest(PadTestBase):
         self.pose("holding")
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "skill", "name": "kick_left"})
-        self.assertIn("开始走", str(cm.exception))
+        self.assertIn("Começar a andar", str(cm.exception))
 
     def test_sound_works_even_when_limp_and_explains_no_voice(self):
         self.pose("limp")
@@ -1304,7 +1306,7 @@ class MotionTest(PadTestBase):
         self.robot.replies["robot.sound"] = {"accepted": False, "reason": "this robot has no voice: audio is disabled"}
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "sound", "tag": "greet"})
-        self.assertIn("没有声音", str(cm.exception))
+        self.assertIn("Não há áudio", str(cm.exception))
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "sound", "tag": "wheee"})       # É um comando mantido enquanto pressionado, não um botão de toque único.
 
@@ -1314,10 +1316,10 @@ class MotionTest(PadTestBase):
         self.robot.replies["robot.init"] = lambda p: (gate.wait(1), {"accepted": True})[1]
         t = threading.Thread(target=self.ops.handle, args=({"op": "stand"},))
         t.start()
-        wait_until(lambda: self.ops.snapshot()["motion"]["busy"], what="第一个在路上")
+        wait_until(lambda: self.ops.snapshot()["motion"]["busy"], what="primeiro comando em andamento")
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "stand"})
-        self.assertIn("还没回话", str(cm.exception))
+        self.assertIn("O comando anterior ainda não respondeu", str(cm.exception))
         gate.set()
         t.join()
 
@@ -1328,7 +1330,7 @@ class MotionTest(PadTestBase):
         self.pose("policy")
         self.ops.handle({"op": "skill", "name": "roulade"})
         acts = {a["id"]: a for a in self.ops.snapshot()["motion"]["actions"]}
-        self.assertIn("实体手柄", acts["nod"]["why"])
+        self.assertIn("controle físico", acts["nod"]["why"])
 
 
 # ---------------- Ações e sequências ----------------
