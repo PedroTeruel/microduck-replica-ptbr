@@ -1,4 +1,4 @@
-"""跑全部测试：python3 -I run_tests.py（电脑上用 py -3.13 -I run_tests.py）。只用标准库 unittest。"""
+"""Executa todos os testes: python3 -I run_tests.py (no computador, use py -3.13 -I run_tests.py). Usa apenas unittest da biblioteca padrão."""
 import os
 import sys
 import unittest

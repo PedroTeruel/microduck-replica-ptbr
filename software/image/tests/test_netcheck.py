@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""microduck-netcheck：45 秒规则、开热点前扫描、重试、热点空闲关断、net.json。"""
+"""microduck-netcheck: regra de 45 s, varredura antes do hotspot, tentativas e desligamento por inatividade; net.json."""
 import importlib.machinery
 import importlib.util
 import io
@@ -147,13 +147,13 @@ class NetcheckTests(unittest.TestCase):
         self.assertEqual(len(fake.calls_of("connection", "up")), 1)
 
     def test_no_saved_wifi_opens_the_hotspot_at_once(self):
-        # 10-21：新卡一个 WiFi 都没存，热点也要等 45 秒才开，白等
+        # 2026-10-21: cartões sem redes salvas não precisam aguardar 45 s para abrir o hotspot.
         root, fake, nc, log = self.make()
         fake.connections = [("Microduck-Hotspot", "802-11-wireless"), ("Wired", "802-3-ethernet")]
         nc.tick(0)
         self.assertEqual(nc.mode, "hotspot")
         self.assertEqual(len(fake.calls_of("connection", "up")), 1)
-        self.assertIn("一个 WiFi 都没存过", log.getvalue())
+        self.assertIn("Nenhuma rede Wi-Fi salva", log.getvalue())
 
     def test_unknown_saved_list_keeps_the_45_second_rule(self):
         root, fake, nc, log = self.make()
@@ -170,13 +170,13 @@ class NetcheckTests(unittest.TestCase):
         root, fake, nc, log = self.make()
         nc.tick(0)
         nc.tick(30)
-        self.assertEqual(nc.mode, "none")            # Home 存着：照旧等 45 秒
+        self.assertEqual(nc.mode, "none")            # Com uma rede salva, aguarda 45 s normalmente.
         fake.connections = [("Microduck-Hotspot", "802-11-wireless")]
         fake.up_rc = 1
-        nc.tick(33)                                   # 刚删光：马上开，但开失败
+        nc.tick(33)                                   # Após excluir todas as redes, abre imediatamente, mas a tentativa falha.
         self.assertEqual(len(fake.calls_of("connection", "up")), 1)
         fake.up_rc = 0
-        nc.tick(36)                                   # 失败后 60 秒内不重试
+        nc.tick(36)                                   # Não tenta novamente durante 60 s após a falha.
         self.assertEqual(len(fake.calls_of("connection", "up")), 1)
         nc.tick(93)
         self.assertEqual(nc.mode, "hotspot")
@@ -253,7 +253,7 @@ class NetcheckTests(unittest.TestCase):
         nc.tick(300)
         self.assertEqual(len(fake.calls_of("connection", "down")), 1)
         self.assertEqual(nc.mode, "none")
-        self.assertIn("热点 5 分钟没人连", log.getvalue())
+        self.assertIn("Hotspot sem clientes por 5 minutos", log.getvalue())
 
     def test_hotspot_with_a_connected_phone_is_never_closed(self):
         root, fake, nc, log = self.make()
@@ -329,7 +329,7 @@ class NetcheckTests(unittest.TestCase):
         root, fake, nc, log = self.make()
         nc.tick(0)
         nc.tick(1)
-        self.assertNotIn("配网状态", log.getvalue())
+        self.assertNotIn("Estado da rede", log.getvalue())
         fake.device = ("wifi", "Home")
         nc.tick(2)
         nc.tick(3)
@@ -341,7 +341,7 @@ class NetcheckTests(unittest.TestCase):
         nc.tick(0)
         nc.tick(45)
         self.assertEqual(len(fake.calls_of("connection", "up")), 1)
-        self.assertIn("扫描 WiFi 失败", log.getvalue())
+        self.assertIn("Falha ao procurar redes Wi-Fi", log.getvalue())
         state = json.loads((root / "run/microduck/net.json").read_text(encoding="utf-8"))
         self.assertEqual(state["scan"], [])
         self.assertIsNone(state["scan_at"])
@@ -398,7 +398,7 @@ class NetcheckTests(unittest.TestCase):
         self.assertEqual(fake.calls_of("connection", "down"), [])
         nc.tick(400)
         self.assertEqual(len(fake.calls_of("connection", "down")), 1)
-        self.assertIn("最后看到客户端", log.getvalue())
+        self.assertIn("último cliente visto", log.getvalue())
 
     def test_studio_connecting_window_pauses_everything(self):
         root, fake, nc, log = self.make()
@@ -414,7 +414,7 @@ class NetcheckTests(unittest.TestCase):
         self.assertEqual(fake.calls_of("connection", "up"), [])
         nc.tick(145)
         self.assertEqual(len(fake.calls_of("connection", "up")), 1)
-        self.assertIn("Studio 正在连 WiFi", log.getvalue())
+        self.assertIn("Studio conectando ao Wi-Fi", log.getvalue())
 
     def test_studio_connecting_does_not_close_hotspot(self):
         root, fake, nc, log = self.make()

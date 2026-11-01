@@ -1,20 +1,20 @@
 #!/usr/bin/python3
-"""Microduck 配网守护：看 wlan0，连不上就开热点，并写 /run/microduck/net.json。
+"""Network check daemon: monitors wlan0, opens a hotspot when disconnected, and writes /run/microduck/net.json.
 
-nmcli 都在 self.run_cmd 里；时间从 tick(now) 传进来，测试可以完全用假 runner / 假时钟。
+All nmcli calls go through self.run_cmd. Time is passed to tick(now), so tests can use a fake runner and clock.
 
-时间常数（密码错了最快/最慢多久热点回来）：
-- wlan0 真的存在、且 NetworkManager 报 30（disconnected）后，连续 45 秒没连上才开热点。
-  tick 是 3 秒，所以最快约 45~48 秒。
-- 例外：一个 WiFi 都没存过（新卡第一次开机），没有可等的，断网那一拍就开热点（10-21 新卡上热点约 2 分钟才出来）。
-  查已保存的 WiFi 时 nmcli 出错，当成不知道，照旧等 45 秒。
-- NetworkManager 报「正在连」时最多等 120 秒；超时后按「没连上」再等 45 秒。
-- 热点连续 5 分钟没有客户端才去试已保存的 WiFi；从最后一个客户端离开时算。
-- 开热点失败、关热点失败或尝试 WiFi 失败后，60 秒再试。
-- Studio 正在连 WiFi 的窗口文件必须未到 until，且 mtime 在 180 秒内；期间不插手。
-  因此密码错了但 NetworkManager 很快报 disconnected 时，热点最快约 48 秒回来；
-  如果它一直卡在 connecting，超过 120 秒就直接按没连上处理，约 121~123 秒
-  （最长约 2 分 3 秒）开热点。wlan0 还没被 AIC8800 枚举出来时不开始计时。
+Timing constants (how long it takes the hotspot to return after an incorrect password):
+- Once wlan0 exists and NetworkManager reports state 30 (disconnected), the daemon waits 45 seconds before opening a hotspot.
+  tick runs every 3 seconds, so the minimum is about 45–48 seconds.
+- Exception: if no Wi-Fi network has ever been saved (first boot of a new card), there is nothing to wait for; the hotspot opens immediately.
+  (On cards from 2026-10-21, the hotspot took about two minutes to appear.) If nmcli fails while checking saved networks, wait 45 seconds as usual.
+- If NetworkManager reports "connecting", wait at most 120 seconds; then treat it as disconnected and wait another 45 seconds.
+- After five minutes with no hotspot clients, try the saved Wi-Fi networks; the timer starts when the last client leaves.
+- After a hotspot start/stop failure or a failed Wi-Fi attempt, retry after 60 seconds.
+- While Studio's Wi-Fi connection window file has a future `until` and an mtime less than 180 seconds old, this daemon does not interfere.
+  Thus, after an incorrect password followed by a quick disconnected state, the hotspot returns in about 48 seconds at the earliest.
+  If the connection remains stuck, it is treated as disconnected after 120 seconds and the hotspot opens after about 121–123 seconds
+  (up to about 2 minutes 3 seconds). Timing does not begin until the AIC8800 device is enumerated as wlan0.
 """
 import json
 import os
@@ -76,7 +76,7 @@ def one_line(text):
 
 
 def terse_split(line, maxsplit=-1):
-    """按 nmcli -t 的规则按未转义的冒号切分，并去掉转义反斜杠。"""
+    """Split on unescaped colons according to nmcli -t rules and remove escape backslashes."""
     fields = []
     current = []
     escaped = False
@@ -238,7 +238,7 @@ class Netcheck:
             return
         self._last_error = message
         self._last_error_at = now
-        self.log("错误：" + message)
+        self.log("Erro: " + message)
 
     def _run(self, args, timeout):
         runner = self.run_cmd or _default_run
@@ -258,7 +258,7 @@ class Netcheck:
         except (OSError, ValueError):
             self.last_written = None
 
-    # ---- 读 wlan0 ----
+    # ---- Leitura de wlan0 ----
 
     def wlan_present(self):
         path = self.path("/sys/class/net/%s" % DEVICE)
@@ -266,12 +266,12 @@ class Netcheck:
 
     def read_raw_mode(self):
         if not self.wlan_present():
-            self._error("%s 还不存在（AIC8800 可能还没起来），先不累计没连上的时间" % DEVICE)
+            self._error("%s ainda não existe (o AIC8800 pode não ter iniciado); o tempo desconectado não será contado" % DEVICE)
             return "unavailable"
         result = self._nmcli(["-t", "-f", "GENERAL.STATE,GENERAL.CONNECTION",
                               "device", "show", DEVICE], 10)
         if result.returncode != 0:
-            self._error("nmcli device show %s 失败（%s）：%s" %
+            self._error("nmcli device show %s falhou (%s): %s" %
                         (DEVICE, result.returncode, one_line(result.stderr or result.stdout)))
             return "unavailable"
         return classify_device(result.stdout)
@@ -283,14 +283,14 @@ class Netcheck:
             self.mode_since = float(now)
             if mode == "hotspot":
                 self.last_client_at = None
-            self.log("配网状态：%s -> %s" % (old, mode))
+            self.log("Estado da rede: %s -> %s" % (old, mode))
 
-    # ---- 扫描和已保存 WiFi ----
+    # ---- Varredura e redes Wi-Fi salvas ----
 
     def _connection_rows(self):
         result = self._nmcli(["-t", "-f", "NAME,TYPE", "connection", "show"], 10)
         if result.returncode != 0:
-            self._error("nmcli connection show 失败（%s）：%s" %
+            self._error("nmcli connection show falhou (%s): %s" %
                         (result.returncode, one_line(result.stderr or result.stdout)))
             return []
         rows = []
@@ -308,7 +308,7 @@ class Netcheck:
         result = self._nmcli(["-g", "802-11-wireless.ssid",
                               "connection", "show", "id", name], 10)
         if result.returncode != 0:
-            self._error("nmcli 取已保存 WiFi 的 SSID 失败（%s，退出 %s）：%s" %
+            self._error("nmcli não conseguiu obter o SSID da rede Wi-Fi salva (%s, saída %s): %s" %
                         (name, result.returncode,
                          one_line(result.stderr or result.stdout)))
             return name
@@ -323,7 +323,7 @@ class Netcheck:
                 if kind == "802-11-wireless" and name != HOTSPOT_NAME]
 
     def has_saved_wifi(self):
-        """存没存过家里的 WiFi（热点自己那条不算）：True / False；nmcli 出错回 None，当成不知道。"""
+        """Indica se há uma rede Wi-Fi doméstica salva (sem contar o hotspot); retorna None se nmcli falhar."""
         result = self._nmcli(["-t", "-f", "NAME,TYPE", "connection", "show"], 10)
         if result.returncode != 0:
             return None
@@ -345,7 +345,7 @@ class Netcheck:
         result = self._nmcli(["-t", "-f", "SSID,SIGNAL,SECURITY",
                               "device", "wifi", "list", "--rescan", "yes"], 15)
         if result.returncode != 0:
-            self._error("扫描 WiFi 失败（%s）：%s" %
+            self._error("Falha ao procurar redes Wi-Fi (%s): %s" %
                         (result.returncode, one_line(result.stderr or result.stdout)))
             return False
         saved = self.saved_ssids()
@@ -353,7 +353,7 @@ class Netcheck:
         self.scan_at = float(now)
         return True
 
-    # ---- 热点 ----
+    # ---- Hotspot ----
 
     def _hotspot_values(self):
         ssid = None
@@ -409,17 +409,17 @@ class Netcheck:
         try:
             return self.write_state(now)
         except Exception as exc:
-            self._error("写 %s 失败：%s: %s" % (self.state_path, type(exc).__name__, exc))
+            self._error("Falha ao gravar %s: %s: %s" % (self.state_path, type(exc).__name__, exc))
             return False
 
     def _ensure_hotspot_connection(self):
         if any(name == HOTSPOT_NAME for name, _kind in self._connection_rows()):
             return True
-        self.log("NetworkManager 里没有 %s 连接，先运行 microduck-firstboot --hotspot-only 重建" %
+        self.log("A conexão %s não existe no NetworkManager; execute microduck-firstboot --hotspot-only para recriá-la" %
                  HOTSPOT_NAME)
         result = self._run([FIRSTBOOT, "--hotspot-only"], 30)
         if result.returncode != 0:
-            self.log("重建热点连接失败（退出 %s）：%s" %
+            self.log("Falha ao recriar a conexão do hotspot (saída %s): %s" %
                      (result.returncode, one_line(result.stderr or result.stdout)))
             return False
         return True
@@ -431,12 +431,12 @@ class Netcheck:
         result = self._nmcli(["connection", "up", HOTSPOT_NAME], 30)
         if result.returncode != 0:
             detail = one_line(result.stdout or result.stderr)
-            self.log("开热点失败：nmcli connection up %s 退出 %s：%s；%d 秒后重试" %
+            self.log("Falha ao abrir o hotspot: nmcli connection up %s retornou %s: %s; nova tentativa em %d s" %
                      (HOTSPOT_NAME, result.returncode, detail, int(RETRY_S)))
             self.hotspot_retry_at = float(now) + RETRY_S
             return False
         self.hotspot_retry_at = 0.0
-        self.log("开热点：%s" % HOTSPOT_NAME)
+        self.log("Hotspot aberto: %s" % HOTSPOT_NAME)
         self._enter_mode("hotspot", now)
         self.force_hotspot_until = float(now) + 30.0
         self.prev_effective = "hotspot"
@@ -445,20 +445,20 @@ class Netcheck:
     def _poll_stations(self, now):
         result = self._run(["iw", "dev", DEVICE, "station", "dump"], 10)
         if result.returncode != 0:
-            self._error("iw station dump 失败（%s）：%s" %
+            self._error("iw station dump falhou (%s): %s" %
                         (result.returncode, one_line(result.stderr or result.stdout)))
             self.wifi_try_at = float(now) + RETRY_S
             return False
         if result.stdout.strip():
             if self.last_client_at is None:
-                self.log("热点上看到客户端")
+                self.log("Cliente detectado no hotspot")
             self.last_client_at = float(now)
             return True
         return False
 
     def _last_client_text(self):
         if self.last_client_at is None:
-            return "无记录（从开热点算）"
+            return "Sem registros (contagem desde a abertura do hotspot)"
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.last_client_at))
 
     def maybe_close_hotspot(self, now):
@@ -472,13 +472,13 @@ class Netcheck:
             return False
         result = self._nmcli(["connection", "down", HOTSPOT_NAME], 10)
         if result.returncode != 0:
-            self.log("关热点失败：nmcli connection down %s 退出 %s：%s" %
+            self.log("Falha ao fechar o hotspot: nmcli connection down %s retornou %s: %s" %
                      (HOTSPOT_NAME, result.returncode,
                       one_line(result.stderr or result.stdout)))
             self.wifi_try_at = float(now) + RETRY_S
             return False
-        self.log("热点 5 分钟没人连（最后看到客户端：%s），关掉热点，让 NetworkManager 连已保存的 WiFi：%s" %
-                 (self._last_client_text(), "、".join(saved)))
+        self.log("Hotspot sem clientes por 5 minutos (último cliente visto: %s); fechando para o NetworkManager conectar às redes salvas: %s" %
+                 (self._last_client_text(), ", ".join(saved)))
         self.force_hotspot_until = 0.0
         self.wifi_try_at = 0.0
         self.last_client_at = None
@@ -488,7 +488,7 @@ class Netcheck:
         self.last_tick = float(now)
         return True
 
-    # ---- Studio 正在连 WiFi 的窗口 ----
+    # ---- Janela de conexão Wi-Fi do Studio ----
 
     def studio_connecting(self, now):
         path = self.path(STUDIO_CONNECTING_REL)
@@ -497,32 +497,32 @@ class Netcheck:
         except FileNotFoundError:
             return None
         except OSError as exc:
-            self._error("读 %s 失败：%s: %s" % (path, type(exc).__name__, exc))
+            self._error("Falha ao ler %s: %s: %s" % (path, type(exc).__name__, exc))
             return None
 
         def drop(reason):
             try:
                 path.unlink()
-                self.log("清理 Studio 连接窗口文件（%s）：%s" % (reason, path))
+                self.log("Removendo o arquivo da janela de conexão do Studio (%s): %s" % (reason, path))
             except OSError as exc:
-                self._error("删除过期的 %s 失败：%s" % (path, exc))
+                self._error("Falha ao remover o arquivo expirado %s: %s" % (path, exc))
             return None
 
         if abs(float(now) - stat_info.st_mtime) > STUDIO_CONNECTING_FRESH_S:
-            return drop("mtime 超过 180 秒，防时钟乱跳")
+            return drop("mtime superior a 180 s; evita problemas de relógio")
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            return drop("内容读不了：%s" % exc)
+            return drop("não foi possível ler o conteúdo: %s" % exc)
         try:
             until = float(data["until"])
         except (KeyError, TypeError, ValueError):
-            return drop("缺少 until")
+            return drop("campo until ausente")
         if float(now) >= until:
-            return drop("已经过期")
+            return drop("já expirou")
         return until, str(data.get("ssid") or "")
 
-    # ---- 状态文件 ----
+    # ---- Arquivo de status ----
 
     def state_dict(self):
         return {
@@ -556,7 +556,7 @@ class Netcheck:
         self.write_count += 1
         return True
 
-    # ---- 主状态机 ----
+    # ---- Máquina de estados principal ----
 
     def tick(self, now=None):
         now = float(self.now() if now is None else now)
@@ -567,8 +567,8 @@ class Netcheck:
         if studio is not None:
             until, ssid = studio
             if self._studio_logged_until != until:
-                self.log("Studio 正在连 WiFi（SSID：%s，直到 %s）：这段时间 netcheck 不插手。" %
-                         (ssid or "未写", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(until))))
+                self.log("Studio conectando ao Wi-Fi (SSID: %s, até %s); netcheck não interferirá durante este período." %
+                         (ssid or "não informado", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(until))))
                 self._studio_logged_until = until
             self.none_accum = 0.0
             self.prev_effective = "studio"
@@ -576,13 +576,13 @@ class Netcheck:
             self.last_tick = now
             return self.mode
         if self._studio_logged_until is not None:
-            self.log("Studio 连接窗口已结束，netcheck 恢复检查。")
+            self.log("A janela de conexão do Studio terminou; netcheck retomou as verificações.")
             self._studio_logged_until = None
 
         raw = self.read_raw_mode()
 
         if raw == "unavailable" and self.mode == "hotspot":
-            # nmcli 暂时读不到网卡时不要把正在用的热点关掉；等它恢复再继续。
+            # Não feche um hotspot ativo se nmcli não conseguir ler a interface temporariamente; aguarde a recuperação.
             self.none_accum = 0.0
             self.prev_effective = "hotspot"
             self._safe_write_state(now)
@@ -618,7 +618,7 @@ class Netcheck:
             else:
                 self.none_accum = 0.0
         elif effective == "connecting":
-            # 正在连：45 秒计时暂停，不清零，也不能算进 45 秒。
+            # Durante a conexão, pausa o contador de 45 s; não o zera nem soma tempo.
             pass
         else:
             self.none_accum = 0.0
@@ -630,7 +630,7 @@ class Netcheck:
         if (effective == "none" and self.mode == "none" and self.none_accum < NONE_NEED_S
                 and now >= self.hotspot_retry_at and self.has_saved_wifi() is False):
             need = 0.0
-            self.log("一个 WiFi 都没存过：不等 45 秒，马上开热点")
+            self.log("Nenhuma rede Wi-Fi salva: abrindo o hotspot agora, sem esperar 45 s.")
         if (effective == "none" and self.mode == "none" and
                 self.none_accum >= need and now >= self.hotspot_retry_at):
             self.open_hotspot(now)
@@ -649,7 +649,7 @@ class Netcheck:
             try:
                 self.tick()
             except Exception as exc:
-                self._error("检查配网状态出错：%s: %s" % (type(exc).__name__, exc))
+                self._error("Erro ao verificar o estado da rede: %s: %s" % (type(exc).__name__, exc))
             time.sleep(TICK_S)
 
 
