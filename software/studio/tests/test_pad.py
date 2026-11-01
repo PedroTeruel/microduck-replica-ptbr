@@ -2254,7 +2254,7 @@ class CodeReviewTest(PadTestBase):
         self._n = itertools.count(1000)
 
     def first_body_frame_in_flight(self, exit_fn):
-        """R1：身体模式第一帧在 robotd 的 socket 上卡住（这时 _latch 还是 None），另一条线程走一条退出路径。"""
+        """R1: enquanto o primeiro quadro do modo corpo está bloqueado no socket do robotd, outra thread inicia uma saída."""
         self.feed()
         self.into("body")
         gate, entered = threading.Event(), threading.Event()
@@ -2275,8 +2275,8 @@ class CodeReviewTest(PadTestBase):
         gate.set()
         t1.join(3)
         t2.join(3)
-        wait_until(lambda: self.poses()[-1] == POSE_OFF, timeout=1.5, what="退出以后身体模式要关上（不能留着 active:true）")
-        time.sleep(0.7)                       # 看门狗 0.6 秒：不能再把它打开
+        wait_until(lambda: self.poses()[-1] == POSE_OFF, timeout=1.5, what="modo corpo desativado ao sair")
+        time.sleep(0.7)                       # O watchdog não pode reativar o modo.
         self.assertEqual(self.poses()[-1], POSE_OFF)
         self.assertIsNone(self.ops._latch["body"])
         self.assert_no_empty_pose()
@@ -2291,14 +2291,14 @@ class CodeReviewTest(PadTestBase):
         self.first_body_frame_in_flight(lambda: self.into("drive"))
 
     def test_r2_watchdog_center_cannot_reopen_after_exit(self):
-        """R2：看门狗排好「回中（active:true）」、还没拿到发送锁时，退出路径先发了 active:false。"""
+        """R2: a saída não pode ser seguida por um quadro do watchdog que reative o modo corpo."""
         with mock.patch.object(D, "STICK_STALE_S", 0.3):
             self.body_latched()
             real = self.ops._send_lk
             armed = threading.Event()
 
             class Late:
-                """只让后台线程拿发送锁时慢 80 ms（线程被切走、锁被别人占着），别的线程照常。"""
+                """Atrasa 80 ms somente quando a thread de fundo adquire o lock de envio."""
                 def __enter__(s):
                     if threading.current_thread().name == "pad-tick" and armed.is_set():
                         time.sleep(0.08)
@@ -2309,7 +2309,7 @@ class CodeReviewTest(PadTestBase):
                     real.release()
             self.ops._send_lk = Late()
             armed.set()
-            time.sleep(0.45)                  # 看门狗该动手了（帧 0.3 秒没来）
+            time.sleep(0.45)                  # O watchdog deve agir após 0,3 s sem quadros.
             self.ops.handle({"op": "drive", "on": False, "seq": self.s()}, conn="a")
             time.sleep(0.4)
             armed.clear()
@@ -2318,25 +2318,25 @@ class CodeReviewTest(PadTestBase):
 
     def test_r3_heartbeat_and_stale_enter_do_not_reopen(self):
         self.head_latched()
-        self.ops.note_relax("电脑")                                      # 后端替页面退出头模式
-        wait_until(lambda: self.ops.snapshot(conn="a")["virtual"]["mode"] == "drive", what="退出")
+        self.ops.note_relax("Computador")                                      # O backend encerra o modo cabeça.
+        wait_until(lambda: self.ops.snapshot(conn="a")["virtual"]["mode"] == "drive", what="modo encerrado")
         self.ops._relax_at = -1e9
         self.feed()
-        r = self.ops.handle({"op": "mode", "mode": "head", "hb": True}, conn="a")   # 页面还没跟上：心跳报「还在头模式」
+        r = self.ops.handle({"op": "mode", "mode": "head", "hb": True}, conn="a")   # Heartbeat atrasado ainda informa o modo cabeça.
         self.assertEqual(r["mode"], "drive")
-        self.assertIn("卸力了", r["dropped"])
-        r = self.into("head")                                             # 没跟上快照的「进头模式」也不收
+        self.assertIn("Torque relaxado", r["dropped"])
+        r = self.into("head")                                             # Também descarta uma solicitação de entrada atrasada.
         self.assertEqual((r["mode"], "dropped" in r), ("drive", True))
         self.assertEqual(self.ops.snapshot(conn="a")["virtual"]["mode"], "drive")
-        self.into("drive")                                                # 页面跟着回到走路（回一句）
-        self.assertEqual(self.into("head")["mode"], "head")              # 之后再按 Y 就进得去
+        self.into("drive")                                                # A página confirma o retorno a Andar.
+        self.assertEqual(self.into("head")["mode"], "head")              # Agora pode entrar novamente no modo cabeça.
         r = self.ops.handle({"op": "mode", "mode": "head", "hb": True}, conn="a")
-        self.assertEqual(r, {"mode": "head"})                             # 一样的：只续「还在」
+        self.assertEqual(r, {"mode": "head"})                             # O heartbeat apenas renova o modo atual.
 
     def test_r4_late_press_after_release_is_dropped(self):
         self.feed()
-        self.ops.handle({"op": "keys", "held": [], "seq": 6}, conn="a")                   # 松开（6）先到
-        r = self.ops.handle({"op": "keys", "held": ["lt"], "down": ["lt"], "seq": 5}, conn="a")   # 按下（5）晚到
+        self.ops.handle({"op": "keys", "held": [], "seq": 6}, conn="a")                   # A soltura (6) chega primeiro.
+        r = self.ops.handle({"op": "keys", "held": ["lt"], "down": ["lt"], "seq": 5}, conn="a")   # O pressionamento (5) chega atrasado.
         self.assertIn("dropped", r)
         time.sleep(0.15)
         self.assertEqual(self.sent("robot.mouth"), [])
@@ -2349,24 +2349,24 @@ class CodeReviewTest(PadTestBase):
         t = threading.Thread(target=lambda: self.ops.handle({"op": "key", "key": "x", "src": "svg"}, conn="a"))
         t.start()
         time.sleep(0.05)
-        self.ops.handle({"op": "keys", "held": [], "seq": 2}, conn="a")                   # 快速点一下：先松手
+        self.ops.handle({"op": "keys", "held": [], "seq": 2}, conn="a")                   # Solta rapidamente.
         gate.set()
-        t.join(3)                                                                            # 请求这时才回话
+        t.join(3)                                                                            # A solicitação retorna somente agora.
         gate2 = threading.Event()
         self.robot.replies["robot.do"] = lambda p: (gate2.wait(2), {"accepted": True})[1]
         ta = threading.Thread(target=lambda: self.ops.handle({"op": "key", "key": "a", "src": "svg"}, conn="a"))
         ta.start()
-        wait_until(lambda: self.ops._cmd_busy, what="A 在路上")
+        wait_until(lambda: self.ops._cmd_busy, what="comando A em andamento")
         with self.robot.lk:
             self.robot.sent.clear()
         self.ops.handle({"op": "keys", "held": ["x"], "down": ["x"], "seq": 3}, conn="a")
-        with self.assertRaises(P.Refused):                                                  # 这一下 X 被拒（上一个还没回话）
+        with self.assertRaises(P.Refused):                                                  # X é recusado enquanto o comando anterior não responde.
             self.ops.handle({"op": "key", "key": "x", "src": "svg"}, conn="a")
         time.sleep(0.15)
         dos = self.sent("robot.do")
         gate2.set()
         ta.join(3)
-        self.assertEqual(dos, [], "X 被拒了，不能拿上一下 X 的 arm 连滚（roulade 能抢断正在做的低头捡）")
+        self.assertEqual(dos, [], "X recusado não pode reutilizar a ativação anterior e repetir a habilidade")
 
     def test_r6_drive_frame_never_goes_out_in_head_mode(self):
         self.feed()
@@ -2374,7 +2374,7 @@ class CodeReviewTest(PadTestBase):
         fired = []
 
         def hook(mode, *a):
-            if mode == "drive" and not fired:     # _sticks 刚查完模式（走路）、放了锁：另一条线程切到头模式
+            if mode == "drive" and not fired:     # Outra thread muda para o modo cabeça após a verificação do modo.
                 fired.append(1)
                 self.ops.handle({"op": "mode", "mode": "head", "seq": 20}, conn="a")
             return real(mode, *a)
@@ -2383,39 +2383,39 @@ class CodeReviewTest(PadTestBase):
         self.assertIn("dropped", r)
         self.assertFalse(any(p["vx"] for _, p in self.sent("robot.move")))
         self.into("head", seq=21)
-        self.assertIn("dropped", self.ops.handle({"op": "move", "vx": 0.2, "seq": 22}, conn="a"))   # 旧的 move 通道也按走路核
+        self.assertIn("dropped", self.ops.handle({"op": "move", "vx": 0.2, "seq": 22}, conn="a"))   # O canal move antigo também deve validar o modo.
 
     def test_r7_x_release_stops_rolling_at_once(self):
-        """X 按住时松开：通知当拍就停（不是靠 0.3 秒的心跳超时）。"""
+        """Soltar X interrompe a rolagem imediatamente, sem esperar o timeout de 0,3 s do heartbeat."""
         self.feed()
         self.ops.handle({"op": "keys", "held": ["x"], "down": ["x"], "seq": 1}, conn="a")
         self.ops.handle({"op": "key", "key": "x", "src": "svg"}, conn="a")
-        wait_until(lambda: len(self.sent("robot.do")) >= 3, timeout=1.0, what="在连滚")
+        wait_until(lambda: len(self.sent("robot.do")) >= 3, timeout=1.0, what="rolagem contínua")
         self.ops.handle({"op": "keys", "held": [], "seq": 2}, conn="a")
-        time.sleep(0.08)                      # 至多还有在路上的一拍
+        time.sleep(0.08)                      # Pode haver no máximo um quadro em trânsito.
         n = len(self.sent("robot.do"))
-        time.sleep(0.2)                       # 还在 0.3 秒心跳超时以内：停是因为松开了
+        time.sleep(0.2)                       # Ainda dentro do timeout: a soltura deve ter parado a ação.
         self.assertEqual(len(self.sent("robot.do")), n)
 
     def test_r8_close_waits_for_the_tick_thread(self):
         self.feed()
         self.ops.handle({"op": "keys", "held": ["lt"], "down": ["lt"], "seq": 1}, conn="a")
-        wait_until(lambda: self.sent("robot.mouth"), what="张嘴")
+        wait_until(lambda: self.sent("robot.mouth"), what="boca aberta")
         self.ops.close()
         self.assertFalse(self.ops._tick_thread.is_alive())
         time.sleep(0.1)
-        self.assertEqual(self.sent("robot.mouth")[-1][1], {"open": 0.0})                 # 合嘴是最后一条
+        self.assertEqual(self.sent("robot.mouth")[-1][1], {"open": 0.0})                 # A última notificação fecha a boca.
         self.assertEqual(self.sent("robot.sound")[-1][1], {"tag": "wheee", "hold": False})
 
     def test_r9_mode_exit_does_not_grow(self):
         self.head_latched()
-        self.ops.note_relax("电脑")
+        self.ops.note_relax("Computador")
         self.assertIn("a", self.ops._mode_exit)
         self.ops.mark_gone("a")
-        self.assertNotIn("a", self.ops._mode_exit)                      # 页面断了：删掉
+        self.assertNotIn("a", self.ops._mode_exit)                      # Remove a conexão encerrada.
         self.ops._mode_exit["old"] = {"why": "x", "at": time.monotonic() - 20}
         self.ops._request_clear(None, "y")
-        self.assertNotIn("old", self.ops._mode_exit)                    # 超过 10 秒：删掉
+        self.assertNotIn("old", self.ops._mode_exit)                    # Remove motivos com mais de 10 s.
 
     def test_r10_input_settings_like_padd(self):
         files = {D.PADD_UNIT: "ExecStart=/x/padd --max-head 1.0 --input-settings /s.json\n",
@@ -2428,16 +2428,16 @@ class CodeReviewTest(PadTestBase):
         self.ops.read_text = read
         self.ops._refresh_files()
         inp = self.ops.snapshot()["virtual"]["inputs"]
-        self.assertEqual((inp["head"], inp["mouth"]), (1.0, 100.0))    # 多一个字段：padd 整份拒，按 --max-head、嘴 100%
-        self.assertIn("不认", inp["src"])
-        # padd 自己写的回执：它正在用的数（写回执的那个 padd 还活着、文件对得上）
+        self.assertEqual((inp["head"], inp["mouth"]), (1.0, 100.0))    # Campo extra invalida o arquivo; mantém --max-head e boca em 100%.
+        self.assertIn("não aceita os dados", inp["src"])
+        # Usa os valores do recibo gravado pelo padd ainda ativo para este arquivo.
         files[D.PADD_INPUT_ACK] = json.dumps({"pid": 4242, "path": "/s.json", "settings": {"mouth_percent": 30, "head_rad": 2.5}})
         self.ops.exists = lambda p: p == "/proc/4242"
         self.ops._refresh_files()
         inp = self.ops.snapshot()["virtual"]["inputs"]
         self.assertEqual((inp["head"], inp["mouth"]), (2.5, 30.0))
-        self.assertIn("回执", inp["src"])
-        self.ops.exists = lambda p: False                                # 写回执的 padd 已经不在了：不算
+        self.assertIn("recibo", inp["src"])
+        self.ops.exists = lambda p: False                                # Ignora o recibo se o padd que o gravou não estiver ativo.
         self.ops._refresh_files()
         self.assertEqual(self.ops.snapshot()["virtual"]["inputs"]["head"], 1.0)
 
@@ -2447,7 +2447,7 @@ class ComboTest(unittest.TestCase):
         self.assertAlmostEqual(C.head_at({"do": "nod", "times": 1}, C.NOD_PERIOD_S / 4)[1], C.NOD_AMP, places=3)
         self.assertEqual(C.head_at({"do": "mouth", "open": 0.5, "ms": 300}, 0.1), None)
         self.assertEqual(C.mouth_at({"do": "mouth", "open": 0.5, "ms": 300}, 0.1), 0.5)
-        self.assertEqual(C.mouth_at({"do": "mouth", "open": 0.5, "ms": 300}, 0.29), 0.0)     # 最后一拍合上
+        self.assertEqual(C.mouth_at({"do": "mouth", "open": 0.5, "ms": 300}, 0.29), 0.0)     # Fecha a boca no último quadro.
         tilt = C.head_at({"do": "tilt", "side": "left", "ms": 1000}, 0.5)
         self.assertLess(tilt[3], 0)
         for c in C.ACTIONS + C.BUILTIN_COMBOS:
