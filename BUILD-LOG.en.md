@@ -1,6 +1,6 @@
 # Build Log
 
-[Português (Brasil)](构建日志.md) · **English**
+[Português (Brasil)](diario-de-construcao.md) · **English**
 
 > **Current status: Feetech HD-1910 robot assembled (2026-09-13)**
 > Status index updated: 2026-09-28; historical print photos below.
@@ -9,7 +9,7 @@ This repository combines geometry and electronics analysis recovered from the pu
 This log records **actually building it**: what was printed, what was assembled, and what
 went wrong.
 
-Latest electrical work: HAT received; camera capture passed on official B1 after correcting the ribbon connection. Retesting the project image is next. The mouth servo has temporarily replaced failed ID 21. See the [debug log](调试记录.md) and [camera wiring record](tools/radxa/摄像头调试记录-20260928.md) (Chinese).
+Latest electrical work: HAT received; camera capture passed on official B1 after correcting the ribbon connection. Retesting the project image is next. The mouth servo has temporarily replaced failed ID 21. See the [debug log](registro-de-depuracao.md) and [camera wiring record](tools/radxa/摄像头调试记录-20260928.md) (Chinese).
 
 > ⚠️ This repository states repeatedly that **simulation STLs are not manufacturing files**
 > — simulation only guarantees outer shape and inertia, not fit tolerances, threads,

@@ -40,8 +40,8 @@ The [tool index](../tools/README.en.md) groups downloads and instructions by fla
 |---|---|
 | [Board projects](../hardware/README.md) · [IMU firmware](../hardware/imu_to_dxl/README.md) | Engineering files, wiring and validation scope |
 | [Hardware primer](硬件入门.md) · [Spec sheet](硬件规格速查.md) | Modules and parameters |
-| [Pitfalls log](../踩坑记录.md) | Symptoms, causes and fixes |
-| [Debug log](../调试记录.md) · [Build log](../BUILD-LOG.en.md) | Physical debugging and mechanical assembly |
+| [Pitfalls log](../problemas-encontrados.md) | Symptoms, causes and fixes |
+| [Debug log](../registro-de-depuracao.md) · [Build log](../BUILD-LOG.en.md) | Physical debugging and mechanical assembly |
 
 ## Research and archives
 

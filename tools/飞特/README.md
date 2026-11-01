@@ -16,7 +16,7 @@ Configure IDs, altere parâmetros e use o controle deslizante para testar o movi
 3  No FD, selecione a porta COM → baud rate 1000000 → clique em “Open” → clique em “Search”.
 ```
 
-Se o servo for encontrado, a comunicação está funcionando. **Como fazer a fiação, alimentar o servo, configurar IDs, alterar parâmetros e consultar a tabela de IDs** está explicado passo a passo em [Registro de depuração · configuração dos servos](../../调试记录.md#ServoConfiguração--拿到货一步一步做).
+Se o servo for encontrado, a comunicação está funcionando. **Como fazer a fiação, alimentar o servo, configurar IDs, alterar parâmetros e consultar a tabela de IDs** está explicado passo a passo em [Registro de depuração · configuração dos servos](../../registro-de-depuracao.md#ServoConfiguração--拿到货一步一步做).
 
 ## Drivers e assistente serial
 

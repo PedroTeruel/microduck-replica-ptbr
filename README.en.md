@@ -204,7 +204,7 @@ This repo is not one person's work. Merged code and bench-verified findings are 
 |---|---|
 | [@yoyojacky](https://github.com/yoyojacky) | **A Rust test tool for Feetech servos** ([PR #27](https://github.com/fanhao375/microduck-replica/pull/27), merged). A minimal STS/SCS protocol implementation of his own (framing, checksum, ping, register read/write, status parsing). The CLI scans the bus with a progress bar, reads status, moves a servo to a position, and runs single or batch tests that report position error, peak current, peak load, voltage and temperature, with a PASS/FAIL verdict — one command gives you a bench acceptance table → [`tools/sts3215Servo_testtool/`](tools/sts3215Servo_testtool/) |
 | [@Abo1ish](https://github.com/Abo1ish) | **IMU board firmware + attitude view in the debug console** ([PR #32](https://github.com/fanhao375/microduck-replica/pull/32), merged). A base STM32G031 firmware for the imu_to_dxl board that Pollen never open-sourced, verified on real hardware, with host-side tests and a [`VALIDATION.md`](hardware/imu_to_dxl/firmware/VALIDATION.md) that is clear about its limits → [`hardware/imu_to_dxl/firmware/`](hardware/imu_to_dxl/firmware/). He also streams the IMU attitude over J-Link into the web debug console, so the 3D duck's body turns with the real board (`--imu-jlink`, or `--imu-demo` with no hardware) → [`tools/servo-web/`](tools/servo-web/) |
-| A member of the WeChat group | **Boot recipe for the Radxa Zero 3W V1.12J.** On this batch (WiFi changed to AIC8800DS2), swapping in Radxa's bootloader is not enough. He found by testing that the device tree has to come from Radxa too: **B1 bootloader + B1 DTB + Armbian 6.1.115 kernel + Trixie userland**, and got it booting → written up in the [pitfalls log](踩坑记录.md#软件) and the [image guide](tools/radxa/镜像使用说明.md) (both in Portuguese) |
+| A member of the WeChat group | **Boot recipe for the Radxa Zero 3W V1.12J.** On this batch (WiFi changed to AIC8800DS2), swapping in Radxa's bootloader is not enough. He found by testing that the device tree has to come from Radxa too: **B1 bootloader + B1 DTB + Armbian 6.1.115 kernel + Trixie userland**, and got it booting → written up in the [pitfalls log](problemas-encontrados.md#软件) and the [image guide](tools/radxa/镜像使用说明.md) (both in Portuguese) |
 
 ---
 
@@ -236,7 +236,7 @@ Paths are relative to this repository's root. Mechanical CAD is maintained in a 
 | Training workbench and project | [software/training-studio/](software/training-studio/README.md)<br>[software/training/](software/training/README.md) | Browser workbench, simulation environment and model export |
 | Electronics and firmware | [hardware/](hardware/README.md) | [Board projects](hardware/README.md) · [IMU firmware](hardware/imu_to_dxl/README.md) |
 | Debug and analysis tools | [tools/](tools/README.en.md) | [Tool index](tools/README.en.md) · Flashing, serial debugging, Feetech references and analysis |
-| Documentation and records | [docs/](docs/README.en.md) | [All documentation](docs/README.en.md) · [Pitfalls](踩坑记录.md) · [Debug log](调试记录.md) · [Build log](BUILD-LOG.en.md) |
+| Documentation and records | [docs/](docs/README.en.md) | [All documentation](docs/README.en.md) · [Pitfalls](problemas-encontrados.md) · [Debug log](registro-de-depuracao.md) · [Build log](BUILD-LOG.en.md) |
 | History and community | [docs/](docs/README.en.md#research-and-archives) | [Upstream updates (Chinese)](docs/官方更新跟踪.md) · [Update history](docs/update-history.en.md) · [Community contributions](docs/community-contributions.en.md) |
 
 ---

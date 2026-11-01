@@ -147,7 +147,7 @@ Node.js é usado apenas nos testes matemáticos da interface; não é necessári
 
 ## Atenção
 
-- **Conecte o USB do URT-2 antes de alimentar os servos.** Se fizer o contrário, o nível do barramento pode ficar preso em 2,1 V; a varredura não encontra nenhum servo e só recebe alguns zeros em broadcast. Veja [problemas encontrados](../../踩坑记录.md#工具).
+- **Conecte o USB do URT-2 antes de alimentar os servos.** Se fizer o contrário, o nível do barramento pode ficar preso em 2,1 V; a varredura não encontra nenhum servo e só recebe alguns zeros em broadcast. Veja [problemas encontrados](../../problemas-encontrados.md#工具).
 - **Antes de usar `ttyS2` na placa, execute `sudo systemctl stop robotd`**. O daemon oficial abre essa porta a cada segundo para procurar servos; se os dois programas transmitirem ao mesmo tempo, os pacotes colidem. Usar URT-2 em `ttyUSB0` evita esse conflito.
 - **Não ligue `ttyS2` diretamente aos fios do servo esperando resposta.** A UART da Radxa é full-duplex, com dois fios de 3,3 V; o barramento Feetech é half-duplex e de fio único. É necessário um buffer tri-state (como no HAT oficial) ou um circuito adaptador baseado no chip do URT-2. Depois de montar o adaptador, use o teste de temporização da página para verificar eco: um eco faz todos os servos parecerem “sem resposta”.
 - Calibrar o zero e alterar IDs grava a EEPROM; a página pede confirmação. Ao trocar um ID, deixe somente aquele servo conectado ao barramento.

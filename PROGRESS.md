@@ -5,7 +5,7 @@
 **Data de referência do histórico**: 2026-09-03 (correção sobre o estado de código aberto do hardware: a placa HAT oficial está aberta)
 **Repositório**: https://github.com/fanhao375/microduck-replica (público)
 
-> **Atualização dos arquivos de modelo (2026-09-28)**: peças estruturais, CAD e arquivos de impressão foram reunidos no repositório [microduck-replica-cad](https://github.com/fanhao375/microduck-replica-cad). Os antigos STL de `print/` e `cad/` foram removidos do repositório principal; esses diretórios agora contêm apenas instruções de acesso. As análises por lote e quantidades abaixo são registros históricos. O andamento físico atual está no [diário de construção](构建日志.md), e a conferência de versões está no [registro do CAD](docs/CAD结构件版本核对-20260928.md).
+> **Atualização dos arquivos de modelo (2026-09-28)**: peças estruturais, CAD e arquivos de impressão foram reunidos no repositório [microduck-replica-cad](https://github.com/fanhao375/microduck-replica-cad). Os antigos STL de `print/` e `cad/` foram removidos do repositório principal; esses diretórios agora contêm apenas instruções de acesso. As análises por lote e quantidades abaixo são registros históricos. O andamento físico atual está no [diário de construção](diario-de-construcao.md), e a conferência de versões está no [registro do CAD](docs/CAD结构件版本核对-20260928.md).
 
 ---
 

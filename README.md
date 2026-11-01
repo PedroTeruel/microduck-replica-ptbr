@@ -141,7 +141,7 @@ A imagem é gratuita e destinada apenas a réplicas pessoais sem fins comerciais
 | **Tutoriais de montagem** | **[Manual de montagem em PDF](https://github.com/fanhao375/microduck-replica-cad/blob/master/安装说明书/microduck装配安装说明书.pdf)** · **[Vídeos por episódio](#-装配视频教程)**; use as peças estruturais correspondentes à sua versão |
 | **Lista de compras** | **[Visualizar BOM online](BOM/README.md)** · **[Baixar Excel](BOM/装配BOM-机械行者Robo-2026-10-23-带采购链接.xlsx)**: versão Feetech de 2026-10-23; os servos XL330 e sua eletrônica precisam ser conferidos separadamente |
 
-[Repositório CAD e versões publicadas](https://github.com/fanhao375/microduck-replica-cad/releases) · [Diário de construção](构建日志.md)
+[Repositório CAD e versões publicadas](https://github.com/fanhao375/microduck-replica-cad/releases) · [Diário de construção](diario-de-construcao.md)
 
 ---
 
@@ -223,7 +223,7 @@ Este repositório é um trabalho coletivo. Aqui estão os créditos pelo código
 |---|---|
 | [@yoyojacky](https://github.com/yoyojacky) | **Ferramenta em Rust para testar servos Feetech** ([PR #27](https://github.com/fanhao375/microduck-replica/pull/27), incorporado). Implementação própria e mínima do protocolo STS/SCS: montagem de quadros, soma de verificação, ping, leitura e escrita de registradores e interpretação do estado. A linha de comando permite varrer o barramento com barra de progresso, ler o estado, mover para uma posição e executar testes individuais ou em lote. Informa desvio de posição, corrente e carga de pico, tensão e temperatura, com resultado PASS/FAIL. Um comando gera a tabela de aceitação em bancada → [`tools/sts3215Servo_testtool/`](tools/sts3215Servo_testtool/) |
 | [@Abo1ish](https://github.com/Abo1ish) | **Firmware da placa IMU e visualização de orientação na bancada** ([PR #32](https://github.com/fanhao375/microduck-replica/pull/32), incorporado). Base de firmware STM32G031 para a placa imu_to_dxl cujo firmware oficial não foi disponibilizado. Validado na placa física, com testes no computador e um [`VALIDATION.md`](hardware/imu_to_dxl/firmware/VALIDATION.md) que explicita seus limites → [`hardware/imu_to_dxl/firmware/`](hardware/imu_to_dxl/firmware/). Também integrou a leitura da orientação da IMU via J-Link à bancada web, fazendo o tronco do modelo 3D acompanhar a placa real (`--imu-jlink`; sem placa, use `--imu-demo`) → [`tools/servo-web/`](tools/servo-web/) |
-| Integrante do grupo no WeChat | **Procedimento de inicialização da Radxa Zero 3W V1.12J.** Nesse lote, com Wi-Fi AIC8800DS2, substituir apenas o carregador de inicialização da Radxa não bastava. Os testes mostraram que também era necessária a árvore de dispositivos da Radxa B1: **bootloader B1 + DTB B1 + kernel Armbian 6.1.115 + sistema Trixie**. A combinação funcionou e foi registrada no [diário de problemas](踩坑记录.md#Software) e no [guia da imagem](tools/radxa/镜像使用说明.md#6-Se你 de 板子不是这一批) |
+| Integrante do grupo no WeChat | **Procedimento de inicialização da Radxa Zero 3W V1.12J.** Nesse lote, com Wi-Fi AIC8800DS2, substituir apenas o carregador de inicialização da Radxa não bastava. Os testes mostraram que também era necessária a árvore de dispositivos da Radxa B1: **bootloader B1 + DTB B1 + kernel Armbian 6.1.115 + sistema Trixie**. A combinação funcionou e foi registrada no [diário de problemas](problemas-encontrados.md#Software) e no [guia da imagem](tools/radxa/镜像使用说明.md#6-Se你 de 板子不是这一批) |
 
 ---
 
@@ -257,7 +257,7 @@ Os caminhos são relativos à raiz deste repositório. O CAD mecânico é mantid
 | Plataforma e projeto de treinamento | [software/training-studio/](software/training-studio/README.md)<br>[software/training/](software/training/README.md) | Bancada web, ambiente de simulação e exportação de modelos |
 | Eletrônica e firmware | [hardware/](hardware/README.md) | [Projetos de placas](hardware/README.md) · [Firmware da IMU](hardware/imu_to_dxl/README.md) |
 | Depuração e análise | [tools/](tools/README.md) | [Índice de ferramentas](tools/README.md) · Gravação de cartões, depuração serial, referências Feetech e análise |
-| Documentação e registros | [docs/](docs/README.md) | [Índice completo em pt-BR](docs/README.pt-BR.md) · [Problemas encontrados](踩坑记录.md) · [Depuração](调试记录.md) · [Construção](构建日志.md) |
+| Documentação e registros | [docs/](docs/README.md) | [Índice completo em pt-BR](docs/README.pt-BR.md) · [Problemas encontrados](problemas-encontrados.md) · [Depuração](registro-de-depuracao.md) · [Construção](diario-de-construcao.md) |
 | Histórico e comunidade | [docs/](docs/README.md#深入研究 e 归档) | [Acompanhamento do projeto oficial](docs/官方更新跟踪.md) · [Histórico de atualizações](docs/历史更新.md) · [Contribuições da comunidade](docs/社区贡献.md) |
 
 ---

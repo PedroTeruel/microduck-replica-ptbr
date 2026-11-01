@@ -5,10 +5,10 @@
 > **Estado atual:** a HAT chegou e está conectada à placa principal. O Armbian oficial B1 da Radxa está em execução, com Wi-Fi e SSH funcionando. Depois de ajustar o cabo da câmera, capturamos imagens em 1920×1080.
 > Última atualização: 2026-09-28. O sistema oficial foi usado para comparar a câmera; ainda não voltamos à imagem do projeto. O Armbian original do projeto ainda precisa ser testado com a fiação corrigida.
 
-O [diário de construção](构建日志.md) registra a parte **mecânica**: impressão, montagem de teste e tolerâncias.
+O [diário de construção](diario-de-construcao.md) registra a parte **mecânica**: impressão, montagem de teste e tolerâncias.
 Este registro trata de **eletrônica e software**: primeiro, um **guia passo a passo** para configurar, conectar e testar os itens recebidos; depois, um **histórico por data** do que foi feito, observado e planejado.
 
-As conclusões sobre problemas estão em [Problemas encontrados](踩坑记录.md). Para saber quais placas e chips são usados e por que foram escolhidos, consulte a [introdução ao hardware](docs/硬件入门.md).
+As conclusões sobre problemas estão em [Problemas encontrados](problemas-encontrados.md). Para saber quais placas e chips são usados e por que foram escolhidos, consulte a [introdução ao hardware](docs/硬件入门.md).
 
 ---
 
@@ -125,7 +125,7 @@ Com o USB conectado, o borne V1 tem 5 V (medido em 2026-09-12). Em 2026-09-17, a
 
 ⚠️ Não ultrapasse 8,4 V: esse é o limite superior do HD-1910, não do URT-2.
 
-⚠️ **Ordem de alimentação:** conecte primeiro o USB e depois alimente o servo. Na ordem inversa, o barramento pode ficar preso em 2,1 V e nenhum servo responde; veja [Problemas encontrados · Ferramentas](踩坑记录.md#Ferramentas).
+⚠️ **Ordem de alimentação:** conecte primeiro o USB e depois alimente o servo. Na ordem inversa, o barramento pode ficar preso em 2,1 V e nenhum servo responde; veja [Problemas encontrados · Ferramentas](problemas-encontrados.md#Ferramentas).
 
 **Não faça testes de travamento com a bateria cheia a 8,4 V**: esse é o limite superior do HD-1910 e não há margem.
 
@@ -330,7 +330,7 @@ Os passos e a tabela de IDs estão acima em [Configuração dos servos · passo 
 - Comecei a instalar os Feetech HD-1910 nas peças mecânicas.
 
 **Problema identificado:** **HD-1910 e XL330 original têm diferenças estruturais** no ponto de fixação da perna. Um colega modificou as peças e as reimprimiu; após a alteração, foi possível montar.
-Os detalhes de qual peça foi alterada, o que mudou e em que medida ainda precisam ser registrados com fotos e medições no [diário de construção](构建日志.md) e acrescentados à seção HD-1910 da [seleção de atuadores](docs/执行器选型.md), com o aviso de que a mecânica não é substituída diretamente.
+Os detalhes de qual peça foi alterada, o que mudou e em que medida ainda precisam ser registrados com fotos e medições no [diário de construção](diario-de-construcao.md) e acrescentados à seção HD-1910 da [seleção de atuadores](docs/执行器选型.md), com o aviso de que a mecânica não é substituída diretamente.
 
 A equipe de algoritmos enviou a lista de dados necessários antes do treinamento. Ela foi preenchida em [docs/HD-1910训练前数据清单.md](docs/HD-1910训练前数据清单.md); todos os dados disponíveis foram registrados e os itens de bancada incluem instruções para medição.
 
@@ -364,7 +364,7 @@ A equipe de algoritmos enviou a lista de dados necessários antes do treinamento
 - Chegaram o leitor de cartões e o conversor redutor de 5 V.
 - Gravei o Armbian 26.8.1 trixie minimal e verifiquei o SHA-256. O Rufus portátil aceita `.img.xz`; a gravação levou dois minutos. As capturas estão em [`assets/flash/`](assets/flash/) e as instruções foram incluídas em [Sem HAT · Etapa 1](docs/不打HAT.md#第-1-步--主控点亮什么都别接).
 
-**Problema encontrado:** tentei usar `wsl --mount` para gravar `.not_logged_in_yet` no cartão já gravado, mas recebi `ERROR_FILE_NOT_FOUND`; o WSL não conseguiu montar o leitor USB. A solução foi **incluir a configuração no arquivo de imagem antes da gravação**. O script está em [`tools/radxa/`](tools/radxa/), sem necessidade de privilégios de administrador. O problema foi registrado em [Problemas encontrados](踩坑记录.md).
+**Problema encontrado:** tentei usar `wsl --mount` para gravar `.not_logged_in_yet` no cartão já gravado, mas recebi `ERROR_FILE_NOT_FOUND`; o WSL não conseguiu montar o leitor USB. A solução foi **incluir a configuração no arquivo de imagem antes da gravação**. O script está em [`tools/radxa/`](tools/radxa/), sem necessidade de privilégios de administrador. O problema foi registrado em [Problemas encontrados](problemas-encontrados.md).
 
 **Materiais da Radxa:** baixei o esquema, a apresentação do produto, DXF 2D, STP 3D e o desenho de posicionamento dos componentes para `Radxa-Zero3W/`. **Não há arquivos-fonte da PCB**, e o desenho de posicionamento e o DXF não identificam o pino 1. Usei um multímetro para localizá-lo: alimente pela porta OTG e meça os quatro cantos do conector; o canto com 3,3 V é o pino 1, e o pino adjacente com 5 V é o pino 2.
 
@@ -386,7 +386,7 @@ A equipe de algoritmos enviou a lista de dados necessários antes do treinamento
 - Copiei os setores 64–32767 da imagem Radxa (idbloader + u-boot.itb) para o cartão Armbian e adicionei `/boot/extlinux/extlinux.conf`. **O nono cartão iniciou.** O LED passou de duas piscadas para apagado e depois aceso continuamente; a placa apareceu na rede como `192.168.0.102`, e o computador reconheceu COM5.
 - Em seguida, segui o `install-by-hand.md` oficial: configurei `uart2-m0` + `dwc3-peripheral` no extlinux, console em tty1 e `mask` dos serviços getty em ttyS2/ttyFIQ0; converti o Wi-Fi para o formato netplan padrão do Armbian; executei `setup-board.sh` (DKMS do codec aic3x, ONNX Runtime 1.28, regras udev do ToF) → `migrate-network.sh` (NetworkManager) → reinicialização → executei os scripts novamente → `install.sh` (daemon 0.13.0). A placa baixou os arquivos do GitHub usando o proxy Clash do computador.
 
-Os problemas encontrados — bootloader, GCMP-256, `dwc3-peripheral`, proxy GitHub e variável ausente na configuração da primeira inicialização — estão em [Problemas encontrados](踩坑记录.md).
+Os problemas encontrados — bootloader, GCMP-256, `dwc3-peripheral`, proxy GitHub e variável ausente na configuração da primeira inicialização — estão em [Problemas encontrados](problemas-encontrados.md).
 
 **Próxima etapa:** conectar o barramento dos servos à placa principal (URT-2 por USB ou ligação provisória aos pinos 8/10 usando `/dev/ttyS2`) e verificar os 15 servos com `robotctl health`.
 
@@ -417,7 +417,7 @@ O protótipo antigo (Raspberry Pi Zero 2 W) usava um BNO055 em I²C, portanto a 
 4. Depois de o usuário conferir e ajustar a orientação do cabo flexível e ligar novamente, o sistema leu `Model ID 0x0219`, vinculou o driver `imx219` e completou a cadeia de mídia.
 5. Uma captura limitada do GStreamer obteve 40 quadros e encerrou normalmente com EOS e código 0 após cerca de 4,05 segundos. A última imagem JPEG de 1920×1080 foi aberta e mostrava o teto, a luminária e o monitor.
 
-Veja o diagrama de fiação, os comandos completos para repetir o teste, a versão e as evidências em **[registro de depuração da câmera](tools/radxa/摄像头调试记录-20260928.md)**. Um resumo dos avisos está em **[Problemas encontrados](踩坑记录.md#Placa principal--hat--摄像头)**.
+Veja o diagrama de fiação, os comandos completos para repetir o teste, a versão e as evidências em **[registro de depuração da câmera](tools/radxa/摄像头调试记录-20260928.md)**. Um resumo dos avisos está em **[Problemas encontrados](problemas-encontrados.md#Placa principal--hat--摄像头)**.
 
 **Próxima sequência:** o usuário decidiu voltar ao Armbian original do projeto, repetir o reconhecimento e a captura usando a ligação que funcionou, restaurar o ambiente de execução do projeto e testar vídeo contínuo. Depois, serão verificadas uma a uma as funções da HAT e o barramento dos servos. O sistema-base de 09-20 com Wi-Fi passou por verificação somente de leitura do sistema de arquivos; o equipamento foi desligado corretamente no fim da rodada e aguardava a remoção do cartão para gravação. Essa imagem não é um backup completo do cartão de execução anterior à gravação da imagem oficial; será necessário restaurar a câmera e o software do projeto. O Armbian original ainda não foi testado com a fiação corrigida; obter imagem da câmera não valida o robô completo, a alimentação da HAT sob carga nem a caminhada. Não foi confirmado se a sugestão anterior de remover a HAT e alimentar a placa principal por USB separado foi executada; ela não conta como teste concluído.
 
@@ -431,7 +431,7 @@ Veja o diagrama de fiação, os comandos completos para repetir o teste, a vers�
 
 **Outros problemas naquela noite:** com o Clash TUN ativo no computador, não conseguimos conectar à placa principal. Dois minutos após iniciar, a placa travou uma vez com o LED verde aceso continuamente; a causa não foi identificada.
 
-Os dados de cada teste, a explicação dos parâmetros e instruções para repetir estão em **[teste de caminhada kissqy em hardware, 2026-10-11](docs/HD1910-20261011-kissqy-walk上机实测.md)**. As conclusões também foram incluídas em [Problemas encontrados](踩坑记录.md#策略训练 e 真机迁移).
+Os dados de cada teste, a explicação dos parâmetros e instruções para repetir estão em **[teste de caminhada kissqy em hardware, 2026-10-11](docs/HD1910-20261011-kissqy-walk上机实测.md)**. As conclusões também foram incluídas em [Problemas encontrados](problemas-encontrados.md#策略训练 e 真机迁移).
 
 ## 2026-10-12 · Primeiro robô migrou para o conjunto kissqy: oficial 0.15.1 + R17 + IMU I²C
 
@@ -443,7 +443,7 @@ Os dados de cada teste, a explicação dos parâmetros e instruções para repet
 
 **Bloqueios:** a placa principal superaquecia. Sem a câmera conectada, `mediad` reiniciava continuamente após travar; a varredura do GStreamer ocupava um núcleo e a placa chegava a 89 °C. Mesmo desativando `mediad` e `tofd`, a temperatura permanecia entre 85–92 °C e a CPU ficava presa em 408 MHz. Ao pressionar Start no joystick web, nada acontecia: o serviço do controle levava 1,7 s para iniciar, acima do limite de 0,6 s que ele aguardava pela confirmação do padd. O usuário desligou o robô para esfriar. A próxima etapa é melhorar a dissipação (aberturas e duto de ar) e depois testar o joystick web e a caminhada.
 
-Os comandos, números e causas estão em **[teste do conjunto kissqy em hardware, 2026-10-12](docs/HD1910-20261012-kissqy整套上机.md)**; as conclusões foram acrescentadas a [Problemas encontrados](踩坑记录.md).
+Os comandos, números e causas estão em **[teste do conjunto kissqy em hardware, 2026-10-12](docs/HD1910-20261012-kissqy整套上机.md)**; as conclusões foram acrescentadas a [Problemas encontrados](problemas-encontrados.md).
 
 ## Meio-dia de 2026-10-12 · Análise da imagem kissqy R1 e criação de um cartão inicializável na V1.12
 
@@ -467,7 +467,7 @@ Os comandos, números e causas estão em **[teste do conjunto kissqy em hardware
 
 **Próxima etapa:** gravar a imagem modificada em um cartão vazio e testar a inicialização, configuração de rede pelo ponto de acesso e SSH no primeiro robô (sem mexer no cartão atual); perguntar ao kissqy quando o código-fonte V164 será publicado para portar o patch de IMU I²C.
 
-As evidências estão em **[análise da imagem kissqy R1](docs/HD1910-20261012-kissqy镜像R1分析.md)**; as conclusões também foram incluídas em [Problemas encontrados](踩坑记录.md).
+As evidências estão em **[análise da imagem kissqy R1](docs/HD1910-20261012-kissqy镜像R1分析.md)**; as conclusões também foram incluídas em [Problemas encontrados](problemas-encontrados.md).
 
 ## Noite de 2026-10-12 · IMU instalada com inclinação de 8,5°; após calibrar, ficou em pé por 70 s e começou a alternar passos
 

@@ -40,8 +40,8 @@ Encontre os materiais pela tarefa. Para a primeira montagem, comece por “Uso e
 |---|---|
 | [Projetos de hardware](../hardware/README.md) · [Firmware da IMU](../hardware/imu_to_dxl/README.md) | Arquivos de projeto, conexões e escopo da validação do firmware |
 | [Introdução ao hardware](硬件入门.md) · [Consulta rápida de especificações](硬件规格速查.md) | Função e parâmetros dos módulos |
-| [Problemas encontrados](../踩坑记录.md) | Sintomas, causas e soluções |
-| [Registros de depuração](../调试记录.md) · [Diário de construção](../构建日志.md) | Depuração no robô e montagem mecânica |
+| [Problemas encontrados](../problemas-encontrados.md) | Sintomas, causas e soluções |
+| [Registros de depuração](../registro-de-depuracao.md) · [Diário de construção](../diario-de-construcao.md) | Depuração no robô e montagem mecânica |
 
 ## Pesquisa e arquivo
 
