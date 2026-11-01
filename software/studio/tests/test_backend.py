@@ -186,12 +186,12 @@ class EStopTest(unittest.TestCase):
         e = EStop()
         e.press("computador", now=0)
         e.sent(0.0, now=0.01)
-        e.send_failed(2.0, "没发出去：busy", now=2.1)
+        e.send_failed(2.0, "Falha no envio: busy", now=2.1)
         self.assertTrue(e.active)
-        self.assertEqual(e.send_error, "没发出去：busy")
+        self.assertEqual(e.send_error, "Falha no envio: busy")
         e2 = EStop()
-        e2.press("电脑", now=0)
-        e2.send_failed(0.0, "没发出去：连不上", now=0.2)                       # 一次回执都没有：这次就算失败
+        e2.press("computador", now=0)
+        e2.send_failed(0.0, "Falha no envio: sem conexão", now=0.2)           # Sem resposta, considera a tentativa como falha.
         self.assertFalse(e2.active)
         self.assertEqual(e2.outcome, "send_failed")
 
@@ -300,7 +300,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue((await self.rd.relax("teste"))[0])
         self.assertTrue(await self.wait_for(lambda: self.rd.estop.outcome == "confirmed"))
         self.fake.stand_up()
-        for _ in range(30):                                            # 3 秒，超过 2 秒补发点；期间一直有人在读状态
+        for _ in range(30):                                            # Três segundos, além do momento de reenvio; continua lendo o estado.
             summarize(self.rd, {})
             await asyncio.sleep(0.1)
         self.assertEqual(self.relax_calls(), 1)
@@ -315,7 +315,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await self.wait_for(lambda: self.rd.estop.outcome == "confirmed", 4))
 
     async def test_second_press_while_robotd_stuck_sends_again(self):
-        """复核 #3：robotd 卡住时按一次，1 秒后再按：第二次要自己发，不能合并进卡住的那次。"""
+        """Revisão #3: uma segunda solicitação após um segundo envia outro comando mesmo se a primeira estiver travada."""
         self.fake.delays["robot.relax"] = 2.0
         await asyncio.sleep(0.2)
         first = asyncio.create_task(self.rd.relax("teste"))
@@ -352,7 +352,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.assertLess(self.rd.bus.age(), 1.5)
 
     async def test_relax_right_after_robotd_comes_back(self):
-        """复核 #6：robotd 刚回来、轮询还在退避里睡：按下后马上显示卸力中，并很快确认。"""
+        """Revisão #6: após o robotd voltar, o desligamento do torque aparece imediatamente e é confirmado sem aguardar a próxima consulta."""
         self.fake.restart(2.0)
         await asyncio.sleep(2.1)
         accepted, why = await self.rd.relax("teste")
@@ -361,10 +361,10 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await self.wait_for(lambda: self.rd.estop.outcome == "confirmed", 3))
 
     async def test_relax_waits_for_hd1910_flags(self):
-        self.fake.hd_delay = 0.6                                       # 扭矩先确认 OFF，hd1910 两个标志晚 0.6 秒清
+        self.fake.hd_delay = 0.6                                       # O torque é confirmado desligado antes de limpar as duas flags HD1910.
         await asyncio.sleep(0.2)
         await self.rd.relax("teste")
-        await asyncio.sleep(0.6)                                       # 0.3 秒时扭矩已确认 OFF，标志还在
+        await asyncio.sleep(0.6)                                       # Após 0,3 s, o torque está desligado, mas as flags ainda permanecem.
         self.assertTrue(self.rd.estop.active)
         self.assertTrue(await self.wait_for(lambda: self.rd.estop.outcome == "confirmed"))
         self.assertGreaterEqual(self.rd.estop.confirm_ms, 850)
@@ -389,21 +389,21 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(2.5)
         self.assertLess(self.rd.bus.age(), 1.5)
         n_bus = len([m for _, m in self.fake.calls if m == "robot.busStatus"])
-        self.assertLess(n_bus, 6, "出错的那项不能让循环 20 Hz 空转")
+        self.assertLess(n_bus, 6, "Uma consulta com erro não deve fazer o loop girar a 20 Hz.")
 
     async def test_relax_is_not_blocked_by_a_slow_poll(self):
-        self.fake.delays["robot.busStatus"] = 10.0                   # poll 连接上挂一个 10 秒不回的请求
+        self.fake.delays["robot.busStatus"] = 10.0                   # Atrasa uma consulta de status por 10 segundos.
         await asyncio.sleep(1.2)
         t0 = time.monotonic()
         accepted, _ = await self.rd.relax("teste")
         took = time.monotonic() - t0
         self.assertTrue(accepted)
-        self.assertLess(took, 0.3, f"卸力等了 {took:.2f} 秒")
+        self.assertLess(took, 0.3, f"O desligamento do torque levou {took:.2f} s.")
         relax_at = [t for t, m in self.fake.calls if m == "robot.relax"][0]
         self.assertLess(relax_at - t0, 0.1)
 
     async def test_relax_confirms_from_bus_status(self):
-        await asyncio.sleep(0.2)                                      # 让一次 1 秒的常规轮询先排上
+        await asyncio.sleep(0.2)                                      # Aguarda o início da consulta periódica de um segundo.
         accepted, _ = await self.rd.relax("teste")
         self.assertTrue(accepted)
         for _ in range(50):
@@ -413,8 +413,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         s = summarize(self.rd, {})
         self.assertEqual(s["estop"]["state"], "confirmed")
         self.assertEqual(s["posture"], "limp")
-        # 假 robotd 0.3 秒扭矩 OFF、再 0.2 秒清 hd1910 标志；按下后每 0.1 秒回读，
-        # 确认应在 0.8 秒内（不能等到下一个 1 秒轮询）
+        # O robotd simulado desliga o torque e limpa as flags HD1910; a confirmação não espera a próxima consulta de um segundo.
         self.assertLess(self.rd.estop.confirm_ms, 800)
 
     async def test_subscribe_only_while_someone_looks(self):
@@ -461,7 +460,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.rd.state.at, before, "no synthetic freshness after unsubscribing")
 
     async def test_robotd_gone_and_back(self):
-        self.fake.restart(1.5)                                         # 真重启：现有连接也断
+        self.fake.restart(1.5)                                         # Reinicia de verdade e encerra as conexões existentes.
         for _ in range(60):
             if self.rd.present is False:
                 break
@@ -476,17 +475,16 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.assertIs(self.rd.present, True)
 
 
-# ---------------- 标定模式的 busStatus（任务 16：10-20 真机验收，旧 fork 永远报 configuring_bus） ----------------
+# ---------------- busStatus no modo de calibração (tarefa 16: validação no hardware de 10 a 20/10) ----------------
 
 STATUS_KEYS = ("build", "port", "mode", "phase", "session", "target_hz", "achieved_hz", "total_cycles", "total_success",
                "total_communication_failures", "errors_by_id", "device_communication", "last_cycle_error", "last_failure",
                "last_sample", "calibrated", "imu_mount_verified", "torque_state", "torque_off_pending", "power_pending",
-               "motion", "policy_motion_enabled", "updated_at_us")     # fork feetech_commissioning.rs 的 Status
+               "motion", "policy_motion_enabled", "updated_at_us")     # Status de feetech_commissioning.rs.
 
 
 class FakeCommissioningTest(unittest.IsolatedAsyncioTestCase):
-    """假 robotd 照 fork 真实行为（上一轮的毛病：假的直接给快照，测试全过、真机露馅）：
-    标定模式没读成功之前回启动报告（只有四个键），读成功以后回实时快照；--commissioning-stuck-status 永远回启动报告。"""
+    """O robotd falso reproduz o comportamento real: envia o relatório de inicialização até ler os servos e, depois, o estado em tempo real."""
 
     async def bus(self, fake):
         return (await fake.dispatch("robot.busStatus", {}))[0]
@@ -499,7 +497,7 @@ class FakeCommissioningTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((b["mode"], b["phase"], b["port"]), ("commissioning", "configuring_bus", "/dev/ttyS2"))
         self.assertEqual(posture(True, b, None, None), "starting")
         self.assertFalse(robotd_up(b))
-        self.assertIsNotNone((await fake.dispatch("robot.busCommand", {"action": "calibration-status"}))[0])   # 标定照样能读
+        self.assertIsNotNone((await fake.dispatch("robot.busCommand", {"action": "calibration-status"}))[0])   # A calibração continua legível.
         await asyncio.sleep(0.25)
         b = await self.bus(fake)
         self.assertEqual(b["phase"], "ready")
@@ -509,14 +507,14 @@ class FakeCommissioningTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(b["last_cycle_error"])
         self.assertTrue(robotd_up(b))
         self.assertEqual(posture(True, b, None, None), "commissioning")
-        # 读成功过以后舵机断电：还是快照，phase read_error（起来了，只是读舵机出错）
+        # Após uma leitura bem-sucedida, falta de energia mantém o snapshot com phase read_error.
         fake.servo_power = False
         b = await self.bus(fake)
         self.assertEqual(b["phase"], "read_error")
         self.assertIn("Sync Read timeout", b["last_cycle_error"])
         self.assertTrue(robotd_up(b))
         fake.servo_power = True
-        # 重启：又从启动报告开始，读成功才回快照
+        # Após reiniciar, volta ao relatório de inicialização até conseguir ler os servos.
         fake.restart(0.05)
         self.assertEqual((await self.bus(fake))["phase"], "configuring_bus")
         await asyncio.sleep(0.35)
@@ -533,9 +531,9 @@ class FakeCommissioningTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(sorted(b), sorted(("build", "mode", "phase", "port")))
             self.assertEqual(b["phase"], "configuring_bus")
         steps = fake_tune.startup_report(fake)["steps"]
-        self.assertEqual(steps["4"]["status"], "success")                    # 旧 fork：四步都成功了，只是状态不更新
+        self.assertEqual(steps["4"]["status"], "success")                    # O relatório antigo indica sucesso, mas o estado não é atualizado.
         await fake.dispatch("fake.set", {"commissioning_stuck": False})
-        self.assertEqual((await self.bus(fake))["phase"], "ready")           # 新 fork：读成功一次就清掉
+        self.assertEqual((await self.bus(fake))["phase"], "ready")           # Uma leitura bem-sucedida atualiza o estado.
 
     async def test_no_servo_power_before_first_read_is_waiting_for_bus(self):
         fake = FakeRobotd(FIXTURE, posture="commissioning", mode="commissioning")
@@ -552,7 +550,7 @@ class FakeCommissioningTest(unittest.IsolatedAsyncioTestCase):
 
 
 class StartingTimerTest(unittest.IsolatedAsyncioTestCase):
-    """Studio 自己计时「一直报启动中」：从这次连上算（hello 以后），连续报启动阶段超过 30 秒才改口；起来了清零。"""
+    """O Studio cronometra a inicialização desde a conexão e sinaliza após 30 segundos; zera a contagem quando o programa inicia."""
 
     async def asyncSetUp(self):
         self.fake = FakeRobotd(FIXTURE, posture="commissioning", mode="commissioning")
@@ -583,8 +581,8 @@ class StartingTimerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(s["posture"], "starting")
         self.assertFalse(s["starting_long"])
         await asyncio.sleep(1.2)
-        self.assertEqual(self.rd.starting_since, since)                      # 连续报着：不重新计
-        s = summarize(self.rd, {}, now=since + 31)                          # 假时钟：过了 31 秒
+        self.assertEqual(self.rd.starting_since, since)                      # A contagem contínua não recomeça.
+        s = summarize(self.rd, {}, now=since + 31)                          # Simula o relógio 31 segundos adiante.
         self.assertTrue(s["starting_long"])
         self.assertIn("O programa principal continua inicializando", [t["msg"] for t in s["todo"]])
         self.fake.comm_stuck = False                                        # O fork corrigido envia o snapshot e zera a contagem.
