@@ -1,7 +1,7 @@
-"""IMU 页后端（studio/imu.py）：推给页面的状态取对了没有，粗校 / verify-imu 该拒的拒。
+"""Backend da página da IMU (studio/imu.py): verifica o estado enviado à interface e as recusas da calibração inicial / verify-imu.
 
-用 tests/fixtures/now-20261018.jsonl（10-18 二号鸭真机录的）里的 busStatus 和 calibration-status。
-粗校 / verify 用假 cmd 连接，照 fork 的 verify-imu 回包文字演成功和三种失败。
+Usa busStatus e calibration-status do arquivo tests/fixtures/now-20261018.jsonl (gravado no segundo Microduck em 18/10).
+A calibração inicial / verify usa uma conexão cmd simulada para reproduzir a resposta do verify-imu do fork nos casos de sucesso e de três falhas.
 """
 import asyncio
 import copy
@@ -33,7 +33,7 @@ def recorded(method):
 
 
 class FakeCmd:
-    """站在假 rd 的 cmd 连接上：busStatus / calibration-status / verify-imu。"""
+    """Conexão cmd simulada do robotd para busStatus, calibration-status e verify-imu."""
 
     def __init__(self, rd):
         self.rd = rd
@@ -136,7 +136,7 @@ class ImuBackendTest(unittest.TestCase):
         return ImuBackend(FakeRd(**kw), self.log, self.tmp.name)
 
     def test_view_picks_mount_of_chip_in_use(self):
-        # 二号鸭用 LSM6DSV16X：要取 imu_mounts 里它那份，不是顶上那个（那是另一种芯片的）
+        # O segundo Microduck usa LSM6DSV16X: deve selecionar a entrada correspondente em imu_mounts, não a entrada principal, que pertence a outro chip.
         v = self.backend(bus=recorded("robot.busStatus"), calib=recorded("robot.busCommand")).view()
         self.assertEqual(v["t"], "imu")
         self.assertEqual(v["source"], "lsm6dsv16x")
@@ -144,7 +144,7 @@ class ImuBackendTest(unittest.TestCase):
         self.assertIs(v["mount"]["verified"], True)
         self.assertTrue(v["ready"])
         self.assertEqual(v["reader"]["state"], "streaming")
-        json.dumps(v)                                           # 能直接发给页面
+        json.dumps(v)                                           # O estado pode ser enviado diretamente à interface.
 
     def test_view_without_robotd(self):
         v = self.backend().view()
@@ -161,7 +161,7 @@ class ImuBackendTest(unittest.TestCase):
                 self.assertEqual(self.backend(bus=bus, calib=factory_calib()).view()["source"], "bus")
 
     def test_view_bus_board_falls_back_to_top_level_mount(self):
-        # 总线小板：busStatus 没有 imu_source → 当成 bus，方向用顶上的 imu_mount_quat
+        # Placa IMU no barramento: sem imu_source em busStatus, usa bus como origem e imu_mount_quat como orientação.
         bus = {"native": {"imu_age_ms": 5}}
         calib = {"calibration": {"imu_mount_quat": [1, 0, 0, 0], "imu_mount_verified": False}}
         v = self.backend(bus=bus, calib=calib).view()
@@ -222,7 +222,7 @@ class ImuBackendTest(unittest.TestCase):
             b = self.backend(bus=bus, calib=factory_calib())
             b.view()
             b.last_result = {"ok": True, "mode": "coarse", "mount": [1., 0., 0., 0.]}
-            b.job = {"kind": "coarse", "done": True, "title": "主程序验证通过"}
+            b.job = {"kind": "coarse", "done": True, "title": "Verificação aprovada pelo programa principal"}
             bus["imu_bus"] = changed
             with self.subTest(changed=changed):
                 b.view()
@@ -236,7 +236,7 @@ class ImuBackendTest(unittest.TestCase):
         def changed(*args, **kw):
             bus["imu_bus"]["identity"] = [9, 9, 9]
             return {"ok": True, "mode": "coarse", "mount": [1., 0., 0., 0.]}
-        with mock.patch("studio.imu.imu_calib.solve", side_effect=changed), self.assertRaisesRegex(Refused, "改变"):
+        with mock.patch("studio.imu.imu_calib.solve", side_effect=changed), self.assertRaisesRegex(Refused, "mudou"):
             asyncio.run(b.handle({"op": "solve", "mode": "coarse", "samples": [{"g": [0, 0, -1]}]}))
         self.assertIsNone(b.last_result)
 
@@ -249,7 +249,7 @@ class ImuBackendTest(unittest.TestCase):
             bus["imu_bus"] = bus_transport(identity=[calls["n"]])
             return bus
         b._bus_once = bus_once
-        with self.assertRaisesRegex(Refused, "改变"):
+        with self.assertRaisesRegex(Refused, "mudou"):
             asyncio.run(b.handle({"op": "coarse-capture", "phase": "still", "seconds": 0.5}))
 
     def test_verify_rejects_transport_changed_during_runtime_verification(self):
@@ -266,7 +266,7 @@ class ImuBackendTest(unittest.TestCase):
             bus["imu_bus"]["identity"] = [8, 8, 8]
             return result
         b.rd.verify = changed
-        with self.assertRaisesRegex(Refused, "改变"):
+        with self.assertRaisesRegex(Refused, "mudou"):
             asyncio.run(b.handle({"op": "verify", "confirmed": True, "mount_wxyz": q}))
         self.assertFalse((b.job or {}).get("done"))
 
@@ -310,37 +310,37 @@ class ImuBackendTest(unittest.TestCase):
 
     def test_refuses_bad_or_unfinished_ops(self):
         b = self.backend()
-        for args, word in (({"op": "solve"}, "没收到读数"),
-                           ({"op": "solve", "samples": [{}] * 6001}, "读数太多"),
-                           ({"op": "save"}, "写进主程序"),
-                           ({"op": "coarse"}, "粗校"),
-                           ({"op": "detect"}, "第一次开机前接好"),
+        for args, word in (({"op": "solve"}, "Nenhuma leitura recebida"),
+                           ({"op": "solve", "samples": [{}] * 6001}, "Leituras demais"),
+                           ({"op": "save"}, "Gravar no programa"),
+                           ({"op": "coarse"}, "calibração inicial"),
+                           ({"op": "detect"}, "antes da primeira inicialização"),
                            ({"op": "set_chip", "chip": "bno08x"}, "microduck-firstboot"),
-                           ({"op": "rm -rf"}, "不认识")):
+                           ({"op": "rm -rf"}, "Comando desconhecido")):
             with self.subTest(args=args.get("op")):
                 with self.assertRaises(Refused) as cm:
-                    asyncio.run(b.handle(args, "测试"))
+                    asyncio.run(b.handle(args, "Teste"))
                 self.assertIn(word, str(cm.exception))
 
     def test_full_solve_saves_pending_for_commit(self):
-        """站着完整校完、结果 ok：新的方向、来源、质量写进 state/imu-pending.json（Studio 重启也不丢）。"""
+        """Após concluir a calibração em pé com sucesso, grava a nova orientação, origem e qualidade em state/imu-pending.json, que persiste ao reiniciar o Studio."""
         from tests.test_imu_calib import Duck
         b = self.backend(bus=recorded("robot.busStatus"), calib=recorded("robot.busCommand"))
         old = b.view()["mount"]["quat"]
         data = Duck(old, old_mount=old, noise_deg=0.1).run()
         samples = [{"step": step, "g": s["g"]} for step, rows in data.items() for s in rows]
-        res = asyncio.run(b.handle({"op": "solve", "samples": samples}, "测试"))
+        res = asyncio.run(b.handle({"op": "solve", "samples": samples}, "Teste"))
         self.assertTrue(res["ok"], res)
         row = json.loads((Path(self.tmp.name) / "imu-pending.json").read_text(encoding="utf-8"))
         self.assertEqual(row["source"], "lsm6dsv16x")
-        self.assertEqual(row["by"], "测试")
+        self.assertEqual(row["by"], "Teste")
         self.assertIn("quality", row)
         self.assertAlmostEqual(sum(x * x for x in row["quat"]), 1.0, places=9)
 
     def test_solve_bad_samples_fails_politely(self):
-        # 乱七八糟的读数：回 ok=False 和一句原因，不抛异常、不把后端弄挂
+        # Leituras inválidas devem retornar ok=False com um motivo, sem lançar exceção nem interromper o backend.
         b = self.backend()
-        res = asyncio.run(b.handle({"op": "solve", "samples": [{"step": "still", "g": [0, 0, -1]}]}, "测试"))
+        res = asyncio.run(b.handle({"op": "solve", "samples": [{"step": "still", "g": [0, 0, -1]}]}, "Teste"))
         self.assertFalse(res["ok"])
         self.assertTrue(res["reason"])
         self.assertIs(b.last_result, res)
@@ -348,18 +348,18 @@ class ImuBackendTest(unittest.TestCase):
     def test_coarse_capture_then_solve_uses_commissioning_last_sample(self):
         rd = FakeRd(bus=commissioning_bus(), calib=factory_calib())
         b = ImuBackend(rd, self.log, self.tmp.name)
-        still = asyncio.run(b.handle({"op": "coarse-capture", "phase": "still", "seconds": 3}, "测试"))
+        still = asyncio.run(b.handle({"op": "coarse-capture", "phase": "still", "seconds": 3}, "Teste"))
         self.assertEqual(still["phase"], "still")
         self.assertGreaterEqual(still["n"], 15)
         self.assertEqual(still["samples"][0]["g"], [0.0, 0.0, -1.0])
 
         a = math.radians(20.0)
         rd.bus.value["last_sample"]["imu"]["gravity"] = [math.sin(a), 0.0, -math.cos(a)]
-        fwd = asyncio.run(b.handle({"op": "coarse-capture", "phase": "fwd", "seconds": 3}, "测试"))
+        fwd = asyncio.run(b.handle({"op": "coarse-capture", "phase": "fwd", "seconds": 3}, "Teste"))
         self.assertGreaterEqual(fwd["n"], 15)
 
         samples = still["samples"] + fwd["samples"]
-        res = asyncio.run(b.handle({"op": "solve", "mode": "coarse", "frame": "body", "samples": samples}, "测试"))
+        res = asyncio.run(b.handle({"op": "solve", "mode": "coarse", "frame": "body", "samples": samples}, "Teste"))
         self.assertTrue(res["ok"], res)
         self.assertEqual(res["mode"], "coarse")
         self.assertEqual(res["quality"]["grade"], "coarse")
@@ -372,7 +372,7 @@ class ImuBackendTest(unittest.TestCase):
         mount = [0.5, 0.5, 0.5, 0.5]
         b.last_result = {"ok": True, "mode": "coarse", "mount": mount}
         rd.verify_plan = "ok"
-        res = asyncio.run(b.handle({"op": "verify", "confirmed": True, "mount_wxyz": mount}, "测试"))
+        res = asyncio.run(b.handle({"op": "verify", "confirmed": True, "mount_wxyz": mount}, "Teste"))
         self.assertTrue(res["ok"], res)
         v = b.view()
         self.assertEqual(v["source"], "lsm6dsv16x")
@@ -386,28 +386,28 @@ class ImuBackendTest(unittest.TestCase):
         b.last_result = {"ok": True, "mode": "coarse", "mount": mount}
         rd.verify_plan = plan
         with self.assertRaises(Refused) as cm:
-            asyncio.run(b.handle({"op": "verify", "confirmed": True, "mount_wxyz": mount}, "测试"))
+            asyncio.run(b.handle({"op": "verify", "confirmed": True, "mount_wxyz": mount}, "Teste"))
         return str(cm.exception)
 
     def test_verify_failure_no_sample_is_translated(self):
         msg = self._verify_failure("no_sample")
-        self.assertIn("没有 IMU 读数", msg)
+        self.assertIn("não está recebendo leituras da IMU", msg)
         self.assertIn("Nothing saved", msg)
 
     def test_verify_failure_not_upright_is_translated(self):
         msg = self._verify_failure("not_upright")
-        self.assertIn("没有摆正", msg)
+        self.assertIn("não está nivelado", msg)
         self.assertIn("Nothing saved", msg)
 
     def test_verify_failure_wrong_heading_is_translated(self):
         msg = self._verify_failure("wrong")
-        self.assertIn("低头方向不对", msg)
+        self.assertIn("direção da inclinação está incorreta", msg)
         self.assertIn("90°", msg)
         self.assertIn("Nothing saved", msg)
 
     def test_verify_failure_timeout_is_translated(self):
         msg = self._verify_failure("timeout")
-        self.assertIn("超时没看到往前低头", msg)
+        self.assertIn("Tempo esgotado sem detectar inclinação para a frente", msg)
         self.assertIn("Nothing saved", msg)
 
     def test_motion_mode_refuses_coarse(self):
@@ -417,8 +417,8 @@ class ImuBackendTest(unittest.TestCase):
                      {"op": "verify", "confirmed": True, "mount_wxyz": [1, 0, 0, 0]}):
             with self.subTest(op=args["op"]):
                 with self.assertRaises(Refused) as cm:
-                    asyncio.run(b.handle(args, "测试"))
-                self.assertIn("主程序已经在运动模式", str(cm.exception))
+                    asyncio.run(b.handle(args, "Teste"))
+                self.assertIn("programa principal já está no modo de movimento", str(cm.exception))
 
     def test_verify_readback_failure_or_mismatch_is_not_success(self):
         for corrupt in ("unreachable", "wrong-source", "wrong-quat", "unverified", "not-normalized", "contradictory-top"):
@@ -463,7 +463,7 @@ class ImuBackendTest(unittest.TestCase):
         self.assertTrue(redo["active"])
         self.assertEqual(redo["session_id"], "a"*32)
         self.assertEqual(redo["phase"], "commissioning")
-        with self.assertRaisesRegex(Refused, "重做"):
+        with self.assertRaisesRegex(Refused, "repetição da calibração inicial"):
             asyncio.run(b.handle({"op": "hold"}))
 
     def test_factory_coarse_refuses_enabled_hold_and_pending_torque(self):
@@ -472,7 +472,7 @@ class ImuBackendTest(unittest.TestCase):
             bus = commissioning_bus()
             bus[key] = value
             b = self.backend(bus=bus, calib=factory_calib())
-            with self.subTest(key=key), self.assertRaisesRegex(Refused, "卸力"):
+            with self.subTest(key=key), self.assertRaisesRegex(Refused, "torque desativado"):
                 asyncio.run(b.handle({"op": "coarse-capture", "phase": "still", "seconds": 0.5}))
 
     def test_factory_coarse_capture_solve_and_verify_while_holding_home(self):
@@ -535,7 +535,7 @@ class ImuBackendTest(unittest.TestCase):
             calls["n"] += 1
             return commissioning_bus("bus" if calls["n"] == 1 else "lsm6dsv16x")
         b._bus_once = bus_once
-        with self.assertRaisesRegex(Refused, "来源"):
+        with self.assertRaisesRegex(Refused, "origem"):
             asyncio.run(b.handle({"op": "coarse-capture", "phase": "still", "seconds": 0.5}))
         self.assertIs((b.job or {}).get("failed"), True)
 
@@ -574,7 +574,7 @@ class ImuBackendTest(unittest.TestCase):
             b = self.backend(bus=commissioning_bus(mode="motion"), calib=factory_calib())
             with mock.patch.object(helper, "available", return_value=True), \
                  mock.patch.object(helper, "imu_recalibrate", return_value=(False, result, None)):
-                with self.assertRaisesRegex(Refused, "新版.*小助手.*sudoers"):
+                with self.assertRaisesRegex(Refused, "nova versão.*assistente root.*sudoers"):
                     asyncio.run(b.handle({"op": "redo-start", "confirmed": True}))
 
     def test_source_mode_or_session_change_clears_stale_solve(self):

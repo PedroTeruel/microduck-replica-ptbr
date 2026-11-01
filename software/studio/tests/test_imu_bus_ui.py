@@ -12,7 +12,7 @@ from tests.test_vpad_e2e import EDGE, NODE, ROOT, HERE, _kill, _node_ok, _port, 
 
 
 @unittest.skipUnless(_node_ok() and EDGE and os.environ.get("STUDIO_E2E", "1") != "0",
-                     "需要 Node >=22 和 Edge；STUDIO_E2E=0 时跳过浏览器测试")
+                     "Node >=22 e Edge são necessários; STUDIO_E2E=0 ignora o teste no navegador")
 class ImuBusUiTest(unittest.TestCase):
     def test_bus_labels_binding_and_calibration_context(self):
         class QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -48,7 +48,7 @@ class ImuBusUiTest(unittest.TestCase):
                         f"--remote-debugging-port={cdp}", f"--user-data-dir={directory}/edge", "about:blank"],
                         stdout=log, stderr=subprocess.STDOUT)
                     try:
-                        _wait_http(f"http://127.0.0.1:{cdp}/json/version", "IMU 测试 Edge", timeout=30)
+                        _wait_http(f"http://127.0.0.1:{cdp}/json/version", "Edge do teste de IMU", timeout=30)
                         result = subprocess.run([NODE, str(HERE / "imu_bus_ui.mjs"),
                             f"http://127.0.0.1:{server.server_port}/fixture", str(cdp)], cwd=ROOT,
                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
