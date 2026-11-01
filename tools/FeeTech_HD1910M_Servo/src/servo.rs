@@ -1,16 +1,16 @@
-//! servo.rs —— 舵机驱动层：把协议包真正发到串口上，并解析应答
+//! servo.rs — camada de driver do servo: envia pacotes de protocolo pela serial e analisa as respostas
 //!
-//! 【分层回顾】
-//!   protocol.rs  纯数据：组包 / 解包（不碰硬件，可单元测试）
-//!   registers.rs 纯数据：内存表定义（不碰硬件，可单元测试）
-//!   servo.rs     本层：打开串口、收发字节、处理超时与错误
-//!   main.rs      最外层：解析命令行，调用本层完成用户要的测试
+//! [Revisão da arquitetura em camadas]
+//!   protocol.rs  dados puros: monta/analisa pacotes (sem hardware, testável)
+//!   registers.rs dados puros: define a tabela de memória (sem hardware, testável)
+//!   servo.rs     esta camada: abre a serial, envia/recebe bytes e trata timeouts e erros
+//!   main.rs      camada externa: analisa a linha de comando e chama esta camada para executar as operações solicitadas
 //!
-//! 【Rust 知识点：trait 对象 Box<dyn SerialPort>】
-//! serialport 库在不同操作系统上的串口实现是不同的类型。
-//! `Box<dyn SerialPort>` 表示“堆上某个实现了 SerialPort trait 的类型”，
-//! 我们不关心它具体是什么，只要它会 read/write 就行 —— 这就是
-//! Rust 的“动态分发”，类似 Java 的接口引用，但零额外抽象成本地按需选择。
+//! [Conceito de Rust: objeto trait Box<dyn SerialPort>]
+//! A biblioteca serialport usa tipos diferentes para implementar a serial em cada sistema operacional.
+//! `Box<dyn SerialPort>` representa algum tipo no heap que implementa o trait SerialPort.
+//! Não precisamos saber qual é o tipo concreto, desde que ofereça read/write. Isso é
+//! despacho dinâmico em Rust, semelhante a uma referência de interface em Java, com a abstração escolhida sob demanda.
 
 use std::io::{Read, Write};
 use std::time::Duration;
@@ -21,107 +21,106 @@ use crate::error::{Result, ServoError};
 use crate::protocol::{self, Instruction, StatusPacket, BROADCAST_ID};
 use crate::registers::{self, Register};
 
-/// 舵机驱动对象。拥有一个独占的串口句柄。
+/// Driver do servo, que possui um handle exclusivo da porta serial.
 ///
-/// 【Rust 知识点：所有权保证“独占访问”】
-/// 串口是独占资源，同一时刻只能有一个地方在收发。
-/// Rust 的所有权机制在编译期就保证了这一点：串口句柄被 Servo 拥有，
-/// 想操作舵机必须经过 `&mut self`（可变借用），而可变借用同时只能存在一个，
-/// 所以从语言层面杜绝了“两个线程同时读写串口导致报文错乱”的问题。
+/// [Conceito de Rust: ownership garante acesso exclusivo]
+/// A porta serial é um recurso exclusivo: somente um lugar pode transmitir ou receber por vez.
+/// O sistema de ownership do Rust garante isso em tempo de compilação: Servo possui o handle,
+/// e o acesso ao servo exige `&mut self` (empréstimo mutável), do qual só pode existir um ao mesmo tempo.
+/// Assim, a linguagem impede que duas threads leiam e escrevam simultaneamente e corrompam os pacotes.
 pub struct Servo {
     port: Box<dyn SerialPort>,
-    /// 如果你的硬件是把 TX/RX 直接短接的简易接法，发出去的数据会被自己收回来，
-    /// 置 true 则每次发送后先把“回声”丢弃再读应答。
+    /// Em uma ligação simples com TX e RX conectados diretamente, os dados enviados retornam ao próprio dispositivo.
+    /// Se true, descarta esse eco depois de cada envio antes de ler a resposta.
     discard_echo: bool,
-    /// 是否打印原始收发报文（学习协议时很有用）
+    /// Indica se os pacotes brutos enviados e recebidos devem ser exibidos (útil para estudar o protocolo).
     verbose: bool,
 }
 
-/// 舵机实时反馈数据（内存表 56~69 号地址一次性读回）。
+/// Dados de feedback em tempo real do servo (lidos de uma vez dos endereços 56 a 69 da tabela de memória).
 ///
-/// 【Rust 知识点：结构体派生 Debug】
-/// #[derive(Debug)] 让我们可以用 `println!("{fb:?}")` 直接打印整个结构体，
-/// 调试时非常方便。
+/// [Conceito de Rust: derivar Debug para uma struct]
+/// #[derive(Debug)] permite imprimir a struct inteira com `println!("{fb:?}")`, o que facilita a depuração.
 #[derive(Debug)]
 pub struct Feedback {
-    /// 当前位置（0.087度/单位，含方向位；多圈模式含圈数）
+    /// Posição atual (0,087 grau/unidade, com bit de direção; inclui o número de voltas no modo multivoltas).
     pub pos: i64,
-    /// 当前速度（0.732RPM/单位，含方向位）
+    /// Velocidade atual (0,732 RPM/unidade, com bit de direção).
     pub vel: i64,
-    /// 当前负载/占空比（0.1%/单位，BIT10 方向位）
+    /// Carga/duty cycle atual (0,1%/unidade, BIT10 indica a direção).
     pub load: i64,
-    /// 当前电压（单位 V，已换算成浮点）
+    /// Tensão atual em V, convertida para ponto flutuante.
     pub voltage: f64,
-    /// 当前温度（°C）
+    /// Temperatura atual (°C).
     pub temp: i64,
-    /// 舵机状态字（0=正常，按位表示异常）
+    /// Status do servo (0 = normal; falhas codificadas por bits).
     pub status: u8,
-    /// 移动标志
+    /// Indicador de movimento.
     pub moving: u8,
-    /// 当前电流（mA，已换算成浮点，含方向）
+    /// Corrente atual em mA, convertida para ponto flutuante e com direção.
     pub current: f64,
 }
 
 impl Servo {
-    /// 打开串口并创建驱动对象。
+    /// Abre a porta serial e cria o driver.
     ///
-    /// 【Rust 知识点：? 运算符】
-    /// `serialport::new(...).open()?` 的意思是：失败就把错误转换成
-    /// ServoError 并立刻 return（靠 error.rs 里的 #[from] 自动转换），
-    /// 成功就解包继续。这让错误处理既严格又不啰嗦。
+    /// [Conceito de Rust: operador ?]
+    /// `serialport::new(...).open()?` converte a falha em ServoError e retorna imediatamente
+    /// (a conversão é feita automaticamente por #[from] em error.rs); em caso de sucesso, continua.
+    /// Isso mantém o tratamento de erros rigoroso e conciso.
     pub fn connect(path: &str, baud: u32, timeout_ms: u64, discard_echo: bool, verbose: bool) -> Result<Self> {
         let port = serialport::new(path, baud)
-            .timeout(Duration::from_millis(timeout_ms)) // 每次 read 的最长等待
-            .data_bits(serialport::DataBits::Eight)     // 8 数据位
-            .parity(serialport::Parity::None)           // 无校验
-            .stop_bits(serialport::StopBits::One)       // 1 停止位 —— 规格书 7-2：8bit, 1stop, No Parity
+            .timeout(Duration::from_millis(timeout_ms)) // Tempo máximo de espera de cada read.
+            .data_bits(serialport::DataBits::Eight)     // 8 bits de dados.
+            .parity(serialport::Parity::None)           // Sem paridade.
+            .stop_bits(serialport::StopBits::One)       // 1 bit de parada — especificação 7-2: 8 bits, 1 parada, sem paridade.
             .open()?;
         Ok(Servo { port, discard_echo, verbose })
     }
 
     // =========================================================================
-    // 底层收发
+    // Comunicação de baixo nível.
     // =========================================================================
 
-    /// 发一条指令并等待应答，返回解析后的应答包。
-    /// 这是所有指令的公共通道。
+    /// Envia uma instrução, aguarda a resposta e retorna o pacote analisado.
+    /// Este é o canal comum para todas as instruções.
     fn transact(&mut self, id: u8, inst: Instruction, params: &[u8], expect_reply: bool) -> Result<StatusPacket> {
         let pkt = protocol::build_packet(id, inst, params);
 
-        // 清空接收缓冲区里的残留字节（上一次通信的尾巴、干扰噪声等），
-        // 否则可能把旧数据误当成这次的应答。
+        // Limpa bytes residuais no buffer de entrada (fim da comunicação anterior, ruído etc.),
+        // evitando que dados antigos sejam confundidos com a resposta atual.
         let _ = self.port.clear(serialport::ClearBuffer::Input);
 
         if self.verbose {
-            eprintln!("  >> 发送: {:02X?}", pkt);
+            eprintln!("  >> Enviado: {:02X?}", pkt);
         }
 
-        // 【Rust 知识点：&mut self 的传递】
-        // write_all 需要可变借用串口。因为 transact 本身借用了 &mut self，
-        // 编译器保证这期间没有别人能碰这个串口。
+        // [Conceito de Rust: passagem de &mut self]
+        // write_all exige um empréstimo mutável da serial. Como transact já emprestou &mut self,
+        // o compilador garante que ninguém mais acessará esta porta durante a operação.
         self.port.write_all(&pkt)?;
         self.port.flush()?;
 
-        // 简易接法（TX/RX 短接）会先收到自己刚发出去的内容，丢弃同样长度的字节
+        // Em uma ligação simples (TX/RX em curto), primeiro chegam de volta os bytes enviados; descarte a mesma quantidade.
         if self.discard_echo {
             let mut echo = vec![0u8; pkt.len()];
             let _ = self.port.read_exact(&mut echo);
         }
 
-        // 广播地址不应答；应答级别为 0 时写指令也不应答
+        // O endereço de broadcast não responde; com nível de resposta 0, instruções de escrita também não respondem.
         if !expect_reply || id == BROADCAST_ID {
             return Ok(StatusPacket { id, error: 0, params: Vec::new() });
         }
 
         let raw = self.recv_packet()?;
         if self.verbose {
-            eprintln!("  << 接收: {:02X?}", raw);
+            eprintln!("  << Recebido: {:02X?}", raw);
         }
         let status = protocol::parse_status(&raw)?;
-        // 校验应答的舵机 ID 是否就是我们请求的对象
-        // （总线上可能有多个舵机，收到别人的应答说明时序出了问题）
+        // Confere se o ID do servo que respondeu é o mesmo solicitado.
+        // Pode haver vários servos no barramento; receber uma resposta de outro indica um problema de temporização.
         if status.id != id {
-            return Err(ServoError::Malformed("应答包 ID 与请求不符".into()));
+            return Err(ServoError::Malformed("o ID do pacote de resposta não corresponde ao solicitado".into()));
         }
         if status.error != 0 {
             return Err(ServoError::ServoStatus(
@@ -132,18 +131,18 @@ impl Servo {
         Ok(status)
     }
 
-    /// 从串口读出一个完整的应答包（逐字节找帧头 → 读 ID/Length → 读剩余部分）。
+    /// Lê um pacote de resposta completo da serial (localiza o cabeçalho byte a byte, lê ID/Length e depois os bytes restantes).
     ///
-    /// 【Rust 知识点：把“超时的 IO 错误”翻译成“业务错误”】
-    /// 串口读超时表现为 io::ErrorKind::TimedOut，我们把它映射成
-    /// ServoError::Timeout，让上层看到更有意义的错误。
+    /// [Conceito de Rust: converter timeout de E/S em erro da aplicação]
+    /// Um timeout de leitura serial aparece como io::ErrorKind::TimedOut; convertemos para
+    /// ServoError::Timeout para que a camada superior receba um erro mais significativo.
     fn recv_packet(&mut self) -> Result<Vec<u8>> {
-        // 第一步：逐字节扫描，直到找到帧头 0xFF 0xFF
-        // （总线上可能有噪声字节，不能假设第一个字节就是帧头）
-        let mut window = [0u8; 2]; // 滑动窗口：保存最近收到的两个字节
+        // Etapa 1: percorre os bytes até encontrar o cabeçalho 0xFF 0xFF.
+        // Pode haver ruído no barramento; não presuma que o primeiro byte recebido seja o cabeçalho.
+        let mut window = [0u8; 2]; // Janela deslizante que guarda os dois bytes recebidos mais recentemente.
         let mut found = false;
         for _ in 0..64 {
-            // 最多扫 64 字节，找不到就放弃
+            // Percorre no máximo 64 bytes; se não encontrar, desiste.
             let mut b = [0u8; 1];
             self.port.read_exact(&mut b).map_err(|e| match e.kind() {
                 std::io::ErrorKind::TimedOut => ServoError::Timeout,
@@ -157,10 +156,10 @@ impl Servo {
             }
         }
         if !found {
-            return Err(ServoError::Malformed("找不到帧头 0xFF 0xFF".into()));
+            return Err(ServoError::Malformed("não foi possível encontrar o cabeçalho 0xFF 0xFF".into()));
         }
 
-        // 第二步：读 ID 和 Length
+        // Etapa 2: lê ID e Length.
         let mut head = [0u8; 2];
         self.port.read_exact(&mut head).map_err(|e| match e.kind() {
             std::io::ErrorKind::TimedOut => ServoError::Timeout,
@@ -168,14 +167,14 @@ impl Servo {
         })?;
         let length = head[1] as usize;
 
-        // 第三步：按 Length 读出剩余字节（Error + 参数 + 校验）
+        // Etapa 3: lê os bytes restantes indicados por Length (Error + parâmetros + checksum).
         let mut rest = vec![0u8; length];
         self.port.read_exact(&mut rest).map_err(|e| match e.kind() {
             std::io::ErrorKind::TimedOut => ServoError::Timeout,
             _ => ServoError::Io(e),
         })?;
 
-        // 拼成完整的一帧交给协议层解析
+        // Monta o quadro completo e o entrega à camada de protocolo para análise.
         let mut full = Vec::with_capacity(4 + length);
         full.extend_from_slice(&protocol::HEADER);
         full.extend_from_slice(&head);
@@ -184,13 +183,13 @@ impl Servo {
     }
 
     // =========================================================================
-    // 指令级 API（与协议指令一一对应）
+    // API de instruções (corresponde diretamente às instruções do protocolo).
     // =========================================================================
 
-    /// PING 握手：舵机在线返回 Ok(true)，超时返回 Ok(false)，其他错误原样抛出。
+    /// Handshake PING: retorna Ok(true) se o servo estiver online, Ok(false) em caso de timeout e propaga os demais erros.
     ///
-    /// 【Rust 知识点：match 错误类型分别处理】
-    /// 超时只是“这个 ID 没有舵机”，不算失败；其他错误才是真的失败。
+    /// [Conceito de Rust: tratar cada tipo de erro com match]
+    /// Um timeout significa apenas que não há servo neste ID; os outros erros indicam falhas reais.
     pub fn ping(&mut self, id: u8) -> Result<bool> {
         match self.transact(id, Instruction::Ping, &[], true) {
             Ok(_) => Ok(true),
@@ -199,15 +198,15 @@ impl Servo {
         }
     }
 
-    /// 读内存：从 addr 开始读 len 个字节。
+    /// Lê len bytes da memória a partir de addr.
     pub fn read(&mut self, id: u8, addr: u8, len: u8) -> Result<Vec<u8>> {
         let resp = self.transact(id, Instruction::Read, &[addr, len], true)?;
         Ok(resp.params)
     }
 
-    /// 写内存（立即生效）：从 addr 开始写入 data。
+    /// Escreve data na memória a partir de addr (efeito imediato).
     pub fn write(&mut self, id: u8, addr: u8, data: &[u8]) -> Result<()> {
-        // 参数 = [起始地址, 数据...]，用迭代器拼出来
+        // Parâmetros = [endereço inicial, dados...], montados com um iterador.
         let mut params = Vec::with_capacity(data.len() + 1);
         params.push(addr);
         params.extend_from_slice(data);
@@ -215,9 +214,9 @@ impl Servo {
         Ok(())
     }
 
-    /// 异步写（REG WRITE）：先缓存，等 action() 广播后才真正执行。
-    /// 典型用途：给多个舵机分别 REG_WRITE 目标位置，然后一个广播 ACTION
-    /// 让所有舵机同时启动 —— 多轴同步的基础。
+    /// Escrita registrada (REG WRITE): armazena primeiro e executa quando action() é transmitido.
+    /// Uso típico: registra a posição desejada em vários servos e envia um único ACTION de broadcast
+    /// para que todos iniciem ao mesmo tempo — base da sincronização de vários eixos.
     pub fn reg_write(&mut self, id: u8, addr: u8, data: &[u8]) -> Result<()> {
         let mut params = Vec::with_capacity(data.len() + 1);
         params.push(addr);
@@ -226,22 +225,22 @@ impl Servo {
         Ok(())
     }
 
-    /// 广播 ACTION：触发所有舵机执行之前缓存的 REG_WRITE 内容。
+    /// ACTION de broadcast: executa o conteúdo REG_WRITE armazenado nos servos.
     pub fn action(&mut self) -> Result<()> {
         self.transact(BROADCAST_ID, Instruction::Action, &[], false)?;
         Ok(())
     }
 
-    /// 同步写（SYNC WRITE 0x83）：一条报文给多个舵机写同一个寄存器。
+    /// Escrita sincronizada (SYNC WRITE 0x83): um pacote grava o mesmo registrador em vários servos.
     ///
-    /// 报文结构（广播 ID，无应答）：
-    ///   FF FF FE Length 0x83 起始地址 数据长度 [ID1 数据...] [ID2 数据...]... Checksum
+    /// Estrutura do pacote (ID de broadcast, sem resposta):
+    ///   FF FF FE Length 0x83 endereço inicial tamanho dos dados [ID1 dados...] [ID2 dados...]... Checksum
     ///
-    /// 典型场景：机械臂 6 个关节要“同时”收到目标位置，
-    /// 逐个点名写会错开几十毫秒，同步写一条报文全部到位。
+    /// Exemplo: seis juntas de um braço robótico precisam receber a posição desejada “ao mesmo tempo”.
+    /// Escritas individuais criariam dezenas de milissegundos de diferença; uma escrita sincronizada entrega tudo em um único pacote.
     pub fn sync_write(&mut self, ids: &[u8], reg: &Register, value: i64) -> Result<()> {
         if ids.is_empty() {
-            return Err(ServoError::InvalidParam("同步写至少需要一个目标 ID".into()));
+            return Err(ServoError::InvalidParam("a escrita sincronizada exige pelo menos um ID de destino".into()));
         }
         reg.check_value(value)?;
         let val = registers::encode_value(value, reg.sign_bit);
@@ -251,7 +250,7 @@ impl Servo {
             val.to_le_bytes().to_vec()
         };
 
-        // 组装参数：起始地址 + 每个舵机的数据长度 + 每个舵机的 [ID, 数据...]
+        // Monta os parâmetros: endereço inicial + tamanho dos dados por servo + [ID, dados...] de cada servo.
         let mut params = Vec::with_capacity(2 + ids.len() * (1 + data.len()));
         params.push(reg.addr);
         params.push(data.len() as u8);
@@ -259,34 +258,34 @@ impl Servo {
             params.push(id);
             params.extend_from_slice(&data);
         }
-        // 同步写是广播指令，舵机收到后不应答
+        // A escrita sincronizada é uma instrução de broadcast; os servos não respondem.
         self.transact(BROADCAST_ID, Instruction::SyncWrite, &params, false)?;
         Ok(())
     }
 
-    /// 恢复出厂设置（地址 5~39 的 EPROM 全部回到默认值）。
+    /// Restaura as configurações de fábrica (todos os valores EPROM dos endereços 5 a 39 voltam ao padrão).
     pub fn factory_reset(&mut self, id: u8) -> Result<()> {
         self.transact(id, Instruction::Reset, &[], true)?;
         Ok(())
     }
 
-    /// 重启舵机（0x08）：等效断电重上电，SRAM 从 EPROM 重新加载。
-    /// 用于验证 EPROM 写入是否真正落盘（robotd 换舵机流程也用它）。
+    /// Reinicia o servo (0x08): equivale a desligá-lo e ligá-lo, recarregando a SRAM da EPROM.
+    /// Usado para verificar se a gravação na EPROM foi persistida (também usado pelo robotd ao trocar um servo).
     pub fn reboot(&mut self, id: u8) -> Result<()> {
         self.transact(id, Instruction::Reboot, &[], true)?;
         Ok(())
     }
 
-    /// 位置校准（0x0B）：把舵机的“当前位置”重新标定为 target 读数
-    /// （None = 中位 2048，与飞特 FD 调试软件的“设置零位”按钮一致）。
+    /// Calibração de posição (0x0B): define novamente a posição atual do servo para a leitura target.
+    /// (None = posição central 2048, como no botão “Definir zero” do software de diagnóstico Feetech FD.)
     ///
-    /// 舵机收到后自动计算并修改 31 号位置偏移寄存器。
-    /// 【注意】HD-1910（HLS 系固件 ≥3.43）不支持老式“扭矩开关写 128”校准，
-    /// 必须用本指令。另外飞特对不支持的操作也可能回“成功”，
-    /// 所以调用方在校准后应回读位置和偏移寄存器确认（见 zero 命令）。
+    /// O servo calcula e altera automaticamente o registrador de deslocamento de posição 31.
+    /// [Atenção] O HD-1910 (firmware HLS >= 3.43) não aceita o método antigo de calibração “gravar 128 no torque switch”; use esta instrução.
+    /// A Feetech pode responder “sucesso” mesmo para operações não suportadas,
+    /// portanto, após calibrar, leia a posição e o registrador de deslocamento para confirmar (consulte o comando zero).
     pub fn calibrate(&mut self, id: u8, target: Option<u16>) -> Result<()> {
         let params = match target {
-            Some(t) => t.to_le_bytes().to_vec(), // 小端：低字节在前
+            Some(t) => t.to_le_bytes().to_vec(), // Little-endian: o byte menos significativo vem primeiro.
             None => Vec::new(),
         };
         self.transact(id, Instruction::Calibrate, &params, true)?;
@@ -294,16 +293,16 @@ impl Servo {
     }
 
     // =========================================================================
-    // 寄存器级 API（结合内存表，自动处理多字节、符号位、范围校验）
+    // API de registradores (usa a tabela de memória para tratar bytes múltiplos, bit de sinal e validação de faixa).
     // =========================================================================
 
-    /// 读取一个寄存器并解码成有符号整数（自动处理小端和符号-幅值编码）。
+    /// Lê um registrador e decodifica como inteiro com sinal (trata automaticamente little-endian e sinal-magnitude).
     pub fn read_reg(&mut self, id: u8, reg: &Register) -> Result<i64> {
         let raw = self.read(id, reg.addr, reg.size)?;
         if raw.len() < reg.size as usize {
-            return Err(ServoError::Malformed("读到的数据长度不足".into()));
+            return Err(ServoError::Malformed("os dados lidos são muito curtos".into()));
         }
-        // 小端拼接：低地址是低字节（文档第 2 节：“低位字节在前面地址”）
+        // Montagem little-endian: o endereço mais baixo contém o byte menos significativo (seção 2 da documentação).
         let val = if reg.size == 1 {
             raw[0] as u16
         } else {
@@ -312,16 +311,15 @@ impl Servo {
         Ok(registers::decode_value(val, reg.sign_bit))
     }
 
-    /// 写一个寄存器（自动范围校验、符号-幅值编码、小端拆包）。
+    /// Escreve em um registrador (valida a faixa, codifica sinal-magnitude e separa em bytes little-endian).
     ///
-    /// 注意：本函数直接写。若写的是 EPROM 区域且需要掉电保存，
-    /// 请使用 save_reg()。
+    /// Atenção: esta função grava diretamente. Para persistir uma gravação na área EPROM após desligar, use save_reg().
     pub fn write_reg(&mut self, id: u8, reg: &Register, value: i64) -> Result<()> {
-        // 【防御式编程】写入前校验：只读寄存器拒绝写，超范围拒绝写。
-        // 内存表就是我们的“schema”，在发送前拦截错误比让舵机行为异常好得多。
+        // [Programação defensiva] Valida antes de gravar: rejeita registradores somente leitura e valores fora da faixa.
+        // A tabela de memória é nosso schema; detectar erros antes do envio é melhor que provocar um comportamento inesperado do servo.
         if reg.access == registers::Access::ReadOnly {
             return Err(ServoError::InvalidParam(format!(
-                "寄存器 {}（{}）是只读的，不能写入",
+                "o registrador {} ({}) é somente leitura e não pode ser gravado",
                 reg.key, reg.cn
             )));
         }
@@ -330,54 +328,54 @@ impl Servo {
         let bytes = if reg.size == 1 {
             vec![val as u8]
         } else {
-            val.to_le_bytes().to_vec() // 小端：低字节先发
+            val.to_le_bytes().to_vec() // Little-endian: envia primeiro o byte menos significativo.
         };
         self.write(id, reg.addr, &bytes)
     }
 
-    /// 写 EPROM 寄存器并掉电保存。
+    /// Grava um registrador EPROM e persiste o valor após desligar.
     ///
-    /// 【重要机制：锁标志（55 号地址）】
-    ///   锁=1（默认）：写 EPROM 区域的值只改内存，掉电不保存；
-    ///   锁=0：写 EPROM 区域的值会真正写入 EPROM，掉电保存。
-    /// 所以持久化流程是：解锁(写0) → 写目标寄存器 → 重新上锁(写1)。
+    /// [Mecanismo importante: flag de bloqueio (endereço 55)]
+    ///   Bloqueio=1 (padrão): gravações na área EPROM alteram apenas a memória e não persistem após desligar;
+    ///   Bloqueio=0: gravações na área EPROM são persistidas.
+    /// Portanto, o fluxo é: desbloquear (gravar 0) → gravar o registrador desejado → bloquear novamente (gravar 1).
     ///
-    /// 【为什么不能一直保持解锁？】EPROM 有擦写寿命（约 10 万次），
-    /// 保持上锁可以防止程序 bug 导致的疯狂擦写把舵机写坏。
+    /// [Por que não deixar sempre desbloqueado?] A EPROM tem vida útil de aproximadamente 100 mil ciclos de gravação.
+    /// Mantê-la bloqueada evita que um bug cause gravações repetidas e danifique o servo.
     pub fn save_reg(&mut self, id: u8, reg: &Register, value: i64) -> Result<()> {
         if reg.area != registers::Area::Eprom {
-            // SRAM 区域本来就实时生效、掉电丢失，不需要解锁流程
+            // A área SRAM já tem efeito imediato e perde os dados ao desligar; não precisa do fluxo de desbloqueio.
             return self.write_reg(id, reg, value);
         }
-        let lock = registers::find_register("lock").expect("lock 寄存器必定存在");
-        self.write_reg(id, lock, 0)?; // 解锁
+        let lock = registers::find_register("lock").expect("o registrador lock deve existir");
+        self.write_reg(id, lock, 0)?; // Desbloqueia.
         let result = self.write_reg(id, reg, value);
-        // 无论写入成功与否都重新上锁；`?` 前先拿到结果，避免错误导致忘了上锁
+        // Bloqueia novamente mesmo que a gravação falhe; guarda o resultado antes de usar `?` para não deixar o servo desbloqueado.
         let relock = self.write_reg(id, lock, 1);
         result.and(relock)
     }
 
     // =========================================================================
-    // 高级语义 API（面向测试场景的便捷方法）
+    // API de alto nível (métodos convenientes para cenários de teste).
     // =========================================================================
 
-    /// 一次性读回全部实时反馈（56~70 号地址共 15 字节，一次读比多次读快得多）。
+    /// Lê todo o feedback em tempo real de uma vez (15 bytes dos endereços 56 a 70; uma leitura é muito mais rápida que várias).
     pub fn read_feedback(&mut self, id: u8) -> Result<Feedback> {
         let raw = self.read(id, 56, 15)?;
         if raw.len() < 15 {
-            return Err(ServoError::Malformed("反馈数据长度不足".into()));
+            return Err(ServoError::Malformed("os dados de feedback são muito curtos".into()));
         }
-        // 辅助闭包：取 2 字节小端值
+        // Closure auxiliar para obter um valor little-endian de dois bytes.
         let u16le = |i: usize| u16::from_le_bytes([raw[i], raw[i + 1]]);
         Ok(Feedback {
-            pos: registers::decode_value(u16le(0), Some(15)),        // 56 当前位置
-            vel: registers::decode_value(u16le(2), Some(15)),        // 58 当前速度
-            load: registers::decode_value(u16le(4), Some(10)),       // 60 当前负载 BIT10 方向位
-            voltage: raw[6] as f64 / 10.0,                           // 62 电压 0.1V
-            temp: raw[7] as i64,                                     // 63 温度 °C
-            status: raw[9],                                          // 65 舵机状态
-            moving: raw[10],                                         // 66 移动标志
-            current: registers::decode_value(u16le(13), Some(15)) as f64 * 6.5, // 69 电流 6.5mA
+            pos: registers::decode_value(u16le(0), Some(15)),        // 56: posição atual.
+            vel: registers::decode_value(u16le(2), Some(15)),        // 58: velocidade atual.
+            load: registers::decode_value(u16le(4), Some(10)),       // 60: carga atual; BIT10 indica a direção.
+            voltage: raw[6] as f64 / 10.0,                           // 62: tensão em unidades de 0,1 V.
+            temp: raw[7] as i64,                                     // 63: temperatura em °C.
+            status: raw[9],                                          // 65: status do servo.
+            moving: raw[10],                                         // 66: indicador de movimento.
+            current: registers::decode_value(u16le(13), Some(15)) as f64 * 6.5, // 69: corrente em unidades de 6,5 mA.
         })
     }
 }
