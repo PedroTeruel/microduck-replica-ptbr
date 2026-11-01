@@ -1,4 +1,4 @@
-"""舵机页的操作（servo_ops，照搬 servo-web）：用协议级模拟舵机跑一遍。"""
+"""Operações da página dos servos: testes com o simulador de protocolo do servo-web."""
 import sys
 import tempfile
 import time
@@ -18,7 +18,7 @@ class ServoOpsTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.s = ServoSession(Log(Path(self.tmp.name) / "logs", echo=False, background=False), sim=True,
                               state_dir=self.tmp.name)
-        ok, why = self.s.open("测试")
+        ok, why = self.s.open("teste")
         self.assertTrue(ok, why)
         end = time.monotonic() + 2
         while len(self.s.rows) < 15 and time.monotonic() < end:
@@ -36,7 +36,7 @@ class ServoOpsTest(unittest.TestCase):
         r = self.o.handle({"op": "torque", "on": 1, "ids": [22]})
         self.assertEqual(r["on"], [22])
         self.assertEqual(self.sim(22).r[40], 1)
-        self.assertEqual(round(self.sim(22).pos()), 2347)          # 没冲：目标先对准了当前位置
+        self.assertEqual(round(self.sim(22).pos()), 2347)          # Sem ultrapassar a posição, alinha o alvo antes.
 
     def test_slider_goal_moves_when_holding(self):
         self.o.handle({"op": "torque", "on": 1, "ids": [20]})
@@ -49,15 +49,14 @@ class ServoOpsTest(unittest.TestCase):
         r = self.o.handle({"op": "calibrate", "ids": "22"})
         self.assertEqual(r["ok"], [22])
         self.assertEqual(round(self.sim(22).pos()), 2048)
-        self.assertEqual(self.sim(22).r[40], 1)                     # 用户要求：校完马上保持
+        self.assertEqual(self.sim(22).r[40], 1)                     # Mantém o torque após calibrar, conforme solicitado.
         self.assertEqual(r["hold"]["on"], [22])
         u = self.o.handle({"op": "undo"})
         self.assertEqual(u["ok"], [22])
-        self.assertEqual(round(self.sim(22).pos()), 2347)          # 撤销回原来的偏移
+        self.assertEqual(round(self.sim(22).pos()), 2347)          # Desfaz a calibração e restaura o offset original.
 
     def test_calibrate_with_torque_on_and_minus_offset_does_not_double_the_error(self):
-        """10-19 二号鸭 #24：扭矩开着校，偏移符号探针探不出（舵机顶回目标、读数不动），以前默认按「+」补下垂，
-        HD-1910 实际是「读数 = 原始 − 偏移」→ 误差翻倍（16→32、43→86、87→174 步）。现在从这次 0x0B 反推方向。"""
+        """Em 19/10, o Microduck 2 mostrou que calibrar com torque ligado podia dobrar o erro de offset; agora infere o sinal pela leitura 0x0B."""
         for droop in (0.0, 0.5):
             with self.subTest(droop=droop):
                 self.o.offset_sign = None
@@ -65,26 +64,26 @@ class ServoOpsTest(unittest.TestCase):
                 sv.offset_adds = False
                 sv.droop = droop
                 self.o.handle({"op": "torque", "on": 1, "ids": [22]})
-                self.o.handle({"op": "goal", "id": 22, "pos": 2120})      # 摆到离零位 72 步的地方
-                phys = sv.phys                                   # 用户摆好的位置（扭矩开着顶在这里）
+                self.o.handle({"op": "goal", "id": 22, "pos": 2120})      # Move 72 passos a partir do ponto zero.
+                phys = sv.phys                                   # Posição física definida com o torque ligado.
                 r = self.o.handle({"op": "calibrate", "ids": "22"})
                 self.assertEqual(r["ok"], [22])
-                self.assertEqual(self.o.offset_sign, -1)         # 反推出来了
-                at_phys = phys - sv.off                          # 摆好的那个位置现在读多少
-                self.assertLessEqual(abs(at_phys - 2048), 3, f"摆好的位置读 {at_phys}，不是 2048")
+                self.assertEqual(self.o.offset_sign, -1)         # O sinal foi inferido.
+                at_phys = phys - sv.off                          # Leitura atual da posição física definida.
+                self.assertLessEqual(abs(at_phys - 2048), 3, f"A leitura da posição definida foi {at_phys}, não 2048.")
                 sv.droop = 0.0
 
     def test_infer_offset_sign(self):
         from studio.servo_ops import infer_offset_sign
-        self.assertEqual(infer_offset_sign(2064, 2048, 16), -1)      # #24 第一次：读数降 16、偏移加 16
+        self.assertEqual(infer_offset_sign(2064, 2048, 16), -1)      # #24: a leitura diminui 16 e o offset aumenta 16.
         self.assertEqual(infer_offset_sign(2064, 2048, -16), 1)
-        self.assertEqual(infer_offset_sign(2064, 2046, 16), -1)      # 中间又垂了 2 步也认得
-        self.assertIsNone(infer_offset_sign(2050, 2048, 2))          # 变得太少，分不清
-        self.assertIsNone(infer_offset_sign(2100, 2048, 16))         # 两个方向都对不上
+        self.assertEqual(infer_offset_sign(2064, 2046, 16), -1)      # Também identifica o sinal após uma queda adicional de 2 passos.
+        self.assertIsNone(infer_offset_sign(2050, 2048, 2))          # A mudança é pequena demais para determinar o sinal.
+        self.assertIsNone(infer_offset_sign(2100, 2048, 16))         # Nenhum dos sinais corresponde.
 
     def test_latched_refuses_motion_until_manual_torque_on(self):
-        """卸力以后：拖滑块、走姿势、校准都被拒绝；人自己点「扭矩开 / 保持」就算解除（用户不想再点「解除锁定」）。"""
-        self.assertTrue(self.s.relax_all("测试")[0])
+        """Após desligar o torque, rejeita movimentos e calibração até que o usuário habilite o torque manualmente."""
+        self.assertTrue(self.s.relax_all("teste")[0])
         for args in ({"op": "goal", "id": 20, "pos": 2100}, {"op": "calibrate", "ids": "20"},
                      {"op": "official", "key": "stand"}, {"op": "idle", "on": True}):
             with self.assertRaises(Refused):
@@ -98,16 +97,16 @@ class ServoOpsTest(unittest.TestCase):
         self.o.handle({"op": "official", "key": "zero", "seconds": 0.2, "mode": "stream"})
         time.sleep(0.8)
         self.assertEqual(round(self.sim(22).pos()), 2048)
-        poses = self.o.handle({"op": "save_pose", "name": "零位存档"})["poses"]
-        self.assertEqual(poses[0]["name"], "零位存档")
+        poses = self.o.handle({"op": "save_pose", "name": "Postura do ponto zero"})["poses"]
+        self.assertEqual(poses[0]["name"], "Postura do ponto zero")
         self.assertEqual(self.o.handle({"op": "delete_pose", "file": poses[0]["file"]})["poses"], [])
 
     def test_tools(self):
         self.assertEqual(self.o.handle({"op": "scan", "ids": "20-24"})["found"], [20, 21, 22, 23, 24])
-        self.assertEqual(len(self.o.handle({"op": "dump", "id": 20})["rows"]), 62)    # 含 HD-1910 运行中的 P/D/I（50–52）
+        self.assertEqual(len(self.o.handle({"op": "dump", "id": 20})["rows"]), 62)    # Inclui P/D/I em operação no HD-1910 (50–52).
         self.assertEqual(self.o.handle({"op": "timing", "n": 10})["fails"], 0)
         with self.assertRaises(Refused):
-            self.o.handle({"op": "write_reg", "id": 20, "addr": 40, "value": 1})   # 扭矩开关不让从这里写
+            self.o.handle({"op": "write_reg", "id": 20, "addr": 40, "value": 1})   # Não permite alterar o torque por esta operação.
         with self.assertRaises(Refused):
             self.o.handle({"op": "nope"})
 
