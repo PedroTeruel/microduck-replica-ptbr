@@ -1,1 +1,1 @@
-# sudoers.d 里的文件必须由 root 拥有，权限为 0440。
+# Os arquivos em sudoers.d devem pertencer ao root e ter permissão 0440.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""microduck-firstboot：起名、热点 keyfile、IMU 识别、TOML 追加。"""
+"""microduck-firstboot: nome do dispositivo, ponto de acesso, identificação da IMU e gravação no TOML."""
 import importlib.machinery
 import importlib.util
 import io
@@ -92,7 +92,7 @@ class HostnameTests(unittest.TestCase):
             self.assertEqual(fb.read_serial(), b"bb7b734a7717ac41")
             name, source = fb.pick_name()
             self.assertEqual(name, "duck-c51b")
-            self.assertIn("序列号", source)
+            self.assertIn("número de série", source)
 
     def test_empty_or_nonprintable_serial_falls_back_to_mac(self):
         for serial in (b"", b"\x00\n", b"abc\x01def"):
@@ -112,7 +112,7 @@ class HostnameTests(unittest.TestCase):
                               log_stream=io.StringIO())
             name, source = fb.pick_name()
             self.assertEqual(name, "duck-1234")
-            self.assertIn("随机", source)
+            self.assertIn("aleatórios", source)
 
     def test_hosts_only_changes_two_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -130,7 +130,7 @@ class HostnameTests(unittest.TestCase):
             root = make_tree(tmp)
             run = Run()
             fb = make_fb(root, run=run)
-            # 临时 root 下默认不调用 hostname；显式注入 runner 后才调用。
+            # Com um root temporário, hostname não é chamado por padrão; só com um executor injetado.
             fb.setup_hostname()
             self.assertEqual((root / "etc/hostname").read_text(encoding="utf-8"), "duck-c51b\n")
             self.assertEqual(run.calls, [(["hostname", "duck-c51b"], 5)])
@@ -217,7 +217,7 @@ class ImuTests(unittest.TestCase):
         self.assertEqual(chosen["address"], 0x6B)
         for text in (toml, saved):
             self.assertEqual(tomllib.loads(text)["trunk_imu"]["i2c_address"], 0x6B)
-        self.assertIn("0x6a 当作 D1 版 HAT 板载的头部 IMU 跳过", log)
+        self.assertIn("0x6a ignorado como IMU da cabeça integrada à HAT D1", log)
 
     def test_d1_only_6a_is_none_with_hint(self):
         _, _, chosen, toml, saved, detect, _ = self._detect(
@@ -226,7 +226,8 @@ class ImuTests(unittest.TestCase):
         self.assertEqual(detect["verdict"], "none")
         self.assertFalse(detect["written"])
         self.assert_not_written(toml, saved)
-        self.assertTrue(any("躯干模块必须设成 0x6B" in hint for hint in detect["hints"]))
+        self.assertTrue(any("configure o módulo do tronco" in hint and "0x6B" in hint
+                            for hint in detect["hints"]))
 
     def test_6b_alone_without_c1_is_unsure(self):
         _, _, chosen, toml, saved, detect, _ = self._detect(
@@ -235,9 +236,9 @@ class ImuTests(unittest.TestCase):
         self.assertEqual(detect["verdict"], "unsure")
         self.assertFalse(detect["written"])
         self.assert_not_written(toml, saved)
-        self.assertTrue(any("分不清它是躯干模块还是头部 IMU" in why
+        self.assertTrue(any("não é possível saber se é o módulo do tronco ou a IMU da cabeça" in why
                             for why in detect["unsure"]))
-        self.assertTrue(any("J5 上只有 0x6B" in hint for hint in detect["hints"]))
+        self.assertTrue(any("Somente 0x6B em J5" in hint for hint in detect["hints"]))
 
     def test_bno08x_on_i2c4_is_one_and_written(self):
         _, _, chosen, toml, saved, detect, _ = self._detect(
@@ -269,7 +270,7 @@ class ImuTests(unittest.TestCase):
         self.assertEqual(detect["verdict"], "unsure")
         self.assertFalse(detect["written"])
         self.assert_not_written(toml, saved)
-        self.assertTrue(any("读出错：出错（EIO）" in why for why in detect["unsure"]))
+        self.assertTrue(any("erro de leitura: Erro (EIO)" in why for why in detect["unsure"]))
 
     def test_two_reads_differ_is_unsure(self):
         _, _, _, toml, saved, detect, _ = self._detect(
@@ -277,7 +278,7 @@ class ImuTests(unittest.TestCase):
         self.assertEqual(detect["verdict"], "unsure")
         self.assertFalse(detect["written"])
         self.assert_not_written(toml, saved)
-        self.assertTrue(any("两次读得不一样" in why for why in detect["unsure"]))
+        self.assertTrue(any("leituras divergentes" in why for why in detect["unsure"]))
 
     def test_j5_6a_ebusy_has_hint(self):
         _, _, _, toml, saved, detect, _ = self._detect(
@@ -285,7 +286,7 @@ class ImuTests(unittest.TestCase):
         self.assertEqual(detect["verdict"], "unsure")
         self.assertFalse(detect["written"])
         self.assert_not_written(toml, saved)
-        self.assertTrue(any("可能是给板载 IMU 绑的驱动" in hint for hint in detect["hints"]))
+        self.assertTrue(any("ocupado pelo driver do kernel" in hint for hint in detect["hints"]))
 
     def test_held_device_node_is_unsure(self):
         _, _, _, toml, saved, detect, _ = self._detect({
@@ -295,14 +296,16 @@ class ImuTests(unittest.TestCase):
         self.assertEqual(detect["verdict"], "unsure")
         self.assertFalse(detect["written"])
         self.assert_not_written(toml, saved)
-        self.assertTrue(any("/dev/i2c-4 被 robotd 占用" in why for why in detect["unsure"]))
+        self.assertTrue(any("/dev/i2c-4 está sendo usado por robotd" in why
+                            for why in detect["unsure"]))
 
     def test_both_buses_missing_is_none_with_hint(self):
         _, _, _, toml, saved, detect, _ = self._detect({})
         self.assertEqual(detect["verdict"], "none")
         self.assertFalse(detect["written"])
         self.assert_not_written(toml, saved)
-        self.assertTrue(any("都不存在" in hint for hint in detect["hints"]))
+        self.assertTrue(any("/dev/i2c-3 e /dev/i2c-4 não existem" in hint
+                            for hint in detect["hints"]))
 
     def test_json_schema_and_per_address_log(self):
         _, _, _, _, _, detect, _ = self._detect(
@@ -337,7 +340,7 @@ class ImuTests(unittest.TestCase):
         text = target.read_text(encoding="utf-8")
         self.assertIn('"source" = "old"', text)
         self.assertNotIn("lsm6dsv16x", text)
-        self.assertIn("已有 trunk_imu 段", log.getvalue())
+        self.assertIn("Seção trunk_imu já existe", log.getvalue())
 
     def test_force_replaces_existing_trunk_imu(self):
         tmp = tempfile.TemporaryDirectory()
@@ -369,7 +372,7 @@ class ImuTests(unittest.TestCase):
 
     def test_mode_and_owner_not_required_on_windows(self):
         if os.name == "nt":
-            self.skipTest("Windows 不保留 Unix 权限")
+            self.skipTest("O Windows não preserva permissões Unix")
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = make_tree(tmp.name)
@@ -384,7 +387,7 @@ class FlowTests(unittest.TestCase):
     def test_failure_in_hotspot_step_does_not_stop_others(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_tree(tmp)
-            # 把 NetworkManager 变成普通文件，热点 keyfile 必然写不进去。
+            # Ao transformar NetworkManager em um arquivo comum, não será possível gravar o keyfile do ponto de acesso.
             nm = root / "etc/NetworkManager"
             shutil.rmtree(nm)
             nm.write_text("not a directory\n", encoding="utf-8")
@@ -395,8 +398,8 @@ class FlowTests(unittest.TestCase):
             self.assertEqual((root / "etc/hostname").read_text(encoding="utf-8"), "duck-c51b\n")
             self.assertIn('"trunk_imu"', (root / "etc/robot/feetech-ft5/robotd.toml").read_text(encoding="utf-8"))
             self.assertFalse((root / "var/lib/microduck/firstboot.done").exists())
-            self.assertIn("热点配置失败", log.getvalue())
-            self.assertIn("不写完成标记", log.getvalue())
+            self.assertIn("configuração do ponto de acesso falhou", log.getvalue())
+            self.assertIn("marcador de conclusão não será gravado", log.getvalue())
 
     def test_marker_written_after_naming(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -406,7 +409,7 @@ class FlowTests(unittest.TestCase):
             text = (root / "var/lib/microduck/firstboot.done").read_text(encoding="utf-8")
             self.assertRegex(text, r"^1790000000\.000000 duck-c51b\n$")
             log = (root / "var/log/microduck-firstboot.log").read_text(encoding="utf-8")
-            self.assertIn("起名", log)
+            self.assertIn("Nome definido", log)
 
     def test_detect_only_leaves_existing(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -418,7 +421,7 @@ class FlowTests(unittest.TestCase):
             fb = make_fb(root, fake_spec={"/dev/i2c-4": dict(ImuTests.BNO4A)}, log=log)
             self.assertEqual(fb.run(detect_only=True), 0)
             self.assertEqual(target.read_text(encoding="utf-8"), original)
-            self.assertIn("已有 trunk_imu 段", log.getvalue())
+            self.assertIn("Seção trunk_imu já existe", log.getvalue())
             self.assertFalse((root / "var/lib/microduck/firstboot.done").exists())
 
     def test_detect_only_force_replaces(self):
@@ -446,7 +449,7 @@ class HotspotOnlyTests(unittest.TestCase):
             self.assertFalse((root / "var/lib/microduck/firstboot.done").exists())
             hotspot = root / "etc/NetworkManager/system-connections/Microduck-Hotspot.nmconnection"
             self.assertIn("ssid=Microduck-c51b", hotspot.read_text(encoding="utf-8"))
-            self.assertIn("只重建热点连接", log.getvalue())
+            self.assertIn("Reconstruindo somente a conexão do ponto de acesso", log.getvalue())
 
     def test_force_rewrites_existing_hotspot_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -461,7 +464,7 @@ class HotspotOnlyTests(unittest.TestCase):
 
 
 class PythonFinderTests(unittest.TestCase):
-    """三个 shell 脚本都要跳过 3.10，找到带 tomllib 的解释器。"""
+    """Os três scripts shell devem ignorar o Python 3.10 e encontrar um interpretador com tomllib."""
 
     def _extract(self, script):
         text = (BASE / script).read_text(encoding="utf-8")
@@ -502,7 +505,7 @@ class PythonFinderTests(unittest.TestCase):
                 self.assertEqual(result.stdout.strip(), "python3", script)
 
 
-@unittest.skipUnless(SH, "需要 sh 才能跑 apply-rootfs.sh")
+@unittest.skipUnless(SH, "É necessário sh para executar apply-rootfs.sh")
 class ApplyOverlayTests(unittest.TestCase):
     def test_new_overlay_files_are_enabled_and_installed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -532,7 +535,7 @@ class ApplyOverlayTests(unittest.TestCase):
             configd = (root / "etc/systemd/system/configd.service.d/zzzz-replica-studio.conf").read_text(encoding="utf-8")
             self.assertIn("ExecStart=\n", configd)
             self.assertIn("--allow-user btd,radxa", configd)
-            self.assertIn("主组", configd)
+            self.assertIn("grupo principal", configd)
             self.assertTrue((root / "etc/systemd/resolved.conf.d/10-microduck-mdns.conf").exists())
             self.assertTrue((root / "etc/NetworkManager/conf.d/90-microduck-mdns.conf").exists())
 

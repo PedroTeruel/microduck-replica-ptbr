@@ -1,1 +1,1 @@
-测试用底图说明：这是 V1.12 镜像的标记文件。
+Descrição da imagem-base usada nos testes: este arquivo identifica a imagem V1.12.
