@@ -1,5 +1,5 @@
-"""真的 uvicorn + wsproto 集成测试（跟板子上同一套实现，不用 TestClient）。
-覆盖 review-impl-plan S0 测试第 4、5、7 条：Host 421、Origin 矩阵、登录、没登录的 WebSocket、推送频率。
+"""Testes de integração com uvicorn e wsproto reais (mesma implementação da placa, sem TestClient).
+Cobrem os itens 4, 5 e 7 do plano review-impl-plan S0: Host 421, matriz de Origin, login, WebSocket sem login e frequência de atualizações.
 """
 import asyncio
 import http.client

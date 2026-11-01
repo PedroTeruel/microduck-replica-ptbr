@@ -1,7 +1,7 @@
-"""「运行和调参」（调参方案 v2 T1–T3，只读）的测试：启动四步跟踪、待办补充、调参卡的三张卡、模型、鸭子档案、页面推送。
+"""Testes da página “Execução e ajuste” (plano de ajuste v2 T1–T3, somente leitura): acompanhamento das quatro etapas de inicialização, tarefas pendentes, três cartões, modelos, perfil do robô e atualizações da página.
 
-假文件树：dev/duckfs.py（我们自己造的最小 JSON / TOML）；假 robotd：dev/fake_robotd.py + dev/fake_tune.py。
-真机三段夹具（策略开着站着 / 在走 / 坐着）还没录：策略开着时的 active_* 由 fake_tune 按录的数合成。
+Árvore de arquivos simulada: dev/duckfs.py (JSON / TOML mínimos); robotd simulado: dev/fake_robotd.py + dev/fake_tune.py.
+Os três cenários gravados no robô (política ativa em pé, caminhando ou sentado) ainda não estão disponíveis; fake_tune gera os valores active_* para política ativa.
 """
 import asyncio
 import json

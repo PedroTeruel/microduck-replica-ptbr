@@ -1,13 +1,13 @@
-"""root 小助手 deploy/microduck-helper 的七个动词：总线三个（bus-take / bus-give-back / bus-abort）、手柄两个（pad-pair / pad-forget）、
-热点两个（wifi-hotspot-down / wifi-hotspot-up）。
+"""Sete comandos do helper root deploy/microduck-helper: três de barramento (bus-take / bus-give-back / bus-abort), dois de controle (pad-pair / pad-forget)
+e dois de hotspot (wifi-hotspot-down / wifi-hotspot-up).
 
-在电脑上跑，不碰真系统：假 systemctl（robotd 的状态机：stop 卡住、KILL、Restart=always、Condition 旗、
-start-limit 计数、reset-failed）、假 robotd（busStatus / safeToRestart / policies / startupSubscribe 按剧本变，
-启动时读走交接标记）、假 robotctl（脚本结果按顺序给）、临时根目录、假时钟（sleep 只是把时间往前拨）。
+Executa no computador sem acessar o sistema real: systemctl simulado (máquina de estados do robotd, KILL, Restart=always, Condition, start-limit e reset-failed),
+robotd simulado (busStatus / safeToRestart / policies / startupSubscribe mudam conforme o cenário e leem o marcador de transferência ao iniciar),
+robotctl simulado com resultados predefinidos, diretório raiz temporário e relógio falso (sleep apenas avança o tempo).
 
     py -3.12 -m pytest tests/test_helper_bus.py -q      （或 py -3.12 -m unittest tests.test_helper_bus）
 
-方案：scratchpad console/handover-plan.md v2 §2.2、§4.2、§5；规矩：studio-ops-plan.md §7。
+Plano: scratchpad console/handover-plan.md v2 §2.2, §4.2 e §5; regras: studio-ops-plan.md §7.
 """
 import importlib.machinery
 import importlib.util
