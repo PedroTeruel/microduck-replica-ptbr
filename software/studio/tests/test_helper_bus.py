@@ -5,7 +5,7 @@ Executa no computador sem acessar o sistema real: systemctl simulado (máquina d
 robotd simulado (busStatus / safeToRestart / policies / startupSubscribe mudam conforme o cenário e leem o marcador de transferência ao iniciar),
 robotctl simulado com resultados predefinidos, diretório raiz temporário e relógio falso (sleep apenas avança o tempo).
 
-    py -3.12 -m pytest tests/test_helper_bus.py -q      （或 py -3.12 -m unittest tests.test_helper_bus）
+    py -3.12 -m pytest tests/test_helper_bus.py -q      (ou py -3.12 -m unittest tests.test_helper_bus)
 
 Plano: scratchpad console/handover-plan.md v2 §2.2, §4.2 e §5; regras: studio-ops-plan.md §7.
 """
@@ -43,7 +43,7 @@ class Clock:
 
 
 class Out:
-    """假 stdout：break_after 次写以后像管道被关了一样抛 BrokenPipeError（SIGPIPE 已被忽略时拿到的就是它）。"""
+    """Saída simulada que lança BrokenPipeError após break_after gravações, como um pipe fechado."""
 
     def __init__(self, break_after=None):
         self.buf, self.writes, self.break_after = io.BytesIO(), 0, break_after
@@ -62,7 +62,7 @@ class Out:
 
 
 class Robot:
-    """假 robotd：开机以后按 behaviour 走启动；运行中按字段回 busStatus。"""
+    """Robotd simulado: segue o comportamento de inicialização e retorna busStatus durante a execução."""
 
     def __init__(self, world):
         self.w = world
@@ -76,11 +76,11 @@ class Robot:
         self.joints = {i: 0.1 for i in IDS}
         self.handover = None
         self.step4 = "success"
-        # 开机剧本
+        # Cenário de inicialização.
         self.boot_at = None
-        # adopt / decline / ignore / never_read / stuck_imu / never_ready；
-        # 标定模式（mode="commissioning"）：commissioning = 修好的 fork（第一次读成功以后换成实时快照）、
-        # commissioning_stuck = 旧 fork（启动报告永远不清，一直 configuring_bus）
+        # adopt / decline / ignore / never_read / stuck_imu / never_ready;
+        # No modo commissioning, o fork corrigido passa ao snapshot após a primeira leitura bem-sucedida;
+        # commissioning_stuck simula um fork antigo que permanece em configuring_bus.
         self.behaviour = "adopt"
         self.consume_delay, self.control_delay = 1.0, 5.0
         self.consumed = False
@@ -98,8 +98,8 @@ class Robot:
             return
         dt = t - self.boot_at
         if self.mode == "commissioning":
-            # 照 fork feetech_commissioning.rs：不认交接标记，开总线时先全部卸力，第一个周期第 4 步就成功；
-            # 修好的 fork 第一次读成功以后 busStatus 换成实时快照（舵机读不到是 read_error），旧 fork 永远停在启动报告
+            # O firmware de commissioning não usa o marcador de transferência e desliga o torque ao abrir o barramento.
+            # O fork corrigido envia snapshots após a primeira leitura; o antigo permanece no relatório de inicialização.
             if dt >= self.consume_delay and not self.consumed:
                 self.consumed, self.torque, self.step4 = True, False, "success"
             if dt >= self.control_delay and self.consumed and self.behaviour != "commissioning_stuck":
@@ -116,7 +116,7 @@ class Robot:
                 if self.behaviour == "decline":
                     self.phase = "handover_declined"
                     self.handover = {"supported": True, "enabled": True, "result": "declined",
-                                     "reason": "目标跟标记不一致", "joint": 23, "item": "goal"}
+                                     "reason": "O alvo não corresponde ao marcador", "joint": 23, "item": "goal"}
                 else:
                     self.handover = {"supported": True, "enabled": True, "result": "adopted"}
                     self.handover_hold, self.torque = True, True
@@ -131,7 +131,7 @@ class Robot:
 
     def rpc(self, method, params=None):
         if self.w.robotd != "active" or not self.reachable:
-            raise H.RpcError(f"{method}：连不上")
+            raise H.RpcError(f"{method}: sem conexão")
         self.w.rpc_calls.append(method)
         if method == "robot.busStatus" and self.mode == "commissioning":
             return self.commissioning_status()
@@ -160,13 +160,13 @@ class Robot:
         if method == "robot.busCommand":
             if (params or {}).get("action") == "calibration-status":
                 return self.w.calibration_status(method)
-            raise H.RpcError(f"{method}：不认识的动作 {(params or {}).get('action')}")
+            raise H.RpcError(f"{method}: ação desconhecida {(params or {}).get('action')}")
         if method == "robot.startupSubscribe":
             return {"steps": {"1": {"status": "success"}, "4": {"status": self.step4}}}
-        raise H.RpcError(f"{method}：不认识")
+        raise H.RpcError(f"{method}: método desconhecido")
 
     def commissioning_status(self):
-        """标定模式的 busStatus：启动报告（只有四个键，fork main.rs:1310-1315），或者实时快照（feetech_commissioning.rs 的 Status）。"""
+        """busStatus no modo de calibração: relatório de inicialização ou snapshot em tempo real."""
         if self.phase in H.STARTING_PHASES:
             return {"build": "fake", "mode": "commissioning", "phase": self.phase, "port": "/dev/ttyS2"}
         servos = [{"id": i, "joint": f"j{i}", "position_raw": 2048, "position_wire_raw": 2048, "position_signed_raw": 0,
@@ -182,7 +182,7 @@ class Robot:
 
 
 class World:
-    """假 systemd + fuser + 文件系统根 + 锁。"""
+    """systemd, fuser, raiz do sistema de arquivos e locks simulados."""
 
     def __init__(self, root):
         self.root, self.clock = root, Clock()
@@ -205,10 +205,10 @@ class World:
         self.robot = Robot(self)
         self.on_tick = None
         self.relays = []
-        self.robotctl_replies = []      # [(rc, stdout, stderr)]；按调用顺序弹
+        self.robotctl_replies = []      # Respostas (rc, stdout, stderr), na ordem das chamadas.
         self.robotctl_timeouts = []
         self.robotctl_timeout = False
-        self.nmcli_active = None        # "wlan0" = 热点开着
+        self.nmcli_active = None        # "wlan0" indica que o hotspot está ativo.
         self.nmcli_down_rc, self.nmcli_up_rc = 0, 0
         self.nmcli_down_hang = self.nmcli_up_hang = False
         self.nmcli_calls = []
@@ -216,7 +216,7 @@ class World:
         Path(root, "etc/systemd/system/robotd.service.d").mkdir(parents=True)
         Path(root, H.DROPIN.lstrip("/")).write_text("[Unit]\n", encoding="utf-8")
 
-    # 文件
+    # Arquivos
     def path(self, p):
         return Path(self.root, p.lstrip("/"))
 
@@ -224,7 +224,7 @@ class World:
         return self.path(H.FLAG).exists()
 
     def open_session(self):
-        """会话已经开着：旗在、管理锁在、robotd 停着（Studio 拿着总线）。"""
+        """Sessão aberta: sinalizador e lock ativos, robotd parado e barramento sob controle do Studio."""
         self.path(H.HELPER_DIR).mkdir(parents=True, exist_ok=True)
         self.path(H.FLAG).write_text("{}", encoding="utf-8")
         self.units[H.HOLD_UNIT] = "active"
@@ -242,7 +242,7 @@ class World:
         return {"calibration": cal, "imu_source": "bus", "uncalibrated_joints": [],
                 "imu_mount": {"quat": cal.get("imu_mount_quat"), "verified": cal.get("imu_mount_verified")}}
 
-    # 时间
+    # Relógio
     def tick(self):
         t = self.clock.t
         if self.robotd == "deactivating" and self.stop_at is not None and t >= self.stop_at:
@@ -459,7 +459,7 @@ def joints(**over):
 
 
 def marker(**kw):
-    m = {"requested_by": "Studio 测试 · 192.168.0.100", "ttl_ms": 20000, "port": "/dev/ttyS2",
+    m = {"requested_by": "Studio teste · 192.168.0.100", "ttl_ms": 20000, "port": "/dev/ttyS2",
          "arm_registers": {"limit": 1000, "p": 5, "d": 0}, "joints": joints()}
     m.update(kw)
     return m
@@ -499,7 +499,7 @@ class Base(unittest.TestCase):
 
 class TakeTest(Base):
     def test_from_holding_stops_pads_then_flags_then_stops_robotd(self):
-        code, ctx = self.call("bus-take", {"by": "电脑 192.168.0.100"})
+        code, ctx = self.call("bus-take", {"by": "computador 192.168.0.100"})
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
         self.assertTrue(self.w.flag())
         self.assertEqual(self.w.robotd, "inactive")
@@ -507,9 +507,9 @@ class TakeTest(Base):
         self.assertEqual(self.w.units["padd"], "inactive")
         stops = self.ev("stop_robotd")
         self.assertEqual(len(stops), 1)
-        self.assertTrue(stops[0][2], "停 robotd 的时候旗必须已经立好")
+        self.assertTrue(stops[0][2], "O sinalizador deve estar ativo antes de parar o robotd.")
         order = [c for c in self.w.calls if c[0] == "systemctl" and c[1] == "stop"]
-        self.assertEqual(order[0], ["systemctl", "stop", "padd"], "手柄先停，再判状态、停主程序")
+        self.assertEqual(order[0], ["systemctl", "stop", "padd"], "Para o controle antes de verificar o estado e parar o programa principal.")
         self.assertEqual(self.last()["result"], "taken")
         self.assertEqual(ctx.stdout.lines()[-1]["step"], "done")
         oplog = self.w.path(H.OPLOG).read_text(encoding="utf-8").splitlines()
@@ -519,31 +519,31 @@ class TakeTest(Base):
         self.w.robot.policy_enabled = True
         code, ctx = self.call("bus-take", {"by": "x"})
         self.assertEqual(code, H.EXIT_STATE)
-        self.assertIn("先按手柄 Start", self.last()["reason"])
+        self.assertIn("pressione Start no controle", self.last()["reason"])
         self.assertFalse(self.w.flag())
         self.assertEqual(self.w.robotd, "active")
         self.assertFalse(self.ev("stop_robotd"))
-        self.assertEqual(self.w.units["padd"], "active", "门槛没过要把 padd 拉回来")
-        self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive", "这次起的管理锁要放掉")
-        self.assertNotIn("robot.enable", self.w.rpc_calls, "不自动停策略")
+        self.assertEqual(self.w.units["padd"], "active", "O padd deve ser reiniciado quando a verificação falhar.")
+        self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive", "Libera o lock de gerenciamento criado nesta tentativa.")
+        self.assertNotIn("robot.enable", self.w.rpc_calls, "Não para a política automaticamente.")
 
     def test_seated(self):
         self.w.robot.policy_enabled = self.w.robot.sitting = True
         code, _ = self.call("bus-take", {"by": "x"})
-        self.assertEqual(code, H.EXIT_STATE, "没允许坐姿接管")
-        self.assertIn("坐", self.last()["reason"])
+        self.assertEqual(code, H.EXIT_STATE, "Não permitiu assumir o controle na postura sentada.")
+        self.assertIn("sentado", self.last()["reason"])
         self.w.robot.moving = True
         code, _ = self.call("bus-take", {"by": "x", "allow_seated": True})
-        self.assertEqual(code, H.EXIT_STATE, "坐着但在动")
+        self.assertEqual(code, H.EXIT_STATE, "O robô está sentado, mas ainda se move.")
         self.assertIn("moved_deg", self.last()["detail"])
         self.w.robot.moving = False
         self.w.robot.safe = False
         code, _ = self.call("bus-take", {"by": "x", "allow_seated": True})
-        self.assertEqual(code, H.EXIT_STATE, "坐下动作还没做完")
+        self.assertEqual(code, H.EXIT_STATE, "A ação de sentar ainda não terminou.")
         self.w.robot.safe = True
         code, _ = self.call("bus-take", {"by": "x", "allow_seated": True})
         self.assertEqual(code, H.EXIT_OK)
-        self.assertIn("坐", self.last()["reason"])
+        self.assertIn("sentado", self.last()["reason"])
 
     def test_waits_for_homing_up_to_3s(self):
         self.w.robot.homed = False
@@ -557,7 +557,7 @@ class TakeTest(Base):
         t0 = self.w.clock.t
         code, _ = self.call("bus-take", {"by": "x"})
         self.assertEqual(code, H.EXIT_STATE)
-        self.assertIn("3 秒", self.last()["reason"])
+        self.assertIn("aguardar 3 s", self.last()["reason"])
         self.assertLess(self.w.clock.t - t0, 5.0)
 
     def test_stop_hang_kills_after_10s_with_flag_and_restart_is_blocked(self):
@@ -568,9 +568,9 @@ class TakeTest(Base):
         kills = self.ev("kill_robotd")
         self.assertEqual(len(kills), 1)
         self.assertGreaterEqual(kills[0][1] - t0, 10.0)
-        self.assertTrue(kills[0][2], "KILL 之前旗必须已经立好")
+        self.assertTrue(kills[0][2], "O sinalizador deve estar ativo antes do KILL.")
         Clock_before = self.w.clock.t
-        FakeCtx(self.w, b"").sleep(3.0)           # Restart=always 2 秒后去拉 robotd：被旗挡住
+        FakeCtx(self.w, b"").sleep(3.0)           # Restart=always tenta iniciar o robotd após 2 s, mas o sinalizador bloqueia.
         self.assertGreater(self.w.clock.t, Clock_before)
         self.assertEqual(self.w.robotd, "inactive")
         self.assertEqual(self.w.condition, "no")
@@ -580,7 +580,7 @@ class TakeTest(Base):
         code, _ = self.call("bus-take", {"by": "x"})
         self.assertEqual(code, H.EXIT_FAIL)
         self.assertEqual(self.last()["result"], "port_busy")
-        self.assertTrue(self.w.flag(), "端口被占时旗不撤")
+        self.assertTrue(self.w.flag(), "Mantém o sinalizador se a porta estiver ocupada.")
         self.assertEqual(self.w.units[H.HOLD_UNIT], "active")
 
     def test_without_guard_refused_before_touching_anything(self):
@@ -596,7 +596,7 @@ class TakeTest(Base):
         code, _ = self.call("bus-take", {"by": "x"})
         self.assertEqual(code, H.EXIT_BUSY)
         self.assertEqual(self.w.robotd, "active")
-        self.assertEqual(self.w.units["padd"], "active", "锁都没拿到，不碰手柄")
+        self.assertEqual(self.w.units["padd"], "active", "Sem obter o lock, não altera o controle.")
         self.assertFalse(self.w.flag())
 
     def test_helper_lock_busy_is_exit_4(self):
@@ -610,21 +610,21 @@ class TakeTest(Base):
         code, _ = self.call("bus-take", {"by": "x"})
         self.assertEqual(code, H.EXIT_OK)
         self.assertTrue(self.w.flag())
-        self.assertIn("没在跑", self.last()["reason"])
+        self.assertIn("não está em execução", self.last()["reason"])
 
     def test_session_already_open(self):
         self.w.open_session()
         n_runs = len(self.calls("systemd-run"))
-        code, _ = self.call("bus-take", {"by": "Studio 重启后重新接管"})
+        code, _ = self.call("bus-take", {"by": "retomada após reiniciar o Studio"})
         self.assertEqual(code, H.EXIT_OK)
-        self.assertEqual(len(self.calls("systemd-run")), n_runs, "管理锁已经在，不再起一个")
+        self.assertEqual(len(self.calls("systemd-run")), n_runs, "O lock de gerenciamento já está ativo; não cria outro.")
         self.assertTrue(self.last()["detail"]["session_was_open"])
 
     def test_unreachable_robotd_refused(self):
         self.w.robot.reachable = False
         code, _ = self.call("bus-take", {"by": "x"})
         self.assertEqual(code, H.EXIT_STATE)
-        self.assertIn("不回话", self.last()["reason"])
+        self.assertIn("não responde", self.last()["reason"])
         self.assertFalse(self.w.flag())
 
     def test_starting_phase_and_declined_phase_are_takeable(self):
@@ -638,7 +638,7 @@ class TakeTest(Base):
 
 
 class PadTest(Base):
-    """pad-pair / pad-forget：只跑官方 robotctl，不碰总线、hold 单元、robotd 或服务管理锁。"""
+    """pad-pair e pad-forget executam apenas o robotctl oficial, sem alterar o barramento ou os locks dos serviços."""
 
     PRO = "AA:BB:CC:DD:EE:11"
 
@@ -692,7 +692,7 @@ class PadTest(Base):
             "paused btd while the pad bonds; it comes back on its own\n"
             "warning: could not power-cycle the Bluetooth adapter, so this pairing may fail.\n",
         ))
-        code, ctx = self.call("pad-pair", {"by": "电脑", "mac": "aa:bb:cc:dd:ee:11", "timeout": 20})
+        code, ctx = self.call("pad-pair", {"by": "computador", "mac": "aa:bb:cc:dd:ee:11", "timeout": 20})
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
         last = self.last()
         self.assertEqual(last["result"], "paired")
@@ -709,7 +709,7 @@ class PadTest(Base):
             '{"outcome":"failed","reason":"not_found","detail":"nothing that looks like a gamepad turned up"}\n',
             "",
         ))
-        code, ctx = self.call("pad-pair", {"by": "电脑", "mac": self.PRO})
+        code, ctx = self.call("pad-pair", {"by": "computador", "mac": self.PRO})
         self.assertEqual(code, H.EXIT_FAIL, ctx.stdout.lines())
         last = self.last()
         self.assertEqual(last["result"], "pair_failed")
@@ -719,7 +719,7 @@ class PadTest(Base):
 
     def test_timeout_kills_and_reports_timeout(self):
         self.w.robotctl_timeout = True
-        code, ctx = self.call("pad-pair", {"by": "电脑", "timeout": 10})
+        code, ctx = self.call("pad-pair", {"by": "computador", "timeout": 10})
         self.assertEqual(code, H.EXIT_FAIL, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "timeout")
         self.assertEqual(self.w.robotctl_timeouts, [40])
@@ -728,27 +728,27 @@ class PadTest(Base):
     def test_forget_success_and_not_paired(self):
         self.w.robotctl_replies.append((
             0, f"forgot {self.PRO}\nThe pad still has its half of the bond. Press Sync before pairing it again.\n", ""))
-        code, ctx = self.call("pad-forget", {"by": "电脑", "mac": self.PRO.lower()})
+        code, ctx = self.call("pad-forget", {"by": "computador", "mac": self.PRO.lower()})
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "forgotten")
         self.assertIs(self.last()["detail"]["removed"], True)
         self.assertEqual(self.robotctl_calls(), [[H.ROBOTCTL, "pad", "forget", self.PRO]])
 
         self.w.robotctl_replies.append((0, f"{self.PRO} was not paired\n", ""))
-        code, ctx = self.call("pad-forget", {"by": "电脑", "mac": self.PRO})
+        code, ctx = self.call("pad-forget", {"by": "computador", "mac": self.PRO})
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
         self.assertIs(self.last()["detail"]["removed"], False)
 
     def test_pair_is_busy_while_lock_is_held(self):
         self.w.locks.add(H.LOCK)
-        code, ctx = self.call("pad-pair", {"by": "电脑"})
+        code, ctx = self.call("pad-pair", {"by": "computador"})
         self.assertEqual(code, H.EXIT_BUSY, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "busy")
         self.assertEqual(self.robotctl_calls(), [])
 
     def test_pair_does_not_touch_the_bus_or_robotd(self):
         self.w.robotctl_replies.append((0, '{"outcome":"paired","pad":{}}\n', ""))
-        code, ctx = self.call("pad-pair", {"by": "电脑"})
+        code, ctx = self.call("pad-pair", {"by": "computador"})
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
         self.assertFalse(self.w.flag())
         self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive")
@@ -758,7 +758,7 @@ class PadTest(Base):
 
 
 class WifiTest(Base):
-    """wifi-hotspot-down / wifi-hotspot-up：只碰 nmcli，不碰总线旗子、hold 单元、robotd 或 helper.lock。"""
+    """wifi-hotspot-down e wifi-hotspot-up usam apenas nmcli, sem alterar o barramento ou seus locks."""
 
     def nmcli(self, verb="show"):
         return [c for c in self.w.nmcli_calls if c[:1] == [verb] or (verb == "show" and c[:1] == ["-t"])]
@@ -775,7 +775,7 @@ class WifiTest(Base):
         self.assertEqual(self.w.nmcli_calls, [])
 
     def test_down_when_already_off_is_ok(self):
-        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        code, ctx = self.call("wifi-hotspot-down", {"by": "computador"})
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "already_down")
         self.assertEqual(self.w.nmcli_calls[0][:1], ["-t"])
@@ -784,12 +784,12 @@ class WifiTest(Base):
 
     def test_down_turns_the_hotspot_off_and_waits(self):
         self.w.nmcli_active = "wlan0"
-        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑", "ssid": "Home"})
+        code, ctx = self.call("wifi-hotspot-down", {"by": "computador", "ssid": "Home"})
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "hotspot_down")
         self.assertIn(["connection", "down", H.HOTSPOT], self.w.nmcli_calls)
         self.assertIsNone(self.w.nmcli_active)
-        self.assertEqual(self.last()["by"], "电脑")
+        self.assertEqual(self.last()["by"], "computador")
         window = json.loads(self.w.path(H.STUDIO_CONNECTING).read_text(encoding="utf-8"))
         self.assertEqual(window["ssid"], "Home")
         self.assertTrue(time.time() + 80 < window["until"] <= time.time() + 95)
@@ -801,7 +801,7 @@ class WifiTest(Base):
     def test_down_failure_is_exit_5(self):
         self.w.nmcli_active = "wlan0"
         self.w.nmcli_down_rc = 4
-        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        code, ctx = self.call("wifi-hotspot-down", {"by": "computador"})
         self.assertEqual(code, H.EXIT_FAIL, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "down_failed")
         self.assertEqual(self.last()["exit"], H.EXIT_FAIL)
@@ -809,7 +809,7 @@ class WifiTest(Base):
     def test_down_times_out_after_10s(self):
         self.w.nmcli_active = "wlan0"
         self.w.nmcli_down_hang = True
-        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        code, ctx = self.call("wifi-hotspot-down", {"by": "computador"})
         self.assertEqual(code, H.EXIT_FAIL, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "timeout")
         self.assertGreaterEqual(self.w.clock.t, 1000.0 + H.WIFI_DOWN_WAIT)
@@ -818,7 +818,7 @@ class WifiTest(Base):
         self.w.nmcli_active = "wlan0"
         self.w.path(H.STUDIO_CONNECTING_DIR).mkdir(parents=True, exist_ok=True)
         self.w.path(H.STUDIO_CONNECTING).write_text("{}", encoding="utf-8")
-        code, ctx = self.call("wifi-hotspot-up", {"by": "电脑"})
+        code, ctx = self.call("wifi-hotspot-up", {"by": "computador"})
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "already_up")
         self.assertNotIn(["connection", "up", H.HOTSPOT], self.w.nmcli_calls)
@@ -827,7 +827,7 @@ class WifiTest(Base):
     def test_up_turns_the_hotspot_on_and_waits(self):
         self.w.path(H.STUDIO_CONNECTING_DIR).mkdir(parents=True, exist_ok=True)
         self.w.path(H.STUDIO_CONNECTING).write_text("{}", encoding="utf-8")
-        code, ctx = self.call("wifi-hotspot-up", {"by": "电脑"})
+        code, ctx = self.call("wifi-hotspot-up", {"by": "computador"})
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "hotspot_up")
         self.assertEqual(self.w.nmcli_active, "wlan0")
@@ -836,31 +836,31 @@ class WifiTest(Base):
 
     def test_up_failure_is_exit_5(self):
         self.w.nmcli_up_rc = 3
-        code, ctx = self.call("wifi-hotspot-up", {"by": "电脑"})
+        code, ctx = self.call("wifi-hotspot-up", {"by": "computador"})
         self.assertEqual(code, H.EXIT_FAIL, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "up_failed")
 
     def test_up_times_out_after_30s(self):
         self.w.nmcli_up_hang = True
-        code, ctx = self.call("wifi-hotspot-up", {"by": "电脑"})
+        code, ctx = self.call("wifi-hotspot-up", {"by": "computador"})
         self.assertEqual(code, H.EXIT_FAIL, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "timeout")
         self.assertGreaterEqual(self.w.clock.t, 1000.0 + H.WIFI_UP_WAIT)
 
     def test_wifi_lock_is_separate_from_the_bus_lock(self):
         self.w.locks.add(H.WIFI_LOCK)
-        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        code, ctx = self.call("wifi-hotspot-down", {"by": "computador"})
         self.assertEqual(code, H.EXIT_BUSY, ctx.stdout.lines())
         self.assertEqual(self.last()["result"], "busy")
         self.assertEqual(self.w.nmcli_calls, [])
         self.w.locks.discard(H.WIFI_LOCK)
-        self.w.locks.add(H.LOCK)                     # 总线锁不算：热点操作照常
-        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        self.w.locks.add(H.LOCK)                     # O lock do barramento não interfere nas operações do hotspot.
+        code, ctx = self.call("wifi-hotspot-down", {"by": "computador"})
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
 
     def test_does_not_touch_the_bus_or_robotd(self):
         self.w.nmcli_active = "wlan0"
-        code, ctx = self.call("wifi-hotspot-down", {"by": "电脑"})
+        code, ctx = self.call("wifi-hotspot-down", {"by": "computador"})
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
         self.assertFalse(self.w.flag())
         self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive")
@@ -878,16 +878,16 @@ class MarkerTest(Base):
         self.assertEqual(code, H.EXIT_OK, ctx.stdout.lines())
         m = self.w.robot.read_marker
         self.assertEqual(m["schema"], H.SCHEMA)
-        self.assertEqual(m["boot_id"], "boot-1", "boot_id 由小助手填，覆盖 Studio 给的")
+        self.assertEqual(m["boot_id"], "boot-1", "O helper define boot_id e substitui o valor enviado pelo Studio.")
         self.assertNotEqual(m["mono_ms"], 1)
         self.assertEqual(m["ttl_ms"], 20000)
         self.assertEqual(len(m["joints"]), 15)
         self.assertIn((H.MARKER_DIR, 0o700), ctx.fs_log)
         self.assertIn((H.MARKER, 0o600), ctx.fs_log)
         leftovers = [p.name for p in self.w.path(H.MARKER_DIR).iterdir()]
-        self.assertEqual(leftovers, [], "没有临时文件留下、标记已被 robotd 读走")
+        self.assertEqual(leftovers, [], "Não deixa arquivos temporários; o robotd já leu o marcador.")
 
-    @unittest.skipUnless(os.name == "posix", "权限位只在 POSIX 上能核")
+    @unittest.skipUnless(os.name == "posix", "As permissões só podem ser verificadas em POSIX.")
     def test_marker_modes_on_posix(self):
         self.w.robot.behaviour = "never_read"
         seen = {}
@@ -920,7 +920,7 @@ class MarkerTest(Base):
             code, _ = self.give({"by": "x", "marker": m})
             self.assertEqual(code, H.EXIT_ARGS, json.dumps(m, ensure_ascii=False)[:120])
         self.assertFalse(self.w.path(H.MARKER).exists())
-        self.assertFalse(self.ev("start_robotd"), "参数错就不起 robotd")
+        self.assertFalse(self.ev("start_robotd"), "Argumentos inválidos não iniciam o robotd.")
         self.assertTrue(self.w.flag())
         for args in ({"by": "x"}, {"by": "x", "soft": True, "marker": marker()}, {"by": "x", "soft": False},
                      {"marker": marker()}, {"by": "x", "marker": marker(), "z": 1}):
@@ -937,15 +937,15 @@ class MarkerTest(Base):
         self.assertEqual(self.last()["result"], "adopted")
         self.assertFalse(self.w.flag())
         self.assertFalse(self.w.path(H.MARKER).exists())
-        self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive", "有结果才放锁")
+        self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive", "Libera o lock somente após obter um resultado.")
         self.assertEqual(self.w.units["padd"], "active")
-        self.assertEqual(self.w.units[H.GAMESIR], "active", "gamesir 只在 enabled 时拉")
+        self.assertEqual(self.w.units[H.GAMESIR], "active", "Inicia gamesir somente se estiver habilitado.")
         started = self.ev("robotd_started")[0]
-        self.assertEqual(started[2], "active", "撤旗、起 robotd 时管理锁还拿着")
+        self.assertEqual(started[2], "active", "O lock continua ativo ao remover o sinalizador e iniciar o robotd.")
         self.assertFalse(started[3])
         self.assertTrue(all(lock == "active" for _, lock in flag_lock_during[:-1]))
         rf, st = self.ev("reset_failed"), self.ev("start_robotd")
-        self.assertTrue(rf and rf[0][1] <= st[0][1], "start 之前先 reset-failed")
+        self.assertTrue(rf and rf[0][1] <= st[0][1], "Executa reset-failed antes de start.")
 
     def test_declined_retakes_at_once_with_joint_and_item(self):
         self.w.robot.behaviour = "decline"
@@ -957,21 +957,21 @@ class MarkerTest(Base):
         self.assertIn("#23", last["reason"])
         self.assertIn("goal", last["reason"])
         self.assertEqual(last["detail"]["joint"], 23)
-        self.assertTrue(self.w.flag(), "回退重新立旗")
+        self.assertTrue(self.w.flag(), "A retomada reativa o sinalizador.")
         self.assertEqual(self.w.robotd, "inactive")
-        self.assertEqual(self.w.units[H.HOLD_UNIT], "active", "回退不放锁")
+        self.assertEqual(self.w.units[H.HOLD_UNIT], "active", "A retomada mantém o lock ativo.")
         self.assertLess(self.w.clock.t - t0, 5.0)
         stop = self.ev("stop_robotd")[-1]
-        self.assertTrue(stop[2], "停 robotd 的时候旗已经立好")
+        self.assertTrue(stop[2], "O sinalizador já está ativo ao parar o robotd.")
 
     def test_marker_not_read_in_15s_retakes(self):
         self.w.robot.behaviour = "never_read"
         t0 = self.w.clock.t
         code, _ = self.give({"by": "x", "marker": marker()})
         self.assertEqual(code, H.EXIT_RETAKE)
-        self.assertIn("15 秒没读", self.last()["reason"])
+        self.assertIn("não foi lido em 15 s", self.last()["reason"])
         self.assertAlmostEqual(self.w.clock.t - t0, 15.0, delta=1.5)
-        self.assertFalse(self.w.path(H.MARKER).exists(), "没读走的标记要删掉")
+        self.assertFalse(self.w.path(H.MARKER).exists(), "Remove um marcador que não foi lido.")
         self.assertTrue(self.w.flag())
         self.assertEqual(self.w.units[H.HOLD_UNIT], "active")
 
@@ -980,7 +980,7 @@ class MarkerTest(Base):
         t0 = self.w.clock.t
         code, _ = self.give({"by": "x", "marker": marker()})
         self.assertEqual(code, H.EXIT_RETAKE)
-        self.assertIn("20 秒", self.last()["reason"])
+        self.assertIn("não terminou em 20 s", self.last()["reason"])
         self.assertGreaterEqual(self.w.clock.t - t0, 20.0)
         self.assertEqual(self.w.robotd, "inactive")
 
@@ -995,7 +995,7 @@ class MarkerTest(Base):
     def test_start_limit_hit_retakes_and_reset_failed_every_time(self):
         self.w.starts = [self.w.clock.t - 1] * 5
         code, _ = self.give({"by": "x", "marker": marker()})
-        self.assertEqual(code, H.EXIT_OK, "reset-failed 清了计数，起得来")
+        self.assertEqual(code, H.EXIT_OK, "reset-failed zerou o contador e permitiu iniciar.")
         self.w.open_session()
         orig = self.w.run
 
@@ -1020,15 +1020,14 @@ class MarkerTest(Base):
         self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive")
 
     def test_commissioning_snapshot_is_limp_not_retake(self):
-        """任务 16：标定模式不认交接标记（开总线先全部卸力）。快照来了就算起来了：照「没接手、全卸了」结束，
-        不等 15 秒再把总线拿回来、停主程序。"""
+        """Tarefa 16: o modo de calibração ignora o marcador e desliga o torque; o snapshot confirma a inicialização sem retomar o barramento."""
         self.w.robot.mode, self.w.robot.behaviour = "commissioning", "commissioning"
         t0 = self.w.clock.t
         code, _ = self.give({"by": "x", "marker": marker()})
         self.assertEqual(code, H.EXIT_FAIL)
         last = self.last()
         self.assertEqual(last["result"], "limp")
-        self.assertIn("标定模式", last["reason"])
+        self.assertIn("modo de calibração", last["reason"])
         self.assertLess(self.w.clock.t - t0, 10.0)
         self.assertFalse(self.w.flag())
         self.assertEqual(self.w.robotd, "active")
@@ -1063,7 +1062,7 @@ class AbortTest(Base):
 
         def press_relax(w):
             if "abort" not in results and w.robotd == "active" and w.clock.t - w.robot.boot_at >= 1.5:
-                results["abort"] = self.call("bus-abort", {"by": "页面卸力"})[0]
+                results["abort"] = self.call("bus-abort", {"by": "desligamento do torque pela página"})[0]
                 results["abort_ms"] = self.last()["ms"]
         self.w.on_tick = press_relax
         code, _ = self.give({"by": "x", "marker": marker()})
@@ -1073,10 +1072,10 @@ class AbortTest(Base):
         self.assertEqual(self.last()["result"], "aborted")
         self.assertEqual(self.w.robotd, "inactive")
         self.assertTrue(self.w.flag())
-        self.assertEqual(self.w.units[H.HOLD_UNIT], "active", "中止不放锁")
+        self.assertEqual(self.w.units[H.HOLD_UNIT], "active", "O cancelamento mantém o lock ativo.")
         kill = self.ev("kill_robotd")[0]
-        self.assertTrue(kill[2], "KILL 之前旗已经立好")
-        self.assertFalse(self.w.path(H.ABORT).exists(), "give-back 看到以后把中止请求清掉")
+        self.assertTrue(kill[2], "O sinalizador já está ativo antes do KILL.")
+        self.assertFalse(self.w.path(H.ABORT).exists(), "give-back remove a solicitação de cancelamento após detectá-la.")
 
     def test_abort_alone_is_fast_and_idempotent(self):
         self.w.robotd = "active"
@@ -1085,22 +1084,22 @@ class AbortTest(Base):
         self.w.path(H.MARKER).write_text("{}", encoding="utf-8")
         self.w.path(H.FLAG).unlink()
         t0 = self.w.clock.t
-        code, _ = self.call("bus-abort", {"by": "页面卸力"})
+        code, _ = self.call("bus-abort", {"by": "desligamento do torque pela página"})
         self.assertEqual(code, H.EXIT_OK)
         self.assertLessEqual(self.w.clock.t - t0, 0.6)
         self.assertTrue(self.w.flag())
         self.assertFalse(self.w.path(H.MARKER).exists())
         self.assertEqual(self.w.robotd, "inactive")
-        code, _ = self.call("bus-abort", {"by": "又按了一次"})
+        code, _ = self.call("bus-abort", {"by": "pressionado novamente"})
         self.assertEqual(code, H.EXIT_OK)
 
     def test_abort_without_any_session_refuses_and_touches_nothing(self):
-        """F4：旗、管理锁、交接标记都不在：没有会话，不许立旗 / 写 abort / KILL 主程序。"""
+        """F4: sem sinalizador, lock ou marcador de transferência, não existe sessão que possa ser cancelada."""
         self.w.path(H.FLAG).unlink()
         self.w.units[H.HOLD_UNIT] = "inactive"
         self.w.robotd = "active"
         self.w.robot.boot(self.w.clock.t)
-        code, ctx = self.call("bus-abort", {"by": "页面卸力"})
+        code, ctx = self.call("bus-abort", {"by": "desligamento do torque pela página"})
         self.assertEqual(code, H.EXIT_STATE)
         self.assertEqual(self.last()["result"], "no_session")
         self.assertFalse(self.w.flag())
@@ -1134,7 +1133,7 @@ class AbortTest(Base):
         env = dict(DETACHED, **{H.REQUESTED_ENV: str(requested)})
         code, _ = self.call("bus-give-back", {"by": "x", "marker": marker()}, env=env)
         self.assertEqual(code, H.EXIT_BUSY)
-        self.assertFalse(self.ev("start_robotd"), "已经中止了，不起 robotd")
+        self.assertFalse(self.ev("start_robotd"), "A solicitação foi cancelada; não inicia o robotd.")
 
 
 class SoftTest(Base):
@@ -1149,7 +1148,7 @@ class SoftTest(Base):
         code, _ = self.give({"by": "x", "soft": True})
         self.assertEqual(code, H.EXIT_OK)
         self.assertEqual(self.last()["result"], "soft")
-        self.assertIsNone(self.w.robot.read_marker, "软交还先删掉旧标记")
+        self.assertIsNone(self.w.robot.read_marker, "A devolução simples remove o marcador antigo antes de iniciar.")
         self.assertFalse(self.w.flag())
         self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive")
         self.assertEqual(self.w.units["padd"], "active")
@@ -1171,43 +1170,43 @@ class SoftTest(Base):
         self.assertTrue(self.w.flag())
 
     def test_soft_commissioning_snapshot_counts_as_up(self):
-        """任务 16：标定模式的实时快照（ready）算主程序起来了：不能等满 30 秒判「起不来」（10-20 真机每次交还都这样）。"""
+        """Tarefa 16: um snapshot em tempo real no modo de calibração conta como inicialização concluída."""
         self.w.robot.mode, self.w.robot.behaviour = "commissioning", "commissioning"
         t0 = self.w.clock.t
         code, _ = self.give({"by": "x", "soft": True})
         self.assertEqual(code, H.EXIT_OK)
         last = self.last()
         self.assertEqual(last["result"], "soft")
-        self.assertIn("标定模式", last["reason"])
+        self.assertIn("modo de calibração", last["reason"])
         self.assertEqual(last["detail"]["phase"], "ready")
         self.assertLess(self.w.clock.t - t0, 10.0)
         self.assertFalse(self.w.flag())
         self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive")
 
     def test_soft_commissioning_read_error_is_up_with_the_error(self):
-        """read_error：主程序起来了，只是读舵机出错——交还算成，把主程序的原话带上。"""
+        """read_error: o programa principal iniciou, mas houve erro ao ler os servos; inclui a mensagem original."""
         self.w.robot.mode, self.w.robot.behaviour = "commissioning", "commissioning"
         self.w.robot.error = "Feetech Sync Read timeout; missing IDs [21]"
         code, _ = self.give({"by": "x", "soft": True})
         self.assertEqual(code, H.EXIT_OK)
-        self.assertIn("读舵机出错：Feetech Sync Read timeout; missing IDs [21]", self.last()["reason"])
+        self.assertIn("ocorreu um erro ao ler os servos: Feetech Sync Read timeout; missing IDs [21]", self.last()["reason"])
 
     def test_soft_old_fork_stuck_status_still_fails_but_says_why(self):
-        """旧 fork：启动报告永远不清（一直 configuring_bus）。照旧判没起来，话照实说（跟总览「一直报启动中」一个口气）。"""
+        """Fork antigo que permanece em configuring_bus: informa que a inicialização não foi concluída e mostra o estado real."""
         self.w.robot.mode, self.w.robot.behaviour = "commissioning", "commissioning_stuck"
         t0 = self.w.clock.t
         code, _ = self.give({"by": "x", "soft": True})
         self.assertEqual(code, H.EXIT_FAIL)
         last = self.last()
         self.assertEqual(last["result"], "soft_failed")
-        self.assertIn("30 秒一直报「启动中」（phase=configuring_bus）", last["reason"])
-        self.assertIn("旧版主程序的毛病", last["reason"])
-        self.assertIn("去日志页", last["reason"])
+        self.assertIn("informa “iniciando” há 30 s (phase=configuring_bus)", last["reason"])
+        self.assertIn("O programa pode ter iniciado", last["reason"])
+        self.assertIn("página de registros", last["reason"])
         self.assertTrue(last["detail"]["still_starting"])
-        self.assertEqual(last["detail"]["msg"], last["reason"])          # Studio 只读 done 那一行的 detail
+        self.assertEqual(last["detail"]["msg"], last["reason"])          # O Studio lê o texto completo do campo detail.
         self.assertGreaterEqual(self.w.clock.t - t0, 30.0)
         self.assertEqual(self.w.units[H.HOLD_UNIT], "inactive")
-        self.assertFalse(self.w.flag())                                  # 软交还没拿回总线：主程序照样在跑
+        self.assertFalse(self.w.flag())                                  # A devolução simples não retoma o barramento.
 
 
 class PlumbingTest(Base):
@@ -1225,9 +1224,9 @@ class PlumbingTest(Base):
         self.w.open_session()
         raw = json.dumps({"by": "x", "marker": marker()}, ensure_ascii=False).encode()
         code, ctx = self.call("bus-give-back", None, raw=raw)
-        self.assertEqual(len(self.w.relays), 1, "只转一次")
+        self.assertEqual(len(self.w.relays), 1, "Encaminha a solicitação uma única vez.")
         argv, data = self.w.relays[0]
-        self.assertEqual(data, raw, "stdin 原样转过去")
+        self.assertEqual(data, raw, "Encaminha stdin sem alterações.")
         self.assertEqual(argv[0], "systemd-run")
         for flag in ("--wait", "--pipe", "--collect", "--quiet", f"--setenv={H.DETACH_ENV}=1"):
             self.assertIn(flag, argv)
@@ -1238,7 +1237,7 @@ class PlumbingTest(Base):
         self.assertEqual(self.last()["request_id"], next(a for a in argv if a.startswith(f"--setenv={H.REQUEST_ENV}="))
                          .split("=", 2)[2])
         self.assertTrue(any(l.get("result") == "adopted" for l in [x.get("detail") or {} for x in ctx.stdout.lines()]),
-                        "子进程的输出原样转回来")
+                        "Repassa a saída do processo filho sem alterações.")
 
     def test_detach_bad_args_rejected_before_detaching(self):
         self.w.open_session()
@@ -1253,10 +1252,10 @@ class PlumbingTest(Base):
         self.assertEqual(self.call("bus-take", {"by": "x", "root": "/tmp"})[0], H.EXIT_ARGS)
         self.assertEqual(self.call("bus-take", {"by": ""})[0], H.EXIT_ARGS)
         self.assertEqual(self.call("bus-abort", {"by": "x", "kill": "all"})[0], H.EXIT_ARGS)
-        self.assertEqual(self.w.robotd, "active", "参数错什么都不动")
+        self.assertEqual(self.w.robotd, "active", "Argumentos inválidos não alteram o estado.")
 
     def test_bad_verb_does_not_overwrite_last_result_or_oplog(self):
-        """F11：Studio 探测小助手用的坏动词照样回 done，但不覆盖上次结果、不追加 oplog。"""
+        """F11: um verbo desconhecido retorna done ao Studio sem substituir o resultado ou acrescentar ao oplog."""
         code, _ = self.call("bus-take", {"by": "x"})
         self.assertEqual(code, H.EXIT_OK)
         last_before = self.w.path(H.LAST).read_text(encoding="utf-8")
@@ -1269,10 +1268,10 @@ class PlumbingTest(Base):
         self.assertEqual(self.w.path(H.OPLOG).read_text(encoding="utf-8").splitlines(), oplog_before)
 
     def test_flag_content_and_mode(self):
-        code, ctx = self.call("bus-take", {"by": "电脑 A"})
+        code, ctx = self.call("bus-take", {"by": "computador A"})
         self.assertEqual(code, H.EXIT_OK)
         body = json.loads(self.w.path(H.FLAG).read_text(encoding="utf-8"))
-        self.assertEqual(body["by"], "电脑 A")
+        self.assertEqual(body["by"], "computador A")
         self.assertEqual(body["boot_id"], "boot-1")
         self.assertIn((H.FLAG, 0o644), ctx.fs_log)
         self.assertIn((H.HELPER_DIR, 0o755), ctx.fs_log)
