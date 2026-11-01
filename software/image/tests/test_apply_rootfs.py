@@ -78,7 +78,7 @@ class test_apply_full(ApplyTestBase):
                              env_extra={"STUDIO_VERSION": "env-9.9.9"})
         out = result.stdout + "\n" + result.stderr
 
-        # ---- 1. Studio 的 state.py / logs.py 必须保留 ----
+        # ---- 1. Os arquivos state.py e logs.py do Studio devem ser preservados ----
         self.assertTrue((root / "home/radxa/studio-dev/studio/state.py").exists())
         self.assertTrue((root / "home/radxa/studio-dev/studio/logs.py").exists())
         self.assertTrue((root / "home/radxa/studio-dev/run.py").exists())
@@ -90,12 +90,12 @@ class test_apply_full(ApplyTestBase):
                     "studio/__pycache__", "deploy/__pycache__"]:
             self.assertFalse((root / "home/radxa/studio-dev" / rel).exists(), rel)
 
-        # ---- 出厂标定模式 drop-in ----
+        # ---- Drop-in do modo de calibração de fábrica ----
         commissioning = (root / "etc/systemd/system/robotd.service.d/"
                          "zzzz-zz-microduck-commissioning.conf")
         self.assertEqual(commissioning.read_bytes(), (
-            "# Microduck 复刻镜像：出厂让主程序跑标定模式（--commissioning）。\n"
-            "# 上手清单第 3 步「写进主程序」成功后，root 小助手删掉这个文件，主程序回到运动模式。\n"
+            "# Imagem réplica do Microduck: o programa principal inicia no modo de calibração (--commissioning).\n"
+            "# Após concluir a etapa 3 do guia inicial, o assistente root remove este arquivo e o programa volta ao modo de movimento.\n"
             "[Service]\n"
             "ExecStart=\n"
             "ExecStart=/opt/robot/feetech-ft5-r5/robotd --config /etc/robot/feetech-ft5/robotd.toml "
@@ -106,7 +106,7 @@ class test_apply_full(ApplyTestBase):
             if hasattr(os, "geteuid") and os.geteuid() == 0:
                 self.assertEqual((commissioning_stat.st_uid, commissioning_stat.st_gid), (0, 0))
 
-        # ---- 3. padd 不经过 startup_gate.py ----
+        # ---- 3. padd não passa por startup_gate.py ----
         dropins = sorted(p.name for p in (root / "etc/systemd/system/padd.service.d").iterdir())
         self.assertEqual(dropins, ["zzzz-replica-netpad.conf", "zzzz-replica-padd.conf"])
         gate_hits = [p for p in (root / "etc").rglob("*") if p.is_file() and b"startup_gate" in p.read_bytes()]
@@ -116,7 +116,7 @@ class test_apply_full(ApplyTestBase):
         self.assertIn("RuntimeDirectory=padd", padd_conf)
         self.assertIn("RestartPreventExitStatus=78", padd_conf)
 
-        # ---- 4. 另一个作者的服务和名字 ----
+        # ---- 4. Serviços e nomes de outro autor ----
         for rel in [
             "etc/systemd/system/microduck-setup.service",
             "etc/systemd/system/multi-user.target.wants/microduck-setup.service",
@@ -145,7 +145,7 @@ class test_apply_full(ApplyTestBase):
         ]:
             self.assertFalse(os.path.lexists(root / rel), rel)
 
-        # 官方声卡初始化必须保留；enabled 链接和脚本都不能动。
+        # A inicialização oficial da placa de som deve ser preservada; não altere o link de habilitação nem o script.
         for rel in [
             "etc/systemd/system/aic3104-init.service",
             "etc/systemd/system/multi-user.target.wants/aic3104-init.service",
@@ -157,13 +157,13 @@ class test_apply_full(ApplyTestBase):
         self.assertEqual((root / "usr/local/bin/aic3104-init.sh").read_bytes(), b"#!/bin/sh\nexit 0\n")
         if not IS_WINDOWS:
             self.assertEqual(stat.S_IMODE((root / "usr/local/bin/aic3104-init.sh").stat().st_mode), 0o755)
-        self.assertIn("底图鸭子留下的 ALSA 混音状态", out)
+        self.assertIn("var/lib/alsa/asound.state", out)
         self.assertIn("var/lib/alsa/asound.state", out)
         extlinux = (root / "boot/extlinux/extlinux.conf").read_bytes()
         expected_extlinux = replace_first_menu_title(ref_text("boot/extlinux/extlinux.conf"))
-        self.assertEqual(extlinux, expected_extlinux)  # 只改了第一行 menu title
+        self.assertEqual(extlinux, expected_extlinux)  # Somente a primeira linha menu title foi alterada.
 
-        # ---- 5. 标定 ----
+        # ---- 5. Calibração ----
         cal = root / "etc/robot/feetech-ft5/hd1910-calibration.toml"
         self.assertEqual(cal.read_bytes(), CALIB.read_bytes())
         if not IS_WINDOWS:
@@ -198,10 +198,10 @@ class test_apply_full(ApplyTestBase):
         self.assertFalse(os.path.lexists(root / "root/.ssh/known_hosts"))
         self.assertFalse(os.path.lexists(root / "home/radxa/.ssh/authorized_keys"))
         self.assertFalse(os.path.lexists(root / "home/radxa/.ssh/known_hosts"))
-        self.assertIn("未发现重新打开", out)
+        self.assertIn("não foi encontrada", out)
         self.assertNotIn("sshd_config.d/10-microduck.conf", result.stdout)
 
-        # ---- 13. 个人痕迹 ----
+        # ---- 13. Rastros pessoais ----
         self.assertEqual((root / "var/log/syslog").read_bytes(), b"")
         self.assertEqual(list((root / "var/log/journal").iterdir()), [])
         self.assertEqual((root / "var/log.hdd/syslog").read_bytes(), b"")
@@ -219,7 +219,7 @@ class test_apply_full(ApplyTestBase):
         self.assertFalse((root / "etc/robot/trusted_keys/local.dev.pub").exists())
         self.assertTrue((root / "etc/robot/trusted_keys/release-2026.pub").exists())
         updater = (root / "etc/robot/updater.toml").read_text(encoding="utf-8")
-        self.assertIn("    allow_dev_keys = false  # 仅本机开发签名", updater)
+        self.assertIn("    allow_dev_keys = false  # somente assinatura de desenvolvimento local", updater)
         self.assertIn("verify_signatures = true", updater)
         for rel in ["etc/passwd", "etc/passwd-"]:
             self.assertEqual(
@@ -244,15 +244,15 @@ class test_apply_full(ApplyTestBase):
         hwclock = (root / "etc/fake-hwclock.data").read_text(encoding="utf-8").strip()
         self.assertRegex(hwclock, r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$")
 
-        # ---- 15. Studio 的镜像 drop-in ----
+        # ---- 15. Drop-in do Studio na imagem ----
         image_conf = (root / "etc/systemd/system/microduck-studio.service.d/10-image.conf").read_text(encoding="utf-8")
         self.assertIn("ExecStart=/usr/bin/python3 -I run.py --listen 0.0.0.0:8000", image_conf)
-        self.assertNotIn("二号鸭", image_conf)
+        self.assertNotIn("Pato 2", image_conf)
 
-        # ---- 16. 模型说明 ----
+        # ---- 16. Documentação dos modelos ----
         doc = (root / "usr/share/doc/microduck/模型说明.txt").read_text(encoding="utf-8")
-        self.assertIn("本镜像 /opt/robot/feetech-ft5-r5/models/ 和 roller/ 下列出的全部模型", doc)
-        self.assertNotIn("本目录中当前五个自训练策略", doc)
+        self.assertIn("todos os modelos listados em /opt/robot/feetech-ft5-r5/models/ e em roller/", doc)
+        self.assertNotIn("cinco políticas treinadas neste diretório", doc)
         self.assertIn("models/aaa", doc)
         self.assertIn(sha(self.fx.model_a), doc)
         self.assertIn("roller/bbb", doc)
@@ -260,23 +260,23 @@ class test_apply_full(ApplyTestBase):
         self.assertNotIn("models/legacy", doc)
         self.assertNotIn("@@MODEL_LIST@@", doc)
 
-        # ---- 19. Studio 版本 ----
+        # ---- 19. Versão do Studio ----
         manifest = (root / "usr/share/doc/microduck/镜像清单.txt").read_text(encoding="utf-8")
-        self.assertTrue(manifest.startswith("Microduck 复刻镜像清单\n"))
-        self.assertIn("Studio 版本：env-9.9.9", manifest)
+        self.assertTrue(manifest.startswith("Manifesto da imagem réplica do Microduck\n"))
+        self.assertIn("Versão do Studio: env-9.9.9", manifest)
         self.assertIn(sha(self.fx.robotd), manifest)
-        self.assertIn("待人工确认", manifest)
+        self.assertIn("Aguardando confirmação manual", manifest)
         self.assertIn("var/lib/robot/config", manifest)
-        self.assertIn("空目录", manifest)
-        self.assertIn("Studio 只装运行文件（不含 tests/dev/docs）", manifest)
-        self.assertIn("radxa 默认密码 microduck", manifest)
-        delete_section = manifest.split("删除（路径相对镜像根目录）", 1)[1].split("添加 / 安装", 1)[0]
+        self.assertIn("diretório vazio", manifest)
+        self.assertIn("O Studio inclui somente arquivos de execução", manifest)
+        self.assertIn("Senha padrão de radxa: microduck", manifest)
+        delete_section = manifest.split("Removidos (caminhos relativos à raiz da imagem)", 1)[1].split("Adicionados / instalados", 1)[0]
         self.assertNotIn("aic3104", delete_section)
         self.assertIn("var/lib/alsa/asound.state", delete_section)
-        confirm = manifest.split("待人工确认", 1)[1].split("SSH 配置警告", 1)[0]
+        confirm = manifest.split("Aguardando confirmação manual", 1)[1].split("Avisos de configuração SSH", 1)[0]
         self.assertNotIn("local.dev.pub", confirm)
 
-        # overlay 的 enable.list 不能进镜像；overlay 文件权限 0644
+        # enable.list do overlay não deve ser incluído na imagem; permissões dos arquivos do overlay: 0644.
         self.assertFalse((root / "enable.list").exists())
         self.assertFalse((root / "modes.list").exists())
         self.assertTrue((root / "usr/local/bin/demo-tool").exists())
@@ -288,13 +288,13 @@ class test_apply_full(ApplyTestBase):
                         "usr/share/doc/microduck/开源许可.txt"]:
                 self.assertEqual(stat.S_IMODE((root / rel).stat().st_mode), 0o644, rel)
 
-        # payload 里的 netpad 保留了
+        # O netpad do payload foi preservado.
         self.assertTrue((root / "etc/systemd/system/padd.service.d/zzzz-replica-netpad.conf").exists())
-        # 旧 opt 目录的东西清掉了
+        # Os arquivos antigos do diretório opt foram removidos.
         for rel in ["opt/robot/feetech-ft5-r5/gamepad-r7", "opt/robot/feetech-ft5-r5/service.sh",
                     "opt/robot/feetech-ft5-r5/_model_yaml", "opt/robot/feetech-ft5-r5/unused.txt"]:
             self.assertFalse((root / rel).exists(), rel)
-        # models/、roller/、onnxruntime/ 跟 payload 一模一样：多出来的文件和空目录都删了
+        # models/, roller/ e onnxruntime/ correspondem ao payload; arquivos extras e diretórios vazios foram removidos.
         opt = root / "opt/robot/feetech-ft5-r5"
         for sub in ["models", "roller", "onnxruntime"]:
             files = sorted(p.relative_to(root).as_posix() for p in (opt / sub).rglob("*") if p.is_file())
@@ -306,7 +306,7 @@ class test_apply_full(ApplyTestBase):
         self.assertEqual((root / "opt/robot/feetech-ft5-r5/robotd").read_bytes(), self.fx.robotd)
 
     def test_reshape_failed(self):
-        # ---- 11. 第一次开机自动扩容的断言 ----
+        # ---- 11. Verificação da expansão automática na primeira inicialização ----
         payload = self.fx.make_payload()
         root = self.fx.make_rootfs()
         studio = self.fx.make_studio()
@@ -337,7 +337,7 @@ class test_extlinux_menu_title(ApplyTestBase):
         result = self.run_ok(root, payload, studio, overlay)
 
         self.assertEqual(conf.read_bytes(), before)
-        self.assertIn("没有以 menu title 开头的行", result.stdout)
+        self.assertIn("não havia linha começando com menu title", result.stdout)
 
 
 class test_apply_permissions(ApplyTestBase):
@@ -359,7 +359,7 @@ class test_apply_permissions(ApplyTestBase):
         after = {rel: stat.S_IMODE(os.stat(root / rel).st_mode)
                  for rel in [".", "etc", "usr", "usr/share/doc"]}
         self.assertEqual(before, after)
-        # Windows / Git Bash 只能表达只读位，目录模式恒为 0777；POSIX 上才断言具体位。
+        # Windows e Git Bash só representam o atributo de leitura; diretórios sempre aparecem como 0777. Verifique bits exatos apenas em POSIX.
         if not IS_WINDOWS:
             self.assertEqual(after["etc"], 0o750)
             self.assertEqual(after["usr"], 0o751)
@@ -385,7 +385,7 @@ class test_symlink_escape(ApplyTestBase):
             rmtree_force(target)
         os.symlink(str(outside), str(target))
         result = self.run_fail(root, payload, studio, overlay)
-        self.assertIn("ROOT 外", result.stdout + result.stderr)
+        self.assertIn("fora de ROOT", result.stdout + result.stderr)
         self.assertEqual(list(outside.iterdir()), [], rel)
 
     def test_home_radxa(self):
@@ -412,7 +412,7 @@ class test_residual_scan(ApplyTestBase):
         result = self.run_fail(root, payload, studio, overlay)
         text = result.stdout + result.stderr
         self.assertIn("leak-notes.txt", text)
-        self.assertIn("第三方作者名", text)
+        self.assertIn("nome do autor terceiro", text)
 
     def test_third_party_word_in_passwd_files_fails(self):
         payload = self.fx.make_payload()
@@ -428,7 +428,7 @@ class test_residual_scan(ApplyTestBase):
                 result = self.run_fail(root, payload, studio, overlay)
                 text = result.stdout + result.stderr
                 self.assertIn(rel, text)
-                self.assertIn("第三方作者名", text)
+                self.assertIn("nome do autor terceiro", text)
 
     def test_third_party_word_inside_another_word_is_not_a_match(self):
         payload = self.fx.make_payload()
@@ -493,7 +493,7 @@ class test_account_full_name(ApplyTestBase):
                 else:
                     self.assertEqual(old, new, rel)
             root_line = next(line for line in new_lines if line.startswith("root:"))
-            self.assertEqual(root_line.split(":")[1], "!", "root 必须保持锁定")
+            self.assertEqual(root_line.split(":")[1], "!", "root deve permanecer bloqueado")
 
 
 class test_updater_trust(ApplyTestBase):
@@ -511,14 +511,14 @@ class test_updater_trust(ApplyTestBase):
             updater.read_bytes(),
             before.replace(b"allow_dev_keys = true", b"allow_dev_keys = false", 1),
         )
-        self.assertIn("    allow_dev_keys = false  # 仅本机开发签名\n",
+        self.assertIn("    allow_dev_keys = false  # somente assinatura de desenvolvimento local\n",
                       updater.read_text(encoding="utf-8"))
         self.assertIn(b"verify_signatures = true\n", updater.read_bytes())
         self.assertFalse(os.path.lexists(root / "etc/robot/trusted_keys/local.dev.pub"))
         self.assertTrue(os.path.lexists(root / "etc/robot/trusted_keys/release-2026.pub"))
         self.assertIn("local.dev.pub", result.stdout)
         manifest = (root / "usr/share/doc/microduck/镜像清单.txt").read_text(encoding="utf-8")
-        confirm = manifest.split("待人工确认", 1)[1].split("SSH 配置警告", 1)[0]
+        confirm = manifest.split("Aguardando confirmação manual", 1)[1].split("Avisos de configuração SSH", 1)[0]
         self.assertNotIn("local.dev.pub", confirm)
 
     def test_only_dev_key_fails_after_printing(self):
@@ -550,7 +550,7 @@ class test_home_install_residue(ApplyTestBase):
 
         result = self.run_ok(root, payload, studio, overlay)
 
-        self.assertIn("将删除官方守护进程的安装残留", result.stdout)
+        self.assertIn("serão removidos os resíduos de instalação do daemon oficial", result.stdout)
         for rel in leftovers:
             self.assertIn(rel, result.stdout)
             self.assertFalse(os.path.lexists(root / rel), rel)
@@ -566,7 +566,7 @@ class test_official_audio_init(ApplyTestBase):
 
         result = self.run_fail(root, payload, studio, overlay)
 
-        self.assertIn("缺少官方声卡初始化单元", result.stdout + result.stderr)
+        self.assertIn("Unidade oficial de inicialização de áudio ausente", result.stdout + result.stderr)
 
 
 class test_ssh_audit(ApplyTestBase):
@@ -580,7 +580,7 @@ class test_ssh_audit(ApplyTestBase):
             "PasswordAuthentication yes\n", encoding="utf-8")
         result = self.run_ok(root, payload, studio, overlay)
         self.assertIn("05-weak.conf", result.stdout)
-        self.assertIn("警告", result.stdout)
+        self.assertIn("Aviso", result.stdout)
 
     def test_dropin_after_10_is_ignored(self):
         payload = self.fx.make_payload()
@@ -591,7 +591,7 @@ class test_ssh_audit(ApplyTestBase):
         root.joinpath("etc/ssh/sshd_config.d/20-other.conf").write_text(
             "PasswordAuthentication yes\nPermitRootLogin yes\n", encoding="utf-8")
         result = self.run_ok(root, payload, studio, overlay)
-        self.assertIn("未发现重新打开", result.stdout)
+        self.assertIn("não foi encontrada", result.stdout)
         self.assertNotIn("20-other.conf", result.stdout)
 
 
@@ -614,7 +614,7 @@ class test_payload_guards(ApplyTestBase):
         studio = self.fx.make_studio()
         overlay = self.fx.make_overlay()
         result = self.run_fail(root, payload, studio, overlay)
-        self.assertIn("清单外", result.stdout + result.stderr)
+        self.assertIn("não constam no manifesto", result.stdout + result.stderr)
 
     def test_symlink_rejected(self):
         payload = self.fx.make_payload(extra_symlink=True)
@@ -622,7 +622,7 @@ class test_payload_guards(ApplyTestBase):
         studio = self.fx.make_studio()
         overlay = self.fx.make_overlay()
         result = self.run_fail(root, payload, studio, overlay)
-        self.assertIn("符号链接", result.stdout + result.stderr)
+        self.assertIn("links simbólicos", result.stdout + result.stderr)
 
     def test_empty_root_is_refused(self):
         payload = self.fx.make_payload()
@@ -630,7 +630,7 @@ class test_payload_guards(ApplyTestBase):
         overlay = self.fx.make_overlay()
         result = self.fx.run_apply("", payload, studio, overlay)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("ROOT 不能为空", result.stdout + result.stderr)
+        self.assertIn("ROOT não pode estar vazio", result.stdout + result.stderr)
 
 
 class test_payload_config_attrs(ApplyTestBase):
@@ -698,7 +698,7 @@ class test_media_source(ApplyTestBase):
         self.assertLess(lines.index("[media]"), hits[0])
         self.assertLess(hits[0], lines.index("[audio]"))
         self.assertNotIn('# source = "camera"', lines)
-        # 别的段里同名的注释不动。
+        # Comentários com o mesmo nome em outras seções permanecem inalterados.
         self.assertIn('# source = "mic"', lines)
         self.assertIn('# quality = "720p30"', lines)
 
@@ -710,7 +710,7 @@ class test_media_source(ApplyTestBase):
 
         result = self.run_fail(root, payload, self.fx.make_studio(), self.fx.make_overlay())
 
-        self.assertIn("[media] 里找不到 source", result.stdout + result.stderr)
+        self.assertIn("Não foi encontrada uma linha source na seção [media]", result.stdout + result.stderr)
 
 
 class test_commissioning_dropin(ApplyTestBase):
@@ -725,7 +725,7 @@ class test_commissioning_dropin(ApplyTestBase):
             b"[Service]\nExecStart=/bin/one\nExecStart=/bin/two\n"))
         result = self.run_fail(self.fx.make_rootfs(), payload,
                                self.fx.make_studio(), self.fx.make_overlay())
-        self.assertIn("恰好 1 行", result.stdout + result.stderr)
+        self.assertIn("exatamente uma linha ExecStart= não vazia", result.stdout + result.stderr)
 
     def test_already_commissioning_fails(self):
         payload = self.fx.make_payload(robotd_dropin=(
@@ -772,7 +772,7 @@ class test_model_cleanup(ApplyTestBase):
                     "opt/robot/feetech-ft5-r5/models/aaa/" + name: b"x\n"})
                 result = self.run_fail(self.fx.make_rootfs("rootfs-%d" % index), payload,
                                        studio, overlay)
-                self.assertIn("训练产物", result.stdout + result.stderr)
+                self.assertIn("artefatos de treinamento", result.stdout + result.stderr)
 
 
 class test_unconfirmed(ApplyTestBase):
@@ -795,7 +795,7 @@ class test_unconfirmed(ApplyTestBase):
         self.run_ok(root, payload, self.fx.make_studio(), self.fx.make_overlay(),
                     env_extra={"ALLOW_UNCONFIRMED": "1"})
         manifest = (root / "usr/share/doc/microduck/镜像清单.txt").read_text(encoding="utf-8")
-        self.assertIn("ALLOW_UNCONFIRMED=1 放行", manifest)
+        self.assertIn("liberou os arquivos regulares acima usando ALLOW_UNCONFIRMED=1", manifest)
         self.assertIn(sha(config.read_bytes()), manifest)
 
 
@@ -810,10 +810,10 @@ class test_manifest_metadata(ApplyTestBase):
             "IMAGE_VERSION": "test-1",
         })
         manifest = (root / "usr/share/doc/microduck/镜像清单.txt").read_text(encoding="utf-8")
-        self.assertIn("底图文件名：base.img", manifest)
-        self.assertIn("底图 sha256：" + "a" * 64, manifest)
-        self.assertIn("payload sha256：" + "b" * 64, manifest)
-        self.assertIn("镜像脚本版本：test-1", manifest)
+        self.assertIn("Nome do arquivo da imagem base: base.img", manifest)
+        self.assertIn("SHA-256 da imagem base: " + "a" * 64, manifest)
+        self.assertIn("SHA-256 do payload: " + "b" * 64, manifest)
+        self.assertIn("Versão do script de imagem: test-1", manifest)
 
 
 class test_residual_scan_more(ApplyTestBase):
@@ -850,10 +850,10 @@ class test_residual_scan_more(ApplyTestBase):
         text = result.stdout + result.stderr
         self.assertIn("missing.service", text)
         self.assertIn("missing-cron", text)
-        self.assertIn("悬空", text)
+        self.assertIn("Links quebrados", text)
 
     def test_masked_unit_is_not_dangling(self):
-        # systemctl mask 留下的 -> /dev/null 链接：挂载的 rootfs 里没有 /dev/null，也不算悬空
+        # O link -> /dev/null criado por systemctl mask não está quebrado, mesmo que /dev/null não exista no rootfs montado.
         payload = self.fx.make_payload()
         root = self.fx.make_rootfs()
         os.symlink("/dev/null", root / "etc/systemd/system/serial-getty@ttyS2.service")
@@ -868,7 +868,7 @@ class test_residual_scan_more(ApplyTestBase):
         text = result.stdout + result.stderr
         self.assertIn("keep.service", text)
         self.assertIn("microduck-setup.service", text)
-        self.assertIn("引用", text)
+        self.assertIn("referenciam nomes de arquivos removidos", text)
 
 
 class test_dev_authorized_key(ApplyTestBase):
@@ -887,7 +887,7 @@ class test_dev_authorized_key(ApplyTestBase):
             if os.geteuid() == 0:
                 self.assertEqual((keys.stat().st_uid, keys.stat().st_gid), (1000, 1000))
         manifest = (root / "usr/share/doc/microduck/镜像清单.txt").read_text(encoding="utf-8")
-        self.assertIn("验收卡：radxa 带了一把开发用 SSH 公钥（microduck-accept@test）", manifest)
+        self.assertIn("Cartão de validação: radxa inclui uma chave pública SSH de desenvolvimento (microduck-accept@test)", manifest)
 
     def test_no_key_by_default(self):
         payload = self.fx.make_payload()
@@ -895,14 +895,14 @@ class test_dev_authorized_key(ApplyTestBase):
         self.run_ok(root, payload, self.fx.make_studio(), self.fx.make_overlay())
         self.assertFalse((root / "home/radxa/.ssh/authorized_keys").exists())
         manifest = (root / "usr/share/doc/microduck/镜像清单.txt").read_text(encoding="utf-8")
-        self.assertNotIn("开发用 SSH 公钥", manifest)
+        self.assertNotIn("chave pública SSH de desenvolvimento", manifest)
 
     def test_not_a_key_fails(self):
         payload = self.fx.make_payload()
         root = self.fx.make_rootfs()
         result = self.run_fail(root, payload, self.fx.make_studio(), self.fx.make_overlay(),
                                env_extra={"DEV_AUTHORIZED_KEY": "hello"})
-        self.assertIn("不像一行 SSH 公钥", result.stdout + result.stderr)
+        self.assertIn("não parece conter uma chave pública SSH em uma linha", result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

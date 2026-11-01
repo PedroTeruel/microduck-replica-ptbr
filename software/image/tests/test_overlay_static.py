@@ -32,7 +32,7 @@ class OverlayStatic(unittest.TestCase):
         p = REAL_OVERLAY / "etc/systemd/system/microduck-studio.service.d/10-image.conf"
         text = p.read_text(encoding="utf-8")
         self.assertIn("ExecStart=/usr/bin/python3 -I run.py --listen 0.0.0.0:8000", text)
-        self.assertNotIn("二号鸭", text)
+        self.assertNotIn("Pato 2", text)
 
     def test_enable_list(self):
         lines = [line.strip() for line in
@@ -40,7 +40,7 @@ class OverlayStatic(unittest.TestCase):
         self.assertIn("ssh.service", lines)
 
     def test_ssh_generates_missing_host_keys(self):
-        # 10-21 验收卡：sshd-keygen 靠 ConditionFirstBoot，空 machine-id 不算第一次开机，钥匙没生成、sshd 起不来
+        # Cartão de validação de 21/10: sshd-keygen depende de ConditionFirstBoot; machine-id vazio não conta como primeira inicialização, então as chaves não são geradas e o sshd não inicia.
         conf = REAL_OVERLAY / "etc/systemd/system/ssh.service.d/10-microduck-hostkeys.conf"
         lines = [line.strip() for line in conf.read_text(encoding="utf-8").splitlines()
                  if line.strip() and not line.startswith("#")]
@@ -50,10 +50,10 @@ class OverlayStatic(unittest.TestCase):
 
     def test_model_doc(self):
         text = (REAL_OVERLAY / "usr/share/doc/microduck/模型说明.txt").read_text(encoding="utf-8")
-        self.assertIn("本镜像 /opt/robot/feetech-ft5-r5/models/ 和 roller/ 下列出的全部模型", text)
-        self.assertNotIn("本目录中当前五个自训练策略", text)
+        self.assertIn("todos os modelos listados em /opt/robot/feetech-ft5-r5/models/ e em roller/", text)
+        self.assertNotIn("cinco políticas treinadas neste diretório", text)
         self.assertIn("@@MODEL_LIST@@", text)
-        self.assertIn("个人非商业使用许可", text)
+        self.assertIn("licença pessoal e não comercial", text)
 
     def test_signal_traps(self):
         for rel in ["apply-rootfs.sh", "build-image.sh", "capture-payload.sh"]:

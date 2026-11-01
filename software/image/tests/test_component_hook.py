@@ -9,5 +9,5 @@ class ComponentHook(ApplyTestBase):
         before=(root/'etc/robot/feetech-ft5/robotd.toml').read_bytes()
         result=self.run_fail(root,payload,self.fx.make_studio(),self.fx.make_overlay(),
             env_extra={'SOFTWARE_UPDATE_PACKAGE':'/missing-package.tar'})
-        self.assertIn('软件升级组件输入',result.stdout+result.stderr)
+        self.assertIn('componentes de atualização de software',result.stdout+result.stderr)
         self.assertEqual((root/'etc/robot/feetech-ft5/robotd.toml').read_bytes(),before)

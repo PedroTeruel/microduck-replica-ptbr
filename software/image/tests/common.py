@@ -20,14 +20,14 @@ SH = shutil.which("sh")
 
 REF = Path(__file__).resolve().parent / "fixtures"
 
-# 测试要能独立跑；扫描用例需要的第三方作者名在运行期拼接，源码里不出现完整词。
+# Os testes devem ser independentes; o nome do autor terceiro usado pela verificação é montado em tempo de execução para não aparecer completo no código-fonte.
 THIRD_PARTY_NAME = "kis" + "sqy"
 THIRD_PARTY_WORD = THIRD_PARTY_NAME[:4]
 
 
 def require_sh():
     if SH is None:
-        raise AssertionError("找不到 sh（需要 Git Bash 或 WSL）；测试不能跳过")
+        raise AssertionError("sh não foi encontrado (é necessário Git Bash ou WSL); os testes não podem ser ignorados")
 
 
 def posix_path(path):
@@ -36,7 +36,7 @@ def posix_path(path):
     p = Path(path).resolve()
     if not IS_WINDOWS:
         return str(p)
-    # Git Bash 把系统临时目录挂成 /tmp；从 /c/Users/... 走时 mkdir -p 会被 ACL 拒绝。
+    # O Git Bash monta o diretório temporário do sistema em /tmp; ao acessar /c/Users/..., mkdir -p pode ser bloqueado pelas ACLs.
     try:
         rel = p.relative_to(Path(tempfile.gettempdir()).resolve())
         return "/tmp/" + rel.as_posix()
@@ -122,7 +122,7 @@ def make_tempdir(prefix):
 
 
 class FakeProject:
-    """一套假 payload / rootfs / studio / overlay，供 apply 测试复用。"""
+    """Conjunto de payload, rootfs, Studio e overlay simulados para reutilização nos testes de aplicação."""
 
     def __init__(self, tmp):
         self.tmp = Path(tmp)
@@ -291,7 +291,7 @@ class FakeProject:
         put(root, "opt/robot/feetech-ft5-r5/_model_yaml/x.yaml", "x: 1\n")
         put(root, "opt/robot/feetech-ft5-r5/unused.txt", "remove me\n")
         put(root, "opt/robot/feetech-ft5-r5/models/legacy/policy.onnx", b"legacy-model\n")
-        # 底图里同名模型目录下的训练归档、payload 没有的旧文件
+        # Arquivos de treinamento e arquivos antigos ausentes do payload, dentro do diretório de modelo homônimo da imagem-base.
         put(root, "opt/robot/feetech-ft5-r5/models/aaa/export-data.zip", b"zip\n")
         put(root, "opt/robot/feetech-ft5-r5/models/aaa/upstream-params/a/b.json", b"{}\n")
         put(root, "opt/robot/feetech-ft5-r5/roller/bbb/training-request.json", b"{}\n")
@@ -309,7 +309,7 @@ class FakeProject:
         put(root, "etc/robot/feetech-ft5/custom-calib.toml", "unknown = true\n")
         put(root, "etc/robot/updater.toml",
             "[updater]\nverify_signatures = true\n"
-            "    allow_dev_keys = true  # 仅本机开发签名\n")
+            "    allow_dev_keys = true  # somente assinatura de desenvolvimento local\n")
         put(root, "etc/robot/trusted_keys/local.dev.pub", "ssh-ed25519 DEV-KEY\n")
         put(root, "etc/robot/trusted_keys/release-2026.pub", "ssh-ed25519 RELEASE-KEY\n")
         (root / "var/lib/robot/config").mkdir(parents=True)
@@ -384,9 +384,9 @@ class FakeProject:
         shutil.copytree(REAL_OVERLAY, overlay)
         put(overlay, "etc/systemd/system/demo.service",
             "[Unit]\nDescription=demo\n[Install]\nWantedBy=multi-user.target\n")
-        put(overlay, "enable.list", "# 测试清单\ndemo.service\nssh.service\n")
+        put(overlay, "enable.list", "# Lista de teste\ndemo.service\nssh.service\n")
         put(overlay, "usr/local/bin/demo-tool", "#!/bin/sh\necho demo\n")
-        put(overlay, "modes.list", "# 路径 模式\nusr/local/bin/demo-tool 0755\n")
+        put(overlay, "modes.list", "# Caminho Modo\nusr/local/bin/demo-tool 0755\n")
         return overlay
 
     def run_apply(self, root, payload, studio, overlay, umask=None, env_extra=None, timeout=180):
