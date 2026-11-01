@@ -1,10 +1,10 @@
-// 网页手柄（手柄页第三轮：图上的键能按）的端到端：连本机无头 Edge（CDP），打开 Studio 的手柄页（假 robotd 回放二号鸭的
-// 数据），在图上点键、拖摇杆、按键盘、手机上两个手指一起拖，再看假 robotd 记下来的「收到了什么」（dev/fake_robotd.py --record）。
-// 每一步收到的东西用 JSON 打到 stdout，由 tests/test_vpad_e2e.py 判断对不对。用的是真页面、真 Studio 后端，只有 robotd 是假的。
+// Teste ponta a ponta do controle virtual: conecta ao Edge local sem interface (CDP), abre a página do controle no Studio (robotd simulado reproduz os dados da réplica 2),
+// clica nos botões do desenho, arrasta os analógicos, usa o teclado e arrasta dois analógicos com dois dedos no celular; depois confere os registros do robotd simulado.
+// Os resultados são enviados em JSON para stdout e verificados por tests/test_vpad_e2e.py. A página e o backend do Studio são reais; somente o robotd é simulado.
 //
-// 单独跑（先起好假 robotd、Studio、无头 Edge；端口别跟别人的撞）：
-//   node tests/vpad_e2e.mjs --url http://127.0.0.1:18090/#/pad --cdp 9343 --record <rd.jsonl> --fake 17022 [--shots <截图目录>]
-// Node ≥ 22（自带 WebSocket），不需要装任何包。
+// Execução isolada (inicie antes o robotd simulado, o Studio e o Edge sem interface; use portas livres):
+//   node tests/vpad_e2e.mjs --url http://127.0.0.1:18090/#/pad --cdp 9343 --record <rd.jsonl> --fake 17022 [--shots <diretório de capturas>]
+// Node ≥ 22 (inclui WebSocket); não é necessário instalar pacotes.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import net from 'node:net';
@@ -19,8 +19,8 @@ if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => process.stderr.write(`[vpad-e2e] ${a.join(' ')}\n`);
 
-// ---------------- 假 robotd 记下的东西 ----------------
-// Studio 平时一直在问的（状态、绑定这些）不算：只看「让鸭子动 / 出声」的
+// ---------------- Registros do robotd simulado ----------------
+// Ignora as consultas normais do Studio (estado, mapeamentos etc.); registra somente comandos de movimento e som.
 const POLL = new Set(['hello', 'robot.health', 'robot.busStatus', 'robot.policies', 'robot.busCommand', 'pad.status', 'system.info',
   'robot.subscribe', 'pad.bindings', 'fake.set']);
 const recs = () => readFileSync(REC, 'utf-8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => !POLL.has(r.method));
@@ -34,7 +34,7 @@ const fakeSet = (params) => new Promise((resolve, reject) => {
 });
 
 // ---------------- CDP ----------------
-// 自己开一个标签页（别借别的会话的页面：视口会互相改）
+// Abre uma nova aba para evitar que a área visível de outra sessão seja alterada.
 const page = await (await fetch(`http://127.0.0.1:${CDP}/json/new?about:blank`, { method: 'PUT' })).json();
 const ws = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((r) => ws.addEventListener('open', r, { once: true }));
@@ -46,12 +46,12 @@ ws.addEventListener('message', (ev) => {
   if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
   if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
   if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') errors.push(m.params.args.map((a) => a.value ?? a.description).join(' '));
-  if (m.method === 'Page.javascriptDialogOpening') { errors.push(`弹框：${m.params.message}`); send('Page.handleJavaScriptDialog', { accept: true }); }
+  if (m.method === 'Page.javascriptDialogOpening') { errors.push(`Caixa de diálogo: ${m.params.message}`); send('Page.handleJavaScriptDialog', { accept: true }); }
 });
 const send = (method, params = {}) => new Promise((r) => { const i = ++id; waiting.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 const js = async (expression) => {
   const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-  if (r.result?.exceptionDetails) throw new Error(`页面里出错：${r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text}`);
+  if (r.result?.exceptionDetails) throw new Error(`Erro na página: ${r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text}`);
   return r.result?.result?.value;
 };
 const waitFor = async (expr, what, timeout = 6000) => {
@@ -60,11 +60,11 @@ const waitFor = async (expr, what, timeout = 6000) => {
   const now = await js(`[document.visibilityState, document.hasFocus(), document.querySelector('.pd-vbar')?.textContent, document.querySelector('.pd-pose')?.textContent,
     [...document.querySelectorAll('.pd-big')].map((b) => b.textContent).join(' | ')].join(' ／ ').replace(/\\s+/g, ' ')`);
   let fk = null;
-  try { fk = (await fakeSet({})).result?.posture; } catch { /* 假 robotd 不在 */ }
-  throw new Error(`${timeout / 1000} 秒没等到：${what}。页面上现在：${now}；假 robotd 的姿势：${fk}`);
+  try { fk = (await fakeSet({})).result?.posture; } catch { /* robotd simulado indisponível */ }
+  throw new Error(`Tempo esgotado após ${timeout / 1000} s aguardando ${what}. Conteúdo atual da página: ${now}; postura do robotd simulado: ${fk}`);
 };
 const vbar = () => js(`document.querySelector('.pd-vbar')?.textContent?.replace(/\\s+/g, ' ') || ''`);
-// 元素中心（先滚到屏幕中间）
+// Centro do elemento, após rolá-lo para o meio da tela.
 const box = (sel) => js(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null;
   e.scrollIntoView({ block: 'center', inline: 'nearest' }); const r = e.getBoundingClientRect();
   return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width, h: r.height }; })()`);
@@ -72,14 +72,14 @@ const key = (r) => `.pd-svg-live [data-role="${r}"]`;
 const mouse = (type, x, y, buttons = 1) => send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons, clickCount: 1 });
 async function hold(sel, ms, during) {
   const b = await box(sel);
-  if (!b) throw new Error(`找不到 ${sel}`);
+  if (!b) throw new Error(`Elemento não encontrado: ${sel}`);
   await mouse('mouseMoved', b.x, b.y, 0);
   await mouse('mousePressed', b.x, b.y);
   if (during) await during();
   await sleep(ms);
   await mouse('mouseReleased', b.x, b.y, 0);
 }
-// 拖摇杆：在 (中心 + off) 按下，分几步拖到 +d，停 ms，松开
+// Arrasta o analógico: pressiona em (centro + off), move em etapas até +d, aguarda ms e solta.
 async function drag(sel, d, ms, { off = [0, 0], during } = {}) {
   const b = await box(sel);
   const x0 = b.x + off[0], y0 = b.y + off[1];
@@ -93,7 +93,7 @@ async function drag(sel, d, ms, { off = [0, 0], during } = {}) {
 async function shot(name, sel, toSel) {
   if (!SHOTS) return;
   let clip;
-  if (toSel) {                                     // 从 sel 的上沿截到 toSel 的下沿
+  if (toSel) {                                     // Captura do topo de sel até a base de toSel.
     const r = await js(`(() => { const a = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect();
       const b = document.querySelector(${JSON.stringify(toSel)}).getBoundingClientRect();
       return { x: a.x + scrollX - 8, y: a.y + scrollY - 8, width: a.width + 16, height: b.bottom - a.y + 16 }; })()`);
@@ -109,10 +109,10 @@ async function shot(name, sel, toSel) {
   }
   const r = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: !!clip, ...(clip ? { clip } : {}) });
   writeFileSync(join(SHOTS, name), Buffer.from(r.result.data, 'base64'));
-  log('截图', name);
+  log('captura de tela', name);
 }
 async function open(w, h, mobile) {
-  // 无头 Edge 里新开的标签页可能被当成「在后台」：页面就报 visible:false，Studio 停推状态。拉到前面、模拟有焦点
+  // Uma nova aba do Edge sem interface pode ser considerada em segundo plano, fazendo a página informar visible:false e o Studio parar de enviar estados. Traz a aba à frente e simula o foco.
   await send('Page.bringToFront');
   await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: mobile ? 2 : 1, mobile });
@@ -120,13 +120,13 @@ async function open(w, h, mobile) {
   await send('Page.navigate', { url: 'about:blank' });
   await sleep(300);
   await send('Page.navigate', { url: URL_ });
-  await waitFor(`!!document.querySelector('.pd-svg-live [data-role="start"]')`, '手柄图出来');
-  await waitFor(`/Start 现在会：[^—]/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '收到手柄页的状态');
+  await waitFor(`!!document.querySelector('.pd-svg-live [data-role="start"]')`, 'desenho do controle carregado');
+  await waitFor(`/Ação de Start: [^—]/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'estado recebido pela página do controle');
   await sleep(600);
 }
 
-// 只为镜像那两张截图：电脑上没有 padd 旁路，图上看不到实体手柄按了什么。window.__fakeLive 设了的时候，
-// 把推来的 {t:'pad'} 里的 live 换成一份假的实体手柄按键（只改页面显示；Studio 后端判「实体手柄连着」用的是假 configd 的 pad.status，是真的）
+// Apenas para as duas capturas em modo espelhado: sem o padd no computador, o desenho não mostraria as entradas do controle físico. Quando window.__fakeLive está definido,
+// substitui live nas mensagens {t:'pad'} por entradas simuladas do controle (altera somente a exibição; o backend consulta pad.status do configd simulado).
 const INJECT = `(() => {
   const NWS = window.WebSocket;
   class W extends NWS {
@@ -134,7 +134,7 @@ const INJECT = `(() => {
       super.onmessage = (ev) => {
         let d = ev.data;
         if (window.__fakeLive && typeof d === 'string' && d.startsWith('{"t":"pad"')) {
-          try { const m = JSON.parse(d); m.live = window.__fakeLive; d = JSON.stringify(m); } catch (e) { /* 原样给 */ }
+          try { const m = JSON.parse(d); m.live = window.__fakeLive; d = JSON.stringify(m); } catch (e) { /* mantém a mensagem original */ }
         }
         fn({ data: d });
       };
@@ -145,7 +145,7 @@ const INJECT = `(() => {
 })();`;
 const FAKE_LIVE = JSON.stringify({ state: 'attached', last_ms: 20, other: [], buttons: { south: true, lt: true },
   axes: { lx: 0.45, ly: -0.7, rx: -0.6, ry: 0, lt: 0.8, rt: 0 },
-  device: { name: 'Xbox Wireless Controller', kind: 'xbox', bus: '蓝牙', keys_unverified: false } });
+  device: { name: 'Xbox Wireless Controller', kind: 'xbox', bus: 'Bluetooth', keys_unverified: false } });
 await send('Runtime.enable');
 await send('Page.enable');
 await send('Page.addScriptToEvaluateOnNewDocument', { source: INJECT });
@@ -155,51 +155,51 @@ async function step(name, fn, settle = 500) {
   const extra = (await fn()) || {};
   await sleep(settle);
   out.steps[name] = { recs: since(), ...extra };
-  log(name, out.steps[name].recs.length, '条');
+  log(name, out.steps[name].recs.length, 'registros');
 }
 
-// ================= 电脑宽度 =================
+// ================= Largura de computador =================
 await open(1280, 900, false);
 await shot('desktop-1-idle.png');
 out.start0 = await vbar();
 
-// 摇杆是相对的：按下的那一点是中心，按下不动不走（审查三 V2）
+// O analógico é relativo: o ponto inicial do toque é o centro; apenas pressionar sem mover não desloca o robô (revisão 3 V2).
 await step('stick_press_only', () => drag(key('ls'), [0, 0], 300, { off: [12, 0] }));
-// 图上的左摇杆往上拖：走（vx > 0），松手发一次 0
+// Arrastar o analógico esquerdo para cima faz o robô andar (vx > 0); soltar envia um único comando 0.
 await step('stick_drag', () => drag(key('ls'), [0, -40], 600));
-// A：低头捡（robot.do 请求）
+// A: abaixa a cabeça para pegar um objeto (solicitação robot.do).
 await step('key_a', () => hold(key('south'), 80), 700);
-// X 按住：先发一次请求，之后连着发通知（连滚）
+// Manter X pressionado: envia uma solicitação e depois notificações repetidas (rolagem contínua).
 await step('x_hold', () => hold(key('west'), 800), 600);
-// LT 按住：张嘴、一直 wheee；松开合嘴、wheee 停（截一张「按着键」的图）
+// Manter LT pressionado abre a boca e mantém wheee; soltar fecha a boca e interrompe o som (captura enquanto o botão está pressionado).
 await step('lt_hold', () => hold(key('lt'), 600, async () => {
   await sleep(250);
   const b = await box(key('ls'));
   await shot('desktop-2-pressed.png', '.pd-live', '.pd-vbar');
   return b;
 }), 700);
-// RT 点一下：嘎一声
+// Tocar RT uma vez: emite um grasnado.
 await step('rt_tap', () => hold(key('rt'), 120), 600);
-// Y：头模式；右摇杆往上 = 脖子（neck_pitch 为正）；松手头回正；再按 Y 回走路
+// Y: modo cabeça; mover o analógico direito para cima inclina o pescoço (neck_pitch positivo); ao soltar, centraliza a cabeça; pressione Y novamente para voltar à caminhada.
 await step('head', async () => {
   await hold(key('north'), 80);
-  await waitFor(`/摇杆管：头模式/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '进了头模式');
+  await waitFor(`/Analógicos: modo cabeça/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'modo cabeça ativado');
   await drag(key('rs'), [0, -40], 500, { during: () => shot('desktop-3-head.png', '.pd-live', '.pd-vbar') });
   await sleep(300);
   await hold(key('north'), 80);
-  await waitFor(`/摇杆管：走路/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '回到走路');
+  await waitFor(`/Analógicos: caminhada/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'modo caminhada restaurado');
   return { bar: await vbar() };
 });
-// B：身体模式；左摇杆往下 = 蹲（z < 0）；松手回中（还在身体模式）；再按 B 退出（active:false）
+// B: modo corpo; mover o analógico esquerdo para baixo agacha (z < 0); ao soltar, volta ao centro sem sair do modo; pressione B novamente para sair (active:false).
 await step('body', async () => {
   await hold(key('east'), 80);
-  await waitFor(`/摇杆管：身体模式/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '进了身体模式');
+  await waitFor(`/Analógicos: modo corpo/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'modo corpo ativado');
   await drag(key('ls'), [0, 40], 400);
   await sleep(300);
   await hold(key('east'), 80);
-  await waitFor(`/摇杆管：走路/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '回到走路');
+  await waitFor(`/Analógicos: caminhada/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'modo caminhada restaurado');
 });
-// 键盘：没点过图时按 W 不走；点一下图（遥控区拿到焦点）再按 W 走；方向键不走（审查三 V2）
+// Teclado: W não move antes de clicar no desenho; depois que a área do controle recebe foco, W move o robô; as setas não o movem (revisão 3 V2).
 await step('keyboard_unfocused', async () => {
   await js('document.activeElement && document.activeElement.blur()');
   await send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'KeyW', key: 'w', windowsVirtualKeyCode: 87 });
@@ -208,7 +208,7 @@ await step('keyboard_unfocused', async () => {
 });
 await step('keyboard', async () => {
   const b = await box('.pd-svgzone');
-  await mouse('mousePressed', b.x, b.y - b.h * 0.42);               // 点图的上沿空白处（不是键）
+  await mouse('mousePressed', b.x, b.y - b.h * 0.42);               // Clica na área vazia acima do desenho, não em um botão.
   await mouse('mouseReleased', b.x, b.y - b.h * 0.42, 0);
   const focused = await js(`document.activeElement?.classList.contains('pd-zone')`);
   await send('Input.dispatchKeyEvent', { type: 'keyDown', code: 'KeyW', key: 'w', windowsVirtualKeyCode: 87 });
@@ -223,7 +223,7 @@ await step('keyboard', async () => {
   await send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'ArrowUp', key: 'ArrowUp', windowsVirtualKeyCode: 38 });
   return { focused, w_recs: n };
 });
-// 按着摇杆时窗口失焦：马上停，手还按着也不再发
+// Se a janela perder o foco enquanto o analógico estiver pressionado, o movimento para imediatamente e não recomeça enquanto ele continuar pressionado.
 await step('blur', async () => {
   const b = await box(key('ls'));
   await mouse('mouseMoved', b.x, b.y, 0);
@@ -240,12 +240,12 @@ await step('blur', async () => {
   await mouse('mouseReleased', b.x, b.y - 45, 0);
   return { before, atBlur, after };
 });
-// Start：在走（准备好走）→ 停下（站好）；假 robotd 变成「站着保持」以后再按 → 开始走
+// Start: enquanto anda ou está pronto para andar, para e fica em pé; após o robotd simulado indicar que está parado em pé, começa a andar.
 await step('start_stop', () => hold(key('start'), 80), 900);
-await waitFor(`/Start 现在会：开始走/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'Start 变成「开始走」');
+await waitFor(`/Ação de Start: Começar a andar/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'Start passa a começar a andar');
 await step('start_walk', () => hold(key('start'), 80), 900);
-await waitFor(`/Start 现在会：停下/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'Start 变回「停下」');
-// 图上的 Select = 急停：按下就卸力（不等松手）
+await waitFor(`/Ação de Start: Parar \(ficar em pé\)/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'Start passa a parar');
+// Select no desenho = parada de emergência: desenergiza ao pressionar, sem esperar soltar.
 await step('select', async () => {
   const b = await box(key('select'));
   await mouse('mouseMoved', b.x, b.y, 0);
@@ -253,55 +253,55 @@ await step('select', async () => {
   await sleep(250);
   const whilePressed = since();
   await mouse('mouseReleased', b.x, b.y, 0);
-  await waitFor(`!!document.querySelector('.estop.done')`, '卸力确认');
+  await waitFor(`!!document.querySelector('.estop.done')`, 'desenergização confirmada');
   return { whilePressed };
 }, 400);
 await fakeSet({ posture: 'policy' });
-await sleep(2600);                                                     // 卸力后 2 秒的保护过去
-// 十字上（照官方）：按不到 3 秒不切；按满 3 秒发 robot.setMode。假 robotd 先没装轮滑模型（拒，页面写原因），装上再按就切，再按切回走路
+await sleep(2600);                                                     // Aguarda o período de proteção de 2 s após desenergizar.
+// Direcional para cima: menos de 3 s não alterna; após 3 s envia robot.setMode. Primeiro o robotd simulado não tem o modelo de rodas; depois da instalação, alterna entre Rodas e Andar.
 const vmsg = () => js(`document.querySelector('.pd-vmsg')?.textContent || ''`);
 const duSays = (word) => `(document.querySelector('${key('du')} title')?.textContent || '').includes(${JSON.stringify(word)})`;
 await step('dpad_up_short', () => hold(key('du'), 1000), 300);
 out.du_short = await vmsg();
 await step('dpad_up_refused', async () => {
   await hold(key('du'), 3400);
-  await waitFor(`/没装轮滑模型/.test(document.querySelector('.pd-vmsg')?.textContent || '')`, '页面说没装轮滑模型');
+  await waitFor(`/modelo.*Rodas/.test(document.querySelector('.pd-vmsg')?.textContent || '')`, 'página informa que o modelo de rodas não está instalado');
 }, 300);
 await fakeSet({ roller_models: true });
 await step('dpad_up_hold', async () => {
   await hold(key('du'), 3400);
-  await waitFor(`/切到轮滑/.test(document.querySelector('.pd-vmsg')?.textContent || '')`, '页面说切到轮滑');
+  await waitFor(`/Alternou para modo de rodas/.test(document.querySelector('.pd-vmsg')?.textContent || '')`, 'página informa a mudança para o modo de rodas');
 }, 300);
-await waitFor(duSays('切到走路'), '十字上变成「切到走路」（robot.policies 2 秒问一次）');
+await waitFor(duSays('alternar para Andar'), 'direcional passa a alternar para Andar (robot.policies consultado a cada 2 s)');
 await step('dpad_up_back', async () => {
   await hold(key('du'), 3400);
-  await waitFor(`/切到走路/.test(document.querySelector('.pd-vmsg')?.textContent || '')`, '页面说切到走路');
+  await waitFor(`/Alternou para caminhada/.test(document.querySelector('.pd-vmsg')?.textContent || '')`, 'página informa a mudança para caminhada');
 }, 300);
 await fakeSet({ roller_models: false });
-// 十字右（照官方）：按一下就发 robot.rebootMotors，不用确认；之后跟卸力一样软下来
+// Direcional para a direita: envia robot.rebootMotors ao pressionar, sem confirmação; em seguida, o robô relaxa o torque.
 await step('dpad_right', async () => {
   await hold(key('dr'), 80);
-  await waitFor(`/重启舵机发出去了/.test(document.querySelector('.pd-vmsg')?.textContent || '')`, '页面说重启舵机发出去了');
+  await waitFor(`/Reinicialização dos servos enviada/.test(document.querySelector('.pd-vmsg')?.textContent || '')`, 'página confirma o envio da reinicialização dos servos');
 }, 300);
 await fakeSet({ posture: 'policy' });
 await sleep(2600);
-// 离开手柄区（身体模式开着）：身体退出（active:false）。手柄并进了总览以后，#/ 是同一页（可能还看得到手柄那一块），
-// 所以切到日志页才是「离开」（总览重排审查 O1；滚出视口的那种在 tests/overview_e2e.mjs 里测）
+// Ao sair da página com o modo corpo ativo, o modo deve ser encerrado (active:false). Como o controle também aparece na visão geral, #/ não conta como saída;
+// abre a página de registros para sair de verdade. A reorganização da visão geral (O1) e a saída da área visível são cobertas em tests/overview_e2e.mjs.
 await step('leave_page', async () => {
   await hold(key('east'), 80);
-  await waitFor(`/摇杆管：身体模式/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '进了身体模式');
+  await waitFor(`/Analógicos: modo corpo/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'modo corpo ativado');
   await drag(key('ls'), [0, -30], 300);
   await js(`location.hash = '#/logs'`);
   await sleep(600);
   await js(`location.hash = '#/pad'`);
-  await waitFor(`/Start 现在会：[^—]/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '回到手柄页');
+  await waitFor(`/Ação de Start: [^—]/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'página do controle reaberta');
   await sleep(500);
 });
-// 回到手柄页以后摇杆照样能用（drive open 解开了「离开了」）
+// O analógico continua funcionando ao voltar à página do controle (drive open foi reativado após sair).
 await step('back_again', () => drag(key('ls'), [0, -40], 400));
-// 实体手柄连着（镜像）：图上按的、拖的都不发；Select 照样卸力
+// Controle físico conectado (espelhamento): toques e arrastos no desenho não enviam comandos; Select ainda desenergiza.
 await fakeSet({ pad_connected: true });
-await waitFor(`!!document.querySelector('.pd-remote .banner') && /实体手柄连着/.test(document.querySelector('.pd-remote')?.textContent || '')`, '镜像', 8000);
+await waitFor(`!!document.querySelector('.pd-remote .banner') && /Controle físico conectado/.test(document.querySelector('.pd-remote')?.textContent || '')`, 'modo espelhado', 8000);
 await step('mirror', async () => {
   await hold(key('south'), 80);
   await drag(key('ls'), [0, -40], 400);
@@ -316,17 +316,17 @@ await step('mirror', async () => {
 });
 await step('mirror_select', async () => {
   await hold(key('select'), 100);
-  await waitFor(`!!document.querySelector('.estop.done')`, '镜像时卸力确认');
+  await waitFor(`!!document.querySelector('.estop.done')`, 'desenergização confirmada no modo espelhado');
 }, 400);
 await fakeSet({ pad_connected: false, posture: 'policy' });
-await waitFor(`!/实体手柄连着/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '镜像结束', 8000);
+await waitFor(`!/Controle físico conectado/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'modo espelhado encerrado', 8000);
 await sleep(2600);
 
-// ================= 手机宽度 390 =================
+// ================= Largura de celular: 390 px =================
 await open(390, 844, true);
 out.phone = await js(`({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth })`);
 await shot('phone-1-idle.png', 'full');
-// 两个手指一起拖手柄图上的两个摇杆（触屏必须从透明起手区 .pd-ov-stick 按下）：左的往上（前进）、右的往右（右转）
+// Arrasta simultaneamente os dois analógicos com dois dedos (na tela de toque, pressione a área transparente .pd-ov-stick): esquerdo para cima (avançar), direito para a direita (virar).
 await step('two_fingers', async () => {
   const [L, Rr] = await js(`(() => {
     const ls = document.querySelector('.pd-svgbox .pd-ov-stick[data-ov="ls"]');
@@ -335,7 +335,7 @@ await step('two_fingers', async () => {
     const a = ls.getBoundingClientRect(), b = rs.getBoundingClientRect();
     return [{ x: a.x + a.width / 2, y: a.y + a.height / 2 }, { x: b.x + b.width / 2, y: b.y + b.height / 2 }];
   })()`);
-  await sleep(650);                    // 页面刚滚过 0.5 秒内的触摸不认（防惯性滑动里误触：总览重排审查 O2）
+  await sleep(650);                    // Ignora toques nos primeiros 0,5 s após a rolagem, evitando acionamentos durante a inércia (revisão O2 da visão geral).
   const pts = (dy, dx) => [{ x: L.x, y: L.y - dy, id: 1 }, { x: Rr.x + dx, y: Rr.y, id: 2 }];
   await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pts(0, 0) });
   for (let i = 1; i <= 5; i++) { await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pts(9 * i, 9 * i) }); await sleep(30); }
@@ -343,22 +343,22 @@ await step('two_fingers', async () => {
   await shot('phone-2-two-sticks.png', '.pd-svgzone');
   await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 });
-// 手机上点图上的 Y：头模式
+// Toca em Y no celular para ativar o modo cabeça.
 await step('phone_head', async () => {
   const b = await box(key('north'));
-  await sleep(650);                    // 同上：滚完 0.5 秒以后再点
+  await sleep(650);                    // Como acima: aguarda 0,5 s após a rolagem antes de tocar.
   await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x, y: b.y, id: 3 }] });
   await sleep(80);
   await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await waitFor(`/摇杆管：头模式/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '手机上进了头模式');
+  await waitFor(`/Analógicos: modo cabeça/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'modo cabeça ativado no celular');
   await shot('phone-3-head.png', '.pd-live', '.pd-vbar');
   await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x, y: b.y, id: 4 }] });
   await sleep(80);
   await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await waitFor(`/摇杆管：走路/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '手机上回到走路');
+  await waitFor(`/Analógicos: caminhada/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'modo caminhada restaurado no celular');
 });
 await fakeSet({ pad_connected: true });
-await waitFor(`/实体手柄连着/.test(document.querySelector('.pd-vbar')?.textContent || '')`, '手机上镜像', 8000);
+await waitFor(`/Controle físico conectado/.test(document.querySelector('.pd-vbar')?.textContent || '')`, 'modo espelhado no celular', 8000);
 await js(`window.__fakeLive = ${FAKE_LIVE}`);
 await sleep(400);
 await shot('phone-4-mirror.png', '.pd-live', '.pd-vbar');
