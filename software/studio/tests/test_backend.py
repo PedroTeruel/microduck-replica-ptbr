@@ -133,7 +133,7 @@ class EStopTest(unittest.TestCase):
         self.assertEqual(st(self.bus(), 0), "ready")
         self.assertEqual(st(self.bus(), 0, present=False), "unavailable")
         self.assertEqual(st(self.bus(), 0, age=5), "ready")                     # Ainda é possível acionar mesmo sem ler o estado.
-        self.assertIn("读不到", e.status(present=True, bus=self.bus(), bus_age_s=5, now=0)["why"])
+        self.assertIn("Não foi possível ler", e.status(present=True, bus=self.bus(), bus_age_s=5, now=0)["why"])
         self.assertEqual(st(self.bus(phase="waiting_for_bus"), 0), "unavailable")
         limp = self.bus(torque_state_confirmed=False, restore_pending=False, temporary_gains_applied=False)
         self.assertEqual(st(limp, 0), "confirmed")                              # Os servos já estavam sem torque.
@@ -144,11 +144,11 @@ class EStopTest(unittest.TestCase):
         """Revisão #3: consultas anteriores ao pressionamento ou à confirmação não validam a ação."""
         e = EStop()
         limp = self.bus(torque_state_confirmed=False, restore_pending=False, temporary_gains_applied=False)
-        e.press("电脑", now=100)
+        e.press("computador", now=100)
         self.assertEqual(e.status(present=True, bus=limp, bus_age_s=0.1, now=100.05)["state"], "pending")
-        self.assertFalse(e.on_bus(limp, asked_at=99.9, now=100.1))             # 回执还没到
+        self.assertFalse(e.on_bus(limp, asked_at=99.9, now=100.1))             # A resposta ainda não chegou.
         e.sent(100.0, now=100.2)
-        self.assertFalse(e.on_bus(limp, asked_at=100.15, now=100.3))           # 回执之前发出的查询
+        self.assertFalse(e.on_bus(limp, asked_at=100.15, now=100.3))           # Consulta enviada antes da confirmação.
         self.assertTrue(e.on_bus(limp, asked_at=100.25, now=100.4))
         self.assertEqual(e.confirm_ms, 400)
         self.assertFalse(e.active)
@@ -158,11 +158,11 @@ class EStopTest(unittest.TestCase):
         """Revisão #1: se alguém reativar os servos depois da confirmação, o Studio não deve liberá-los novamente."""
         e = EStop()
         limp = self.bus(torque_state_confirmed=False, restore_pending=False, temporary_gains_applied=False)
-        e.press("电脑", now=100)
+        e.press("computador", now=100)
         e.sent(100.0, now=100.01)
         self.assertTrue(e.on_bus(limp, asked_at=100.02, now=100.3))
         self.assertFalse(e.active)
-        self.assertIsNone(e.elapsed(now=400))                                   # 监视任务看到 None 就退出
+        self.assertIsNone(e.elapsed(now=400))                                   # A tarefa de monitoramento encerra ao receber None.
         self.assertEqual(e.status(present=True, bus=self.bus(), bus_age_s=0.1, now=400)["state"], "ready")
         self.assertFalse(e.on_bus(self.bus(), asked_at=400, now=400))
 
@@ -170,12 +170,12 @@ class EStopTest(unittest.TestCase):
         """Revisão #2: ao pressionar duas vezes, a consulta anterior ao segundo toque não conta."""
         e = EStop()
         limp = self.bus(torque_state_confirmed=False, restore_pending=False, temporary_gains_applied=False)
-        e.press("电脑", now=0)
+        e.press("computador", now=0)
         e.sent(0.0, now=0.003)
-        e.press("电脑", now=1.0)
+        e.press("computador", now=1.0)
         self.assertIsNone(e.sent_at)
-        self.assertFalse(e.on_bus(limp, asked_at=0.95, now=1.02))             # 第一次回执之后、第二次按下之前
-        e.sent(0.5, now=1.05)                                                   # 早就开始的发送（robotd 卡住）不算
+        self.assertFalse(e.on_bus(limp, asked_at=0.95, now=1.02))             # Após a primeira resposta, mas antes do segundo pressionamento.
+        e.sent(0.5, now=1.05)                                                   # Um envio iniciado antes, enquanto robotd estava travado, não conta.
         self.assertIsNone(e.sent_at)
         e.sent(1.0, now=1.05)
         self.assertTrue(e.on_bus(limp, asked_at=1.06, now=1.2))
@@ -184,7 +184,7 @@ class EStopTest(unittest.TestCase):
     def test_failed_resend_after_ack_keeps_waiting(self):
         """Revisão #4: se a primeira tentativa foi enviada e a seguinte falhar, aguarde a leitura e registre o motivo no timeout."""
         e = EStop()
-        e.press("电脑", now=0)
+        e.press("computador", now=0)
         e.sent(0.0, now=0.01)
         e.send_failed(2.0, "没发出去：busy", now=2.1)
         self.assertTrue(e.active)
@@ -197,8 +197,8 @@ class EStopTest(unittest.TestCase):
 
     def test_saw_torque_off_stops_resend(self):
         e = EStop()
-        half = self.bus(torque_state_confirmed=False, restore_pending=True)     # 扭矩关了，hd1910 标志还在
-        e.press("电脑", now=0)
+        half = self.bus(torque_state_confirmed=False, restore_pending=True)     # O torque está desligado, mas a flag hd1910 permanece.
+        e.press("computador", now=0)
         e.sent(0.0, now=0.01)
         self.assertFalse(e.on_bus(half, asked_at=0.1, now=0.2))
         self.assertTrue(e.saw_off)
@@ -206,36 +206,36 @@ class EStopTest(unittest.TestCase):
     def test_pending_wins_over_absent(self):
         """Revisão #6: se robotd acabou de voltar e a confirmação chegou durante a espera da consulta, mostre a liberação em andamento."""
         e = EStop()
-        e.press("电脑", now=0)
+        e.press("computador", now=0)
         self.assertEqual(e.status(present=False, bus=None, bus_age_s=None, now=0.1)["state"], "pending")
 
     def test_timeout_shows_then_clears(self):
         e = EStop()
-        e.press("手机", now=200)
-        e.finish("timeout", "按了 8 秒还没确认卸力", now=208)
+        e.press("celular", now=200)
+        e.finish("timeout", "Liberação não confirmada após 8 s", now=208)
         self.assertEqual(e.status(present=True, bus=self.bus(), bus_age_s=0.1, now=209)["state"], "unavailable")
         self.assertEqual(e.status(present=True, bus=self.bus(), bus_age_s=0.1, now=215)["state"], "ready")
 
     def test_unavailable_wording_by_mode(self):
         e = EStop()
         why = e.status(present=False, bus=None, bus_age_s=None)["why"]
-        self.assertIn("只能关电源", why)
-        e.press("x", now=1)
-        e.finish("send_failed", "没发出去", now=1)
+        self.assertIn("desligar a alimentação", why)
+        e.press("teste", now=1)
+        e.finish("send_failed", "Não enviado", now=1)
         why = e.status(present=True, bus=self.bus(), bus_age_s=0.1, now=2)["why"]
-        self.assertIn("手柄", why)
+        self.assertIn("controle", why)
 
 
 class StateTest(unittest.TestCase):
     def test_posture_from_real_fixture(self):
         fake = FakeRobotd(FIXTURE)
         self.assertEqual(posture(True, fake.bus, fake.policies, fake.frames[0]), "holding")
-        # homed 先变 true、关节实际位置还在回 HOME（假 robotd 的 busStatus 里带 home_start_guard 的关节差）
+        # homed fica true antes de a articulação retornar à posição HOME (busStatus inclui a diferença home_start_guard do robotd simulado).
         self.assertTrue(fake.bus["home_start_guard"]["ready"])
         lagging = dict(fake.bus, home_start_guard=dict(fake.bus["home_start_guard"], ready=False, max_joint_error_deg=12.3))
         self.assertEqual(posture(True, lagging, fake.policies, fake.frames[0]), "homing")
         legacy = dict(fake.bus)
-        legacy.pop("home_start_guard", None)          # 老版本 robotd 没这个字段：才退回只看 homed
+        legacy.pop("home_start_guard", None)          # Versões antigas do robotd não têm esse campo; então use apenas homed.
         self.assertEqual(posture(True, legacy, fake.policies, fake.frames[0]), "holding")
         for p, want in (("limp", "limp"), ("policy", "policy"), ("commissioning", "commissioning"), ("starting", "starting")):
             fake.set_posture(p)
@@ -248,7 +248,7 @@ class StateTest(unittest.TestCase):
 
     def test_tilt(self):
         self.assertAlmostEqual(tilt_deg([0, 0, -1]), 0.0)
-        g = [0.17364817766693033, 0, -0.984807753012208]          # 前倾 10°
+        g = [0.17364817766693033, 0, -0.984807753012208]          # Inclinação para a frente de 10°.
         self.assertAlmostEqual(tilt_deg(g), 10.0, places=4)
         self.assertIsNone(tilt_deg(None))
 
@@ -271,7 +271,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.s2.close()
 
     async def test_snapshot_from_real_data(self):
-        s = summarize(self.rd, {"label": "② 二号鸭"})
+        s = summarize(self.rd, {"label": "MicroDuck 2"})
         self.assertEqual(s["posture"], "holding")
         self.assertTrue(s["robotd_ok"])
         self.assertEqual(s["mode"], "motion")
@@ -280,7 +280,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(s["imu"]["status"], "ok")
         self.assertFalse(s["pad"]["connected"])
         self.assertEqual(s["estop"]["state"], "ready")
-        self.assertFalse(any("主板" in t["msg"] for t in s["todo"]))  # 录的时候 78 °C：低于 80 °C 不提醒（待机就这么热）
+        self.assertFalse(any("placa" in t["msg"] for t in s["todo"]))  # A gravação estava a 78 °C; abaixo de 80 °C não gera alerta.
 
     async def wait_for(self, cond, timeout=3.0):
         end = time.monotonic() + timeout
@@ -294,10 +294,10 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         return len([m for _, m in self.fake.calls if m == "robot.relax"])
 
     async def test_no_resend_after_confirm_and_restand(self):
-        """代码审查 #1：卸力确认后用手柄让它站起来，Studio 不能自己又把它卸软。"""
+        """Revisão #1: depois de confirmar a liberação, levantar o robô pelo controle não deve provocar uma nova liberação automática."""
         await asyncio.sleep(0.2)
-        self.rd.set_viewers(0)                                         # 没人看页面也要成立
-        self.assertTrue((await self.rd.relax("测试"))[0])
+        self.rd.set_viewers(0)                                         # O comportamento deve valer mesmo sem páginas abertas.
+        self.assertTrue((await self.rd.relax("teste"))[0])
         self.assertTrue(await self.wait_for(lambda: self.rd.estop.outcome == "confirmed"))
         self.fake.stand_up()
         for _ in range(30):                                            # 3 秒，超过 2 秒补发点；期间一直有人在读状态
@@ -307,10 +307,10 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(summarize(self.rd, {})["posture"], "holding")
 
     async def test_first_relax_after_restart_succeeds(self):
-        """代码审查 #2：robotd 重启以后第一次卸力不能失败。"""
+        """Revisão #2: a primeira liberação após reiniciar robotd não deve falhar."""
         await asyncio.sleep(0.3)
-        self.fake.restart(0.05)                                        # 现有连接全断，0.05 秒后恢复
-        accepted, why = await self.rd.relax("测试")
+        self.fake.restart(0.05)                                        # Encerra as conexões atuais e retorna após 0,05 s.
+        accepted, why = await self.rd.relax("teste")
         self.assertTrue(accepted, why)
         self.assertTrue(await self.wait_for(lambda: self.rd.estop.outcome == "confirmed", 4))
 
@@ -318,9 +318,9 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         """复核 #3：robotd 卡住时按一次，1 秒后再按：第二次要自己发，不能合并进卡住的那次。"""
         self.fake.delays["robot.relax"] = 2.0
         await asyncio.sleep(0.2)
-        first = asyncio.create_task(self.rd.relax("测试"))
+        first = asyncio.create_task(self.rd.relax("teste"))
         await asyncio.sleep(1.0)
-        second = asyncio.create_task(self.rd.relax("测试"))
+        second = asyncio.create_task(self.rd.relax("teste"))
         await asyncio.sleep(0.2)
         self.assertEqual(self.relax_calls(), 2)
         await asyncio.gather(first, second)
@@ -336,7 +336,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         noisy = Log(Path(".") / "_testlogs", echo=True, background=False)
         self.rd.log = noisy
         with mock.patch("sys.stdout", Broken()):
-            accepted, why = await self.rd.relax("测试")
+            accepted, why = await self.rd.relax("teste")
         self.assertTrue(accepted, why)
         self.assertEqual(self.relax_calls(), 1)
         self.assertGreater(noisy.write_errors, 0)
@@ -355,7 +355,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         """复核 #6：robotd 刚回来、轮询还在退避里睡：按下后马上显示卸力中，并很快确认。"""
         self.fake.restart(2.0)
         await asyncio.sleep(2.1)
-        accepted, why = await self.rd.relax("测试")
+        accepted, why = await self.rd.relax("teste")
         self.assertTrue(accepted, why)
         self.assertIn(summarize(self.rd, {})["estop"]["state"], ("pending", "confirmed"))
         self.assertTrue(await self.wait_for(lambda: self.rd.estop.outcome == "confirmed", 3))
@@ -363,7 +363,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
     async def test_relax_waits_for_hd1910_flags(self):
         self.fake.hd_delay = 0.6                                       # 扭矩先确认 OFF，hd1910 两个标志晚 0.6 秒清
         await asyncio.sleep(0.2)
-        await self.rd.relax("测试")
+        await self.rd.relax("teste")
         await asyncio.sleep(0.6)                                       # 0.3 秒时扭矩已确认 OFF，标志还在
         self.assertTrue(self.rd.estop.active)
         self.assertTrue(await self.wait_for(lambda: self.rd.estop.outcome == "confirmed"))
@@ -372,7 +372,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
     async def test_relax_in_commissioning_mode(self):
         self.fake.set_posture("commissioning")
         await asyncio.sleep(1.2)
-        self.assertTrue((await self.rd.relax("测试"))[0])
+        self.assertTrue((await self.rd.relax("teste"))[0])
         self.assertTrue(await self.wait_for(lambda: self.rd.estop.outcome == "confirmed"))
         self.assertEqual(self.fake.bus["mode"], "commissioning")
 
@@ -395,7 +395,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.fake.delays["robot.busStatus"] = 10.0                   # poll 连接上挂一个 10 秒不回的请求
         await asyncio.sleep(1.2)
         t0 = time.monotonic()
-        accepted, _ = await self.rd.relax("测试")
+        accepted, _ = await self.rd.relax("teste")
         took = time.monotonic() - t0
         self.assertTrue(accepted)
         self.assertLess(took, 0.3, f"卸力等了 {took:.2f} 秒")
@@ -404,7 +404,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_relax_confirms_from_bus_status(self):
         await asyncio.sleep(0.2)                                      # 让一次 1 秒的常规轮询先排上
-        accepted, _ = await self.rd.relax("测试")
+        accepted, _ = await self.rd.relax("teste")
         self.assertTrue(accepted)
         for _ in range(50):
             if summarize(self.rd, {})["estop"]["state"] == "confirmed":
@@ -556,7 +556,7 @@ class StartingTimerTest(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         self.fake = FakeRobotd(FIXTURE, posture="commissioning", mode="commissioning")
-        self.fake.comm_stuck = True                                       # 旧 fork
+        self.fake.comm_stuck = True                                       # Fork antigo.
         self.s1, p1 = await self.fake.serve_tcp()
         self.s2, p2 = await self.fake.serve_tcp()
         self.rd = Robotd(f"tcp:127.0.0.1:{p1}", f"tcp:127.0.0.1:{p2}", quiet_log())
@@ -587,11 +587,11 @@ class StartingTimerTest(unittest.IsolatedAsyncioTestCase):
         s = summarize(self.rd, {}, now=since + 31)                          # 假时钟：过了 31 秒
         self.assertTrue(s["starting_long"])
         self.assertIn("O programa principal continua inicializando", [t["msg"] for t in s["todo"]])
-        self.fake.comm_stuck = False                                        # 换上修好的 fork：快照来了，清零
+        self.fake.comm_stuck = False                                        # O fork corrigido envia o snapshot e zera a contagem.
         self.assertTrue(await self.wait_for(lambda: self.rd.starting_since is None
                                             and (self.rd.bus.value or {}).get("phase") == "ready"))
         self.assertEqual(summarize(self.rd, {})["posture"], "commissioning")
-        self.fake.comm_stuck = True                                         # 再重启一次（又是旧 fork）：从新的 hello 重新算
+        self.fake.comm_stuck = True                                         # Reinicie novamente com o fork antigo e conte desde o novo hello.
         self.fake.restart(0.2)
         self.assertTrue(await self.wait_for(lambda: self.rd.starting_since is not None and self.rd.starting_since > since, 6.0))
 
