@@ -39,7 +39,7 @@ def main() -> int:
         setup = build / "capture-msvc-env.cmd"
         setup.write_text('@echo off\ncall "' + str(vcvars) + '" >nul\n'
                          'if errorlevel 1 exit /b 1\nset\n', encoding="utf-8")
-        # vcvars 的 set 输出是本地代码页（中文系统是 GBK），按它解码，别让 stdout 变成 None
+        # A saída de set do vcvars usa a página de código local (GBK em sistemas chineses); decodifique-a para evitar que stdout vire None.
         result = subprocess.run([os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c",
                                  str(setup)], env=env, capture_output=True, text=True,
                                 encoding=locale.getpreferredencoding(False), errors="replace")
