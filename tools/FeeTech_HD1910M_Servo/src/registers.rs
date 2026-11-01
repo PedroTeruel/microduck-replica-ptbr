@@ -1,98 +1,98 @@
-//! registers.rs —— HD1910M 舵机内存表的完整“数据化”定义
+//! registers.rs — definição completa e estruturada da tabela de memória do servo HD1910M
 //!
-//! 内存表就是舵机内部的一张“参数登记表”：每个地址存放一项功能参数。
-//! 这张表来自飞特官方文档（doc.feetech.cn 的 HLS_2 内存表），分为 5 个区域：
+//! A tabela de memória funciona como um cadastro interno de parâmetros do servo: cada endereço armazena uma configuração.
+//! Esta tabela vem da documentação oficial da Feetech (tabela HLS_2 em doc.feetech.cn) e está dividida em cinco áreas:
 //!
-//!   地址 0 ~ 4    版本信息    （只读：固件版本号等）
-//!   地址 5 ~ 39   EPROM 配置  （可读写，配合“锁标志”可掉电保存）
-//!   地址 40 ~ 55  SRAM 控制   （可读写，实时控制区，掉电丢失）
-//!   地址 56 ~ 75  SRAM 反馈   （只读：当前位置/速度/电压/温度/电流…）
-//!   地址 77 ~ 86  出厂参数    （只读：工厂标定值）
+//!   Endereços 0 a 4    Informações de versão   (somente leitura: versões de firmware etc.)
+//!   Endereços 5 a 39   Configuração EPROM       (leitura e escrita; persistente com a flag de bloqueio)
+//!   Endereços 40 a 55  Controle SRAM            (leitura e escrita; controle em tempo real, volátil)
+//!   Endereços 56 a 75  Feedback SRAM            (somente leitura: posição, velocidade, tensão, temperatura, corrente...)
+//!   Endereços 77 a 86  Parâmetros de fábrica    (somente leitura: valores de calibração de fábrica)
 //!
-//! 【Rust 知识点：把“文档表格”变成“编译期常量”】
-//! 我们把整张表写成一个 `&'static [Register]` 常量数组。
-//! 'static 生命周期表示这些数据从程序启动到结束一直存在，
-//! 不占堆内存，访问零开销。命令行工具通过查这张表来校验参数、打印说明，
-//! 新增寄存器只需要在表里加一行。
+//! [Conceito de Rust: transformar uma tabela de documentação em constantes de compilação]
+//! A tabela inteira é declarada como um array constante `&'static [Register]`.
+//! O tempo de vida 'static indica que os dados existem durante toda a execução do programa,
+//! sem ocupar heap nem adicionar custo de acesso. A ferramenta de linha de comando consulta esta tabela para validar parâmetros e exibir descrições;
+//! para adicionar um registrador, basta incluir uma linha.
 
-/// 寄存器读写权限
+/// Permissões de leitura e escrita do registrador.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
-    /// 只读（反馈量、版本号、出厂标定值）
+    /// Somente leitura (feedback, versão e valores de calibração de fábrica).
     ReadOnly,
-    /// 可读写（配置项、控制项）
+    /// Leitura e escrita (configurações e controles).
     ReadWrite,
 }
 
 impl Access {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Access::ReadOnly => "只读",
-            Access::ReadWrite => "读写",
+            Access::ReadOnly => "Somente leitura",
+            Access::ReadWrite => "Leitura/escrita",
         }
     }
 }
 
-/// 内存表分区
+/// Área da tabela de memória.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Area {
-    Version,      // 版本信息
-    Eprom,        // EPROM 配置（可掉电保存）
-    SramControl,  // SRAM 实时控制
-    SramFeedback, // SRAM 实时反馈
-    Factory,      // 出厂标定参数
+    Version,      // Informações de versão
+    Eprom,        // Configuração EPROM (persistente)
+    SramControl,  // Controle em tempo real da SRAM
+    SramFeedback, // Feedback em tempo real da SRAM
+    Factory,      // Parâmetros de calibração de fábrica
 }
 
 impl Area {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Area::Version => "版本信息",
-            Area::Eprom => "EPROM配置",
-            Area::SramControl => "SRAM控制",
-            Area::SramFeedback => "SRAM反馈",
-            Area::Factory => "出厂参数",
+            Area::Version => "Informações de versão",
+            Area::Eprom => "Configuração EPROM",
+            Area::SramControl => "Controle SRAM",
+            Area::SramFeedback => "Feedback SRAM",
+            Area::Factory => "Parâmetros de fábrica",
         }
     }
 }
 
-/// 一条寄存器定义（对应官方内存表中的一行）。
+/// Definição de um registrador (corresponde a uma linha da tabela de memória oficial).
 ///
-/// 【Rust 知识点：&'static str】
-/// 字符串字面量（如 "目标位置"）直接编译进可执行文件，
-/// 生命周期为 'static（与程序同寿），存进结构体不需要堆分配。
+/// [Conceito de Rust: &'static str]
+/// Literais de string (por exemplo, "Posição desejada") são compilados diretamente no executável,
+/// têm duração 'static (a mesma do programa) e não exigem alocação no heap dentro da struct.
 pub struct Register {
-    /// 起始地址（十进制，与官方文档一致）
+    /// Endereço inicial (decimal, conforme a documentação oficial).
     pub addr: u8,
-    /// 命令行使用的英文键名（如 "pos-p"），全小写
+    /// Chave em inglês usada na linha de comando (por exemplo, "pos-p"), sempre em minúsculas.
     pub key: &'static str,
-    /// 中文名称（与官方文档一致）
+    /// Nome localizado em português.
     pub cn: &'static str,
-    /// 占用字节数：1 或 2（2 字节数据低字节在前 = 小端存储）
+    /// Número de bytes ocupados: 1 ou 2 (em valores de dois bytes, o byte menos significativo vem primeiro: little-endian).
     pub size: u8,
     pub access: Access,
     pub area: Area,
-    /// 物理单位（每个 LSB 代表多少），如 "0.1V"、"6.5mA"
+    /// Unidade física (valor representado por cada LSB), por exemplo, "0.1V" ou "6.5mA".
     pub unit: &'static str,
-    /// 合法取值范围（写入前做校验，防止写坏舵机配置）
+    /// Faixa de valores permitidos (validada antes da gravação para evitar configurações inválidas do servo).
     pub min: i64,
     pub max: i64,
-    /// 符号-幅值编码的符号位位置：
-    ///   None     —— 无符号数
-    ///   Some(15) —— BIT15 是方向位（位置/速度/电流等）
-    ///   Some(10) —— BIT10 是方向位（当前负载）
-    /// 飞特协议用“符号位 + 绝对值”表示负数，而不是常见的二进制补码！
+    /// Posição do bit de sinal na codificação sinal-magnitude:
+    ///   None     — valor sem sinal
+    ///   Some(15) — BIT15 indica a direção (posição, velocidade, corrente etc.)
+    ///   Some(10) — BIT10 indica a direção (carga atual)
+    /// O protocolo Feetech representa números negativos com bit de sinal e magnitude, não com complemento de dois.
     pub sign_bit: Option<u8>,
-    /// 备注说明
+    /// Descrição adicional.
     pub desc: &'static str,
 }
 
 impl Register {
-    /// 写入前的取值范围校验：越界返回 Err，在发送前拦截错误。
-    /// write_reg / sync_write / set --defer 等所有写入路径共用这一份校验。
+    /// Valida a faixa do valor antes da gravação; retorna Err para valores fora do intervalo e bloqueia o envio.
+    /// Todas as operações de escrita (write_reg, sync_write, set --defer etc.) usam esta mesma validação.
     pub fn check_value(&self, value: i64) -> crate::error::Result<()> {
         if value < self.min || value > self.max {
             return Err(crate::error::ServoError::InvalidParam(format!(
-                "值 {value} 超出 {}（{}）的合法范围 {} ~ {}",
+                "O valor {value} está fora do intervalo permitido de {} ({}) {} a {}",
                 self.key, self.cn, self.min, self.max
             )));
         }
@@ -100,10 +100,10 @@ impl Register {
     }
 }
 
-/// 整张内存表（与官方 HLS_2 文档逐行对应）。
+/// Tabela de memória completa (corresponde linha a linha à documentação oficial HLS_2).
 ///
-/// 【Rust 知识点：常量数组】
-/// 用 const 声明，编译期就确定全部内容。遍历时就是普通的数组迭代。
+/// [Conceito de Rust: arrays constantes]
+/// A declaração const define todo o conteúdo durante a compilação; a iteração é igual à de um array comum.
 pub const REGISTERS: &[Register] = &[
     // ---------------- 2.1 版本信息（只读） ----------------
     Register { addr: 0,  key: "fw-major",    cn: "固件主版本号", size: 1, access: Access::ReadOnly,  area: Area::Version, unit: "",      min: 0, max: 255,   sign_bit: None, desc: "固件主版本号" },
@@ -185,31 +185,31 @@ pub const REGISTERS: &[Register] = &[
     Register { addr: 86, key: "acc-multi",       cn: "加速度倍数",   size: 1, access: Access::ReadOnly, area: Area::Factory, unit: "", min: 0, max: 255, sign_bit: None, desc: "工厂标定参数" },
 ];
 
-/// 波特率索引表：内存表 6 号地址的值 0~7 对应的实际波特率。
+/// Índice da taxa de transmissão: os valores de 0 a 7 no endereço 6 da tabela correspondem às taxas reais.
 pub const BAUD_RATES: [u32; 8] = [
     1_000_000, 500_000, 250_000, 128_000, 115_200, 76_800, 57_600, 38_400,
 ];
 
-/// 按“英文键名”或“地址”查找寄存器。
+/// Localiza um registrador pela chave em inglês ou pelo endereço.
 ///
-/// 支持的写法（命令行友好）：
-///   - 键名： "pos-p"、"id"、"torque-limit"（大小写不敏感）
-///   - 十进制地址："21"
-///   - 十六进制地址："0x15"
+/// Formatos aceitos (adequados para uso na linha de comando):
+///   - Chave: "pos-p", "id", "torque-limit" (sem distinção entre maiúsculas e minúsculas)
+///   - Endereço decimal: "21"
+///   - Endereço hexadecimal: "0x15"
 ///
-/// 【Rust 知识点：Option<T>】
-/// “可能找不到”用 `Option` 表达：Some(寄存器) 或 None。
-/// 这是 Rust 替代 null 的方案 —— 编译器强制你处理“找不到”的情况，
-/// 从根源上消灭空指针异常。
+/// [Conceito de Rust: Option<T>]
+/// A possibilidade de não encontrar um valor é representada por `Option`: Some(registrador) ou None.
+/// Esta é a alternativa do Rust a null; o compilador exige que o caso ausente seja tratado,
+/// eliminando erros de ponteiro nulo pela raiz.
 ///
-/// 【Rust 知识点：迭代器链式调用】
-/// `.iter().find(...)` 是函数式风格：遍历数组，返回第一个满足条件的元素。
+/// [Conceito de Rust: encadeamento de iteradores]
+/// `.iter().find(...)` usa um estilo funcional: percorre o array e retorna o primeiro elemento que satisfaz a condição.
 pub fn find_register(name_or_addr: &str) -> Option<&'static Register> {
     let key = name_or_addr.to_lowercase();
 
-    // 先尝试按地址解析："0x15"（十六进制）或 "21"（十进制）
+    // Primeiro tenta interpretar como endereço: "0x15" (hexadecimal) ou "21" (decimal).
     let addr: Option<u8> = if let Some(hex) = key.strip_prefix("0x") {
-        u8::from_str_radix(hex, 16).ok() // .ok() 把 Result 转成 Option
+        u8::from_str_radix(hex, 16).ok() // .ok() converte Result em Option.
     } else {
         key.parse::<u8>().ok()
     };
@@ -217,20 +217,20 @@ pub fn find_register(name_or_addr: &str) -> Option<&'static Register> {
         return REGISTERS.iter().find(|r| r.addr == a);
     }
 
-    // 再按键名匹配
+    // Depois tenta localizar pela chave.
     REGISTERS.iter().find(|r| r.key == key)
 }
 
-/// 符号-幅值解码：把协议里的原始 u16 还原成有符号整数。
+/// Decodificação sinal-magnitude: converte o u16 bruto do protocolo em um inteiro com sinal.
 ///
-/// 飞特协议的负数不是补码！而是“符号位 + 绝对值”：
-///   sign_bit 位置 1 表示负，其余位是绝对值。
-///   例如位置 -100 编码为 0x8000 | 100 = 0x8064。
+/// Números negativos no protocolo Feetech não usam complemento de dois; usam bit de sinal e magnitude:
+///   bit de sinal igual a 1 indica negativo; os demais bits armazenam o valor absoluto.
+///   Por exemplo, a posição -100 é codificada como 0x8000 | 100 = 0x8064.
 pub fn decode_value(raw: u16, sign_bit: Option<u8>) -> i64 {
     match sign_bit {
         Some(bit) => {
-            let sign_mask = 1u16 << bit;        // 符号位掩码，如 0x8000
-            let mag_mask = sign_mask - 1;       // 绝对值掩码，如 0x7FFF
+            let sign_mask = 1u16 << bit;        // Máscara do bit de sinal, por exemplo, 0x8000.
+            let mag_mask = sign_mask - 1;       // Máscara da magnitude, por exemplo, 0x7FFF.
             let mag = (raw & mag_mask) as i64;
             if raw & sign_mask != 0 { -mag } else { mag }
         }
@@ -238,12 +238,12 @@ pub fn decode_value(raw: u16, sign_bit: Option<u8>) -> i64 {
     }
 }
 
-/// 符号-幅值编码：把有符号整数打包成协议要求的 u16。
+/// Codificação sinal-magnitude: empacota um inteiro com sinal no formato u16 exigido pelo protocolo.
 pub fn encode_value(value: i64, sign_bit: Option<u8>) -> u16 {
     match sign_bit {
         Some(bit) => {
             let sign_mask = 1u16 << bit;
-            let mag = value.unsigned_abs() as u16; // unsigned_abs: |v| 直接得到无符号数
+            let mag = value.unsigned_abs() as u16; // unsigned_abs obtém diretamente |v| como valor sem sinal.
             if value < 0 { mag | sign_mask } else { mag }
         }
         None => value as u16,
@@ -257,7 +257,7 @@ mod tests {
     #[test]
     fn test_find_by_key_and_addr() {
         assert_eq!(find_register("pos-p").unwrap().addr, 21);
-        assert_eq!(find_register("POS-P").unwrap().addr, 21); // 大小写不敏感
+        assert_eq!(find_register("POS-P").unwrap().addr, 21); // Não diferencia maiúsculas e minúsculas.
         assert_eq!(find_register("21").unwrap().key, "pos-p");
         assert_eq!(find_register("0x15").unwrap().key, "pos-p");
         assert!(find_register("not-exist").is_none());
@@ -265,24 +265,24 @@ mod tests {
 
     #[test]
     fn test_sign_magnitude_roundtrip() {
-        // 位置 -100 应编码为 0x8064，解码应还原
+        // A posição -100 deve ser codificada como 0x8064 e decodificada de volta.
         let raw = encode_value(-100, Some(15));
         assert_eq!(raw, 0x8064);
         assert_eq!(decode_value(raw, Some(15)), -100);
-        // 无符号寄存器不受影响
+        // Registradores sem sinal não são afetados.
         assert_eq!(decode_value(1000, None), 1000);
-        // 负载用 BIT10 做符号位：-500 → 0x0400 | 500
+        // A carga usa BIT10 como bit de sinal: -500 → 0x0400 | 500.
         let raw = encode_value(-500, Some(10));
         assert_eq!(decode_value(raw, Some(10)), -500);
     }
 
     #[test]
     fn test_check_value() {
-        let reg = find_register("pos-p").unwrap(); // 范围 0~254
+        let reg = find_register("pos-p").unwrap(); // Faixa: 0 a 254.
         assert!(reg.check_value(254).is_ok());
         assert!(reg.check_value(255).is_err());
         assert!(reg.check_value(-1).is_err());
-        let offset = find_register("pos-offset").unwrap(); // 范围 -4095~4095
+        let offset = find_register("pos-offset").unwrap(); // Faixa: -4095 a 4095.
         assert!(offset.check_value(-4095).is_ok());
         assert!(offset.check_value(-4096).is_err());
     }
