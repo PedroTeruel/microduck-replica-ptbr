@@ -252,7 +252,8 @@ class CommitE2E(unittest.TestCase):
         """Tarefa 16: marcar a primeira etapa de fábrica como concluída confirma o ponto zero dos servos na etapa 3."""
         m = self.node("mark")
         self.assertEqual(m["before"]["check"], "bad", m)
-        self.assertEqual(m["ask"], "Marcar como concluído? O programa principal informa que a calibração está incompleta; o robô não ficará em pé", m)
+        self.assertIn("Confirma marcar como concluído? O programa principal informa que a calibração está incompleta", m["ask"])
+        self.assertIn("mesmo se for marcado como concluído", m["ask"])
         self.assertNotEqual(m["afterOne"], "Concluído", m)                     # Um clique não confirma a ação.
         self.assertEqual(m["after"]["row"], "Concluído", m)
         self.assertIn("Você marcou como concluído", m["after"]["text"])
@@ -263,9 +264,9 @@ class CommitE2E(unittest.TestCase):
         """A página Mais exibe as regras de acesso SSH de fábrica e pede uma senha web antes de habilitar a configuração."""
         r = self.node("ssh")
         s = r["ssh"]
-        self.assertIn("Acesso remoto por SSH", s["text"])
-        self.assertIn("A imagem de fábrica aceita somente chaves; não aceita senha e não tem senha padrão", s["text"])
-        self.assertEqual(s["now"], "Agora: somente chaves (login por senha desativado), nenhuma chave cadastrada")
+        self.assertIn("Acesso remoto SSH", s["text"])
+        self.assertIn("Por padrão, somente chaves são aceitas; não há senha padrão", s["text"])
+        self.assertEqual(s["now"], "Estado: Somente por chave (acesso por senha desativado), nenhuma chave cadastrada")
         self.assertTrue(s["needWebPw"], s)
         self.assertEqual(s["inputs"], 0)
         self.assertTrue(s["onDisabled"])
@@ -275,20 +276,20 @@ class CommitE2E(unittest.TestCase):
         """No modo de calibração, habilitar a postura em pé envia imu.op hold; desativá-la envia relax."""
         s = self.node("stance0")
         st = s["stance"]
-        self.assertEqual(st["stand"], {"text": "Habilitar postura em pé", "disabled": False}, st)
-        self.assertEqual(st["relax"], {"text": "Desativar torque", "disabled": False}, st)
-        self.assertIn("Agora: modo de calibração (torque desativado)", st["now"])
+        self.assertEqual(st["stand"], {"text": "Ativar postura em pé", "disabled": False}, st)
+        self.assertEqual(st["relax"], {"text": "Desativar (liberar motores)", "disabled": False}, st)
+        self.assertIn("Estado atual: Modo de calibração (sem força)", st["now"])
         self.assertIsNone(st["why"], st)
         self.assertFalse(st["goCommit"], st)
-        self.assertIn("O modo de calibração também permite ficar em pé", st["text"])
+        self.assertIn("Também é possível ficar em pé no modo de calibração", st["text"])
         self.assertEqual(s["holdSent"], [{"name": "imu.op", "args": {"op": "hold"}}])
         self.assertEqual(len(s["dialogs"]), 1, s["dialogs"])
-        self.assertIn("Os 15 servos entrarão juntos na postura em pé em 3 segundos e permanecerão travados", s["dialogs"][0])
-        self.assertIn("Agora: modo de calibração (em pé)", s["holding"]["now"])
-        self.assertEqual(s["holding"]["stand"], {"text": "Habilitar postura em pé", "disabled": True}, s["holding"])
-        self.assertEqual(s["holding"]["why"], "O robô já está em pé")
+        self.assertIn("os 15 servos irão juntos para a postura em pé em 3 segundos", s["dialogs"][0])
+        self.assertIn("Estado atual: Modo de calibração (em pé)", s["holding"]["now"])
+        self.assertEqual(s["holding"]["stand"], {"text": "Ativar postura em pé", "disabled": True}, s["holding"])
+        self.assertEqual(s["holding"]["why"], "O robô já está em pé.")
         self.assertEqual(s["relaxSent"], [{"name": "relax", "args": {}}])
-        self.assertIn("Agora: modo de calibração (torque desativado)", s["after"]["now"])
+        self.assertIn("Estado atual: Modo de calibração (sem força)", s["after"]["now"])
         recv = [json.loads(x) for x in (self.dir / "robotd-recv.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
         holds = [r for r in recv if r.get("method") == "robot.busCommand" and (r.get("params") or {}).get("action") == "hold-home"]
         self.assertEqual(len(holds), 1, holds)
@@ -304,7 +305,7 @@ class CommitE2E(unittest.TestCase):
     def test_02b_imu_coarse_verify_while_holding(self):
         result = self.node("imu-hold")
         self.assertIn("orientação confirmada", result["imu"], result)
-        self.assertIn("Você pode habilitar a postura em pé primeiro", result["start"])
+        self.assertIn("Ativar postura em pé", result["start"])
         for label in ("holdBefore", "holdAfter"):
             self.assertEqual(result[label]["torque_state"], "all_enabled", result[label])
             self.assertEqual(result[label]["hold"]["stage"], "holding", result[label])
@@ -324,7 +325,7 @@ class CommitE2E(unittest.TestCase):
         second = self.node("commit")
         self.assertEqual(second["ready"]["bad"], 0, second["ready"])
         self.assertFalse(second["ready"]["writeDisabled"], second["ready"])
-        self.assertIn("reiniciará o programa principal", second["confirmText"])
+        self.assertIn("O programa principal será reiniciado", second["confirmText"])
         self.assertEqual(second["done"]["rowState"], "Concluído", second["done"])
         self.assertIn("modo de movimento", second["topbar"], second)
         self.assertEqual(second["errors"], [])
@@ -332,9 +333,9 @@ class CommitE2E(unittest.TestCase):
     def test_03b_stance_buttons_in_motion(self):
         """No modo de movimento, os botões de postura em pé e desativação do torque usam os comandos padrão do controle."""
         s = self.node("stance")
-        self.assertEqual(s["before"]["stand"], {"text": "Habilitar postura em pé", "disabled": False}, s["before"])
+        self.assertEqual(s["before"]["stand"], {"text": "Ativar postura em pé", "disabled": False}, s["before"])
         self.assertFalse(s["before"]["relax"]["disabled"], s["before"])
-        self.assertIn("Agora: torque desativado", s["before"]["now"])
+        self.assertIn("Estado atual: Sem força", s["before"]["now"])
         self.assertFalse(s["before"]["goCommit"])
         self.assertEqual(s["standSent"], [{"name": "pad.op", "args": {"op": "stand"}}])
         self.assertEqual(s["remoteSent"], s["standSent"])
@@ -365,11 +366,11 @@ class CommitE2E(unittest.TestCase):
         self.assertEqual(result["beforeConfirm"], [], result)
         self.assertTrue(result["active"]["stand"]["disabled"], result)
         self.assertFalse(result["active"]["relax"]["disabled"], result)
-        self.assertIn("Antes de iniciar a verificação, coloque o robô na posição correta", result["verifyInstruction"])
+        self.assertIn("Antes de solicitar a validação, nivele o robô e mantenha-o parado", result["verifyInstruction"])
         self.assertEqual(result["original"]["calibration"]["joints"], result["after"]["calibration"]["joints"])
         self.assertTrue(any(j["zero_raw"] != 2048 for j in result["after"]["calibration"]["joints"]))
         self.assertEqual(result["after"], result["cancelled"])
-        self.assertIn("torque desativado", result["afterStance"]["now"])
+        self.assertIn("Sem força", result["afterStance"]["now"])
         self.assertEqual(result["motionCommands"], [])
         self.assertEqual(result["commissioningCommands"], [])
         self.assertEqual(result["recoveredPhases"], ["entering", "finishing", "cancelling"])

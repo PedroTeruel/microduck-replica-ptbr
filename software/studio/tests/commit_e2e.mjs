@@ -66,26 +66,26 @@ const send = (method, params = {}) => new Promise((ok, fail) => {
   const i = ++id;
   const timer = setTimeout(() => {
     waiting.delete(i);
-    fail(new Error(`CDP ${method} 15 秒没回`));
+    fail(new Error(`CDP sem resposta após 15 s: ${method}`));
   }, 15000);
   waiting.set(i, { ok: (m) => { clearTimeout(timer); ok(m); }, fail: (e) => { clearTimeout(timer); fail(e); } });
   ws.send(JSON.stringify({ id: i, method, params }));
 });
 ws.addEventListener('close', () => {
-  for (const w of waiting.values()) w.fail(new Error('Edge 调试连接断了'));
+  for (const w of waiting.values()) w.fail(new Error('Conexão de depuração do Edge encerrada'));
   waiting.clear();
 });
-ws.addEventListener('error', () => log('CDP WebSocket 出错'));
+ws.addEventListener('error', () => log('Erro no WebSocket CDP'));
 const js = async (expression) => {
   const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-  if (r.result?.exceptionDetails) throw new Error(`页面里出错：${r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text}`);
+  if (r.result?.exceptionDetails) throw new Error(`Erro na página: ${r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text}`);
   return r.result?.result?.value;
 };
 const waitFor = async (expr, what, timeout = 12000) => {
   const end = Date.now() + timeout;
   while (Date.now() < end) { if (await js(expr)) return true; await sleep(100); }
   const now = await js(`[location.hash, document.querySelector('[data-step="commit"]')?.innerText?.slice(0, 600), document.querySelector('.onb-h')?.innerText, document.querySelector('.imu-coarse')?.innerText?.slice(0, 400), document.querySelector('.sv-sub')?.innerText].join(' ／ ')`);
-  throw new Error(`${timeout / 1000} 秒没等到：${what}。页面上现在：${now}。页面错误：${errors.slice(-4).join(' ｜ ')}`);
+  throw new Error(`Tempo esgotado após ${timeout / 1000} s aguardando ${what}. Conteúdo atual da página: ${now}. Erros: ${errors.slice(-4).join(' | ')}`);
 };
 const shot = async (name) => {
   if (!SHOTS) return;
@@ -99,16 +99,16 @@ const clickHas = (sel, text) => js(`(() => { const b = [...document.querySelecto
   .find((x) => x.textContent.includes(${JSON.stringify(text)}) && !x.disabled);
   if (!b) return false; b.scrollIntoView({ block: 'center' }); b.click(); return true; })()`);
 
-log('连上 Edge，开始加载页面');
+log('Edge conectado; carregando a página');
 await send('Page.enable');
 await send('Runtime.enable');
-await send('Page.bringToFront');                                  // 页面要算「在前台」：后台时 Studio 1 Hz 推，清单判成断线
+await send('Page.bringToFront');                                  // A página precisa estar em primeiro plano; em segundo plano, o Studio envia atualizações a 1 Hz e a lista considera a conexão perdida.
 await send('Emulation.setFocusEmulationEnabled', { enabled: true });
 await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
 await send('Page.navigate', { url: `${BASE}#/` });
 await sleep(800);
 
-log('页面已打开');
+log('Página aberta');
 const out = { phase: PHASE };
 const card = `document.querySelector('[data-step="commit"] .onb-commit')`;
 const snapshot = () => js(`(() => {
@@ -117,7 +117,7 @@ const snapshot = () => js(`(() => {
   const checks = [...c.querySelectorAll('.onb-checks li')].map((li) => ({
     ok: li.classList.contains('ok'), text: li.innerText.replace(/\\s+/g, ' ').trim() }));
   const act = [...c.querySelectorAll('.onb-commit-acts button')];
-  const write = act.find((b) => b.textContent.includes('写进主程序'));
+  const write = act.find((b) => b.textContent.includes('Gravar no programa principal'));
   return {
     rowState: document.querySelector('[data-step="commit"] .onb-mark')?.getAttribute('aria-label'),
     desc: c.querySelector('.onb-commit-desc')?.innerText,
@@ -139,18 +139,18 @@ const stance = () => js(`(() => { const c = document.querySelector('.imu-stance'
 const recordSends = () => js(`(() => { if (window.__sent) { window.__sent.length = 0; return true; } window.__sent = [];
   const orig = WebSocket.prototype.send;
   WebSocket.prototype.send = function (d) {
-    try { const m = JSON.parse(d); if (m.t === 'cmd') window.__sent.push({ name: m.name, args: m.args }); } catch (e) { /* 不是 JSON */ }
+    try { const m = JSON.parse(d); if (m.t === 'cmd') window.__sent.push({ name: m.name, args: m.args }); } catch (e) { /* não é JSON */ }
     return orig.call(this, d);
   };
   return true; })()`);
 const sentStand = () => js(`(window.__sent || []).filter((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`);
-const remoteStand = `[...document.querySelectorAll('.pd-remote .pd-big')].find((x) => x.querySelector('b')?.textContent === '站起来')`;
+const remoteStand = `[...document.querySelectorAll('.pd-remote .pd-big')].find((x) => x.querySelector('b')?.textContent === 'Ficar em pé')`;
 
 if (PHASE === 'ssh') {
   // Controle SSH da página Mais (10-21): o cartão informa que a imagem de fábrica aceita apenas chaves; sem helper root, a API relata isso sem erro.
   await js(`location.hash = '#/settings'`);
-  await waitFor(`!!document.querySelector('.ssh-settings')`, '更多页的 SSH 卡片', 20000);
-  await waitFor(`!/正在读/.test(document.querySelector('.ssh-settings .ssh-now')?.innerText || '正在读')`, 'SSH 卡片读到状态', 20000);
+  await waitFor(`!!document.querySelector('.ssh-settings')`, 'cartão SSH na página Mais', 20000);
+  await waitFor(`!/Carregando/.test(document.querySelector('.ssh-settings .ssh-now')?.innerText || 'Carregando')`, 'estado do SSH carregado', 20000);
   out.ssh = await js(`(() => { const c = document.querySelector('.ssh-settings');
     return { text: c.innerText.replace(/\\s+/g, ' ').trim(), now: c.querySelector('.ssh-now').innerText.trim(),
       onDisabled: c.querySelector('.ssh-on').disabled, needWebPw: !!c.querySelector('.ssh-need-web-pw'),
@@ -162,22 +162,22 @@ if (PHASE === 'stance0') {
   // Também é possível ficar em pé no modo de calibração (10-21): confirme “Ativar postura”, envie imu.op hold (fork hold-home) e mostre a postura de calibração em pé;
   // “Desativar (liberar torque)” também funciona, envia o mesmo relax do botão superior e retorna ao estado de calibração sem torque.
   await js(`location.hash = '#/imu'`);
-  await waitFor(`!!document.querySelector('.imu-stance')`, 'IMU 页的站姿卡', 20000);
-  await waitFor(`/标定模式（软着）/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`, '站姿卡写着标定模式（软着）', 10000);
+  await waitFor(`!!document.querySelector('.imu-stance')`, 'cartão de postura em pé da página IMU', 20000);
+  await waitFor(`/Modo de calibração \(sem força\)/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`, 'cartão mostra modo de calibração sem força', 10000);
   await waitFor(`(() => { const b = document.querySelector('.imu-stance .imu-stand'); return !!b && !b.disabled; })()`,
-    '标定模式：「站姿使能」能点', 10000);
+    'botão de postura em pé habilitado no modo de calibração', 10000);
   out.stance = await stance();
   await shot('imu-stance-commissioning.png');
   await recordSends();
   await js(`document.querySelector('.imu-stance .imu-stand').click()`);
-  await waitFor(`/标定模式（站着）/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`, '站姿使能以后写着站着', 15000);
+  await waitFor(`/Modo de calibração \(em pé\)/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`, 'postura em pé confirmada no modo de calibração', 15000);
   out.holdSent = await js(`(window.__sent || []).filter((m) => m.name === 'imu.op')`);
   out.dialogs = dialogs.slice();
   out.holding = await stance();
   await shot('imu-stance-commissioning-holding.png');
   await recordSends();
   await js(`document.querySelector('.imu-stance .imu-relax').click()`);
-  await waitFor(`/标定模式（软着）/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`, '失能以后回到软着', 15000);
+  await waitFor(`/Modo de calibração \(sem força\)/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`, 'torque desativado no modo de calibração', 15000);
   out.relaxSent = await js(`(window.__sent || []).filter((m) => m.name === 'relax')`);
   out.after = await stance();
 }
@@ -185,11 +185,11 @@ if (PHASE === 'stance0') {
 if (PHASE === 'stance') {
   // Modo de movimento: sem torque, “Ativar postura” envia o mesmo comando “Levantar” do cartão de controle; “Desativar” equivale ao botão superior de liberação.
   await fakeSet({ mode: 'motion', calib: 'committed', posture: 'limp', restart: 0.4 });
-  await sleep(3000);       // 刚卸力 2 秒内不接受让它动的指令（按钮会灰），手柄快照也 1 秒才刷新：等它过去
+  await sleep(3000);       // Nos primeiros 2 s após liberar o torque, comandos de movimento são recusados; o estado do controle atualiza a cada segundo.
   await js(`location.hash = '#/imu'`);
-  await waitFor(`!!document.querySelector('.imu-stance')`, 'IMU 页的站姿卡', 20000);
+  await waitFor(`!!document.querySelector('.imu-stance')`, 'cartão de postura em pé da página IMU', 20000);
   await waitFor(`(() => { const b = document.querySelector('.imu-stance .imu-stand'); return !!b && !b.disabled; })()`,
-    '运动模式软着：「站姿使能」能点', 20000);
+    'botão de postura em pé habilitado no modo de movimento', 20000);
   out.before = await stance();
   await shot('imu-stance-motion.png');
   await recordSends();
@@ -198,53 +198,53 @@ if (PHASE === 'stance') {
     const b = document.querySelector('.imu-stance .imu-stand');
     if (b && !b.disabled) { clearInterval(t); b.click(); ok(true); } else if (Date.now() - t0 > 10000) { clearInterval(t); ok(false); } }, 50); })`);
   // O programa simulado pode não reproduzir a animação de levantar; valide que o comando enviado é o mesmo do cartão de controle.
-  await waitFor(`(window.__sent || []).some((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`, '点了站姿使能以后发出站起来', 5000);
+  await waitFor(`(window.__sent || []).some((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`, 'comando para ficar em pé enviado pelo cartão IMU', 5000);
   out.standSent = await sentStand();
-  await waitFor(`/现在：站着/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`,
-    '第一条站立命令实际完成，再重置遥控场景', 15000);
+  await waitFor(`/Em pé/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`,
+    'comando para ficar em pé concluído; agora redefine o cenário do controle', 15000);
   out.standing = await stance();
   await fakeSet({ posture: 'limp' });
-  await sleep(3000);       // 同上：刚变软 2 秒内后端不接受站起来（按钮靠 1 秒一次的手柄快照，可能还亮着），点了会被拒
+  await sleep(3000);       // Como acima, o backend recusa o comando para ficar em pé nos primeiros 2 s após liberar o torque; a interface pode ainda exibir o estado antigo.
   await js(`location.hash = '#/pad'`);
   try {
-    await waitFor(`(() => { const b = ${remoteStand}; return !!b && !b.disabled; })()`, '遥控卡「站起来」能点', 20000);
+    await waitFor(`(() => { const b = ${remoteStand}; return !!b && !b.disabled; })()`, 'botão Ficar em pé habilitado no cartão de controle', 20000);
   } catch (e) {
     // Em falhas ocasionais com a suíte completa ou máquina ocupada, inclua o texto, estado e motivo de desativação de cada botão.
-    const why = await js(`[...document.querySelectorAll('.pd-remote .pd-big')].map((x) => (x.querySelector('b')?.textContent || '?') + '|' + (x.disabled ? '灰' : '亮') + '|' + (x.title || '')).join(' ; ')`);
-    throw new Error(`${e.message} ／ 遥控卡按钮：${why}`);
+    const why = await js(`[...document.querySelectorAll('.pd-remote .pd-big')].map((x) => (x.querySelector('b')?.textContent || '?') + '|' + (x.disabled ? 'desativado' : 'habilitado') + '|' + (x.title || '')).join(' ; ')`);
+    throw new Error(`${e.message} / botões do controle: ${why}`);
   }
   await recordSends();
   await js(`new Promise((ok) => { const t0 = Date.now(); const t = setInterval(() => {
     const b = ${remoteStand};
     if (b && !b.disabled) { clearInterval(t); b.click(); ok(true); } else if (Date.now() - t0 > 10000) { clearInterval(t); ok(false); } }, 50); })`);
-  await waitFor(`(window.__sent || []).some((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`, '遥控卡发出站起来', 5000);
+  await waitFor(`(window.__sent || []).some((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`, 'comando para ficar em pé enviado pelo cartão de controle', 5000);
   out.remoteSent = await sentStand();
   await js(`location.hash = '#/imu'`);
-  await waitFor(`(() => { const b = document.querySelector('.imu-stance .imu-relax'); return !!b && !b.disabled; })()`, '「失能（卸力）」能点', 10000);
+  await waitFor(`(() => { const b = document.querySelector('.imu-stance .imu-relax'); return !!b && !b.disabled; })()`, 'botão de desativação habilitado', 10000);
   await recordSends();
   await js(`document.querySelector('.imu-stance .imu-relax').click()`);
-  await waitFor(`(window.__sent || []).some((m) => m.name === 'relax')`, '失能发出卸力', 5000);
+  await waitFor(`(window.__sent || []).some((m) => m.name === 'relax')`, 'comando para liberar os motores enviado', 5000);
   out.relaxSent = await js(`(window.__sent || []).filter((m) => m.name === 'relax')`);
 }
 
 if (PHASE === 'mark') {
   // Fábrica: o programa principal informa que os 15 servos não foram calibrados (hard). A etapa pode ser marcada com confirmação dupla (10-20).
   const servoRow = `document.querySelector('.onb-row[data-step="servo"]')`;
-  const servoCheck = `[...(${card}?.querySelectorAll('.onb-checks li') || [])].find((li) => li.innerText.includes('舵机零位'))`;
-  await waitFor(`!!${servoRow} && !!${card} && !!(${servoCheck})`, '第 1 步和第 3 步的准备情况', 20000);
+  const servoCheck = `[...(${card}?.querySelectorAll('.onb-checks li') || [])].find((li) => li.innerText.includes('Ponto zero dos servos'))`;
+  await waitFor(`!!${servoRow} && !!${card} && !!(${servoCheck})`, 'preparação das etapas 1 e 3', 20000);
   out.before = await js(`({ row: ${servoRow}.querySelector('.onb-mark').getAttribute('aria-label'), check: (${servoCheck}).className })`);
-  const doneBtn = `[...${servoRow}.querySelectorAll('button')].find((b) => b.textContent.trim() === '已完成')`;
+  const doneBtn = `[...${servoRow}.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Concluído')`;
   if (!await js(`(() => { const b = ${doneBtn}; if (!b) return false; b.scrollIntoView({ block: 'center' }); b.click(); return true; })()`)) {
-    throw new Error('舵机零位那一行找不到「已完成」');
+    throw new Error('Não foi possível encontrar o botão Concluído na etapa de ponto zero dos servos');
   }
-  await waitFor(`!!${servoRow}.querySelector('.two-step-ask')`, '「已完成」的第二下（写着后果）', 5000);
+  await waitFor(`!!${servoRow}.querySelector('.two-step-ask')`, 'segunda confirmação de Concluído com as consequências', 5000);
   out.ask = await js(`${servoRow}.querySelector('.two-step-ask').textContent`);
-  out.afterOne = await js(`${servoRow}.querySelector('.onb-mark').getAttribute('aria-label')`);   // 点一下不算
+  out.afterOne = await js(`${servoRow}.querySelector('.onb-mark').getAttribute('aria-label')`);   // Um clique não confirma a ação.
   await shot('commit-mark-servo-ask.png');
-  await sleep(900);                                                  // TwoStep 的 700 ms 保护
+  await sleep(900);                                                  // Proteção de 700 ms do TwoStep.
   await js(`${servoRow}.querySelector('.two-step-ask').click()`);
-  await waitFor(`${servoRow}.querySelector('.onb-mark')?.getAttribute('aria-label') === '完成'`, '第 1 步变成 ✓', 10000);
-  await waitFor(`(${servoCheck})?.classList.contains('ok')`, '第 3 步「舵机零位」变绿', 10000);
+  await waitFor(`${servoRow}.querySelector('.onb-mark')?.getAttribute('aria-label') === 'Concluído'`, 'etapa 1 marcada como concluída', 10000);
+  await waitFor(`(${servoCheck})?.classList.contains('ok')`, 'ponto zero dos servos aprovado na etapa 3', 10000);
   out.after = await js(`({ row: ${servoRow}.querySelector('.onb-mark').getAttribute('aria-label'),
     text: ${servoRow}.querySelector('.onb-text').textContent, check: (${servoCheck}).innerText.replace(/\\s+/g, ' ').trim() })`);
   await shot('commit-mark-servo-done.png');
@@ -252,130 +252,130 @@ if (PHASE === 'mark') {
 
 if (PHASE === 'imu-redo') {
   await js(`location.hash = '#/imu'`);
-  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === '重新标定方向' && !b.disabled)`,
-    '已保存的 IMU 仍有重新标定方向入口', 10000);
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === 'Recalibrar orientação' && !b.disabled)`,
+    'opção de recalibrar continua disponível para a IMU salva', 10000);
   out.entryVisible = true;
   out.original = await fakeRpc('robot.busCommand', { action: 'calibration-status' });
   await recordSends();
-  await clickExact('.imu-coarse button', '重新标定方向');
+  await clickExact('.imu-coarse button', 'Recalibrar orientação');
   out.beforeConfirm = await js(`(window.__sent || []).filter((m) => m.name === 'imu.op')`);
-  await waitFor(`!!document.querySelector('.imu-coarse .two-step-ask')`, '重新标定需第二次确认', 5000);
+  await waitFor(`!!document.querySelector('.imu-coarse .two-step-ask')`, 'segunda confirmação necessária para recalibrar', 5000);
   await sleep(900);
   await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
-  await waitFor(`/重标定未结束/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
-    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采静止') && !b.disabled)`, '回到标定模式原粗校流程', 15000);
+  await waitFor(`/A recalibração ainda não terminou/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
+    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('Coletar repouso') && !b.disabled)`, 'fluxo de calibração inicial retomado', 15000);
   out.active = await stance();
   await shot('imu-redo-active.png');
-  // Refreshing must recover the persistent session instead of hiding the verified mount.
+  // A atualização da página deve recuperar a sessão persistente e manter visível a montagem confirmada.
   await send('Page.reload');
-  await waitFor(`/重标定未结束/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
-    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采静止') && !b.disabled)`, '刷新仍可继续原粗校', 15000);
+  await waitFor(`/A recalibração ainda não terminou/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
+    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('Coletar repouso') && !b.disabled)`, 'o fluxo continua disponível após atualizar a página', 15000);
   await recordSends();
   await fakeSet({ imu_pose: 'upright' });
-  await clickHas('.imu-coarse button', '采静止');
-  await waitFor(`/静止采到/.test(document.querySelector('.imu-coarse')?.innerText || '')`, '重新采到静止', 15000);
+  await clickHas('.imu-coarse button', 'Coletar repouso');
+  await waitFor(`/leituras de repouso coletadas/.test(document.querySelector('.imu-coarse')?.innerText || '')`, 'leituras de repouso coletadas novamente', 15000);
   await fakeSet({ imu_pose: 'nose_down' });
-  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采前倾') && !b.disabled)`, '前倾采集按钮就绪');
-  if (!await clickHas('.imu-coarse button', '采前倾')) throw new Error('前倾采集未发出');
-  await waitFor(`!!document.querySelector('.imu-coarse input[type=checkbox]')`, '重新算出安装方向', 20000);
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('inclinação frontal') && !b.disabled)`, 'botão de coleta frontal habilitado');
+  if (!await clickHas('.imu-coarse button', 'inclinação frontal')) throw new Error('A coleta da inclinação frontal não foi iniciada');
+  await waitFor(`!!document.querySelector('.imu-coarse input[type=checkbox]')`, 'orientação de montagem recalculada', 20000);
   out.verifyInstruction = await js(`document.querySelector('.imu-coarse')?.innerText`);
   await js(`[...document.querySelectorAll('.imu-coarse input[type=checkbox]')].forEach((x) => { if (!x.checked) x.click(); })`);
   await fakeSet({ imu_pose: 'upright', imu_verify_plan: 'ok' });
-  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === '交给主程序验证' && !b.disabled)`, '验证按钮就绪');
-  if (!await clickHas('.imu-coarse button', '交给主程序验证')) throw new Error('验证未发出');
-  await waitFor(`/运动模式/.test(document.querySelector('.topbar')?.innerText || document.querySelector('header')?.innerText || '') &&
-    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === '重新标定方向' && !b.disabled)`, '新方向验证通过且恢复运动模式', 45000);
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === 'Solicitar validação do programa principal' && !b.disabled)`, 'botão de validação habilitado');
+  if (!await clickHas('.imu-coarse button', 'Solicitar validação do programa principal')) throw new Error('A validação não foi enviada');
+  await waitFor(`/Modo de movimento/.test(document.querySelector('.topbar')?.innerText || document.querySelector('header')?.innerText || '') &&
+    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === 'Recalibrar orientação' && !b.disabled)`, 'nova orientação validada e modo de movimento restaurado', 45000);
   out.after = await fakeRpc('robot.busCommand', { action: 'calibration-status' });
   out.afterStance = await stance();
   out.motionCommands = await js(`(window.__sent || []).filter((m) => m.name === 'pad.op' || m.name === 'init' || (m.name === 'imu.op' && m.args.op === 'hold'))`);
   await shot('imu-redo-complete.png');
-  // A second revalidation can be cancelled and must restore exactly that saved calibration.
-  await clickExact('.imu-coarse button', '重新标定方向');
+  // É possível cancelar uma segunda recalibração e restaurar exatamente a calibração salva.
+  await clickExact('.imu-coarse button', 'Recalibrar orientação');
   await sleep(900);
   await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
-  await waitFor(`/重标定未结束/.test(document.querySelector('.imu-coarse')?.innerText || '')`, '可以再次开始重标定', 15000);
-  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === '取消并恢复原参数' && !b.disabled)`, '取消按钮就绪');
-  if (!await clickExact('.imu-coarse button', '取消并恢复原参数')) throw new Error('取消未发出');
+  await waitFor(`/A recalibração ainda não terminou/.test(document.querySelector('.imu-coarse')?.innerText || '')`, 'segunda recalibração iniciada', 15000);
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === 'Cancelar e restaurar parâmetros' && !b.disabled)`, 'botão de cancelamento habilitado');
+  if (!await clickExact('.imu-coarse button', 'Cancelar e restaurar parâmetros')) throw new Error('O cancelamento não foi iniciado');
   await sleep(900);
   await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
-  await waitFor(`/运动模式/.test(document.querySelector('.topbar')?.innerText || '') &&
-    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === '重新标定方向' && !b.disabled)`, '取消后恢复原模式', 15000);
+  await waitFor(`/Modo de movimento/.test(document.querySelector('.topbar')?.innerText || '') &&
+    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === 'Recalibrar orientação' && !b.disabled)`, 'modo anterior restaurado após o cancelamento', 15000);
   out.cancelled = await fakeRpc('robot.busCommand', { action: 'calibration-status' });
   out.recoveredPhases = [];
   for (const phase of ['entering', 'finishing', 'cancelling']) {
-    await clickExact('.imu-coarse button', '重新标定方向');
+    await clickExact('.imu-coarse button', 'Recalibrar orientação');
     await sleep(900);
     await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
-    await waitFor(`/重标定未结束/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
-      !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采静止') && !b.disabled)`, '重标定已进入');
+    await waitFor(`/A recalibração ainda não terminou/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
+      !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('Coletar repouso') && !b.disabled)`, 'recalibração iniciada');
     writeFileSync(CONTROL, JSON.stringify({ outcome: 'ok', redo_phase: phase }));
     await send('Page.reload');
-    await waitFor(`/重标定未结束/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
+    await waitFor(`/A recalibração ainda não terminou/.test(document.querySelector('.imu-coarse')?.innerText || '') &&
       !document.querySelector('.imu-coarse-steps') &&
-      !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === '取消并恢复原参数' && !b.disabled)`, `中断的 ${phase} 会话可取消`, 6000);
-    await clickExact('.imu-coarse button', '取消并恢复原参数');
+      !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === 'Cancelar e restaurar parâmetros' && !b.disabled)`, `sessão ${phase} interrompida pode ser cancelada`, 6000);
+    await clickExact('.imu-coarse button', 'Cancelar e restaurar parâmetros');
     await sleep(900);
     await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
-    await waitFor(`/运动模式/.test(document.querySelector('.topbar')?.innerText || '') &&
-      !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === '重新标定方向' && !b.disabled)`, '恢复原运动模式');
+    await waitFor(`/Modo de movimento/.test(document.querySelector('.topbar')?.innerText || '') &&
+      !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === 'Recalibrar orientação' && !b.disabled)`, 'modo de movimento anterior restaurado');
     out.recoveredPhases.push(phase);
     writeFileSync(CONTROL, JSON.stringify({ outcome: 'ok' }));
   }
-  // Already verified commissioning deployments also retain a direct revalidation entry.
+  // Instalações já confirmadas no modo de calibração também mantêm uma opção direta de validação.
   await fakeSet({ mode: 'commissioning', imu_pose: 'upright' });
-  await waitFor(`/标定模式/.test(document.querySelector('.topbar')?.innerText || '') &&
-    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === '重新标定方向' && !b.disabled)`, '已验证标定模式仍可重做', 15000);
+  await waitFor(`/Modo de calibração/.test(document.querySelector('.topbar')?.innerText || '') &&
+    !![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.trim() === 'Recalibrar orientação' && !b.disabled)`, 'opção de recalibração disponível no modo de calibração confirmado', 15000);
   await recordSends();
-  await clickExact('.imu-coarse button', '重新标定方向');
+  await clickExact('.imu-coarse button', 'Recalibrar orientação');
   await sleep(900);
   await js(`document.querySelector('.imu-coarse .two-step-ask').click()`);
-  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采静止'))`, '直接重开原粗校', 5000);
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('Coletar repouso'))`, 'fluxo de calibração inicial reaberto', 5000);
   out.commissioningCommands = await js(`(window.__sent || []).filter((m) => m.name === 'imu.op')`);
 }
 
 if (PHASE === 'imu' || PHASE === 'imu-hold') {
-  log('IMU 页：粗校');
+  log('Página IMU: calibração inicial');
   if (PHASE === 'imu-hold') {
     await fakeSet({ mode: 'commissioning', calib: 'factory', posture: 'commissioning', imu_pose: 'upright', restart: 0.4 });
   }
   await js(`location.hash = '#/imu'`);
-  await waitFor(`!!document.querySelector('.imu-coarse')`, 'IMU 粗校卡片', 20000);
+  await waitFor(`!!document.querySelector('.imu-coarse')`, 'cartão de calibração inicial da IMU', 20000);
   if (PHASE === 'imu-hold') {
-    await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采静止') && !b.disabled)`,
-      '重新读取出厂方向标定状态', 20000);
+    await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('Coletar repouso') && !b.disabled)`,
+      'estado de calibração inicial de fábrica carregado novamente', 20000);
   }
   await js(`document.querySelector('.imu-stance .imu-relax').click()`);
   await sleep(500);
   if (PHASE === 'imu-hold') {
     await waitFor(`!!document.querySelector('.imu-stance .imu-stand') && !document.querySelector('.imu-stance .imu-stand').disabled`,
-      '初次标定允许站姿使能', 10000);
+      'habilitação da postura em pé disponível para a calibração inicial', 10000);
     await js(`document.querySelector('.imu-stance .imu-stand').click()`);
-    await waitFor(`/标定模式（站着）/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`,
-      '站稳再做初次标定', 15000);
+    await waitFor(`/Modo de calibração \(em pé\)/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`,
+      'robô estabilizado em pé para a calibração inicial', 15000);
     out.holdBefore = await fakeRpc('robot.busStatus', {});
   }
   out.start = await js(`document.querySelector('.imu-coarse')?.innerText.replace(/\\s+/g, ' ').slice(0, 500)`);
-  if (!await clickHas('.imu-coarse button', '采静止')) throw new Error('找不到「采静止」');
-  await waitFor(`/静止采到/.test(document.querySelector('.imu-coarse')?.innerText || '')`, '静止采好', 20000);
+  if (!await clickHas('.imu-coarse button', 'Coletar repouso')) throw new Error('Botão Coletar repouso não encontrado');
+  await waitFor(`/leituras de repouso coletadas/.test(document.querySelector('.imu-coarse')?.innerText || '')`, 'coleta de repouso concluída', 20000);
   await fakeSet({ imu_pose: 'nose_down' });
-  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('采前倾') && !b.disabled)`,
-    '静止采数结束，前倾采数按钮可用', 15000);
-  if (!await clickHas('.imu-coarse button', '采前倾')) throw new Error('找不到「采前倾」');
-  await waitFor(`!!document.querySelector('.imu-coarse input[type=checkbox]') || /交给主程序验证/.test(document.querySelector('.imu-coarse')?.innerText || '')`,
-    '粗校算出方向、等确认', 25000);
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent.includes('inclinação frontal') && !b.disabled)`,
+    'coleta de repouso concluída; botão de inclinação frontal habilitado', 15000);
+  if (!await clickHas('.imu-coarse button', 'inclinação frontal')) throw new Error('Botão de coleta frontal não encontrado');
+  await waitFor(`!!document.querySelector('.imu-coarse input[type=checkbox]') || /Solicitar validação do programa principal/.test(document.querySelector('.imu-coarse')?.innerText || '')`,
+    'orientação calculada; aguardando confirmação', 25000);
   await js(`[...document.querySelectorAll('.imu-coarse input[type=checkbox]')].forEach((x) => { if (!x.checked) x.click(); })`);
-  await fakeSet({ imu_verify_plan: 'ok' });        // 开发用剧本：主程序先看到摆正，再看到往前低头
-  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === '交给主程序验证' && !b.disabled)`, '原粗校验证按钮就绪');
-  if (!await clickHas('.imu-coarse button', '交给主程序验证')) throw new Error('找不到「交给主程序验证」');
+  await fakeSet({ imu_verify_plan: 'ok' });        // Roteiro de desenvolvimento: o programa principal primeiro detecta o robô nivelado e depois inclinado para frente.
+  await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === 'Solicitar validação do programa principal' && !b.disabled)`, 'botão de validação da calibração inicial habilitado');
+  if (!await clickHas('.imu-coarse button', 'Solicitar validação do programa principal')) throw new Error('Botão de validação não encontrado');
   // Após a verificação, verified fica true no programa principal e o cartão de calibração inicial recolhe; confira o estado no topo da página da IMU.
-  await waitFor(`/方向已确认/.test(document.querySelector('.sv-metrics')?.innerText || '')`,
-    'verify-imu 成功', 40000);
+  await waitFor(`/Orientação confirmada/.test(document.querySelector('.sv-metrics')?.innerText || '')`,
+    'verificação da IMU aprovada', 40000);
   out.imu = await js(`[document.querySelector('.sv-metrics')?.innerText || '',
     document.querySelector('.imu-coarse')?.innerText || ''].filter(Boolean).join(' ／ ').replace(/\\s+/g, ' ').slice(0, 700)`);
   if (PHASE === 'imu-hold') {
     out.holdAfter = await fakeRpc('robot.busStatus', {});
     await shot('commit-imu-hold-verified.png');
-    // Reset the fake fixture independently of which cards remain mounted after verification.
+    // Redefine o cenário simulado independentemente dos cartões que permaneceram montados após a verificação.
     await fakeRpc('robot.relax', {});
     for (let attempt = 0; attempt < 50; attempt++) {
       out.cleaned = await fakeRpc('robot.busStatus', {});
@@ -386,19 +386,19 @@ if (PHASE === 'imu' || PHASE === 'imu-hold') {
 }
 
 if (PHASE === 'servo') {
-  log('舵机页：一键中位，然后交还主程序');
+  log('Página de servos: calibração em lote e devolução ao programa principal');
   await js(`location.hash = '#/servos'`);
-  await waitFor(`/调舵机中/.test(document.querySelector('.sv-sub')?.innerText || '')`, '舵机页接管（演示舵机）', 20000);
-  if (!await clickExact('.sv-page button', '一键校准')) throw new Error('找不到「一键校准」');
-  await waitFor(`!!document.querySelector('.sv-modal')`, '中位校准预览', 15000);
+  await waitFor(`/Ajustando servos/.test(document.querySelector('.sv-sub')?.innerText || '')`, 'página de servos assumiu o barramento (servos simulados)', 20000);
+  if (!await clickExact('.sv-page button', 'Calibrar seleção')) throw new Error('Botão Calibrar seleção não encontrado');
+  await waitFor(`!!document.querySelector('.sv-modal')`, 'prévia da calibração de posição zero', 15000);
   out.planRows = await js(`document.querySelectorAll('.sv-plan tbody tr').length`);
-  if (!await clickHas('.sv-modal button', '确认，校准')) throw new Error('找不到「确认，校准」');
-  await waitFor(`/校准完：成功 15 颗/.test(document.body.innerText)`, '15 颗中位校好', 40000);
-  if (!await clickHas('.sv-handback button', '交还主程序')) throw new Error('找不到「交还主程序」');
-  await waitFor(`!!document.querySelector('.sv-handback .two-step-ask')`, '交还二次确认', 5000);
+  if (!await clickHas('.sv-modal button', 'Confirmar calibração de 15 servos')) throw new Error('Botão de confirmação da calibração não encontrado');
+  await waitFor(`/Calibração concluída: 15 servos calibrados/.test(document.body.innerText)`, 'posição zero dos 15 servos calibrada', 40000);
+  if (!await clickHas('.sv-handback button', 'Devolver ao programa principal')) throw new Error('Botão Devolver ao programa principal não encontrado');
+  await waitFor(`!!document.querySelector('.sv-handback .two-step-ask')`, 'segunda confirmação da devolução', 5000);
   await sleep(900);
   await js(`document.querySelector('.sv-handback .two-step-ask')?.click()`);
-  await waitFor(`!/调舵机中/.test(document.querySelector('.sv-sub')?.innerText || '')`, '交还完成', 30000);
+  await waitFor(`!/Ajustando servos/.test(document.querySelector('.sv-sub')?.innerText || '')`, 'devolução do controle concluída', 30000);
   out.servo = await js(`document.querySelector('.sv-sub')?.innerText.replace(/\\s+/g, ' ')`);
   await shot('commit-servo-done.png');
   await js(`location.hash = '#/'`);
@@ -406,23 +406,23 @@ if (PHASE === 'servo') {
 
 if (PHASE === 'commit' || PHASE === 'fail') {
   await js(`location.hash = '#/'`);
-  await waitFor(`!!${card}`, '第 3 步「写进主程序」的卡片', 20000);
-  await waitFor(`(() => { const c = ${card}; return c && c.querySelectorAll('.onb-checks li').length > 0; })()`, '准备情况清单', 20000);
+  await waitFor(`!!${card}`, 'cartão da etapa 3, gravação no programa principal', 20000);
+  await waitFor(`(() => { const c = ${card}; return c && c.querySelectorAll('.onb-checks li').length > 0; })()`, 'lista de preparação exibida', 20000);
   await waitFor(`(() => { const c = ${card}; const w = [...c.querySelectorAll('.onb-commit-acts button')]
-    .find((b) => b.textContent.includes('写进主程序')); return w && !w.disabled; })()`, '「写进主程序」按钮可点', 25000);
+    .find((b) => b.textContent.includes('Gravar no programa principal')); return w && !w.disabled; })()`, 'botão de gravação habilitado', 25000);
   out.ready = await snapshot();
   const writeBtn = `[...document.querySelectorAll('[data-step="commit"] .onb-commit-acts button')]
-    .find((b) => b.textContent.includes('写进主程序'))`;
+    .find((b) => b.textContent.includes('Gravar no programa principal'))`;
   await js(`${writeBtn}.click()`);
-  await waitFor(`!!document.querySelector('[data-step="commit"] .two-step-ask')`, '二次确认', 5000);
+  await waitFor(`!!document.querySelector('[data-step="commit"] .two-step-ask')`, 'segunda confirmação da gravação', 5000);
   out.confirmText = await js(`document.querySelector('[data-step="commit"] .two-step-ask')?.textContent`);
-  await sleep(900);       // TwoStep 的 700 ms 保护
+  await sleep(900);       // Proteção de 700 ms do TwoStep.
   await js(`document.querySelector('[data-step="commit"] .two-step-ask').click()`);
   // Se a gravação for rápida, o resultado final pode substituir a confirmação (a etapa 3 pode até estar concluída e recolhida); aguarde a confirmação, o cartão de progresso ou a conclusão.
-  await waitFor(`/已经在写|开始写/.test(document.querySelector('[data-step="commit"] .onb-commit-msg')?.innerText || '') ||
+  await waitFor(`/Preparando para gravar|Gravando arquivo/.test(document.querySelector('[data-step="commit"] .onb-commit-msg')?.innerText || '') ||
     !!document.querySelector('[data-step="commit"] .onb-commit-job') ||
-    document.querySelector('[data-step="commit"] .onb-mark')?.getAttribute('aria-label') === '完成'`,
-    '开始写的回执或最终结果', 20000);
+    document.querySelector('[data-step="commit"] .onb-mark')?.getAttribute('aria-label') === 'Concluído'`,
+    'confirmação de início, cartão de progresso ou resultado final', 20000);
   out.started = await snapshot();
 
   if (PHASE === 'fail') {
@@ -432,17 +432,17 @@ if (PHASE === 'commit' || PHASE === 'fail') {
     while (Date.now() < end) {
       const s = await js(`(() => { const c = document.querySelector('[data-step="commit"]'); if (!c) return null;
         return { text: c.innerText.replace(/\\s+/g, ' ').slice(0, 600), job: !!c.querySelector('.onb-commit-job'), msg: c.querySelector('.onb-commit-msg')?.innerText || null }; })()`);
-      if (s && s.job && /主程序在重启|断线/.test(s.text)) { offline = s; break; }
+      if (s && s.job && /programa principal está reiniciando|página está desconectada/.test(s.text)) { offline = s; break; }
       await sleep(200);
     }
     out.offline = offline;
-    if (!offline) throw new Error('断线期间没看到第 3 步的进度卡');
+    if (!offline) throw new Error('O cartão de progresso da etapa 3 não apareceu durante a desconexão');
     await shot('commit-fail-offline.png');
     await waitFor(`(() => { const m = document.querySelector('[data-step="commit"] .onb-commit-msg.bad');
-      return /标定没通过主程序的检查/.test(m?.innerText || ''); })()`, '失败原因', 30000);
+      return /A calibração não passou na validação do programa principal/.test(m?.innerText || ''); })()`, 'motivo da falha', 30000);
     // O rollback reinicia o programa principal em modo de calibração; aguarde a reconexão e a leitura da calibração antes de validar a etapa 3.
-    await waitFor(`document.querySelector('[data-step="commit"] .onb-mark')?.getAttribute('aria-label') === '该做'`,
-      '主程序回来后第 3 步回到该做', 30000);
+    await waitFor(`document.querySelector('[data-step="commit"] .onb-mark')?.getAttribute('aria-label') === 'Pendente'`,
+      'etapa 3 volta a ficar pendente após o retorno do programa principal', 30000);
     out.wsCommit = await js(`(async () => {
       const w = new WebSocket(location.origin.replace('http', 'ws') + '/ws');
       const m = await new Promise((ok) => {
@@ -455,9 +455,9 @@ if (PHASE === 'commit' || PHASE === 'fail') {
     out.failed = await snapshot();
     await shot('commit-fail-reason.png');
   } else {
-    await waitFor(`document.querySelector('[data-step="commit"] .onb-mark')?.getAttribute('aria-label') === '完成'`,
-      '第 3 步变成完成（假主程序切到运动模式）', 40000);
-    await waitFor(`/运动模式/.test(document.querySelector('.topbar .meta')?.innerText || '')`, '顶栏显示运动模式', 15000);
+    await waitFor(`document.querySelector('[data-step="commit"] .onb-mark')?.getAttribute('aria-label') === 'Concluído'`,
+      'etapa 3 concluída após a mudança simulada para o modo de movimento', 40000);
+    await waitFor(`/Modo de movimento/.test(document.querySelector('.topbar .meta')?.innerText || '')`, 'modo de movimento exibido no topo', 15000);
     out.done = await snapshot();
     out.topbar = await js(`document.querySelector('.topbar .meta')?.innerText`);
     await shot('commit-done.png');
@@ -465,13 +465,13 @@ if (PHASE === 'commit' || PHASE === 'fail') {
 }
 
 if (PHASE === 'factory') {
-  await waitFor(`!!${card}`, '第 3 步「写进主程序」的卡片', 20000);
-  await waitFor(`(() => { const c = ${card}; return c && c.querySelectorAll('.onb-checks li').length > 0; })()`, '准备情况清单', 15000);
+  await waitFor(`!!${card}`, 'cartão da etapa 3, gravação no programa principal', 20000);
+  await waitFor(`(() => { const c = ${card}; return c && c.querySelectorAll('.onb-checks li').length > 0; })()`, 'lista de preparação exibida', 15000);
   out.factory = await snapshot();
   await shot('commit-factory.png');
   await js(`[...document.querySelectorAll('[data-step="commit"] .onb-commit-acts button')]
-    .find((b) => b.textContent.includes('先看看要写什么'))?.click()`);
-  await waitFor(`!!document.querySelector('[data-step="commit"] .onb-preview')`, '预览展开', 20000);
+    .find((b) => b.textContent.includes('Ver prévia da gravação'))?.click()`);
+  await waitFor(`!!document.querySelector('[data-step="commit"] .onb-preview')`, 'prévia expandida', 20000);
   out.preview = await js(`(() => {
     const p = document.querySelector('[data-step="commit"] .onb-preview');
     return { jointRows: p.querySelectorAll('.onb-preview-table tbody tr').length,
@@ -481,7 +481,7 @@ if (PHASE === 'factory') {
   await shot('commit-preview.png');
 }
 
-log('收尾');
+log('Finalização');
 out.errors = errors;
 process.stdout.write(JSON.stringify(out));
 await new Promise((r) => process.stdout.write('', r));
