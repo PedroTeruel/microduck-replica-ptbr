@@ -1,5 +1,5 @@
-# Studio 自带的纯 Python 依赖（跟二号鸭 10-17 apt 装的版本一致：Debian 13 / Python 3.13）
-# 来源：pypi.org 的 py3-none-any wheel；解压后原样放在这里，各包许可证在 *.dist-info 里
+# Dependências Python puras incluídas no Studio (mesmas versões instaladas via apt no segundo Microduck em 17/10: Debian 13 / Python 3.13).
+# Origem: wheels py3-none-any do pypi.org; incluídos sem alterações após extração. As licenças de cada pacote estão em *.dist-info.
 
 anyio-4.8.0-py3-none-any.whl  sha256=b5011f270ab5eb0abf13385f851315585cc37ef330dd88e27ec3d34d651fd47a
 click-8.1.8-py3-none-any.whl  sha256=63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2
