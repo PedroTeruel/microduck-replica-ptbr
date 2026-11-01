@@ -7,7 +7,7 @@
 
 Leia primeiro a [introdução ao hardware](硬件入门.md), que explica a função do HAT; depois, este guia mostra como usá-lo sem a placa.
 
-[![Diagrama de fiação sem HAT](../assets/hw/不打HAT-接线图.png)](不打HAT-接线图.html)
+[![Diagrama de fiação sem HAT](../assets/hw/ligacao-sem-hat.png)](不打HAT-接线图.html)
 
 > **O arquivo-fonte do diagrama é [`不打HAT-接线图.html`](不打HAT-接线图.html)** — contém SVG embutido; abra-o no navegador para ampliar, selecionar texto e imprimir em A3.
 > Altere esse arquivo para trocar o módulo ou os pinos. A imagem PNG acima é apenas uma prévia no GitHub.

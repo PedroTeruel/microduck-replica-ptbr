@@ -15,7 +15,7 @@
 
 ## Exploded Assembly View
 
-![Exploded view](../assembly-drawings/06_爆炸图_四分之三.png)
+![Exploded view](../assembly-drawings/06_vista-explodida-perspectiva.png)
 
 Seven drawings under `assembly-drawings/`:
 
@@ -82,7 +82,7 @@ See the respective CAD sections for file versions, changes and printing methods,
 ## Electronics, Reverse-Engineered from the Runtime
 
 <div align="center">
-  <img src="../assets/hw/01-物理布局.png" alt="Microduck electronics overview: where each board sits" width="880">
+  <img src="../assets/hw/01-layout-fisico.png" alt="Microduck electronics overview: where each board sits" width="880">
   <br>
   <sub><b>Physical layout of the five modules.</b> Dashed grey = physical region, solid = module,
   dashed red = mounted <b>outside</b> the shell.<br>

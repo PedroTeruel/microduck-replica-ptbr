@@ -4,7 +4,7 @@
 > A Pollen nunca publicou o esquemático, os Gerbers nem o contorno desta placa (não há registros públicos; consulte a [análise reversa de hardware](../../docs/硬件方案逆向.md)). Este diretório contém resultados de inferência a partir do modelo MJCF, do código-fonte oficial em tempo de execução e do projeto aberto da HAT, além da seleção de componentes feita por nós. **A placa ainda não foi fabricada nem validada fisicamente.**
 > Se encontrar problemas, abra uma [issue](https://github.com/fanhao375/microduck-replica/issues).
 
-![Esquemático da imu_to_dxl](../../assets/hw/imu_to_dxl-原理图.png)
+![Esquemático da imu_to_dxl](../../assets/hw/esquema-imu-to-dxl.png)
 
 | Arquivo | Descrição |
 |---|---|
