@@ -54,7 +54,7 @@ ws.addEventListener('message', (ev) => {
 const send = (method, params = {}) => new Promise((r) => { const i = ++id; waiting.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 const js = async (expression) => {
   const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-  if (r.result?.exceptionDetails) throw new Error(`页面里出错：${r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text}`);
+  if (r.result?.exceptionDetails) throw new Error(`Erro na página: ${r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text}`);
   return r.result?.result?.value;
 };
 const waitFor = async (expr, what, timeout = 12000) => {
@@ -63,7 +63,7 @@ const waitFor = async (expr, what, timeout = 12000) => {
   const now = await js(`[location.hash, document.querySelector('.overview')?.innerText?.slice(0, 800),
     document.querySelector('.wifi-card')?.innerText?.slice(0, 500), document.querySelector('.wifi-last-try')?.innerText,
     document.querySelector('.wifi-msg')?.innerText].join(' ／ ')`);
-  throw new Error(`${timeout / 1000} 秒没等到：${what}。页面上现在：${now} ／ 页面报错：${JSON.stringify(errors)}`);
+  throw new Error(`Tempo esgotado após ${timeout / 1000} s aguardando ${what}. Conteúdo atual da página: ${now} / erros: ${JSON.stringify(errors)}`);
 };
 const setVal = async (sel, value) => js(`(() => {
   const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return false;
@@ -97,8 +97,8 @@ await sleep(250);
 await send('Page.navigate', { url: `${BASE}#/` });
 
 const out = { errors };
-await waitFor(`!!document.querySelector('.wifi-card')`, '总览出现「连 WiFi」卡片', 15000);
-await waitFor(`!!document.querySelector('.wifi-net[data-ssid="Home"]')`, '扫描结果里出现 Home');
+await waitFor(`!!document.querySelector('.wifi-card')`, 'cartão Conectar ao Wi-Fi na visão geral', 15000);
+await waitFor(`!!document.querySelector('.wifi-net[data-ssid="Home"]')`, 'rede Home na lista de redes');
 out.card = await js(`({ text: document.querySelector('.wifi-card').innerText.replace(/\\s+/g, ' '),
   beforeOnboard: !!(document.querySelector('.wifi-card').compareDocumentPosition(document.querySelector('.onb'))
     & Node.DOCUMENT_POSITION_FOLLOWING),
@@ -108,41 +108,41 @@ out.card = await js(`({ text: document.querySelector('.wifi-card').innerText.rep
 await shot('wifi-card-phone.png');
 
 await click('.wifi-net[data-ssid="Home"] .wifi-net-head');
-await waitFor(`!!document.querySelector('.wifi-psk')`, 'Home 展开密码框');
+await waitFor(`!!document.querySelector('.wifi-psk')`, 'campo de senha expandido para Home');
 await click('.wifi-net[data-ssid="Home-5G"] .wifi-net-head');
-await waitFor(`!!document.querySelector('.wifi-net[data-ssid="Home-5G"] .wifi-psk')`, '已保存的加密网络也展开密码框');
+await waitFor(`!!document.querySelector('.wifi-net[data-ssid="Home-5G"] .wifi-psk')`, 'campo de senha expandido para rede criptografada salva');
 out.expanded = await js(`({ pskType: document.querySelector('.wifi-psk')?.type,
   saved: document.querySelector('.wifi-net[data-ssid="Home-5G"] .wifi-badge')?.textContent,
   savedNote: document.querySelector('.wifi-net[data-ssid="Home-5G"] .wifi-note')?.textContent })`);
 await click('.wifi-net[data-ssid="Home-5G"] .wifi-net-head');
 await click('.wifi-net[data-ssid="Home"] .wifi-net-head');
-await waitFor(`!!document.querySelector('.wifi-net[data-ssid="Home"] .wifi-psk')`, 'Home 重新展开密码框');
+await waitFor(`!!document.querySelector('.wifi-net[data-ssid="Home"] .wifi-psk')`, 'campo de senha expandido novamente para Home');
 await setVal('.wifi-psk', 'wrongpass');
 await click('.wifi-net[data-ssid="Home"] .wifi-connect');
-await waitFor(`!!document.querySelector('.wifi-confirm')`, '弹出切换确认');
+await waitFor(`!!document.querySelector('.wifi-confirm')`, 'confirmação de troca de rede exibida');
 out.confirm = await js(`document.querySelector('.wifi-confirm').innerText.replace(/\\s+/g, ' ')`);
 await shot('wifi-confirm-phone.png');
 
 await click('.wifi-confirm .btn-danger');
-await waitFor(`/正在切换/.test(document.querySelector('.wifi-switching')?.innerText || '')`, '显示正在切换', 5000);
+await waitFor(`/Trocando de rede/.test(document.querySelector('.wifi-switching')?.innerText || '')`, 'aviso de troca de rede exibido', 5000);
 out.switching = await js(`document.querySelector('.wifi-switching').innerText.replace(/\\s+/g, ' ')`);
 await shot('wifi-switching-phone.png');
 
-await waitFor(`/上次连「Home」没成功：密码不对/.test(document.querySelector('.wifi-last-try')?.innerText || '')`, 'last-try 红字', 15000);
+await waitFor(`/Falha na última conexão com “Home”: Senha incorreta/.test(document.querySelector('.wifi-last-try')?.innerText || '')`, 'aviso de falha de conexão exibido', 15000);
 out.lastTry = await js(`({ text: document.querySelector('.wifi-last-try').innerText.replace(/\\s+/g, ' '),
   color: getComputedStyle(document.querySelector('.wifi-last-try')).color,
   sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth })`);
 await shot('wifi-last-try-phone.png');
 
 // Na barra inferior do celular, Mais é o único acesso às configurações; dali, abra os logs e exporte o pacote de diagnóstico.
-out.hotspotPasswordHint = await js(`document.querySelector('.wifi-card')?.innerText.includes('热点密码大家都知道')`);
-await js(`[...document.querySelectorAll('.tabbar a')].find((a) => a.textContent.trim() === '更多').click()`);
-await waitFor(`location.hash === '#/settings' && !!document.querySelector('.password-settings')`, '手机底栏进设置');
+out.hotspotPasswordHint = await js(`document.querySelector('.wifi-card')?.innerText.includes('A senha do ponto de acesso é compartilhada')`);
+await js(`[...document.querySelectorAll('.tabbar a')].find((a) => a.textContent.trim() === 'Mais').click()`);
+await waitFor(`location.hash === '#/settings' && !!document.querySelector('.password-settings')`, 'abrir configurações pela barra inferior do celular');
 out.mobile = await js(`({ navHidden: getComputedStyle(document.querySelector('.nav')).display === 'none',
   hasLogs: !!document.querySelector('.settings-logs'), hasDiag: !!document.querySelector('.settings-diag') })`);
 await shot('settings-mobile-links.png');
 // A seção “Endereços deste robô” da página Mais: no modo hotspot, o IP é 10.42.0.1; duck-xxxx e duck-xxxx.local também podem ser copiados.
-await waitFor(`document.querySelectorAll('.duck-addr .duck-addr-row').length >= 3`, '「这只鸭子的地址」');
+await waitFor(`document.querySelectorAll('.duck-addr .duck-addr-row').length >= 3`, 'endereços do Microduck');
 out.addr = await js(`({ rows: [...document.querySelectorAll('.duck-addr .duck-addr-row')].map((r) => ({ kind: r.dataset.kind,
     url: r.querySelector('a')?.textContent, copy: r.querySelector('.duck-addr-copy')?.textContent.trim() })),
   text: document.querySelector('.duck-addr').innerText.replace(/\\s+/g, ' '),
@@ -152,7 +152,7 @@ await sleep(300);
 out.addr.copied = await js(`document.querySelector('.duck-addr .duck-addr-row .duck-addr-copy').textContent.trim()`);
 await shot('settings-duck-addr-phone.png');
 await click('.settings-logs');
-await waitFor(`location.hash === '#/logs' && !!document.querySelector('.logs-export')`, '从设置进日志页');
+await waitFor(`location.hash === '#/logs' && !!document.querySelector('.logs-export')`, 'abrir página de registros pelas configurações');
 out.mobile.logs = await js(`document.querySelector('.logs-export')?.textContent`);
 await js(`window.__diagHref = ''; document.addEventListener('click', (e) => {
   const a = e.target.closest && e.target.closest('a.logs-export');
@@ -171,29 +171,29 @@ out.passwordSet = await js(`(async () => {
   return r.status;
 })()`);
 await js(`location.hash = '#/'`);
-await waitFor(`!!document.querySelector('.wifi-card') && !document.querySelector('.wifi-card').innerText.includes('热点密码大家都知道')`,
-  '设密码后热点提示消失', 10000);
-out.hotspotPasswordHintAfterSet = await js(`document.querySelector('.wifi-card').innerText.includes('热点密码大家都知道')`);
+await waitFor(`!!document.querySelector('.wifi-card') && !document.querySelector('.wifi-card').innerText.includes('A senha do ponto de acesso é compartilhada')`,
+  'aviso do hotspot some após definir uma senha', 10000);
+out.hotspotPasswordHintAfterSet = await js(`document.querySelector('.wifi-card').innerText.includes('A senha do ponto de acesso é compartilhada')`);
 
 // ---- Tarefa 17: localizar o novo endereço do robô após enviar a conexão e perder o acesso à página. ----
-const cut = () => js(`(() => { window.__cut = true; for (const w of window.__ws) { try { w.close(); } catch (e) { /* 关过了 */ } } return true; })()`);
+const cut = () => js(`(() => { window.__cut = true; for (const w of window.__ws) { try { w.close(); } catch (e) { /* conexão já fechada */ } } return true; })()`);
 const uncut = () => js(`(() => { window.__cut = false; return true; })()`);
 const connectTo = async (ssid, psk) => {
   await click(`.wifi-net[data-ssid="${ssid}"] .wifi-net-head`);
-  await waitFor(`!!document.querySelector('.wifi-net[data-ssid="${ssid}"] .wifi-connect')`, `${ssid} 展开`);
+  await waitFor(`!!document.querySelector('.wifi-net[data-ssid="${ssid}"] .wifi-connect')`, `${ssid} expandida`);
   if (psk) await setVal(`.wifi-net[data-ssid="${ssid}"] .wifi-psk`, psk);
-  await waitFor(`!document.querySelector('.wifi-net[data-ssid="${ssid}"] .wifi-connect').disabled`, `${ssid} 的「连接」能点`);
+  await waitFor(`!document.querySelector('.wifi-net[data-ssid="${ssid}"] .wifi-connect').disabled`, `botão Conectar de ${ssid} habilitado`);
   await click(`.wifi-net[data-ssid="${ssid}"] .wifi-connect`);
-  await waitFor(`!!document.querySelector('.wifi-confirm')`, `${ssid} 弹出切换确认`);
+  await waitFor(`!!document.querySelector('.wifi-confirm')`, `confirmação de troca de ${ssid} exibida`);
   await click('.wifi-confirm .btn-danger');
-  await waitFor(`!!document.querySelector('.wifi-switching')`, `${ssid} 显示正在切换`, 5000);
+  await waitFor(`!!document.querySelector('.wifi-switching')`, `aviso de troca de ${ssid} exibido`, 5000);
 };
 // A. Hotspot voltou: após desconectar, mostre o cartão de busca e consulte os dois endereços a cada 2 s; ao reconectar ao endereço original, recolha o cartão e mantenha o motivo da falha.
 probeMode = 'fail';
 await connectTo('Ghost', 'whatever1');
 await cut();
 const mark = probes.length;
-await waitFor(`document.querySelector('.wifi-finding')?.dataset.phase === 'finding'`, '断线以后出现「找鸭子」卡片', 8000);
+await waitFor(`document.querySelector('.wifi-finding')?.dataset.phase === 'finding'`, 'cartão de localização exibido após desconexão', 8000);
 await sleep(4500);
 out.findA = await js(`(() => { const c = document.querySelector('.wifi-finding'); return {
   phase: c.dataset.phase, text: c.innerText.replace(/\\s+/g, ' '),
@@ -202,8 +202,8 @@ out.findA = await js(`(() => { const c = document.querySelector('.wifi-finding')
 out.findA.probes = probes.slice(mark);
 await shot('wifi-finding-phone.png');
 await uncut();
-await waitFor(`!document.querySelector('.wifi-finding') && /上次连「Ghost」没成功/.test(document.querySelector('.wifi-last-try')?.innerText || '')`,
-  '页面重新连上：「找鸭子」收起、显示失败原因', 20000);
+await waitFor(`!document.querySelector('.wifi-finding') && /Falha na última conexão com “Ghost”/.test(document.querySelector('.wifi-last-try')?.innerText || '')`,
+  'página reconectada: cartão de localização oculto e motivo da falha exibido', 20000);
 const atBack = probes.length;
 await sleep(4500);
 out.findBack = { finding: !!(await js(`!!document.querySelector('.wifi-finding')`)),
@@ -217,11 +217,11 @@ const end = Date.now() + 15000;
 out.found = null;
 while (Date.now() < end) {
   let href = null;
-  try { href = await js('location.href'); } catch { /* 正在跳 */ }
+  try { href = await js('location.href'); } catch { /* redirecionamento em andamento */ }
   if (href && href.startsWith('http://duck-fake.local')) { out.found = { href, title: await js('document.title') }; break; }
   await sleep(200);
 }
-if (!out.found) throw new Error(`15 秒没跳到 duck-fake.local：拦到的请求 ${JSON.stringify(probes.slice(-6))}`);
+if (!out.found) throw new Error(`Não redirecionou para duck-fake.local em 15 s; requisições interceptadas: ${JSON.stringify(probes.slice(-6))}`);
 
 process.stdout.write(JSON.stringify(out));
 ws.close();
