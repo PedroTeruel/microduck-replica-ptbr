@@ -127,20 +127,20 @@ class Base(unittest.TestCase):
 
 class RecordsTest(Base):
     def test_centered_record_and_merge(self):
-        C.record_centered(self.dir, [20], "舵机页", at=10)
-        C.record_centered(self.dir, [21, 22], "一键校准", at=20)
+        C.record_centered(self.dir, [20], "página dos servos", at=10)
+        C.record_centered(self.dir, [21, 22], "calibração de um toque", at=20)
         data = C.load_centered(self.dir)
         self.assertEqual(set(data), {20, 21, 22})
-        self.assertEqual(data[20]["by"], "舵机页")
+        self.assertEqual(data[20]["by"], "página dos servos")
         self.assertEqual(data[22]["at"], 20)
 
     def test_forget_centered_removes_only_undone(self):
-        C.record_centered(self.dir, [20, 21, 30], "测试", at=1)
+        C.record_centered(self.dir, [20, 21, 30], "teste", at=1)
         self.assertEqual(C.forget_centered(self.dir, [20, 99, 30]), [20, 30])
         self.assertEqual(set(C.load_centered(self.dir)), {21})
 
     def test_pending_saved_and_cleared(self):
-        row = C.save_pending(self.dir, "bus", BUS_QUAT, {"tilt_deg": 1.2}, "测试", at=5)
+        row = C.save_pending(self.dir, "bus", BUS_QUAT, {"tilt_deg": 1.2}, "teste", at=5)
         self.assertEqual(row["at"], 5)
         back = C.load_pending(self.dir)
         self.assertEqual(back["source"], "bus")
@@ -163,7 +163,7 @@ class ReadinessTest(Base):
         servo = self.item("servo", view)
         self.assertFalse(servo["ok"])
         self.assertEqual(len(servo["missing"]), 15)
-        self.assertEqual(self.item("imu", view)["text"], "标定模式：先在 IMU 页粗校一次，交给主程序验证")
+        self.assertEqual(self.item("imu", view)["text"], "Modo de calibração: faça a calibração inicial na página da IMU e envie para verificação do programa principal")
         self.assertTrue(self.item("mode", view)["ok"])
         self.assertTrue(self.item("directions", view)["ok"])
         self.assertTrue(self.item("bus", view)["ok"])
@@ -172,47 +172,45 @@ class ReadinessTest(Base):
     def test_commissioning_needs_fifteen_fresh_servos(self):
         few = Rd(self.calib, servos=5)
         self.assertFalse(self.item("mode", self.svc.view(few))["ok"])
-        self.assertIn("只有 5 颗", self.item("mode", self.svc.view(few))["text"])
+        self.assertIn("contém somente 5 servos", self.item("mode", self.svc.view(few))["text"])
         stale = Rd(self.calib, fresh=False)
         mode = self.item("mode", self.svc.view(stale))
         self.assertFalse(mode["ok"])
-        self.assertIn("不新", mode["text"])
+        self.assertIn("desatualizadas", mode["text"])
 
     def test_all_centered_and_pending_makes_ready(self):
-        C.record_centered(self.dir, C.JOINT_IDS.values(), "测试", at=1)
-        C.save_pending(self.dir, "bus", BUS_QUAT, {}, "测试", at=2)
+        C.record_centered(self.dir, C.JOINT_IDS.values(), "teste", at=1)
+        C.save_pending(self.dir, "bus", BUS_QUAT, {}, "teste", at=2)
         self.svc.reload(force=True)
         view = self.svc.view(self.rd)
         self.assertTrue(view["ready"], view)
         self.assertEqual(self.item("servo", view)["done"], 15)
-        self.assertIn("IMU 页校过了", self.item("imu", view)["text"])
-        self.assertIn("15 颗舵机都有新读数", self.item("mode", view)["text"])
+        self.assertIn("Calibração feita na página da IMU", self.item("imu", view)["text"])
+        self.assertIn("os 15 servos têm leituras recentes", self.item("mode", view)["text"])
 
     def test_commissioning_boot_report_is_starting_not_missing_servos(self):
-        """任务 16：标定模式没读成功之前 busStatus 是启动报告（没有 last_sample）：写「还在启动」，不写「只有 0 颗」；
-        连续 30 秒还这样：「一直报启动中」（旧 fork 的毛病）；读舵机出错（read_error）：起来了，带主程序的原话。"""
+        """Tarefa 16: antes da primeira leitura, busStatus envia o relatório de inicialização; após 30 segundos, informa a demora real."""
         self.rd.bus.set({"build": "fake", "mode": "commissioning", "phase": "configuring_bus", "port": "/dev/ttyS2"})
         mode = self.item("mode")
         self.assertFalse(mode["ok"])
-        self.assertIn("主程序还在启动（phase=configuring_bus）", mode["text"])
-        self.assertNotIn("0 颗", mode["text"])
+        self.assertIn("ainda está iniciando(phase=configuring_bus)", mode["text"])
+        self.assertNotIn("somente 0 servos", mode["text"])
         self.rd.starting_since = time.monotonic() - 31
         mode = self.item("mode")
-        self.assertIn("一直报「启动中」", mode["text"])
-        self.assertIn("旧版主程序的毛病", mode["text"])
-        self.assertEqual(mode["action"]["do"], "robotd")                    # 「去看日志页」
+        self.assertIn("continua informando “inicializando”", mode["text"])
+        self.assertIn("problema de versões antigas", mode["text"])
+        self.assertEqual(mode["action"]["do"], "robotd")                    # Abre a página de logs.
         self.rd.starting_since = None
         self.rd.bus.set({"build": "fake", "mode": "commissioning", "phase": "waiting_for_bus", "error": "Sync Read timeout"})
-        self.assertIn("舵机没上电）：Sync Read timeout", self.item("mode")["text"])
+        self.assertIn("provavelmente os servos estão sem alimentação): Sync Read timeout", self.item("mode")["text"])
         bus = dict(Rd(self.calib).bus.value, phase="read_error", last_cycle_error="missing IDs [21]")
         self.rd.bus.set(bus)
         mode = self.item("mode")
         self.assertFalse(mode["ok"])
-        self.assertIn("主程序起来了，但读舵机出错：missing IDs [21]", mode["text"])
+        self.assertIn("o programa principal iniciou, mas houve um erro ao ler os servos: missing IDs [21]", mode["text"])
 
     def test_marked_steps_from_the_checklist(self):
-        """任务 16：上手清单第 1 步标了已完成 / 跳过 →「舵机零位」算满足（15 颗按 2048 写）。
-        任务 17：第 2 步标了、主程序里方向没确认、也没有 imu-pending.json →「IMU 方向」按默认装法写，算满足。"""
+        """Tarefas 16 e 17: etapas concluídas ou puladas permitem aplicar os offsets e a orientação padrão previstos."""
         class Ob:
             marks = {}
 
@@ -224,55 +222,55 @@ class ReadinessTest(Base):
         Ob.marks = {"servo": "done", "imu": "done"}
         servo = self.item("servo")
         self.assertTrue(servo["ok"])
-        self.assertEqual(servo["text"], "你标了第 1 步已完成：15 颗按 2048 写零位（零位要是用 Studio 的舵机页校过的才对）")
+        self.assertEqual(servo["text"], "Você marcou a etapa 1 como concluída: grava offset 2048 para os 15 servos (correto somente se os offsets tiverem sido calibrados na página dos servos do Studio)")
         self.assertEqual(servo["by_mark"], "done")
         imu = self.item("imu")
         self.assertTrue(imu["ok"])
         self.assertTrue(imu["default"])
         self.assertIsNone(imu["action"])
-        self.assertEqual(imu["text"], "你标了第 2 步已完成：IMU 按默认装法写（总线小板（ID 200）：官方装法）。"
-                                      "装得不一样的，站起来会往一边倒——写完以后在 IMU 页站着校一次，再写一次主程序")
+        self.assertEqual(imu["text"], "Você marcou a etapa 2 como concluída: grava a montagem padrão da IMU (Placa do barramento (ID 200): montagem oficial)."
+                                      "Se a montagem física for diferente, o robô pode tombar ao ficar em pé. Após gravar, calibre em pé na página da IMU e grave novamente no programa principal")
         self.assertTrue(self.svc.view(self.rd)["ready"])
         Ob.marks = {"servo": "skip"}
-        self.assertIn("你跳过了第 1 步", self.item("servo")["text"])
+        self.assertIn("Você pulou a etapa 1", self.item("servo")["text"])
         self.assertTrue(self.item("servo")["ok"])
-        self.assertFalse(self.item("imu")["ok"])                               # 第 2 步没标：照旧要校
-        C.save_pending(self.dir, "bus", BUS_QUAT, {}, "测试", at=2)            # IMU 页有新校准：照常满足
+        self.assertFalse(self.item("imu")["ok"])                               # Sem marcação na etapa 2, ainda precisa calibrar.
+        C.save_pending(self.dir, "bus", BUS_QUAT, {}, "teste", at=2)          # Nova calibração da IMU atende à etapa.
         self.svc.reload(force=True)
         Ob.marks = {"servo": "done", "imu": "skip"}
         self.assertTrue(self.item("imu")["ok"])
-        self.assertIn("IMU 页校过了", self.item("imu")["text"])
+        self.assertIn("Calibração feita na página da IMU", self.item("imu")["text"])
         self.assertFalse(self.item("imu")["default"])
         self.assertTrue(self.svc.view(self.rd)["ready"])
 
     def test_skipped_imu_step_also_needs_a_known_chip(self):
-        """任务 17：第 2 步标了，但 IMU 页记下的是另一颗芯片的（有 imu-pending.json）：不按默认写，照旧要重校。"""
+        """Tarefa 17: não usa a orientação padrão se a calibração pendente veio de outro chip."""
         class Ob:
             def user_mark(self, step):
                 return "skip"
         self.svc.onboard = Ob()
-        C.save_pending(self.dir, "bno08x", BUS_QUAT, {}, "测试", at=1)
+        C.save_pending(self.dir, "bno08x", BUS_QUAT, {}, "teste", at=1)
         self.svc.reload(force=True)
         view = self.svc.view(Rd(calibration(False, "lsm6dsv16x"), source="lsm6dsv16x"))
         imu = self.item("imu", view)
         self.assertFalse(imu["ok"])
-        self.assertIn("你跳过了第 2 步，但没法按默认装法写", imu["text"])
-        self.assertIn("IMU 芯片换过了", imu["text"])
+        self.assertIn("Você pulou a etapa 2, mas não é possível gravar usando a montagem padrão", imu["text"])
+        self.assertIn("O chip da IMU foi trocado", imu["text"])
         self.assertIsNone(view["imu_default"])
 
     def test_motion_control_ready_but_policy_blocks(self):
-        C.record_centered(self.dir, C.JOINT_IDS.values(), "测试", at=1)
-        C.save_pending(self.dir, "bus", BUS_QUAT, {}, "测试", at=2)
+        C.record_centered(self.dir, C.JOINT_IDS.values(), "teste", at=1)
+        C.save_pending(self.dir, "bus", BUS_QUAT, {}, "teste", at=2)
         self.svc.reload(force=True)
         rd = Rd(self.calib, mode="motion", phase="control", torque=False)
         view = self.svc.view(rd)
         self.assertTrue(view["ready"], view)
-        self.assertEqual(self.item("mode", view)["text"], "运动模式：总线已经打开")
+        self.assertEqual(self.item("mode", view)["text"], "Modo de movimento: barramento aberto")
         self.assertTrue(self.item("safety", view)["ok"])
         busy = Rd(self.calib, mode="motion", phase="control", policy=True)
         view2 = self.svc.view(busy)
         self.assertFalse(view2["ready"])
-        self.assertEqual(self.item("safety", view2)["text"], "鸭子在走 / 站着：先坐下或卸力再写")
+        self.assertEqual(self.item("safety", view2)["text"], "O robô está andando/em pé; sente-o ou desligue o torque antes de gravar")
 
     def test_motion_waiting_for_bus_not_ready(self):
         rd = Rd(self.calib, mode="motion", phase="waiting_for_bus")
@@ -284,12 +282,12 @@ class ReadinessTest(Base):
         self.assertEqual(mode["action"]["do"], "robotd")
 
     def test_committed_calibration_is_ready(self):
-        C.record_centered(self.dir, C.JOINT_IDS.values(), "测试", at=1)
+        C.record_centered(self.dir, C.JOINT_IDS.values(), "teste", at=1)
         self.svc.reload(force=True)
         rd = Rd(calibration(True), mode="motion", phase="control", torque=False)
         view = self.svc.view(rd)
         self.assertTrue(view["ready"], view)
-        self.assertEqual(self.item("imu", view)["text"], "主程序里的 IMU 方向已经确认过（总线小板（ID 200））")
+        self.assertEqual(self.item("imu", view)["text"], "A orientação da IMU no programa principal já foi confirmada (Placa do barramento (ID 200))")
 
     def test_servo_session_blocks(self):
         class Servo:
@@ -304,12 +302,12 @@ class ReadinessTest(Base):
         self.assertFalse(next(i for i in view["items"] if i["key"] == "robotd")["ok"])
 
     def test_imu_source_changed(self):
-        C.save_pending(self.dir, "bno08x", BUS_QUAT, {}, "测试", at=1)
+        C.save_pending(self.dir, "bno08x", BUS_QUAT, {}, "teste", at=1)
         self.svc.reload(force=True)
         imu = self.item("imu", self.svc.view(Rd(calibration(False, "lsm6dsv16x"), source="lsm6dsv16x")))
         self.assertFalse(imu["ok"])
-        self.assertIn("IMU 芯片换过了", imu["text"])
-        self.assertIn("重校一次", imu["text"])
+        self.assertIn("O chip da IMU foi trocado", imu["text"])
+        self.assertIn("Calibre novamente", imu["text"])
 
     def test_directions_listed(self):
         with open(os.path.join(self.dir, "servo-directions.json"), "w", encoding="utf-8") as f:
@@ -321,7 +319,7 @@ class ReadinessTest(Base):
 
     def test_calib_read_fallback_when_status_unavailable(self):
         rd = Rd(self.calib, mode="motion", phase="waiting_for_bus")
-        rd.calib = Sample()                       # 运动模式卡在 waiting_for_bus：calibration-status 读不到
+        rd.calib = Sample()                       # Em waiting_for_bus, calibration-status não está disponível.
         file_cal = calibration(False)["calibration"]
         with mock.patch.object(helper, "available", return_value=True), \
                 mock.patch.object(helper, "calib_read",
@@ -330,37 +328,36 @@ class ReadinessTest(Base):
             view = self.svc.readiness(rd)
         self.assertTrue(call.called)
         self.assertTrue(view["from_file"])
-        self.assertEqual(view["note"], "主程序现在没在用这份标定，下面是文件里的内容")
+        self.assertEqual(view["note"], "O programa principal não está usando esta calibração; abaixo estão os dados do arquivo")
         self.assertTrue(view["preview_ok"])
         self.assertEqual(self.item("servo", view)["done"], 0)
 
     def test_pending_and_centered_make_step_three_dirty(self):
-        C.save_pending(self.dir, "bus", BUS_QUAT, {}, "测试", at=2)
+        C.save_pending(self.dir, "bus", BUS_QUAT, {}, "teste", at=2)
         self.svc.reload(force=True)
         view = self.svc.view(self.rd)
         self.assertTrue(view["dirty"])
-        self.assertIn("IMU 方向有新校准还没写", view["dirty_why"])
+        self.assertIn("Há uma nova calibração de orientação da IMU que ainda não foi gravada", view["dirty_why"])
 
-        C.record_centered(self.dir, [20], "测试", at=3)
+        C.record_centered(self.dir, [20], "teste", at=3)
         self.svc.reload(force=True)
         view = self.svc.view(self.rd)
-        self.assertIn("舵机零位记录比上次成功写入新", view["dirty_why"])
+        self.assertIn("O registro de offsets dos servos é mais recente que a última gravação bem-sucedida", view["dirty_why"])
 
         with open(os.path.join(self.dir, "servo-directions.json"), "w", encoding="utf-8") as f:
             json.dump({"20": 1}, f)
         self.svc.reload(force=True)
         view = self.svc.view(self.rd)
-        self.assertIn("舵机页设的方向和主程序文件不一样", view["dirty_why"])
+        self.assertIn("A orientação definida na página dos servos difere do arquivo do programa principal", view["dirty_why"])
 
-        # 反过来：舵机页没设过方向、主程序文件是 +1：不算改动，写的时候沿用文件里的 +1，
-        # 不能拿默认 −1 把它盖掉（二号鸭的文件里就有 +1）。
+        # Sem direção definida na página, preserva-se o +1 do arquivo em vez de substituí-lo pelo padrão −1.
         os.unlink(os.path.join(self.dir, "servo-directions.json"))
         flipped = calibration(False)
         flipped["calibration"]["joints"][0]["direction"] = 1
         self.rd.calib.set(flipped)
         self.svc.reload(force=True)
         view = self.svc.view(self.rd)
-        self.assertNotIn("舵机页设的方向和主程序文件不一样", view.get("dirty_why") or [])
+        self.assertNotIn("A orientação definida na página dos servos difere do arquivo do programa principal", view.get("dirty_why") or [])
         payload = self.svc._payload(self.rd)
         first_id = flipped["calibration"]["joints"][0]["id"]
         self.assertEqual([j["direction"] for j in payload["joints"] if j["id"] == first_id], [1])
@@ -368,8 +365,8 @@ class ReadinessTest(Base):
 
 class PreviewCommitTest(Base):
     def ready(self, source="bus", rd=None):
-        C.record_centered(self.dir, C.JOINT_IDS.values(), "测试", at=1)
-        C.save_pending(self.dir, source, BUS_QUAT, {"tilt_deg": 0.4}, "测试", at=2)
+        C.record_centered(self.dir, C.JOINT_IDS.values(), "teste", at=1)
+        C.save_pending(self.dir, source, BUS_QUAT, {"tilt_deg": 0.4}, "teste", at=2)
         self.svc.reload(force=True)
         if rd is not None:
             self.svc.rd = rd
@@ -378,7 +375,7 @@ class PreviewCommitTest(Base):
     def test_preview_without_helper_renders_toml(self):
         self.ready()
         with mock.patch.object(helper, "available", return_value=False):
-            data = self.svc.preview("测试")
+            data = self.svc.preview("teste")
         self.assertFalse(data["helper"])
         self.assertEqual(len(data["joints"]), 15)
         self.assertTrue(all(j["cn"] for j in data["joints"]))
@@ -394,42 +391,42 @@ class PreviewCommitTest(Base):
                                                        {"source": "bus", "quat": BUS_QUAT}))
         with mock.patch.object(helper, "available", return_value=True), \
                 mock.patch.object(helper, "calib_commit", return_value=(True, "preview", {"toml": toml})) as call:
-            data = self.svc.preview("测试")
+            data = self.svc.preview("teste")
         self.assertTrue(data["helper"])
         self.assertEqual(call.call_args.kwargs["dry_run"], True)
 
     def test_preview_refuses_when_chip_changed(self):
-        C.save_pending(self.dir, "bno08x", BUS_QUAT, {}, "测试", at=1)
+        C.save_pending(self.dir, "bno08x", BUS_QUAT, {}, "teste", at=1)
         rd = Rd(calibration(False, "lsm6dsv16x"), source="lsm6dsv16x")
         self.svc.rd = rd
         self.svc.reload(force=True)
         with mock.patch.object(helper, "available", return_value=False):
             with self.assertRaises(C.Refused) as cm:
-                self.svc.preview("测试")
-        self.assertIn("IMU 芯片换过了", str(cm.exception))
+                self.svc.preview("teste")
+        self.assertIn("O chip da IMU foi trocado", str(cm.exception))
 
     def test_commit_success_clears_pending(self):
         self.ready()
         with mock.patch.object(helper, "available", return_value=True), \
                 mock.patch.object(helper, "calib_commit", return_value=(True, "committed", {"exit": 0})):
-            res = self.svc.commit("测试")
+            res = self.svc.commit("teste")
         self.assertTrue(res["ok"], res)
         self.assertIsNone(C.load_pending(self.dir))
         self.assertEqual(self.svc.job["phase"], "done")
-        self.assertTrue(any(r[0] == "info" and "写进主程序" in r[1] for r in self.log.rows))
-        # 成功以后记下这次的 centered mtime：没有新改动时第 3 步不再显示「该做」
+        self.assertTrue(any(r[0] == "info" and "Gravado no programa principal" in r[1] for r in self.log.rows))
+        # Registra o mtime dos offsets após o sucesso; sem novas alterações, a etapa 3 deixa de aparecer pendente.
         self.svc.reload(force=True)
         self.assertFalse(self.svc.view(self.rd)["dirty"])
 
     def test_timeout_reads_last_result(self):
         self.ready()
         last = {"verb": "calib-commit", "wall": time.time(), "exit": 0, "result": "committed",
-                "reason": "写进主程序了：主程序进了运动模式，15 颗和 IMU 方向读回来都一致",
+                "reason": "Gravado no programa principal: entrou no modo de movimento, os 15 servos e a orientação da IMU foram confirmados",
                 "detail": {"readback_ok": True, "bus_status": {"mode": "motion", "phase": "control"}}}
         with mock.patch.object(helper, "available", return_value=True), \
                 mock.patch.object(helper, "calib_commit", return_value=(False, "TimeoutExpired", None)), \
                 mock.patch.object(helper, "last_result", return_value=last):
-            res = self.svc.commit("测试")
+            res = self.svc.commit("teste")
         self.assertTrue(res["ok"], res)
         self.assertTrue(self.svc.job["from_last_result"])
         self.assertIsNone(C.load_pending(self.dir))
@@ -437,31 +434,31 @@ class PreviewCommitTest(Base):
     def test_stale_last_result_after_timeout_is_not_accepted(self):
         self.ready()
         last = {"verb": "calib-commit", "wall": time.time() - 600, "exit": 0, "result": "committed",
-                "reason": "旧结果", "detail": {}}
+                "reason": "resultado antigo", "detail": {}}
         with mock.patch.object(helper, "available", return_value=True), \
                 mock.patch.object(helper, "calib_commit", return_value=(False, "TimeoutExpired", None)), \
                 mock.patch.object(helper, "last_result", return_value=last):
-            res = self.svc.commit("测试")
+            res = self.svc.commit("teste")
         self.assertFalse(res["ok"])
-        self.assertIn("180 秒", res["reason"])
+        self.assertIn("180 s", res["reason"])
         self.assertIsNotNone(C.load_pending(self.dir))
 
     def test_no_helper_refuses(self):
         self.ready()
         with mock.patch.object(helper, "available", return_value=False):
-            res = self.svc.commit("测试")
+            res = self.svc.commit("teste")
         self.assertFalse(res["ok"])
-        self.assertEqual(res["reason"], "电脑上不能写主程序")
+        self.assertEqual(res["reason"], "Não é possível gravar no programa principal pelo computador")
         self.assertIsNotNone(C.load_pending(self.dir))
 
     def test_failure_with_rollback_is_reported(self):
         self.ready()
-        msg = "标定没通过主程序的检查：motion requires all 15 calibrated joints；已经换回原来的文件和模式，又起了一次主程序"
+        msg = "A calibração não passou na validação do programa principal: motion requires all 15 calibrated joints; os arquivos e o modo anteriores foram restaurados e o programa principal foi reiniciado"
         detail = {"rolled_back": True, "files_restored": True, "mode_restored": True,
                   "robotd_up_after_rollback": True, "journal": ["x"], "msg": msg}
         with mock.patch.object(helper, "available", return_value=True), \
                 mock.patch.object(helper, "calib_commit", return_value=(False, "calib_rejected", detail)):
-            res = self.svc.commit("测试")
+            res = self.svc.commit("teste")
         self.assertFalse(res["ok"])
         self.assertEqual(res["reason"], msg)
         self.assertTrue(res["detail"]["rolled_back"])
@@ -470,12 +467,12 @@ class PreviewCommitTest(Base):
 
     def test_failure_reports_bus_status(self):
         self.ready()
-        msg = "主程序打不开舵机总线：torque readback at register 40: Feetech Sync Read timeout。舵机电源开了吗？"
+        msg = "O programa principal não consegue abrir o barramento dos servos: torque readback at register 40: Feetech Sync Read timeout. A alimentação dos servos está ligada?"
         detail = {"rolled_back": True, "msg": msg, "readback_ok": False,
                   "bus_status": {"mode": "motion", "phase": "waiting_for_bus", "error": "Feetech Sync Read timeout"}}
         with mock.patch.object(helper, "available", return_value=True), \
                 mock.patch.object(helper, "calib_commit", return_value=(False, "bus_unavailable", detail)):
-            res = self.svc.commit("测试")
+            res = self.svc.commit("teste")
         self.assertFalse(res["ok"])
         self.assertEqual(res["reason"], msg)
         self.assertEqual(res["detail"]["bus_status"]["phase"], "waiting_for_bus")
@@ -484,25 +481,27 @@ class PreviewCommitTest(Base):
     def test_busy_second_commit(self):
         self.assertTrue(self.svc._writing.acquire(blocking=False))
         try:
-            res = self.svc.commit("测试")
+            res = self.svc.commit("teste")
         finally:
             self.svc._writing.release()
         self.assertTrue(res.get("busy"))
-        self.assertIn("已经在写了", res["reason"])
+        self.assertIn("Uma gravação já está em andamento", res["reason"])
 
     def test_success_job_collapses_after_two_minutes(self):
         self.ready()
         with mock.patch.object(helper, "available", return_value=True), \
                 mock.patch.object(helper, "calib_commit", return_value=(True, "committed", {"exit": 0})):
-            self.svc.commit("测试")
+            self.svc.commit("teste")
         self.assertIsNotNone(self.svc.view(self.rd)["job"])
         self.svc.job["finished"] = time.time() - 121
         self.assertIsNone(self.svc.view(self.rd)["job"])
 
 
 class DefaultImuTest(Base):
-    """任务 17（10-21 真机验收：「我一直跳过跳过，最后还是不进运动模式」）：第 1、2 步跳过 → 第 3 步按默认装法写
-    正在用的那颗 IMU、标成已确认 → 主程序能进运动模式。有 imu-pending.json 就照旧用它。"""
+    """Tarefa 17: pular as etapas 1 e 2 aplica a montagem padrão da IMU em uso e permite entrar no modo de movimento.
+
+    Quando existe imu-pending.json, a calibração pendente continua tendo prioridade.
+    """
     LSM = [0.7071067811865476, 0.0, 0.7071067811865476, 0.0]
 
     def setUp(self):
@@ -521,7 +520,7 @@ class DefaultImuTest(Base):
         if source == "bus":
             cal["calibration"]["imu_mount_quat"] = list(file_quat)
         else:
-            cal["calibration"]["imu_mounts"][source]["quat"] = list(file_quat)   # 文件里没确认的那份：不能拿它写
+            cal["calibration"]["imu_mounts"][source]["quat"] = list(file_quat)   # Não use a orientação do arquivo se ela não estiver confirmada.
         rd = Rd(cal, source=source)
         self.svc.rd = rd
         return rd
@@ -531,21 +530,21 @@ class DefaultImuTest(Base):
         view = self.svc.view(rd)
         imu = self.item("imu", view)
         self.assertTrue(imu["ok"], imu)
-        self.assertEqual(imu["text"], f"你跳过了第 2 步：IMU 按默认装法写（{label}：{how}）。"
-                                      "装得不一样的，站起来会往一边倒——写完以后在 IMU 页站着校一次，再写一次主程序")
+        self.assertEqual(imu["text"], f"Você pulou a etapa 2: grava a montagem padrão da IMU ({label}: {how})."
+                                      "Se a montagem física for diferente, o robô pode tombar ao ficar em pé. Após gravar, calibre em pé na página da IMU e grave novamente no programa principal")
         self.assertTrue(view["ready"], view)
         self.assertEqual(view["imu_default"]["source"], source)
         self.assertEqual(view["imu_default"]["quat"], want)
         payload = self.svc._payload(rd)
-        self.assertEqual(payload["imu"], {"source": source, "quat": want})      # 小助手照旧只收 {source, quat}
+        self.assertEqual(payload["imu"], {"source": source, "quat": want})      # O helper continua recebendo somente {source, quat}.
         with mock.patch.object(helper, "available", return_value=True), \
                 mock.patch.object(helper, "calib_commit", return_value=(True, "committed", {"exit": 0})) as call:
-            res = self.svc.commit("测试")
+            res = self.svc.commit("teste")
         self.assertTrue(res["ok"], res)
         self.assertEqual(call.call_args.args[2], {"source": source, "quat": want})
         self.assertFalse(call.call_args.kwargs["dry_run"])
-        self.assertTrue(any("IMU 按默认装法写" in r[1] for r in self.log.rows if r[0] == "info"))
-        # 小助手按这份写出来：正在用的那颗标成已确认，过得了运动模式的校验
+        self.assertTrue(any("montagem padrão da IMU" in r[1] for r in self.log.rows if r[0] == "info"))
+        # A calibração gerada pelo helper marca a IMU em uso como confirmada e passa na validação do modo de movimento.
         built = C.build_calibration(rd.calib.value["calibration"], payload["joints"], payload["imu"])
         C.validate_calibration(built, source)
         if source == "bus":
@@ -555,34 +554,34 @@ class DefaultImuTest(Base):
             self.assertEqual(built["imu_mounts"][source], {"quat": want, "verified": True})
 
     def test_bus_uses_the_file_quat(self):
-        self.check("bus", BUS_QUAT, BUS_QUAT, "总线小板（ID 200）", "官方装法")
+        self.check("bus", BUS_QUAT, BUS_QUAT, "Placa do barramento (ID 200)", "montagem oficial")
 
     def test_bus_keeps_a_custom_file_quat(self):
-        self.check("bus", [1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], "总线小板（ID 200）", "官方装法")
+        self.check("bus", [1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], "Placa do barramento (ID 200)", "montagem oficial")
 
     def test_bno08x_uses_fork_default(self):
-        self.check("bno08x", [1.0, 0.0, 0.0, 0.0], [0.5, 0.5, 0.5, 0.5], "BNO085（I²C）", "fork 的默认装法")
+        self.check("bno08x", [1.0, 0.0, 0.0, 0.0], [0.5, 0.5, 0.5, 0.5], "BNO085(I²C)", "montagem padrão do fork")
 
     def test_lsm6dsv16x_uses_replica_mount_not_identity(self):
-        self.check("lsm6dsv16x", [1.0, 0.0, 0.0, 0.0], self.LSM, "LSM6DSV16X（I²C）", "复刻推荐装法，模块 x 朝下、z 朝前")
+        self.check("lsm6dsv16x", [1.0, 0.0, 0.0, 0.0], self.LSM, "LSM6DSV16X(I²C)", "montagem recomendada para a réplica, módulo com x para baixo e z para a frente")
 
     def test_preview_marks_default(self):
         rd = self.rd_for("lsm6dsv16x", [1.0, 0.0, 0.0, 0.0])
         with mock.patch.object(helper, "available", return_value=False):
-            data = self.svc.preview("测试", rd)
+            data = self.svc.preview("teste", rd)
         self.assertEqual(data["imu"]["quat"], self.LSM)
-        self.assertEqual(data["imu"]["default"], "复刻推荐装法，模块 x 朝下、z 朝前")
+        self.assertEqual(data["imu"]["default"], "montagem recomendada para a réplica, módulo com x para baixo e z para a frente")
         back = H.tomllib.loads(data["toml"])
         self.assertEqual(back["imu_mounts"]["lsm6dsv16x"], {"quat": self.LSM, "verified": True})
 
     def test_pending_wins_over_default(self):
         rd = self.rd_for("lsm6dsv16x", [1.0, 0.0, 0.0, 0.0])
         mine = [0.9238795325112867, 0.0, 0.3826834323650898, 0.0]
-        C.save_pending(self.dir, "lsm6dsv16x", mine, {}, "测试", at=3)
+        C.save_pending(self.dir, "lsm6dsv16x", mine, {}, "teste", at=3)
         self.svc.reload(force=True)
         view = self.svc.view(rd)
         self.assertIsNone(view["imu_default"])
-        self.assertIn("IMU 页校过了", self.item("imu", view)["text"])
+        self.assertIn("Calibração feita na página da IMU", self.item("imu", view)["text"])
         payload = self.svc._payload(rd)
         self.assertNotIn("imu_default", payload)
         self.assertEqual(payload["imu"]["source"], "lsm6dsv16x")
@@ -594,7 +593,7 @@ class DefaultImuTest(Base):
         self.svc.rd = rd
         view = self.svc.view(rd)
         self.assertIsNone(view["imu_default"])
-        self.assertIn("已经确认过", self.item("imu", view)["text"])
+        self.assertIn("já foi confirmada", self.item("imu", view)["text"])
         self.assertEqual(self.svc._payload(rd)["imu"], {"source": "bno08x", "quat": MODULE_QUAT})
 
     def test_unmarked_step_two_still_blocks(self):
@@ -607,7 +606,7 @@ class DefaultImuTest(Base):
 
 
 class SharedCodeTest(unittest.TestCase):
-    """小助手和 Studio 里的组 TOML / 校验代码逐字相同：同一份输入必须写出同一份文件。"""
+    """A montagem e a validação TOML do helper e do Studio devem produzir a mesma saída para a mesma entrada."""
 
     def test_same_output_for_bus_and_modules(self):
         cur = current_calibration()
@@ -676,7 +675,7 @@ class BusReadinessTest(Base):
         self.svc.reload(force=True)
         self.rd.bus.value["imu_bus"] = {**info, "identity": [9]}
         self.assertFalse(self.item("imu")["ok"])
-        with self.assertRaisesRegex(C.Refused, "总线.*改变"):
+        with self.assertRaisesRegex(C.Refused, "barramento.*mudou"):
             self.svc._payload()
 
     def test_dxl2_requires_runtime_protocol_verification_even_if_step_skipped(self):
@@ -686,7 +685,7 @@ class BusReadinessTest(Base):
         self.svc.onboard.user_mark.return_value = "skip"
         item = self.item("imu")
         self.assertFalse(item["ok"])
-        self.assertIn("重新标定", item["text"])
+        self.assertIn("recalibrar", item["text"])
         self.assertFalse(item["default"])
 
 
