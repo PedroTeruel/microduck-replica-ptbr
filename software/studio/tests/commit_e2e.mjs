@@ -1,16 +1,16 @@
-// 出厂场景「写进主程序」的端到端（任务 13）：连本机无头 Edge（CDP），走完标定模式 -> 运动模式。
-// 假 robotd 用 --mode commissioning --calib factory 起（出厂未标定）；Studio 由 tests/test_commit_e2e.py 用
-// 一个把 studio.helper.calib_commit 换成假实现的启动脚本拉起（电脑上没有 root 小助手）。
+// Teste ponta a ponta do cenário de fábrica “Gravar no programa principal” (tarefa 13): percorre calibração até o modo de movimento no Edge local sem interface (CDP).
+// O robotd simulado inicia com --mode commissioning --calib factory (sem calibração); tests/test_commit_e2e.py inicia o Studio com um script que substitui
+// studio.helper.calib_commit por uma implementação simulada (o computador não tem o helper root).
 //
-// --phase factory：出厂状态的准备情况（按钮灰着）、预览能展开、每颗的方向 / 限位 / TOML 都在。
-// --phase mark   ：第 1 步点「已完成」（主程序说没标：两步确认）→ ✓，第 3 步准备情况里「舵机零位」一项变绿（任务 16）。
-// --phase imu    ：IMU 页粗校：托起摆正采静止 -> 往前低头采前倾 -> 算方向 -> 交给主程序 verify-imu。
-// --phase servo  ：舵机页一键中位（--servo-sim），然后交还主程序。
-// --phase commit ：第 3 步写进主程序；假小助手让假主程序切 motion + control，清单第 3 步 ✓、顶栏显示运动模式。
-// --phase fail   ：假小助手让标定被拒；页面要能看到失败原因，而且断线期间进度卡不能被「断线时不检查」盖掉。
-// --phase stance0：标定模式下 IMU 页的「站姿使能 / 失能」灰着、写清楚原因、能去第 3 步（任务 17）。
-// --phase stance ：运动模式下「站姿使能」发出的命令跟遥控卡「站起来」一样，「失能」跟顶上「卸力」一样（任务 17）。
-// 结果用 JSON 打到 stdout，由 tests/test_commit_e2e.py 判断。Node >= 22，不需要装包。
+// --phase factory: confira a preparação de fábrica, botões desativados, prévia expansível, direções, limites e TOML de cada servo.
+// --phase mark: conclua a etapa 1 com confirmação dupla se a calibração estiver ausente; o item de zero dos servos na etapa 3 fica verde (tarefa 16).
+// --phase imu: calibração inicial da IMU, amostras em repouso e inclinadas, cálculo de orientação e verificação pelo programa principal.
+// --phase servo: centralize os servos com um clique (--servo-sim) e devolva o controle ao programa principal.
+// --phase commit: grave a etapa 3; o helper simulado muda o robotd para motion + control e a interface mostra a etapa concluída e o modo de movimento.
+// --phase fail: simule a rejeição da calibração; a página deve mostrar o motivo e preservar o progresso durante a desconexão.
+// --phase stance0: no modo de calibração, desative os controles de postura da página IMU, explique o motivo e permita ir à etapa 3 (tarefa 17).
+// --phase stance: no modo de movimento, os controles da página IMU devem enviar os mesmos comandos do cartão de controle (tarefa 17).
+// Os resultados são enviados em JSON para stdout e verificados por tests/test_commit_e2e.py. Requer Node >= 22; sem dependências.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
 
@@ -25,13 +25,13 @@ if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => process.stderr.write(`[commit-e2e] ${a.join(' ')}` + '\n');
 
-// 测试控制口：给假 robotd / 假 configd 发 fake.set（同一个假对象）
+// Interface de controle dos testes: envia fake.set ao robotd/configd simulado (mesmo objeto).
 const fakeRpc = (method, params) => new Promise((resolve, reject) => {
   const s = createConnection({ host: '127.0.0.1', port: FAKE }, () => {
     s.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) + '\n');
   });
   let buf = '', done = false;
-  const timer = setTimeout(() => { if (!done) { done = true; s.destroy(); reject(new Error('fake.set 超时')); } }, 5000);
+  const timer = setTimeout(() => { if (!done) { done = true; s.destroy(); reject(new Error('Tempo limite de fake.set')); } }, 5000);
   s.on('data', (d) => {
     buf += d;
     const i = buf.indexOf('\n');
@@ -58,7 +58,7 @@ ws.addEventListener('message', (ev) => {
   if (m.id && waiting.has(m.id)) { waiting.get(m.id).ok(m); waiting.delete(m.id); }
   if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
   if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') errors.push(m.params.args.map((a) => a.value ?? a.description).join(' '));
-  // 浏览器自带的确认框（比如「它现在是躺着的……确定托好了吗？」）：照 overview_e2e 的做法点「确定」，记下问了什么
+  // Confirmação nativa do navegador (por exemplo, “O robô está deitado...?”): confirme como em overview_e2e e registre a pergunta.
   if (m.method === 'Page.javascriptDialogOpening') { dialogs.push(m.params.message); send('Page.handleJavaScriptDialog', { accept: true }); }
 });
 const dialogs = [];
@@ -129,7 +129,7 @@ const snapshot = () => js(`(() => {
   };
 })()`);
 
-// IMU 页的「站姿使能 / 失能」（任务 17）：按钮状态、旁边那行字；页面发出去的命令（拦 WebSocket.send，只记 cmd）
+// Controles de postura na página da IMU (tarefa 17): estado dos botões, texto explicativo e comandos enviados (intercepta WebSocket.send e registra apenas cmd).
 const stance = () => js(`(() => { const c = document.querySelector('.imu-stance'); if (!c) return null;
   const b = (sel) => { const e = c.querySelector(sel); return e ? { text: e.textContent.trim(), disabled: e.disabled } : null; };
   return { stand: b('.imu-stand'), relax: b('.imu-relax'),
@@ -147,7 +147,7 @@ const sentStand = () => js(`(window.__sent || []).filter((m) => m.name === 'pad.
 const remoteStand = `[...document.querySelectorAll('.pd-remote .pd-big')].find((x) => x.querySelector('b')?.textContent === '站起来')`;
 
 if (PHASE === 'ssh') {
-  // 「更多」页的 SSH 开关（10-21）：卡片在、写清出厂只认钥匙；电脑上没有 root 小助手，后端回「没装小助手」，卡片照实写，不报错
+  // Controle SSH da página Mais (10-21): o cartão informa que a imagem de fábrica aceita apenas chaves; sem helper root, a API relata isso sem erro.
   await js(`location.hash = '#/settings'`);
   await waitFor(`!!document.querySelector('.ssh-settings')`, '更多页的 SSH 卡片', 20000);
   await waitFor(`!/正在读/.test(document.querySelector('.ssh-settings .ssh-now')?.innerText || '正在读')`, 'SSH 卡片读到状态', 20000);
@@ -159,8 +159,8 @@ if (PHASE === 'ssh') {
 }
 
 if (PHASE === 'stance0') {
-  // 标定模式也能站（用户 10-21）：「站姿使能」能点，确认框点确定以后发 imu.op hold（fork hold-home），站姿卡写「标定模式（站着）」；
-  // 「失能（卸力）」也能点，发顶上同一个 relax，卸完回「标定模式（软着）」
+  // Também é possível ficar em pé no modo de calibração (10-21): confirme “Ativar postura”, envie imu.op hold (fork hold-home) e mostre a postura de calibração em pé;
+  // “Desativar (liberar torque)” também funciona, envia o mesmo relax do botão superior e retorna ao estado de calibração sem torque.
   await js(`location.hash = '#/imu'`);
   await waitFor(`!!document.querySelector('.imu-stance')`, 'IMU 页的站姿卡', 20000);
   await waitFor(`/标定模式（软着）/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`, '站姿卡写着标定模式（软着）', 10000);
@@ -183,7 +183,7 @@ if (PHASE === 'stance0') {
 }
 
 if (PHASE === 'stance') {
-  // 运动模式：软着时「站姿使能」能点，发出去的跟遥控卡「站起来」一模一样；「失能」跟顶上「卸力」一样
+  // Modo de movimento: sem torque, “Ativar postura” envia o mesmo comando “Levantar” do cartão de controle; “Desativar” equivale ao botão superior de liberação.
   await fakeSet({ mode: 'motion', calib: 'committed', posture: 'limp', restart: 0.4 });
   await sleep(3000);       // 刚卸力 2 秒内不接受让它动的指令（按钮会灰），手柄快照也 1 秒才刷新：等它过去
   await js(`location.hash = '#/imu'`);
@@ -193,11 +193,11 @@ if (PHASE === 'stance') {
   out.before = await stance();
   await shot('imu-stance-motion.png');
   await recordSends();
-  // 按钮亮着那一刻才点（在页面里等，免得查和点之间它又灰了）
+  // Clique somente quando o botão estiver habilitado; aguarde na página para evitar que seja desativado entre a verificação e o clique.
   await js(`new Promise((ok) => { const t0 = Date.now(); const t = setInterval(() => {
     const b = document.querySelector('.imu-stance .imu-stand');
     if (b && !b.disabled) { clearInterval(t); b.click(); ok(true); } else if (Date.now() - t0 > 10000) { clearInterval(t); ok(false); } }, 50); })`);
-  // 假主程序不一定模拟「站起来」的过程：要验的是发出去的命令跟遥控卡「站起来」一样（那条路真机上是通的）
+  // O programa simulado pode não reproduzir a animação de levantar; valide que o comando enviado é o mesmo do cartão de controle.
   await waitFor(`(window.__sent || []).some((m) => m.name === 'pad.op' && m.args && m.args.op === 'stand')`, '点了站姿使能以后发出站起来', 5000);
   out.standSent = await sentStand();
   await waitFor(`/现在：站着/.test(document.querySelector('.imu-stance .imu-stance-now')?.innerText || '')`,
@@ -209,7 +209,7 @@ if (PHASE === 'stance') {
   try {
     await waitFor(`(() => { const b = ${remoteStand}; return !!b && !b.disabled; })()`, '遥控卡「站起来」能点', 20000);
   } catch (e) {
-    // 偶发（全套一起跑、机器忙时）：把遥控卡每个按钮的字、灰没灰、为什么灰都带上
+    // Em falhas ocasionais com a suíte completa ou máquina ocupada, inclua o texto, estado e motivo de desativação de cada botão.
     const why = await js(`[...document.querySelectorAll('.pd-remote .pd-big')].map((x) => (x.querySelector('b')?.textContent || '?') + '|' + (x.disabled ? '灰' : '亮') + '|' + (x.title || '')).join(' ; ')`);
     throw new Error(`${e.message} ／ 遥控卡按钮：${why}`);
   }
@@ -228,7 +228,7 @@ if (PHASE === 'stance') {
 }
 
 if (PHASE === 'mark') {
-  // 出厂：舵机零位那一行主程序说 15 颗没标（hard）。以前「跳过」灰着、也没有「已完成」；现在点两次能标（用户 10-20）
+  // Fábrica: o programa principal informa que os 15 servos não foram calibrados (hard). A etapa pode ser marcada com confirmação dupla (10-20).
   const servoRow = `document.querySelector('.onb-row[data-step="servo"]')`;
   const servoCheck = `[...(${card}?.querySelectorAll('.onb-checks li') || [])].find((li) => li.innerText.includes('舵机零位'))`;
   await waitFor(`!!${servoRow} && !!${card} && !!(${servoCheck})`, '第 1 步和第 3 步的准备情况', 20000);
@@ -367,7 +367,7 @@ if (PHASE === 'imu' || PHASE === 'imu-hold') {
   await fakeSet({ imu_verify_plan: 'ok' });        // 开发用剧本：主程序先看到摆正，再看到往前低头
   await waitFor(`!![...document.querySelectorAll('.imu-coarse button')].find((b) => b.textContent === '交给主程序验证' && !b.disabled)`, '原粗校验证按钮就绪');
   if (!await clickHas('.imu-coarse button', '交给主程序验证')) throw new Error('找不到「交给主程序验证」');
-  // 验证成功后主程序里 verified 变成 true，粗校卡会收起：看 IMU 页顶部状态变成「方向已确认」。
+  // Após a verificação, verified fica true no programa principal e o cartão de calibração inicial recolhe; confira o estado no topo da página da IMU.
   await waitFor(`/方向已确认/.test(document.querySelector('.sv-metrics')?.innerText || '')`,
     'verify-imu 成功', 40000);
   out.imu = await js(`[document.querySelector('.sv-metrics')?.innerText || '',
@@ -418,7 +418,7 @@ if (PHASE === 'commit' || PHASE === 'fail') {
   out.confirmText = await js(`document.querySelector('[data-step="commit"] .two-step-ask')?.textContent`);
   await sleep(900);       // TwoStep 的 700 ms 保护
   await js(`document.querySelector('[data-step="commit"] .two-step-ask').click()`);
-  // 写入很快时，回执会被最终结果直接替换（甚至第 3 步已经 ✓、卡片收起）：等到回执、进度卡或完成都行。
+  // Se a gravação for rápida, o resultado final pode substituir a confirmação (a etapa 3 pode até estar concluída e recolhida); aguarde a confirmação, o cartão de progresso ou a conclusão.
   await waitFor(`/已经在写|开始写/.test(document.querySelector('[data-step="commit"] .onb-commit-msg')?.innerText || '') ||
     !!document.querySelector('[data-step="commit"] .onb-commit-job') ||
     document.querySelector('[data-step="commit"] .onb-mark')?.getAttribute('aria-label') === '完成'`,
@@ -426,7 +426,7 @@ if (PHASE === 'commit' || PHASE === 'fail') {
   out.started = await snapshot();
 
   if (PHASE === 'fail') {
-    // 假小助手会让假主程序重启一下：断线期间第 3 步的进度卡要单独显示
+    // O helper simulado reinicia o programa principal; o cartão de progresso da etapa 3 deve continuar visível durante a desconexão.
     let offline = null;
     const end = Date.now() + 25000;
     while (Date.now() < end) {
@@ -440,7 +440,7 @@ if (PHASE === 'commit' || PHASE === 'fail') {
     await shot('commit-fail-offline.png');
     await waitFor(`(() => { const m = document.querySelector('[data-step="commit"] .onb-commit-msg.bad');
       return /标定没通过主程序的检查/.test(m?.innerText || ''); })()`, '失败原因', 30000);
-    // 回滚要把主程序重新拉成标定模式：等它回来、标定读得到，第 3 步才会从「读不到」变回「该做」。
+    // O rollback reinicia o programa principal em modo de calibração; aguarde a reconexão e a leitura da calibração antes de validar a etapa 3.
     await waitFor(`document.querySelector('[data-step="commit"] .onb-mark')?.getAttribute('aria-label') === '该做'`,
       '主程序回来后第 3 步回到该做', 30000);
     out.wsCommit = await js(`(async () => {
