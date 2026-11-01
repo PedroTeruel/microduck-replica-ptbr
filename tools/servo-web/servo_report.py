@@ -109,7 +109,7 @@ def report_md(rows, port, t):
         if not r["online"]:
             L.append(f"| {r['id']} | {r['name']} | ✗ | | | | | | | | | |")
             continue
-        L.append(f"| {r['id']} | {r['name']} | ✓ | {r['unload']}（{bits_text(r['unload'])}） | {r['status']}（{bits_text(r['status'])}） "
+        L.append(f"| {r['id']} | {r['name']} | ✓ | {r['unload']} ({bits_text(r['unload'])}) | {r['status']} ({bits_text(r['status'])}) "
                  f"| {r['temp_c']} °C | {r['volt']:.1f} V | {r['current_ma']} mA | {r['pos']} | {r['offset']:+d} "
                  f"| {'Ativado' if r['torque_on'] else 'Desativado'} | {r['firmware']} |")
     L += ["", "## Problemas por servo", ""]
@@ -135,7 +135,7 @@ def run(bus, ids, port, out_dir):
             rows.append(r)
         mark = "✗" if not r["online"] else ("🔴" if r["red"] else ("🟡" if r["yellow"] else "✓"))
         if r["online"] or len(ids) <= 32:
-            print(f"#{sid:<3} {r['name']:<8} {mark}  " + "；".join(r["red"] + r["yellow"])[:160], flush=True)
+            print(f"#{sid:<3} {r['name']:<8} {mark}  " + "; ".join(r["red"] + r["yellow"])[:160], flush=True)
     os.makedirs(out_dir, exist_ok=True)
     base = os.path.join(out_dir, "inspecao-" + time.strftime("%Y%m%d-%H%M%S"))
     with open(base + ".md", "w", encoding="utf-8") as f:

@@ -94,7 +94,7 @@ class TraceTests(unittest.TestCase):
     def test_polling_timeout_still_traces(self):
         self.serial.respond = False
         self.assertEqual(self.client.sync_read([200], 124, 12), {})
-        self.assertIn("← DXL2 无有效状态包", self.logs)
+        self.assertIn("← DXL2 nenhum pacote de estado válido", self.logs)
 
     def test_partial_polling_response_still_traces(self):
         self.assertEqual(self.client.sync_read([200, 201], 124, 12), {200: (0, bytes(12))})

@@ -96,7 +96,7 @@ class Dxl2Bus:
         with self.bus._io:
             ser.reset_input_buffer()
             if ser.write(tx) != len(tx):
-                raise OSError("DXL2 串口数据未完整发送")
+                raise OSError("Os dados seriais DXL2 não foram enviados integralmente")
             # Give the device a full response window after the shared port is
             # acquired and transmission finishes; other commands may hold it.
             deadline = time.monotonic() + self.timeout
@@ -125,7 +125,7 @@ class Dxl2Bus:
                 else:
                     self.bus.trace(f"← DXL2 #{sid} {hexs(payload)}")
             if not replies:
-                self.bus.trace("← DXL2 无有效状态包")
+                self.bus.trace("← DXL2 nenhum pacote de estado válido")
         return replies
 
     def ping(self, device_id):

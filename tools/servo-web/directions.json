@@ -1,5 +1,5 @@
 {
- "_note": "每颗舵机的方向：+1 = 读数变大就是模型里的正方向，-1 = 反的。页面上 ± 改的就是这个文件，3D、站姿、序列、灵动都按它算。2026-09-20 实机逐颗核对：15 颗全是 -1 —— HD-1910 的读数增大方向跟 XL330 相反，而飞特版照搬了 XL330 的装法，所以整体反了一次。",
+ "_note": "Sentido de cada servo: +1 = o aumento da leitura corresponde ao sentido positivo do modelo; -1 = sentido invertido. O controle ± da página altera este arquivo, usado nos cálculos do modelo 3D, da postura em pé, das sequências e do movimento expressivo. Conferência individual no robô real em 20/09/2026: os 15 servos ficaram em -1 — o sentido de aumento da leitura do HD-1910 é oposto ao do XL330, e a versão Feetech copiou a montagem do XL330; por isso, o conjunto inteiro ficou invertido uma vez.",
  "20": -1,
  "21": -1,
  "22": -1,

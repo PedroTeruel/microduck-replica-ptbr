@@ -1,6 +1,5 @@
-# ModeloFonte
+# Fonte do modelo
 
-`model.json` + `meshes.bin` 由 `../build_model.py` 从 [apirrone/microduck_rl](https://github.com/apirrone/microduck_rl)
-的 `src/mjlab_microduck/robot/microduck/robot_allcollisions.xml` 及其 `assets/*.stl` 转换而来（2026-09-17 快照），
-该仓库为 Apache License 2.0。网格是 Pollen Robotics Oficial Microduck CAD 导出 de 。只Preservado了可见外形，去掉了Placa de circuito、轴承等内部件，
-顶点做了 int16 量化。
+`model.json` + `meshes.bin` foram gerados por `../build_model.py` a partir de [apirrone/microduck_rl](https://github.com/apirrone/microduck_rl), usando `src/mjlab_microduck/robot/microduck/robot_allcollisions.xml` e os arquivos `assets/*.stl` (cópia de 17/09/2026).
+Esse repositório usa a licença Apache 2.0. As malhas foram exportadas do CAD oficial do Microduck da Pollen Robotics. O modelo preserva apenas as formas externas visíveis; componentes internos, como placas de circuito e rolamentos, foram removidos.
+Os vértices foram quantizados para `int16`.

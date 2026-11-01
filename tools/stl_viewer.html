@@ -1,4 +1,4 @@
-<title>STL 查看器</title>
+<title>Visualizador STL</title>
 <style>
   :root{--bg:#f2f3f5;--fg:#1c1d1f;--pan:#fff;--bd:#d8dade;--acc:#2f6fd0}
   @media (prefers-color-scheme:dark){:root:not([data-theme=light]){
@@ -20,18 +20,18 @@
 </style>
 <canvas id="cv"></canvas>
 <div id="hud">
-  <h1>STL 查看器</h1>
+  <h1>Visualizador STL</h1>
   <input id="f" type="file" accept=".stl">
-  <div class="hint">或把 .stl 文件拖进窗口</div>
-  <div id="info">尚未加载</div>
+  <div class="hint">Ou arraste um arquivo .stl para a janela</div>
+  <div id="info">Nenhum arquivo carregado</div>
 </div>
-<div id="drop">松开以载入</div>
+<div id="drop">Solte para carregar</div>
 <script>
 const cv=document.getElementById('cv'),info=document.getElementById('info'),drop=document.getElementById('drop');
 const gl=cv.getContext('webgl',{antialias:true});
-if(!gl){info.textContent='此浏览器不支持 WebGL';}
+if(!gl){info.textContent='Este navegador não oferece suporte a WebGL';}
 
-/* ---------- 迷你矩阵库 ---------- */
+/* ---------- Biblioteca compacta de matrizes ---------- */
 const M={
   ident:()=>[1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1],
   mul:(a,b)=>{const o=new Array(16);
@@ -49,7 +49,7 @@ const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 const norm=a=>{const l=Math.hypot(...a)||1;return [a[0]/l,a[1]/l,a[2]/l];};
 
-/* ---------- 着色器 ---------- */
+/* ---------- Shaders ---------- */
 const VS=`attribute vec3 p;attribute vec3 n;uniform mat4 mvp,mv;varying vec3 vn,vp;
 void main(){vn=mat3(mv)*n;vp=(mv*vec4(p,1.)).xyz;gl_Position=mvp*vec4(p,1.);}`;
 const FS=`precision mediump float;varying vec3 vn,vp;uniform vec3 col;
@@ -66,10 +66,10 @@ if(gl){prog=gl.createProgram();gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS));
   gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(prog);gl.useProgram(prog);
   gl.enable(gl.DEPTH_TEST);}
 
-/* ---------- 二进制 / ASCII STL 解析 ---------- */
+/* ---------- Leitura de STL binário / ASCII ---------- */
 function parseSTL(buf){
   const dv=new DataView(buf);
-  // 判定：二进制 STL 的 84 字节头之后应正好是 n*50 字节
+  // Critério: depois do cabeçalho de 84 bytes, um STL binário deve ter exatamente n*50 bytes.
   let bin=false;
   if(buf.byteLength>=84){const n=dv.getUint32(80,true);
     bin = (84+n*50===buf.byteLength);}
@@ -82,7 +82,7 @@ function parseSTL(buf){
         P[k++]=dv.getFloat32(o+20+v*12,true);}}
     return P;
   }
-  // ASCII 回退
+  // Alternativa para arquivos ASCII.
   const txt=new TextDecoder().decode(buf),out=[];
   const re=/vertex\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)/g;let m;
   while((m=re.exec(txt)))out.push(+m[1],+m[2],+m[3]);
@@ -99,13 +99,13 @@ function faceNormals(P){
   return N;
 }
 
-/* ---------- 场景状态 ---------- */
+/* ---------- Estado da cena ---------- */
 let nTri=0,center=[0,0,0],radius=1,pb=null,nb=null;
 let yaw=-0.6,pitch=-0.25,dist=3,panX=0,panY=0;
 
 function load(buf,name){
   const P=parseSTL(buf);
-  if(!P.length){info.textContent='解析失败：不是有效的 STL';return;}
+  if(!P.length){info.textContent='Falha ao analisar: arquivo STL inválido';return;}
   nTri=P.length/9;
   let mn=[1e30,1e30,1e30],mx=[-1e30,-1e30,-1e30];
   for(let i=0;i<P.length;i+=3)for(let a=0;a<3;a++){
@@ -119,13 +119,13 @@ function load(buf,name){
   pb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,pb);gl.bufferData(gl.ARRAY_BUFFER,P,gl.STATIC_DRAW);
   nb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,nb);gl.bufferData(gl.ARRAY_BUFFER,N,gl.STATIC_DRAW);
   info.textContent=`${name}
-三角面 ${nTri.toLocaleString()}
-尺寸 ${size[0].toFixed(1)} × ${size[1].toFixed(1)} × ${size[2].toFixed(1)} mm
-左键旋转 · 右键平移 · 滚轮缩放`;
+Triângulos: ${nTri.toLocaleString()}
+Dimensões: ${size[0].toFixed(1)} × ${size[1].toFixed(1)} × ${size[2].toFixed(1)} mm
+Botão esquerdo: girar · botão direito: mover · roda: zoom`;
   draw();
 }
 
-/* ---------- 渲染 ---------- */
+/* ---------- Renderização ---------- */
 function draw(){
   if(!pb)return;
   const dpr=Math.min(devicePixelRatio||1,2);
@@ -150,7 +150,7 @@ function draw(){
   gl.drawArrays(gl.TRIANGLES,0,nTri*3);
 }
 
-/* ---------- 交互 ---------- */
+/* ---------- Interação ---------- */
 let down=0,lx=0,ly=0;
 cv.addEventListener('mousedown',e=>{down=e.button+1;lx=e.clientX;ly=e.clientY;e.preventDefault();});
 addEventListener('mouseup',()=>down=0);
@@ -165,7 +165,7 @@ cv.addEventListener('wheel',e=>{e.preventDefault();
 addEventListener('resize',draw);
 matchMedia('(prefers-color-scheme:dark)').addEventListener('change',draw);
 
-/* ---------- 文件载入 ---------- */
+/* ---------- Carregamento de arquivos ---------- */
 function readFile(f){const r=new FileReader();
   r.onload=()=>load(r.result,f.name);r.readAsArrayBuffer(f);}
 document.getElementById('f').addEventListener('change',e=>{if(e.target.files[0])readFile(e.target.files[0]);});
