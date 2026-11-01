@@ -1274,7 +1274,7 @@ class MotionTest(PadTestBase):
                 with self.assertRaises(P.Refused) as cm:
                     self.ops.handle({"op": "stand"})
                 self.assertIn(word, str(cm.exception))
-        # 卸力后 2 秒内不让站起来（防止刚卸力又被顶起来）
+        # Não permita levantar por 2 s após aliviar o torque, para evitar reativação imediata.
         self.pose("limp")
         self.relax_pressed()
         self.pose("limp", keep_guard=True)
@@ -1287,7 +1287,7 @@ class MotionTest(PadTestBase):
         sk = {s["name"]: s for s in self.ops.snapshot()["motion"]["skills"]}
         self.assertEqual(list(sk), ["ground_pick", "roulade", "kick_left", "kick_right", "roller_stand"])
         self.assertTrue(sk["kick_left"]["ok"])
-        self.assertIn("滑轮", sk["roller_stand"]["why"])       # 轮滑起身只在轮滑模式
+        self.assertIn("rodas", sk["roller_stand"]["why"])     # A habilidade de levantar com rodas só vale no modo de rodas.
         self.ops.handle({"op": "skill", "name": "kick_left"})
         self.assertEqual(self.robot.calls[-1], ("robot.do", {"skill": "kick_left"}))
         with self.assertRaises(P.Refused):
@@ -1306,7 +1306,7 @@ class MotionTest(PadTestBase):
             self.ops.handle({"op": "sound", "tag": "greet"})
         self.assertIn("没有声音", str(cm.exception))
         with self.assertRaises(P.Refused):
-            self.ops.handle({"op": "sound", "tag": "wheee"})       # 要一直按着发的，不做成一次性按钮
+            self.ops.handle({"op": "sound", "tag": "wheee"})       # É um comando mantido enquanto pressionado, não um botão de toque único.
 
     def test_one_command_at_a_time(self):
         self.pose("limp")
@@ -1322,7 +1322,7 @@ class MotionTest(PadTestBase):
         t.join()
 
     def test_pad_attached_still_allows_discrete_commands(self):
-        """实体手柄连着：站 / 走 / 坐 / 技能是一次性的请求，跟 padd 不抢，照常能用；摇杆和动作不行。"""
+        """Com um controle físico conectado, levantar, caminhar, sentar e habilidades continuam como solicitações pontuais; analógicos e ações ficam indisponíveis."""
         self.cfg.connect_pad(XBOX, "Xbox Wireless Controller")
         self.ops.handle({"op": "refresh"})
         self.pose("policy")
@@ -1331,7 +1331,7 @@ class MotionTest(PadTestBase):
         self.assertIn("实体手柄", acts["nod"]["why"])
 
 
-# ---------------- 动作、组合动作 ----------------
+# ---------------- Ações e sequências ----------------
 
 class ActionTest(PadTestBase):
     def setUp(self):
@@ -1361,7 +1361,7 @@ class ActionTest(PadTestBase):
         self.assertIn("停了", self.ops.snapshot()["motion"]["last_action"]["result"])
 
     def test_page_stops_saying_hold_means_stop(self):
-        """松手、切页、断网、转后台：页面不再说「还按着」，0.45 秒内停，嘴合上。"""
+        """Ao soltar, trocar de página, desconectar ou ir para segundo plano, encerre a ação em até 0,45 s e feche a boca."""
         self.ops.handle({"op": "action_start", "id": "mouth"})
         wait_until(lambda: self.ops.snapshot()["motion"]["running"] is None, timeout=2, what="自己停")
         mouths = [p for m, p in self.robot.sent if m == "robot.mouth"]
@@ -1375,11 +1375,11 @@ class ActionTest(PadTestBase):
         wait_until(lambda: self.ops.snapshot()["motion"]["running"] is not None, what="在做")
         stop.set()
         self.presses += 1
-        self.robot_ok(posture="policy", policies=POLICIES)          # 顶上按了卸力
+        self.robot_ok(posture="policy", policies=POLICIES)          # O botão superior de liberação foi pressionado.
         wait_until(lambda: self.ops.snapshot()["motion"]["running"] is None, what="卸力打断")
         self.assertIn("卸力", self.ops.snapshot()["motion"]["last_action"]["result"])
         self.assertEqual(self.robot.calls[0], ("robot.sound", {"tag": "greet"}))
-        # 实体手柄连上：也打断
+        # A conexão de um controle físico também interrompe a ação.
         time.sleep(FAST["relax_guard"] + 0.05)
         self.robot_ok(posture="policy", policies=POLICIES)
         stop = threading.Event()
@@ -1435,7 +1435,7 @@ class ActionTest(PadTestBase):
 
 
 class Review2Test(PadTestBase):
-    """第二轮审查（padreview2 repro2.py Q1–Q8、repro3.py Q9）的反例。"""
+    """Casos de regressão da segunda rodada de revisão (padreview2 repro2.py Q1–Q8 e repro3.py Q9)."""
 
     def feed(self, posture="policy", **kw):
         pol = kw.pop("pol", {})
@@ -1444,7 +1444,7 @@ class Review2Test(PadTestBase):
         self.robot_ok(posture=posture, policies=policies, bus=b, **kw)
 
     def test_q1_drive_off_then_late_move_is_dropped(self):
-        """关掉网页摇杆 → stop(6) → 线程池里晚到的 move(5)：不发、拿不回方向盘；只有再 drive on 才解开。"""
+        """Desative o analógico web, envie stop(6) e receba move(5) atrasado na thread: não envie nem retome o controle até um novo drive on."""
         self.feed()
         self.ops.handle({"op": "move", "vx": 0.2, "seq": 4}, by="A", conn="a")
         self.ops.handle({"op": "drive", "on": False}, by="A", conn="a")
@@ -1456,34 +1456,34 @@ class Review2Test(PadTestBase):
         snap = self.ops.snapshot(conn="a")["virtual"]
         self.assertIsNone(snap["driver"])
         self.assertIsNone(snap["owner"])
-        self.ops.handle({"op": "watch"}, conn="a")              # 开着页面不续方向盘
+        self.ops.handle({"op": "watch"}, conn="a")              # Manter a página aberta não renova o controle do analógico.
         self.assertIsNone(self.ops.snapshot(conn="a")["virtual"]["driver"])
         self.ops.handle({"op": "drive", "on": True}, by="A", conn="a")
         self.assertEqual(self.ops.handle({"op": "move", "vx": 0.1, "seq": 8}, by="A", conn="a")["sent"][0], 0.1)
 
     def test_q2_disconnect_then_late_move_is_dropped(self):
-        """页面断了：先同步 mark_gone、再线程池 drop_client；之后晚到的 move 不发，别的页面马上能开。"""
+        """Ao desconectar a página, mark_gone é síncrono e drop_client roda na thread; comandos move atrasados são ignorados e outra página pode assumir."""
         self.feed()
         self.assertTrue(self.ops.new_conn() != self.ops.new_conn())
         self.ops.handle({"op": "move", "vx": 0.2, "seq": 7}, by="A", conn="a")
         self.assertTrue(self.ops.mark_gone("a"))
-        self.assertIsNone(self.ops.snapshot()["virtual"]["driver"])      # 同步那一下就松开了
+        self.assertIsNone(self.ops.snapshot()["virtual"]["driver"])      # O controle é liberado imediatamente na etapa síncrona.
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "move", "vx": 0.25, "seq": 8}, by="A", conn="a")
         self.ops.drop_client("a", "A")
         self.assertEqual(self.robot.sent[-1], ("robot.move", {"vx": 0.0, "vy": 0.0, "vyaw": 0.0}))
         self.assertIn("dropped", self.ops._move({"vx": 0.25, "seq": 9}, "a", "A"))
         with self.assertRaises(P.Refused):
-            self.ops.handle({"op": "drive", "on": True}, by="A", conn="a")   # 断开的永远拿不回
+            self.ops.handle({"op": "drive", "on": True}, by="A", conn="a")   # Uma conexão encerrada não pode recuperar o controle.
         self.assertEqual(self.ops.handle({"op": "move", "vx": 0.1, "seq": 1}, by="B", conn="b")["sent"][0], 0.1)
 
     def test_q3_walk_stop_from_any_page_and_while_busy(self):
-        """「停下（站好）」不看方向盘、不排队；一次性的命令不拿方向盘。"""
+        """“Parar e ficar em pé” não depende do controle do analógico nem entra na fila; comandos pontuais não tomam posse do analógico."""
         self.feed("holding")
         self.ops.handle({"op": "walk"}, by="手机 A", conn="a")
         self.assertIsNone(self.ops.snapshot()["virtual"]["driver"])
         self.feed("walking", applied=[0.0, 0.0, 0.0])
-        self.ops.handle({"op": "move", "vx": 0.2, "seq": 1}, by="手机 A", conn="a")     # A 正在推摇杆
+        self.ops.handle({"op": "move", "vx": 0.2, "seq": 1}, by="Celular A", conn="a")     # A está usando o analógico.
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "skill", "name": "kick_left"}, by="电脑 B", conn="b")
         gate = threading.Event()
@@ -1491,7 +1491,7 @@ class Review2Test(PadTestBase):
         t = threading.Thread(target=self.ops.handle, args=({"op": "skill", "name": "kick_left"}, "手机 A", "a"))
         t.start()
         wait_until(lambda: self.ops.snapshot()["motion"]["busy"], what="技能在路上")
-        self.ops.handle({"op": "walk_stop"}, by="电脑 B", conn="b")                    # 别的页面、上一个还没回话：照样停
+        self.ops.handle({"op": "walk_stop"}, by="Computador B", conn="b")                    # Outra página pode parar mesmo sem resposta do comando anterior.
         self.assertEqual(self.robot.methods()[-2:], ["robot.stop", "robot.enable"])
         gate.set()
         t.join()
@@ -1504,7 +1504,7 @@ class Review2Test(PadTestBase):
         self.assertEqual(self.ops.handle({"op": "move", "vx": 0.2, "seq": 3}, conn="a")["sent"][0], 0.2)
 
     def test_q5_relax_guard_covers_everything_and_all_sources(self):
-        """卸力保护：顶上按钮按下那一刻（note_relax）、手柄 Select / 摔倒（回读扭矩开→关）都算；挡 walk / sit / skill / 动作 / 摇杆。"""
+        """Proteção após liberar torque: considera o botão superior, Select físico ou queda (leitura muda de torque ligado para desligado) e bloqueia caminhada, sentar, habilidades, ações e analógicos."""
         self.feed("policy")
         self.ops.note_relax("电脑")
         for args in ({"op": "sit"}, {"op": "skill", "name": "kick_left"}, {"op": "action_start", "id": "nod"},
@@ -1513,13 +1513,13 @@ class Review2Test(PadTestBase):
                 with self.assertRaises(P.Refused) as cm:
                     self.ops.handle(args)
                 self.assertIn("卸", str(cm.exception))
-        self.ops.handle({"op": "sound", "tag": "chirp"})                 # 叫一声不动关节：照样能叫
+        self.ops.handle({"op": "sound", "tag": "chirp"})                 # O som não movimenta as articulações e continua disponível.
         time.sleep(FAST["relax_guard"] + 0.05)
         self.feed("holding")
         self.ops.handle({"op": "walk"})
         self.ops._relax_at = -1e9
         self.feed("holding")
-        self.feed("limp", torque_on=False)                                # 不经过 Studio 的卸力（手柄 Select、摔倒）
+        self.feed("limp", torque_on=False)                                # Liberação externa ao Studio, por Select ou queda.
         b = self.ops.snapshot()["motion"]["buttons"]
         self.assertFalse(b["stand"]["ok"])
         self.assertIn("卸", b["stand"]["why"])
@@ -1548,7 +1548,7 @@ class Review2Test(PadTestBase):
                 self.ops.handle({"op": "action_hold"}, conn="a")
                 time.sleep(0.05)
         self.feed()
-        self.ops.handle({"op": "action_start", "id": "happy"}, conn="a")     # 叫一声 → 嘴一张一合 → 点头
+        self.ops.handle({"op": "action_start", "id": "happy"}, conn="a")     # Emite um som, abre e fecha a boca e acena com a cabeça.
         threading.Thread(target=hold, daemon=True).start()
         wait_until(lambda: any(m == "robot.mouth" for m, _ in self.robot.sent), what="在张嘴")
         self.ops.note_relax("电脑")
@@ -1560,7 +1560,7 @@ class Review2Test(PadTestBase):
         tail = {m: p for m, p in self.robot.sent[-2:]}
         self.assertEqual(tail.get("robot.mouth"), {"open": 0.0})
         self.assertEqual(tail.get("robot.head"), {"neck_pitch": 0.0, "head_pitch": 0.0, "head_yaw": 0.0, "head_roll": 0.0})
-        # 技能组合：第一脚踢完、等的时候卸力：第二脚不再发
+        # Sequência de habilidades: se o torque for liberado enquanto aguarda após o primeiro chute, não envie o segundo.
         self.ops._relax_at = -1e9
         time.sleep(0.05)
         self.feed()
@@ -1612,11 +1612,11 @@ class Review2Test(PadTestBase):
         self.assertIn("配对", self.ops.snapshot()["motion"]["buttons"]["walk"]["why"])
         self.ops.handle({"op": "cancel"})
         self.wait_wiz("failed")
-        # configd 读不到、按键也没权限读：页面写「认不出有没有实体手柄」
+        # Se configd e as permissões de leitura dos botões estiverem indisponíveis, informe que não foi possível identificar um controle físico.
         self.cfg.status_exc = Unreachable("/run/configd.sock 不在")
         self.watch()
         self.tap.on_state("denied", "没权限连 unix:/run/padd/pad.sock")
-        self.ops._status_at = time.monotonic() - 30                      # 前面搜索时问到的 pad.status 也过期了
+        self.ops._status_at = time.monotonic() - 30                      # O pad.status consultado durante a busca também expirou.
         v = self.ops.snapshot()["virtual"]
         self.assertFalse(v["mirror"])
         self.assertIn("按键也读不到", v["pad_unknown"])
@@ -1652,7 +1652,7 @@ POSE_OFF = {"active": False}
 
 
 class VpadTest(PadTestBase):
-    """第三轮：网页手柄图本身能按（pad-vpad-plan.md §8，审查 pad-vpad-review.md V1–V20）。"""
+    """Terceira rodada: botões ilustrados do controle web são interativos (pad-vpad-plan.md §8, revisões V1–V20 de pad-vpad-review.md)."""
 
     def feed(self, posture="policy", **kw):
         pol = kw.pop("pol", {})
@@ -1672,7 +1672,7 @@ class VpadTest(PadTestBase):
         return [p for _, p in self.sent("robot.head")]
 
     def s(self):
-        """页面的递增序号（一个页面只有一个计数，跟 pad.js 的 nextSeq 一样）。"""
+        """Contador sequencial da página; há um por página, igual a nextSeq em pad.js."""
         return next(self._n)
 
     def into(self, mode, conn="a", seq=None):
