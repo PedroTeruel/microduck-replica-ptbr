@@ -2459,25 +2459,25 @@ class ComboTest(unittest.TestCase):
             C.clean_combo({"id": "long", "name": "x", "steps": [{"do": "wait", "ms": 3000}] * 8})
 
 
-# ---------------- 解析：实时按键、bluetoothctl ----------------
+# ---------------- Leitura de controles em tempo real e bluetoothctl ----------------
 
 class LiveInputTest(unittest.TestCase):
     def test_xbox_ble_layout(self):
-        """注意：Xbox 的 X / Y 键码对调是推测（E9 待上机核），这里只测「按推测的规则翻」，页面上写明待核。"""
+        """A inversão dos códigos X/Y do Xbox é uma hipótese ainda não verificada no hardware (E9)."""
         li = P.LiveInput()
         li.attach(XBOX_DEV, 0.0)
         self.assertEqual(li.kind, "xbox")
         self.assertTrue(li.view(0.0)["device"]["keys_unverified"])
-        li.frame({"events": [{"kind": 1, "code": 0x133, "value": 1}]}, 1.0)       # 推测：印 X 的键报 BTN_X(0x133)
+        li.frame({"events": [{"kind": 1, "code": 0x133, "value": 1}]}, 1.0)       # Hipótese: o botão marcado X envia BTN_X (0x133).
         self.assertTrue(li.buttons["west"])
         li.frame({"events": [{"kind": 3, "code": 2, "value": 32767}, {"kind": 3, "code": 9, "value": 1023},
                              {"kind": 3, "code": 17, "value": -1}]}, 1.1)
-        self.assertAlmostEqual(li.axes["rx"], 1.0, places=2)                       # BLE：右摇杆是 Z
-        self.assertAlmostEqual(li.axes["rt"], 1.0, places=2)                       # 扳机是 GAS
-        self.assertTrue(li.buttons["du"])                                          # 十字上
+        self.assertAlmostEqual(li.axes["rx"], 1.0, places=2)                       # No BLE, o analógico direito usa Z.
+        self.assertAlmostEqual(li.axes["rt"], 1.0, places=2)                       # O gatilho usa GAS.
+        self.assertTrue(li.buttons["du"])                                          # Direcional para cima.
         self.assertIn("rs", li.seen)
         self.assertIs(li.frame({"events": [{"kind": 1, "code": 0x13A, "value": 1}]}, 1.2), True)
-        self.assertIsNone(li.frame({"events": [{"kind": 1, "code": 0x13A, "value": 2}]}, 1.3))  # 自动重复不是松开
+        self.assertIsNone(li.frame({"events": [{"kind": 1, "code": 0x13A, "value": 2}]}, 1.3))  # A repetição automática não é uma soltura.
         self.assertIs(li.frame({"events": [{"kind": 1, "code": 0x13A, "value": 0}]}, 1.4), False)
         li.frame({"events": [{"kind": 1, "code": 0x2C0, "value": 1, "name": "BTN_TRIGGER_HAPPY1"}]}, 1.5)
         self.assertEqual(li.view(2.0)["other"], ["BTN_TRIGGER_HAPPY1"])
@@ -2493,7 +2493,7 @@ class LiveInputTest(unittest.TestCase):
 
 
 class FakeProc:
-    """假的 bluetoothctl 进程：stdin 收到命令，按剧本往 stdout 吐几块（一块不一定是一整行：提示符后面没有换行）。"""
+    """Processo bluetoothctl falso que responde às entradas em blocos, que podem não conter linhas completas."""
 
     def __init__(self, script):
         self.script = script
@@ -2512,7 +2512,7 @@ class FakeProc:
         cmd = text.strip()
         self.got.append(cmd)
         out = self.script.get(cmd, [])
-        for line in out() if callable(out) else out:          # 可以是函数：同一条命令每次回得不一样
+        for line in out() if callable(out) else out:          # Uma função pode variar a resposta para o mesmo comando.
             self.q.put(line)
         if cmd == "quit":
             self.q.put(None)
@@ -2561,7 +2561,7 @@ class BluetoothctlTest(unittest.TestCase):
 
     def script(self, pair_ok=True):
         return {
-            "": [f"{self.PROMPT}[NEW] Device 11:22:33:44:55:66 Old Phone\n"],                 # 缓存的旧设备：不算看到
+            "": [f"{self.PROMPT}[NEW] Device 11:22:33:44:55:66 Old Phone\n"],                 # Dispositivo antigo em cache não conta como encontrado na busca.
             "agent off": ["Agent unregistered\n"],
             "agent NoInputNoOutput": ["Agent registered\n"],
             "default-agent": ["Default agent request successful\n"],
@@ -2569,7 +2569,7 @@ class BluetoothctlTest(unittest.TestCase):
                         f"\r{self.PROMPT}\x1b[K[\x1b[0;92mNEW\x1b[0m] Device {PRO} Pro Controller\n",
                         f"[CHG] Device {PRO} RSSI: 0xffffffc7 (-57)\n"],
             "scan off": ["Discovery stopped\n"],
-            # 真 bluetoothctl 的代理提问是 readline 提示符，后面没有换行（审查 4）
+            # O prompt real do agente bluetoothctl não termina com uma nova linha.
             f"pair {PRO}": (["Attempting to pair with " + PRO + "\n", "\x1b[0;91m[agent]\x1b[0m Accept pairing (yes/no): "] if pair_ok else
                             ["Attempting to pair with " + PRO + "\n", "Failed to pair: org.bluez.Error.AuthenticationFailed\n"]),
             "yes": [f"\n[CHG] Device {PRO} Paired: yes\n", "Pairing successful\n"],
@@ -2601,9 +2601,9 @@ class BluetoothctlTest(unittest.TestCase):
         devs = {d["mac"]: d for d in bt.devices()}
         self.assertEqual(devs[PRO]["name"], "Pro Controller")
         self.assertEqual(devs[PRO]["cls"], 0x2508)
-        self.assertIsNone(devs["11:22:33:44:55:66"].get("seen_at"))         # 搜索前的缓存不算
-        self.assertEqual(self.proc.got[0], "agent off")                     # 审查 5：启动自带的代理先撤掉
-        self.assertNotIn("agent NoInputNoOutput", self.proc.got)            # 搜索不注册代理
+        self.assertIsNone(devs["11:22:33:44:55:66"].get("seen_at"))         # O dispositivo em cache não foi encontrado nesta busca.
+        self.assertEqual(self.proc.got[0], "agent off")                     # Remove o agente existente ao iniciar.
+        self.assertNotIn("agent NoInputNoOutput", self.proc.got)            # A busca não registra um agente.
         bt.close()
         self.assertIn("quit", self.proc.got)
 
@@ -2614,19 +2614,19 @@ class BluetoothctlTest(unittest.TestCase):
         bt.pair_device(PRO, True, threading.Event(), lambda k, s, n=None: steps.append((k, s)))
         self.assertEqual([c for c in self.proc.got if c.split()[0] in ("pair", "trust", "connect")],
                          [f"pair {PRO}", f"trust {PRO}", f"connect {PRO}"])
-        self.assertIn("yes", self.proc.got)                                   # 提示符没换行也答了 yes
+        self.assertIn("yes", self.proc.got)                                   # Responde yes mesmo sem quebra de linha no prompt.
         self.assertEqual(steps[-1], ("connect", "ok"))
         got = self.proc.got
         i_agent, i_pair = got.index("agent NoInputNoOutput"), got.index(f"pair {PRO}")
         self.assertLess(i_agent, i_pair)
-        self.assertEqual(got[-1], "agent off")                                # 配完交还代理
+        self.assertEqual(got[-1], "agent off")                                # Remove o agente ao terminar o pareamento.
         bt.close()
 
     def test_prompt_outside_pairing_is_answered_no(self):
         s = dict(self.script(), **{"scan on": ["Discovery started\n", "[agent] Authorize service 0000110e (yes/no): "]})
         bt = self.make(script=s)
         bt.scan_start()
-        wait_until(lambda: "no" in self.proc.got, what="答 no")
+        wait_until(lambda: "no" in self.proc.got, what="respondeu no")
         self.assertNotIn("yes", self.proc.got)
         bt.close()
 
@@ -2640,7 +2640,7 @@ class BluetoothctlTest(unittest.TestCase):
         bt.close()
 
     def test_success_marks_are_locked_to_the_mac(self):
-        """审查 11：别的设备的 Paired: yes 不算；搜不到这个设备报 not_found，不报 timeout。"""
+        """Um evento Paired: yes de outro dispositivo não conta; dispositivo ausente deve retornar not_found."""
         s = self.script()
         s[f"pair {PRO}"] = ["Attempting to pair with " + PRO + "\n", "[CHG] Device 11:22:33:44:55:66 Paired: yes\n"]
         bt = self.make(script=s)
@@ -2658,8 +2658,7 @@ class BluetoothctlTest(unittest.TestCase):
         bt.close()
 
     def test_startup_agent_registered_late_is_replaced(self):
-        """10-19 二号鸭（bluetoothctl 5.82）：开会话那句 agent off 回「No agent is registered」，随后它自带的代理才注册上；
-        配对时 agent NoInputNoOutput 回「Agent is already registered」→ 先撤掉、再注册一次，照常配上。"""
+        """No bluetoothctl 5.82, o agente padrão pode registrar depois da abertura da sessão; substituí-lo permite parear normalmente."""
         s = self.script()
         offs = iter([["No agent is registered\n", "Agent registered\n"]])
         ons = iter([["Agent is already registered\n"]])
@@ -2675,8 +2674,7 @@ class BluetoothctlTest(unittest.TestCase):
         bt.close()
 
     def test_connect_busy_right_after_pairing_waits_then_retries(self):
-        """10-19 二号鸭 G50 Pro：配完马上 connect 回 InProgress br-connection-busy（手柄自己也在连）。
-        手柄自己连上了就算成；没连上等一会儿再连一次。"""
+        """Se a conexão retornar br-connection-busy após o pareamento, aceita a conexão do próprio controle ou tenta novamente."""
         busy = ["Attempting to connect to " + PRO + "\n", "Failed to connect: org.bluez.Error.InProgress br-connection-busy\n"]
         for self_connects in (True, False):
             with self.subTest(self_connects=self_connects):
@@ -2694,7 +2692,7 @@ class BluetoothctlTest(unittest.TestCase):
                 bt.close()
 
     def test_agent_failure_and_scan_failure_close_the_session(self):
-        """审查 6：注册代理失败、搜索起不来：会话要关掉，不留孤儿进程。"""
+        """Fecha a sessão sem deixar processos órfãos quando o agente ou a busca falha."""
         s = self.script()
         s["agent NoInputNoOutput"] = ["Failed to register agent object\n"]
         bt = self.make(script=s)
@@ -2715,12 +2713,12 @@ class BluetoothctlTest(unittest.TestCase):
         bt = self.make(prefix=("sudo", "-n"))
         bt.scan_start()
         self.assertEqual(self.argv, ["sudo", "-n", "stdbuf", "-oL", "bluetoothctl"])
-        self.proc.wait_ok = False                                             # quit 之后不退：先 terminate 再 kill
+        self.proc.wait_ok = False                                             # Se quit não encerrar o processo, tenta terminate e depois kill.
         bt.close()
         self.assertEqual((self.proc.terminated, self.proc.killed), (1, 1))
 
     def test_real_pipe_prompt_without_newline(self):
-        """用真的子进程（真管道）：提示符没有换行，按块读也能马上答 yes（审查 4 的根因）。"""
+        """Com um subprocesso e pipes reais, responde yes imediatamente a um prompt sem quebra de linha."""
         child = (
             "import sys\n"
             "o=sys.stdout.buffer\n"
@@ -2772,7 +2770,7 @@ class ParseTest(unittest.TestCase):
     def test_gamepad_rules_match_configd(self):
         self.assertEqual(P.gamepad_evidence("x", icon="input-gaming"), "classified")
         self.assertEqual(P.gamepad_evidence("x", cls=0x002508), "classified")
-        self.assertEqual(P.gamepad_evidence("x", cls=0x002540), None)          # 键盘
+        self.assertEqual(P.gamepad_evidence("x", cls=0x002540), None)          # Teclado.
         self.assertEqual(P.gamepad_evidence("x", appearance=0x03C4), "classified")
         self.assertEqual(P.gamepad_evidence("BLE Controller_280609"), "name")
         self.assertIsNone(P.gamepad_evidence("Galaxy Buds", icon="audio-headset"))
@@ -2807,10 +2805,10 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(v["policies"]["skills"], POLICIES["skills"])
 
 
-# ---------------- 真端口：本机 TCP 假服务（审查 20） ----------------
+# ---------------- Teste de portas reais: serviço TCP local falso ----------------
 
 class FakeServer:
-    """一个本机 TCP 服务：每来一个连接，在线程里跑 handler(sock)。"""
+    """Servidor TCP local que executa handler(sock) em uma thread para cada conexão."""
 
     def __init__(self, handler):
         self.handler = handler
@@ -2886,7 +2884,7 @@ class PortTest(unittest.TestCase):
         self.assertEqual(cm.exception.message, "bad")
         srv.close()
 
-        srv = FakeServer(lambda c: read_line(c))           # 收了就关：没回话
+        srv = FakeServer(lambda c: read_line(c))           # Fecha sem enviar uma resposta.
         with self.assertRaises(Unreachable):
             P.rpc_call(srv.addr, "x", {}, 2.0)
         srv.close()
@@ -2897,8 +2895,8 @@ class PortTest(unittest.TestCase):
         srv.close()
 
         with self.assertRaises(Unreachable):
-            P.rpc_call("unix:/nonexistent/configd.sock", "x", {}, 1.0)     # 鸭子上：socket 不在
-        with self.assertRaises((Unreachable, Timeout)):                    # 没人听的端口：Linux 立刻拒绝，Windows 要等超时
+            P.rpc_call("unix:/nonexistent/configd.sock", "x", {}, 1.0)     # O socket não existe neste ambiente de teste.
+        with self.assertRaises((Unreachable, Timeout)):                    # A porta sem serviço falha ou expira, conforme o sistema.
             P.rpc_call(free_port_addr(), "x", {}, 1.0)
 
     def test_permission_error_is_its_own_kind(self):
@@ -2923,19 +2921,19 @@ class PortTest(unittest.TestCase):
         def on_report(r):
             if r.get("report") == "attached" and boom["n"] == 0:
                 boom["n"] += 1
-                raise ValueError("回调里出错")
+            raise ValueError("erro no callback")
             reports.append(r)
         tmp = tempfile.TemporaryDirectory()
         log = Log(Path(tmp.name), echo=False, background=False)
         t = P.PaddTap(srv.addr, reconnect_s=0.05, log=log)
         t.start(on_report, lambda s, why=None: states.append(s))
         try:
-            wait_until(lambda: sum(1 for r in reports if r.get("report") == "attached") >= 1, what="重连后又收到 attached")
+            wait_until(lambda: sum(1 for r in reports if r.get("report") == "attached") >= 1, what="recebeu attached após reconectar")
             self.assertTrue(t.alive())
             self.assertIn("error", states)
             self.assertIn("waiting", states)
             self.assertTrue(any(r.get("report") == "frame" for r in reports))
-            self.assertTrue(any("读手柄按键的线程出错" in e["msg"] for e in log.recent(20)))
+            self.assertTrue(any("Erro no Studio ao processar os botões do controle" in e["msg"] for e in log.recent(20)))
         finally:
             t.stop()
             srv.close()
@@ -2945,7 +2943,7 @@ class PortTest(unittest.TestCase):
         states = []
         t = P.PaddTap("unix:/nonexistent/pad.sock", reconnect_s=0.05)
         t.start(lambda r: None, lambda s, why=None: states.append((s, why)))
-        wait_until(lambda: states, what="报 absent")
+        wait_until(lambda: states, what="recebeu o estado absent")
         t.stop()
         self.assertEqual(states[0][0], "absent")
 
@@ -2957,7 +2955,7 @@ class PortTest(unittest.TestCase):
         states = []
         t = P.PaddTap(srv.addr, reconnect_s=0.5)
         t.start(lambda r: None, lambda s, why=None: states.append((s, why)))
-        wait_until(lambda: any(s == "error" for s, _ in states), what="拒绝订阅")
+        wait_until(lambda: any(s == "error" for s, _ in states), what="assinatura recusada")
         t.stop()
         srv.close()
         self.assertIn("no such method", next(w for s, w in states if s == "error"))
@@ -2979,10 +2977,10 @@ class PortTest(unittest.TestCase):
         rp = P.RobotPort(srv.addr)
         rp.notify("robot.move", {"vx": 0.1, "vy": 0, "vyaw": 0})
         rp.notify("robot.mouth", {"open": 0.5})
-        wait_until(lambda: len(got) == 2, what="收到两条通知")
+        wait_until(lambda: len(got) == 2, what="recebeu duas notificações")
         self.assertEqual(got[0], {"jsonrpc": "2.0", "method": "robot.move", "params": {"vx": 0.1, "vy": 0, "vyaw": 0}})
-        self.assertNotIn("id", got[1])                         # 通知不带 id
-        self.assertEqual(srv.conns, 1)                          # 常驻连接
+        self.assertNotIn("id", got[1])                         # Notificações não têm id.
+        self.assertEqual(srv.conns, 1)                          # Mantém uma conexão persistente.
         rp._close()
         srv.close()
         with self.assertRaises((Unreachable, Timeout)):
@@ -2991,10 +2989,10 @@ class PortTest(unittest.TestCase):
             P.RobotPort("unix:/nonexistent/robotd.sock").notify("robot.move", {"vx": 0})
 
 
-# ---------------- 总览重排（overview-merge-plan.md §5、审查 overview-merge-review.md O1、O6、O7、O12、O16） ----------------
+# ---------------- Integração do controle ao resumo: regressões de visão geral ----------------
 
 class OverviewMergeTest(PadTestBase):
-    """手柄并进总览以后的后端规矩。借 VpadTest 的几个小工具（不继承它：继承的话它的测试会再跑一遍）。"""
+    """Regras do backend após integrar o controle ao resumo; reutiliza auxiliares sem repetir os testes de VpadTest."""
     feed, sent, s, into, stick = VpadTest.feed, VpadTest.sent, VpadTest.s, VpadTest.into, VpadTest.stick
 
     def setUp(self):
@@ -3002,7 +3000,7 @@ class OverviewMergeTest(PadTestBase):
         self._n = itertools.count(1000)
 
     def test_new_connection_is_not_in_pad_area_until_open(self):
-        """O1：新连接默认「不在手柄区」——没发过 drive {open} 的页面，摇杆、按住的键、模式一律丢，动作拿不到方向盘。"""
+        """O1: uma conexão nova começa fora da área do controle; quadros e ações são descartados até drive {open}."""
         self.feed()
         c = self.ops.new_conn()
         r = self.stick("drive", conn=c, ly=-1)
@@ -3012,60 +3010,60 @@ class OverviewMergeTest(PadTestBase):
         self.assertIn("dropped", self.into("head", conn=c))
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "action_start", "id": "nod"}, by="电脑 A", conn=c)
-        self.assertIn("不在手柄这一块", str(cm.exception))
+        self.assertIn("Esta página não está na área do controle", str(cm.exception))
         time.sleep(0.15)
         self.assertEqual([m for m, _ in self.sent() if m in ("robot.move", "robot.mouth", "robot.sound", "robot.head")], [])
-        # 一次性命令照旧不看 closed（三 V5）：「停下（站好）」谁都能点
+        # Comandos pontuais, como parar, continuam disponíveis para todas as páginas.
         self.ops.handle({"op": "walk_stop"}, by="电脑 A", conn=c)
         self.assertIn(("robot.enable", {"on": False, "toggle": False}), self.robot.calls)
-        # 发了 open（手柄那一块到了屏幕上）才收
+        # A página aceita os comandos depois de abrir a área do controle.
         self.feed()
         self.ops.handle({"op": "drive", "open": True, "seq": self.s()}, conn=c)
         self.assertEqual(self.stick("drive", conn=c, ly=-1)["sent"][0], 0.3)
 
     def test_scroll_out_then_back(self):
-        """O1：滚出手柄区（drive off）：按着的摇杆发一次 0、之后晚到的帧都丢；滚回来（open）接着能用。"""
+        """O1: ao sair da área do controle, envia zero e descarta quadros atrasados; ao voltar, aceita novos quadros."""
         self.feed()
         c = self.ops.new_conn()
         self.ops.handle({"op": "drive", "open": True, "seq": self.s()}, conn=c)
-        late = self.s()                                                          # 滚出去之前就发出的一帧，晚到
+        late = self.s()                                                          # Quadro enviado antes de sair, mas recebido depois.
         self.stick("drive", conn=c, ly=-1)
         self.ops.handle({"op": "drive", "on": False, "seq": self.s()}, conn=c)
         self.assertEqual(self.sent("robot.move")[-1][1], {"vx": 0.0, "vy": 0.0, "vyaw": 0.0})
         self.assertIn("dropped", self.stick("drive", conn=c, seq=late, ly=-1))
         self.assertIn("dropped", self.stick("drive", conn=c, ly=-1))
-        self.assertTrue(any("离开了手柄区" in e["msg"] for e in self.log.recent(30)))
+        self.assertTrue(any("Saiu da área do controle" in e["msg"] for e in self.log.recent(30)))
         self.ops.handle({"op": "drive", "open": True, "seq": self.s()}, conn=c)
         self.assertEqual(self.stick("drive", conn=c, ly=-1)["sent"][0], 0.3)
 
     def test_estop_pass_is_handed_to_checklist_with_pad_and_build(self):
-        """O6：测急停过了，记下是哪只手柄（MAC）、哪个版本的主程序测的。"""
+        """O6: registra o MAC do controle e a versão do programa principal após aprovar o teste de emergência."""
         got = []
         self.ops.on_estop_passed = got.append
         self.cfg.connect_pad(XBOX, "Xbox Wireless Controller")
         self.watch()
         self.tap.attach(XBOX_DEV)
-        wait_until(lambda: self.ops.snapshot()["estop"]["ok"], what="急停四条都 ✓")
+        wait_until(lambda: self.ops.snapshot()["estop"]["ok"], what="quatro verificações da parada de emergência aprovadas")
         self.robot_ok(bus=bus(build="1fa8438-feetech-ft6-control.43"))
         self.ops.handle({"op": "estop_test", "action": "start"})
-        wait_until(lambda: self.ops.snapshot()["estop_test"]["state"] == "armed", what="等按 Select")
+        wait_until(lambda: self.ops.snapshot()["estop_test"]["state"] == "armed", what="aguardando Select")
         self.tap.key(0x13A, True)
-        wait_until(lambda: self.ops.test.get("_on_while_pressed") is not None, what="按着时问过扭矩")
+        wait_until(lambda: self.ops.test.get("_on_while_pressed") is not None, what="consultou o torque enquanto Select estava pressionado")
         self.tap.key(0x13A, False)
         time.sleep(0.05)
         self.robot_ok(torque_on=False, bus=bus(False, build="1fa8438-feetech-ft6-control.43"))
-        wait_until(lambda: got, what="交给上手清单")
+        wait_until(lambda: got, what="registro entregue ao roteiro inicial")
         self.assertEqual(got[0]["mac"], XBOX)
         self.assertEqual(got[0]["name"], "Xbox Wireless Controller")
         self.assertEqual(got[0]["build"], "1fa8438-feetech-ft6-control.43")
         self.assertIsInstance(got[0]["ms"], int)
-        # 钩子出错只记日志，测急停照样算过
+        # Falha no callback é registrada, mas não desfaz a aprovação do teste.
         self.ops.on_estop_passed = lambda r: 1 / 0
         self.ops._estop_passed_record()
-        self.assertTrue(any("记「测急停过了」时出错" in e["msg"] for e in self.log.recent(20)))
+        self.assertTrue(any("Falha ao registrar a aprovação do teste de emergência" in e["msg"] for e in self.log.recent(20)))
 
     def test_onboard_view_uses_same_status_and_estop_as_snapshot(self):
-        """O7：清单第 3、4 步跟手柄快照用同一份 status / estop。"""
+        """O7: as etapas 3 e 4 do roteiro usam o mesmo status e a mesma parada de emergência do snapshot."""
         self.cfg.connect_pad(XBOX, "Xbox Wireless Controller")
         self.ops.handle({"op": "refresh"})
         v, snap = self.ops.onboard_view(), self.ops.snapshot()
@@ -3078,30 +3076,30 @@ class OverviewMergeTest(PadTestBase):
         self.assertEqual(self.ops.onboard_view()["device"]["unique"], XBOX_DEV["unique"])
 
     def test_attached_logged_only_when_device_changes(self):
-        """O16：滚出去 6 秒（旁路关了）再滚回来又是一次 attached：同一个设备不再记一行。"""
+        """O16: reconectar o mesmo dispositivo não cria outra linha de log, mesmo após 6 s desconectado."""
         self.watch()
         for _ in range(3):
             self.tap.attach(XBOX_DEV)
         self.tap.attach(PRO_DEV)
-        msgs = [e["msg"] for e in self.log.recent(50) if e["msg"].startswith("padd 打开了手柄")]
+        msgs = [e["msg"] for e in self.log.recent(50) if e["msg"].startswith("O padd abriu o controle")]
         self.assertEqual(len(msgs), 2)
 
     def test_c7_action_hold_only_counts_for_the_same_press(self):
-        """代码审查 C7：页面上一次按下留下的定时器（带旧的 press）续不了这一次按下的命；老页面不带 press 照旧。"""
+        """Um timer de um pressionamento anterior não pode prolongar uma nova ação; páginas antigas sem press continuam compatíveis."""
         self.robot_ok(posture="policy", policies=POLICIES)
         self.ops.handle({"op": "action_start", "id": "nod", "press": 1}, by="电脑 A", conn="a")
         self.assertEqual(self.ops.handle({"op": "action_hold", "press": 1}, conn="a")["running"], "nod")
-        self.ops.handle({"op": "action_start", "id": "nod", "press": 2}, by="电脑 A", conn="a")   # 松开又按下
+        self.ops.handle({"op": "action_start", "id": "nod", "press": 2}, by="Computador A", conn="a")   # Solta e pressiona novamente.
         held = self.ops._action["hold"]
         time.sleep(0.02)
         self.assertIsNone(self.ops.handle({"op": "action_hold", "press": 1}, conn="a")["running"])
-        self.assertEqual(self.ops._action["hold"], held)                       # 旧的没续上
+        self.assertEqual(self.ops._action["hold"], held)                       # O timer antigo não prolongou a ação.
         self.assertEqual(self.ops.handle({"op": "action_hold", "press": 2}, conn="a")["running"], "nod")
-        self.assertEqual(self.ops.handle({"op": "action_hold"}, conn="a")["running"], "nod")   # 不带序号（老页面）
+        self.assertEqual(self.ops.handle({"op": "action_hold"}, conn="a")["running"], "nod")   # Compatibilidade com páginas sem sequência.
         self.ops.handle({"op": "action_stop"}, conn="a")
 
     def test_tap_skips_pad_imu_lines_before_parsing(self):
-        """O12：手柄自带 IMU 的那些行，按字符串先跳过，不 json.loads。"""
+        """O12: ignora linhas de IMU do controle antes de chamar json.loads."""
         imu = json.dumps({"jsonrpc": "2.0", "method": "pad.report", "params": {"report": "imu", "samples": [[0, 0, 0]] * 3}},
                          separators=(",", ":"))
         att = json.dumps({"jsonrpc": "2.0", "method": "pad.report", "params": {"report": "imu_attached", "device": {"name": "imu"}}},
@@ -3122,7 +3120,7 @@ class OverviewMergeTest(PadTestBase):
         with mock.patch.object(P.json, "loads", counting):
             t.start(reports.append, lambda s, why=None: None)
             try:
-                wait_until(lambda: any(r.get("report") == "imu_attached" for r in reports), what="收到 imu_attached")
+                wait_until(lambda: any(r.get("report") == "imu_attached" for r in reports), what="recebeu imu_attached")
             finally:
                 t.stop()
                 srv.close()
