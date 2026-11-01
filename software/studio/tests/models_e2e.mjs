@@ -41,7 +41,7 @@ const click = async selector => {
 const fill = (selector, value) => js(`(() => { const el=document.querySelector(${JSON.stringify(selector)}); el.value=${JSON.stringify(value)}; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); })()`);
 const chooseFile = async path => {
   const { root } = await send('DOM.getDocument');
-  const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: 'input[aria-label="导入模型包"]' });
+  const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: 'input[aria-label="Importar pacote do modelo"]' });
   await send('DOM.setFileInputFiles', { nodeId, files: [path] });
 };
 const done = () => wait(`!document.querySelector('.models-page[aria-busy="true"]')`, 'operation complete', 30000);
@@ -70,29 +70,29 @@ try {
   await done();
   assert(await js(`document.querySelectorAll('[data-model-id^="builtin"] [data-model-action="delete"]').length === 0`), 'builtin deletion must not be offered');
   await chooseFile(arg('invalid'));
-  await click('button[aria-label="导入模型"]');
+  await click('button[aria-label="Importar modelo"]');
   await wait(`document.querySelector('.models-page [role="alert"]')?.innerText?.length > 0`, 'invalid archive error');
   await done();
-  assert(await js(`![...document.querySelectorAll('.models-item')].some(e=>e.dataset.modelName==='浏览器训练模型')`), 'invalid archive must not install');
+  assert(await js(`![...document.querySelectorAll('.models-item')].some(e=>e.dataset.modelName==='Modelo de teste do navegador')`), 'invalid archive must not install');
   await chooseFile(arg('package'));
-  await fill('input[aria-label="模型名称"]', '浏览器训练模型');
-  await click('button[aria-label="导入模型"]');
-  await wait(`!!document.querySelector('[data-model-name="浏览器训练模型"]')`, 'imported model');
+  await fill('input[aria-label="Nome do modelo"]', 'Modelo de teste do navegador');
+  await click('button[aria-label="Importar modelo"]');
+  await wait(`!!document.querySelector('[data-model-name="Modelo de teste do navegador"]')`, 'imported model');
   await done();
-  assert(await js(`!document.querySelector('[data-model-name="浏览器训练模型"]').innerText.includes('当前选用')`), 'install must not select');
-  await click('button[aria-label="重命名 浏览器训练模型"]');
-  await fill('input[aria-label="模型名称 浏览器训练模型"]', '慢走模型');
+  assert(await js(`!document.querySelector('[data-model-name="Modelo de teste do navegador"]').innerText.includes('Selecionado')`), 'install must not select');
+  await click('button[aria-label="Renomear Modelo de teste do navegador"]');
+  await fill('input[aria-label="Nome do modelo Modelo de teste do navegador"]', 'Modelo para caminhada lenta');
   await js(`document.querySelector('.models-rename').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))`);
-  await wait(`!!document.querySelector('[data-model-name="慢走模型"]')`, 'renamed model'); await done();
-  await click('button[aria-label="使用 慢走模型"]');
-  await wait(`document.querySelector('[data-model-name="慢走模型"]')?.innerText.includes('当前选用')`, 'runtime confirmed selection'); await done();
-  assert(await js(`document.querySelector('button[aria-label="删除 慢走模型"]').disabled`), 'referenced model deletion must be disabled');
-  assert(await js(`!document.querySelector('[data-model-name="慢走模型"]').innerText.includes('正在执行')`), 'selected idle model is not running');
+  await wait(`!!document.querySelector('[data-model-name="Modelo para caminhada lenta"]')`, 'renamed model'); await done();
+  await click('button[aria-label="Usar Modelo para caminhada lenta"]');
+  await wait(`document.querySelector('[data-model-name="Modelo para caminhada lenta"]')?.innerText.includes('Selecionado')`, 'runtime confirmed selection'); await done();
+  assert(await js(`document.querySelector('button[aria-label="Excluir Modelo para caminhada lenta"]').disabled`), 'referenced model deletion must be disabled');
+  assert(await js(`!document.querySelector('[data-model-name="Modelo para caminhada lenta"]').innerText.includes('Em execução')`), 'selected idle model is not running');
   await screenshot('models-desktop');
 
   // Read-only physical-key capture: inject input snapshots, never a drive/skill command.
   await wait(`document.querySelector('.models-page')?.dataset.captureReady==='true'`, 'stable safe bindings');
-  await click('button[aria-label="设置按键 前滚翻"]');
+  await click('button[aria-label="Configurar botão para Modelo para caminhada lenta"]');
   await wait(`!!document.querySelector('.models-capture')`, 'physical key capture');
   await wait(`window.__modelSent.filter(m=>m.t==='hb').at(-1)?.pad_visible===true`, 'capture listener ready');
   await js(`(() => { const s=window.__modelWs.find(s=>s.url.endsWith('/ws'));
@@ -106,16 +106,16 @@ try {
   assert(beforeBind.data.bindings.find(b=>b.button==='a').slot==='ground_pick', 'cancelled capture must not change binding');
   assert(await js(`window.__modelSent.filter(m=>m.t==='cmd').every(m=>m.name==='pad.op' && m.args.op==='watch')`), 'key capture must only request read-only pad snapshots');
 
-  await fill('select[aria-label="绑定动作 A"]', 'roulade');
-  await click('button[aria-label="设置按键 A"]');
-  await wait(`document.querySelector('.models-confirm')?.innerText.includes('替换绑定')`, 'key conflict confirmation');
-  assert(await js(`document.querySelector('.models-confirm').innerText.includes('现在：')`), 'conflict must identify old binding');
+  await fill('select[aria-label="Atribuir ação ao botão A"]', 'roulade');
+  await click('button[aria-label="Configurar botão A"]');
+  await wait(`document.querySelector('.models-confirm')?.innerText.includes('Substituir atribuição')`, 'key conflict confirmation');
+  assert(await js(`document.querySelector('.models-confirm').innerText.includes('Atual:')`), 'conflict must identify old binding');
   await confirm();
-  await wait(`document.querySelector('[data-button="a"] .models-binding-current').innerText.includes('前滚翻')`, 'binding readback');
-  await click('button[aria-label="取消绑定 A"]'); await done();
-  await wait(`document.querySelector('[data-button="a"] .models-binding-current').innerText.includes('未绑定')`, 'clear binding');
-  await click('button[aria-label="恢复默认按键"]'); await confirm();
-  await wait(`document.querySelector('[data-button="a"] .models-binding-current').innerText.includes('低头捡东西')`, 'default binding restored');
+  await wait(`document.querySelector('[data-button="a"] .models-binding-current').innerText.includes('Cambalhota para a frente')`, 'binding readback');
+  await click('button[aria-label="Remover atribuição do botão A"]'); await done();
+  await wait(`document.querySelector('[data-button="a"] .models-binding-current').innerText.includes('Não atribuído')`, 'clear binding');
+  await click('button[aria-label="Restaurar atribuições padrão"]'); await confirm();
+  await wait(`document.querySelector('[data-button="a"] .models-binding-current').innerText.includes('Abaixar a cabeça para pegar objetos')`, 'default binding restored');
 
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await js('window.scrollTo(0,0)');
@@ -125,9 +125,9 @@ try {
   assert(mobileFits, 'mobile page must fit width without horizontal overflow');
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false });
   await click('[data-slot="walk"] [data-model-action="restore"]'); await confirm();
-  await wait(`!document.querySelector('[data-model-name="慢走模型"]').innerText.includes('当前选用')`, 'restored model default');
-  await click('button[aria-label="删除 慢走模型"]'); await confirm();
-  await wait(`!document.querySelector('[data-model-name="慢走模型"]')`, 'imported model deleted');
+  await wait(`!document.querySelector('[data-model-name="Modelo para caminhada lenta"]').innerText.includes('Selecionado')`, 'restored model default');
+  await click('button[aria-label="Excluir Modelo para caminhada lenta"]'); await confirm();
+  await wait(`!document.querySelector('[data-model-name="Modelo para caminhada lenta"]')`, 'imported model deleted');
   // Navigation/reload must read persisted metadata rather than retain stale optimistic rows.
   await send('Page.reload');
   await wait(`document.querySelectorAll('.models-item').length >= 7`, 'library after reload', 30000);
