@@ -59,7 +59,7 @@ The code below is for **Duck Replica Group 13** (WeChat disables QR joins once a
 
 ## 📺 Assembly videos
 
-**[Bilibili series "MicroDuck 从零安装教程" (assembly from scratch)](https://space.bilibili.com/312747174/lists/9279084?type=season)** — recorded by **机械行者Robo**, who modelled the CAD and wrote the assembly BOM. It starts from the parts list and builds one subassembly per episode. Narration is in Chinese, but the hands-on footage is easy to follow. 6 of 8 episodes are out as of 2026-10-12:
+**[Bilibili series "MicroDuck assembly tutorial from the beginning"](https://space.bilibili.com/312747174/lists/9279084?type=season)** — recorded by **机械行者Robo**, who modelled the CAD and wrote the assembly BOM. It starts from the parts list and builds one subassembly per episode. Narration is in Chinese, but the hands-on footage is easy to follow. 6 of 8 episodes are out as of 2026-10-12:
 
 The creator's accounts sit beside the episode list: **Bilibili, Xiaohongshu (RED), then Douyin**. Scan a code or click its image to open the account.
 

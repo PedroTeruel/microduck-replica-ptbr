@@ -1,4 +1,4 @@
-# Origem:health-20261012-153248.csv + run-20261012-153248.jsonl(pato 1; inferido por build_fixture.py)
+# Origem: health-20261012-153248.csv + run-20261012-153248.jsonl (pato 1; inferido por build_fixture.py)
 t,v,cls
 0,7.521,light
 1,7.533,light
