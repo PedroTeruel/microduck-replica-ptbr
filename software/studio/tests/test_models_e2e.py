@@ -1,4 +1,4 @@
-"""真实部署包/HTTP/模型库 + 测试 RPC/预检器 + 无头 Edge；不操作真实鸭子。"""
+"""Pacote de implantação, HTTP, biblioteca de modelos, RPC e pré-validador reais com Edge sem interface; não controla um robô real."""
 import json
 import os
 import shutil
@@ -33,7 +33,7 @@ main(sys.argv[1:])
 
 
 @unittest.skipUnless(_node_ok() and EDGE and os.environ.get('STUDIO_E2E', '1') != '0',
-                     '需要 Node >=22 和 Edge；STUDIO_E2E=0 时不运行浏览器测试')
+                     'Requer Node >= 22 e Edge; STUDIO_E2E=0 desativa os testes de navegador.')
 class ModelsE2E(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -77,15 +77,15 @@ class ModelsE2E(unittest.TestCase):
                 stdout=output('fake.out'), stderr=subprocess.STDOUT))
             cls.procs.append(subprocess.Popen([sys.executable, '-I', str(boot), '--listen', f'127.0.0.1:{p_web}',
                 '--robotd', f'tcp:127.0.0.1:{p_rd}', '--configd', f'tcp:127.0.0.1:{p_cfg}',
-                '--duck-label', '模型测试鸭', '--dev-autologin', '--state-dir', str(state),
+                '--duck-label', 'MicroDuck de teste de modelos', '--dev-autologin', '--state-dir', str(state),
                 '--dev-duck-root', str(root), '--log-dir', str(cls.dir / 'logs')], cwd=ROOT, env=env,
                 stdout=output('studio.out'), stderr=subprocess.STDOUT))
-            _wait_http(f'http://127.0.0.1:{p_web}/healthz', '模型测试 Studio')
+            _wait_http(f'http://127.0.0.1:{p_web}/healthz', 'Studio de teste de modelos')
             cls.procs.append(subprocess.Popen([EDGE, '--headless=new', '--disable-gpu', '--no-sandbox',
                 '--no-first-run', '--no-default-browser-check', '--enable-unsafe-swiftshader',
                 f'--remote-debugging-port={p_cdp}', f'--user-data-dir={cls.dir / "edge"}', 'about:blank'],
                 stdout=output('edge.out'), stderr=subprocess.STDOUT))
-            _wait_http(f'http://127.0.0.1:{p_cdp}/json/version', '模型测试 Edge', timeout=60)
+            _wait_http(f'http://127.0.0.1:{p_cdp}/json/version', 'Edge de teste de modelos', timeout=60)
         except Exception:
             cls.tearDownClass()
             raise
@@ -107,7 +107,7 @@ class ModelsE2E(unittest.TestCase):
             '--shots', str(self.dir / 'shots')], cwd=ROOT, capture_output=True, text=True, encoding='utf-8', timeout=180)
         (self.dir / 'node.out').write_text(result.stdout or '', encoding='utf-8')
         (self.dir / 'node.err').write_text(result.stderr or '', encoding='utf-8')
-        self.assertEqual(result.returncode, 0, f'{result.stderr[-5000:]}\n测试日志：{self.dir}')
+        self.assertEqual(result.returncode, 0, f'{result.stderr[-5000:]}\nLogs do teste: {self.dir}')
         report = json.loads(result.stdout)
         self.assertEqual(report['errors'], [])
         self.assertEqual(report['importedAfterDelete'], 0)

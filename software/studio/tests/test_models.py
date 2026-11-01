@@ -94,7 +94,7 @@ class Runtime:
 class LibraryTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         if Models is None:
-            self.fail('模型管理服务尚未实现')
+            self.fail('O serviço de gerenciamento de modelos não foi implementado.')
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name) / 'root'
@@ -132,27 +132,27 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
         (dest / 'policy.onnx').write_bytes(b'new-policy')
         (dest / 'deployment-contract.json').write_text(json.dumps(self.new_contract), encoding='utf-8')
         return {'onnx': 'policy.onnx', 'sha256': hashlib.sha256(b'new-policy').hexdigest(), 'task': 'Mjlab-Velocity-Test',
-                'slot': self.next_slot, 'name': '导入模型', 'files': ['policy.onnx', 'deployment-contract.json']}
+                'slot': self.next_slot, 'name': 'Modelo importado', 'files': ['policy.onnx', 'deployment-contract.json']}
 
     async def install(self):
-        v = await self.service.import_package(self.pkg, '新模型')
+        v = await self.service.import_package(self.pkg, 'Modelo novo')
         return next(i for i in v['items'] if i['source'] == 'imported')
 
     async def test_service_exists(self):
-        self.assertIsNotNone(Models, '模型管理服务尚未实现')
+        self.assertIsNotNone(Models, 'O serviço de gerenciamento de modelos não foi implementado.')
 
     async def test_install_does_not_select_and_rename_survives_restart(self):
         item = await self.install()
         self.assertEqual(item['slots'], [])
         self.assertEqual(item['allowed_slots'], ['walk'])
         self.assertFalse(any(m in ('robot.loadPolicy', 'pad.bind') for m, _ in self.runtime.calls))
-        await self.service.handle({'op': 'rename', 'id': item['id'], 'name': '自己训练的走路'})
+        await self.service.handle({'op': 'rename', 'id': item['id'], 'name': 'Caminhada treinada por mim'})
         v = await self.new_service().view()
-        self.assertEqual(next(i for i in v['items'] if i['id'] == item['id'])['name'], '自己训练的走路')
+        self.assertEqual(next(i for i in v['items'] if i['id'] == item['id'])['name'], 'Caminhada treinada por mim')
 
     async def test_validation_failure_leaves_no_half_install(self):
         self.service.validator = lambda p: {'valid': False, 'error': 'bad graph'}
-        with self.assertRaisesRegex(ModelError, '预检|bad graph'):
+        with self.assertRaisesRegex(ModelError, 'bad graph'):
             await self.install()
         self.assertFalse([p for p in (self.state / 'models').iterdir() if p.is_dir()])
 
@@ -216,7 +216,7 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
     async def test_offline_rename_allowed_but_delete_refused(self):
         item = await self.install()
         self.runtime.online = False
-        await self.service.handle({'op': 'rename', 'id': item['id'], 'name': '离线名称'})
+        await self.service.handle({'op': 'rename', 'id': item['id'], 'name': 'Nome offline'})
         with self.assertRaisesRegex(ModelError, 'conexão|programa principal|confirmar'):
             await self.service.handle({'op': 'delete', 'id': item['id']})
         self.assertTrue(any(i['id'] == item['id'] for i in (await self.service.view())['items']))
@@ -403,7 +403,7 @@ class LibraryTest(unittest.IsolatedAsyncioTestCase):
         item = await self.install()
         with patch('studio.models._atomic_json', side_effect=PermissionError('read only')):
             with self.assertRaisesRegex(ModelError, 'salvar|gravar|arquivos'):
-                await self.service.handle({'op': 'rename', 'id': item['id'], 'name': '更新名'})
+                await self.service.handle({'op': 'rename', 'id': item['id'], 'name': 'Nome atualizado'})
 
 
 if __name__ == '__main__':

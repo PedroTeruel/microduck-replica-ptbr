@@ -1,11 +1,11 @@
-// 连 WiFi 以后找鸭子的新地址（任务 17）：web/wifi.js 的探测逻辑（真代码，不是抄的），假时钟、假探测一幕一幕跑，
-// 结果用 JSON 打到 stdout，由 tests/test_wifi_find.py 判断。
-// 单独跑：node tests/wifi_find.mjs   （不需要装包；wifi.js 在 Node 里不碰 document）
+// Encontra o novo endereço do robô após conectar ao Wi-Fi (tarefa 17): executa a lógica real de web/wifi.js com relógio e sondagens simulados.
+// Os resultados são enviados em JSON para stdout e verificados por tests/test_wifi_find.py.
+// Execução isolada: node tests/wifi_find.mjs (sem dependências; wifi.js não acessa document no Node).
 const W = await import(new URL('../web/wifi.js', import.meta.url).href);
 
 const flush = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
 
-/** 假时钟：setTimeout 排进队列，advance 一格一格往前拨（每格之后把 Promise 跑完） */
+/** Relógio simulado: enfileira setTimeout e avança em etapas, resolvendo as Promises depois de cada uma. */
 function fakeClock() {
   let now = 0, seq = 0;
   const q = [];
@@ -34,7 +34,7 @@ function fakeClock() {
   };
 }
 
-/** 一幕：probeAt(url, t) 决定这一下成不成（true / false / 'hang' 一直不回 / 'defer' 先挂着、手动放）。 */
+/** Cenário: probeAt(url, t) determina o resultado (true, false, 'hang' sem resposta ou 'defer' aguardando liberação manual). */
 async function scene({ urls, probeAt, run }) {
   const c = fakeClock();
   const calls = [], found = [], gaveUp = [];
@@ -64,14 +64,14 @@ const out = {
   urlsBare: W.findUrls({ hostname: 'duck-c51b' }),
 };
 
-// 1. 找到了：.local 6 秒以后才通 → 那一下就跳、停下，之后不再探
+// 1. Encontrado: .local só responde após 6 s; navegue e interrompa as sondagens.
 out.found = await scene({ urls: URLS, probeAt: (u, t) => u.includes('.local') && t >= 6000,
   run: async (c) => { await c.advance(20000); } });
 
-// 2. 一直找不到：3 分钟到了放弃（回调一次），之后不再探
+// 2. Não encontrado: desista após 3 min, chame o callback uma vez e pare as sondagens.
 out.timeout = await scene({ urls: URLS, probeAt: () => false, run: async (c) => { await c.advance(200000); } });
 
-// 3. 热点回来了（页面重新连上原来的地址）：stop 以后不再探；停之前发出去、停之后才回「通了」的也不算
+// 3. O ponto de acesso voltou e a página reconectou: stop interrompe as sondagens; respostas tardias são ignoradas.
 out.stop = await scene({ urls: URLS, probeAt: (u, t) => (t === 4000 && u.includes('.local') ? 'defer' : false),
   run: async (c, f, deferred) => {
     await c.advance(5000);
@@ -80,11 +80,11 @@ out.stop = await scene({ urls: URLS, probeAt: (u, t) => (t === 4000 && u.include
     await c.advance(30000);
   } });
 
-// 4. 一个地址挂着不回（连不上的地址可能几十秒才报错）：它回话之前不再探它，另一个照常每 2 秒探
+// 4. Um endereço não responde: não o consulte de novo até obter resposta; continue sondando o outro a cada 2 s.
 out.hang = await scene({ urls: URLS, probeAt: (u) => (u.includes('.local') ? 'hang' : false),
   run: async (c) => { await c.advance(10000); } });
 
-// 5. probeImage：new Image() 加载 <地址>probe.svg?t=<时间>；onload → 通，onerror → 不通，都不来 → 超时算不通
+// 5. probeImage carrega <endereço>probe.svg?t=<tempo> com new Image(); onload significa conectado, onerror ou timeout significa indisponível.
 const made = [];
 globalThis.Image = class {
   constructor() { this.onload = null; this.onerror = null; made.push(this); }

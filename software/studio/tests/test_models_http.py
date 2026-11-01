@@ -54,7 +54,7 @@ class ModelsHttp(unittest.IsolatedAsyncioTestCase):
         self.rd = Robotd(f'tcp:127.0.0.1:{port}', f'tcp:127.0.0.1:{port}', self.log)
         self.models = ModelService()
         app = build_app(auth=self.auth, robotd=self.rd, log=self.log, web_dir=WEB,
-                        duck={'label': '测试鸭'}, state_dir=self.tmp.name, models=self.models)
+                        duck={'label': 'MicroDuck de teste'}, state_dir=self.tmp.name, models=self.models)
         config = uvicorn.Config(app, host='127.0.0.1', port=0, ws='wsproto', http='h11',
                                 lifespan='on', log_level='critical')
         self.server = uvicorn.Server(config)
@@ -103,18 +103,18 @@ class ModelsHttp(unittest.IsolatedAsyncioTestCase):
         status, _, payload = await self.call('GET', '/api/models', headers=self.headers)
         self.assertEqual(status, 200)
         self.assertTrue(payload['ok'])
-        status, _, payload = await self.call('POST', '/api/models/op', {'op': 'rename', 'id': 'x', 'name': '测试'}, self.headers)
+        status, _, payload = await self.call('POST', '/api/models/op', {'op': 'rename', 'id': 'x', 'name': 'teste'}, self.headers)
         self.assertEqual(status, 200)
         self.assertTrue(payload['ok'])
-        self.assertEqual(self.models.operations[-1]['name'], '测试')
+        self.assertEqual(self.models.operations[-1]['name'], 'teste')
 
     async def test_upload_is_temporary_and_name_is_not_a_path(self):
-        status, _, payload = await self.call('POST', '/api/models/import?filename=package.zip&name=%E6%85%A2%E8%B5%B0',
+        status, _, payload = await self.call('POST', '/api/models/import?filename=package.zip&name=caminhada-lenta',
                                              b'package bytes', self.headers)
         self.assertEqual(status, 200, payload)
         path, data, name = self.models.imports[-1]
         self.assertEqual(data, b'package bytes')
-        self.assertEqual(name, '慢走')
+        self.assertEqual(name, 'caminhada-lenta')
         self.assertFalse(path.exists())
         status, _, _ = await self.call('POST', '/api/models/import?filename=../../outside.zip', b'zip', self.headers)
         self.assertEqual(status, 400)
