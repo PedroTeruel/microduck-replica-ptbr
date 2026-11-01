@@ -5,8 +5,8 @@ Este guia reúne os passos desde o download e a gravação da imagem até a conf
 | Formato | Acesso | Observações |
 |---|---|---|
 | **Instruções web atualizadas** | **[Abrir o guia de gravação e primeiro uso](../../software/image/烧录和第一次使用.md)** | Atualizado junto com o projeto; inclui a faixa de compatibilidade da IMU da versão 20261023c. |
-| **Guia ilustrado em PDF** | **[Visualizar ou baixar o guia de montagem V2](Microduck上手指南-V2-20261022.pdf)** | Edição de 2026-10-22, com 21 páginas para impressão. As ilustrações usam a imagem 20261021b; em caso de diferença entre versões, siga as instruções web atuais. |
+| **Guia ilustrado em PDF** | **[Visualizar ou baixar o guia V2](Microduck上手指南-V2-20261022.pdf)** · [Tradução textual em português](Microduck上手指南-V2-20261022.pt-BR.md) | Edição de 2026-10-22, com 21 páginas para impressão. A tradução cobre o texto do PDF; imagens, capturas de tela e ilustrações permanecem no arquivo original. Em caso de diferença entre versões, siga as instruções web atuais. |
 
-O PDF aborda o download e a gravação da imagem, a conexão ao ponto de acesso e a configuração da rede, a calibração dos servos e da IMU, o controle, a parada de emergência e a caminhada. O arquivo PDF mantém o conteúdo original.
+O PDF aborda o download e a gravação da imagem, a conexão ao ponto de acesso e a configuração da rede, a calibração dos servos e da IMU, o controle, a parada de emergência e a caminhada. A tradução textual está disponível ao lado do arquivo original.
 
 [Baixar a imagem](https://github.com/fanhao375/microduck-replica/releases/latest) · [CAD e arquivos para impressão](https://github.com/fanhao375/microduck-replica-cad) · [Lista de compras da versão Feetech](../../BOM/README.md) · [Projetos de hardware](../../hardware/README.md)

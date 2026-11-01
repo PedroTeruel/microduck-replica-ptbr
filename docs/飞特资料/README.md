@@ -12,7 +12,8 @@ Em 25/10/2026, conferimos o índice oficial e as interfaces dos documentos no si
 | [Tabela de memória STS](http://doc.feetech.cn/#/f?q=2506abfb1cb0) | 1.1 | 2026-10-08 |
 | [Tabela de memória SMS](http://doc.feetech.cn/#/f?q=2602a06ca658) | 1.1 | 2026-10-08 |
 | [Software de depuração FD e ferramentas seriais](https://gitee.com/ftservo/fddebug) | Conforme as publicações do repositório oficial | [Download e instruções neste repositório](../../tools/飞特/README.md) |
-| [Ficha técnica HD-1910-C001](../../tools/FeeTech_HD1910M_Servo/HD-1910-C001串型规格书20260907.pdf) | Arquivo marcado como 2026-09-07 | Já há uma ficha deste modelo neste repositório |
+| [Ficha técnica HD-1910-C001](../../tools/FeeTech_HD1910M_Servo/HD-1910-C001串型规格书20260907.pdf) · [Tradução textual](../../tools/FeeTech_HD1910M_Servo/HD-1910-C001串型规格书20260907.pt-BR.md) | Arquivo marcado como 2026-09-07 | O PDF original contém desenhos; a tradução textual dos trechos em chinês está ao lado |
+| [Ficha técnica HL-2915-C002](../../tools/FeeTech_HD1910M_Servo/HL-2915-C002串型规格书20260227.pdf) · [Tradução textual](../../tools/FeeTech_HD1910M_Servo/HL-2915-C002串型规格书20260227.pt-BR.md) | Arquivo marcado como 2026-02-27 | O PDF original contém desenhos; a tradução textual dos trechos em chinês está ao lado |
 
 ## Cópias offline (captura de 17/09/2026)
 
