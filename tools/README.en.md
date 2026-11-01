@@ -1,6 +1,6 @@
 # Tool index
 
-[Home](../README.en.md#documentation) · [All documentation](../docs/README.en.md) · [简体中文](README.md)
+[Home](../README.en.md#documentation) · [All documentation](../docs/README.en.md) · [Português (Brasil)](README.md)
 
 Use [Studio](../software/studio/README.md) for routine Wi-Fi setup, calibration and control. This page groups flashing tools, serial debugging, Feetech references and developer analysis. Most linked guides are in Chinese.
 

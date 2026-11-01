@@ -1,6 +1,6 @@
 # Community contributions and projects
 
-[Home](../README.en.md) · [Documentation](README.en.md) · [简体中文](社区贡献.md)
+[Home](../README.en.md) · [Documentation](README.en.md) · [Português (Brasil)](社区贡献.md)
 
 ## 🦆 Contributions from the flock
 

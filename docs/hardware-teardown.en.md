@@ -2,7 +2,7 @@
 
 > ⚠️ **This English version lags behind the Chinese original.** Several corrections (camera rotation, MK1 part number, U10 placement, STS3032 torque basis, board SKU) were applied to the Chinese docs first. **When the two disagree, the Chinese version wins.** Last sync: 2026-09-05.
 
-[简体中文](硬件方案逆向.md) · **English**
+[Português (Brasil)](硬件方案逆向.md) · **English**
 
 **Method:** the Rust runtime is open source, and a runtime that drives real hardware has
 to hard-code device paths, I²C addresses, register offsets, baud rates and protocols.

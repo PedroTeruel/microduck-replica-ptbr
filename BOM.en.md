@@ -4,7 +4,7 @@
 
 > ⚠️ **This English version lags behind the Chinese original.** Several corrections (camera rotation, MK1 part number, U10 placement, STS3032 torque basis, board SKU) were applied to the Chinese docs first. **When the two disagree, the Chinese version wins.** Last sync: 2026-09-05.
 
-[简体中文](BOM.md) · **English**
+[Português (Brasil)](BOM.md) · **English**
 
 Everything needed to build one Microduck. Quantities come from geom references in upstream
 `robot_walk.xml` (**38 mesh types / 75 instances**) — counted, not estimated.

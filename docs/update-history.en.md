@@ -1,6 +1,6 @@
 # Update history
 
-[Home](../README.en.md) · [Documentation](README.en.md) · [简体中文](历史更新.md)
+[Home](../README.en.md) · [Documentation](README.en.md) · [Português (Brasil)](历史更新.md)
 
 These entries record their status at the time. For the current image, use [Releases](https://github.com/fanhao375/microduck-replica/releases/latest); see [the homepage](../README.en.md#where-things-stand) for current progress.
 

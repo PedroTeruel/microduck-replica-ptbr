@@ -1,6 +1,6 @@
 # Microduck Replica
 
-**English** · [简体中文](README.md)
+**English** · [Português (Brasil)](README.md)
 
 A third-party full-robot replica project based on [Pollen Robotics' Microduck](https://pollen-robotics.com/microduck/), with resources for sourcing parts, printing, assembly, calibration, control, and training.
 

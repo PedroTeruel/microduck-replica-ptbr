@@ -1,6 +1,6 @@
 # Microduck Ecosystem Map
 
-[简体中文](生态导航.md) · **English**
+[Português (Brasil)](生态导航.md) · **English**
 
 Microduck material is scattered across several GitHub organisations and three HuggingFace resource
 types. **The official hardware repositories are especially easy to miss** — they are not in the main

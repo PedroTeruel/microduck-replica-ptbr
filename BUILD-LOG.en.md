@@ -1,6 +1,6 @@
 # Build Log
 
-[简体中文](构建日志.md) · **English**
+[Português (Brasil)](构建日志.md) · **English**
 
 > **Current status: Feetech HD-1910 robot assembled (2026-09-13)**
 > Status index updated: 2026-09-28; historical print photos below.

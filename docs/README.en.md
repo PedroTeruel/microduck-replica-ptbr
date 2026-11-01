@@ -1,6 +1,6 @@
 # Documentation
 
-[Home](../README.en.md) · [简体中文](README.md)
+[Home](../README.en.md) · [Português (Brasil)](README.md)
 
 Find resources by task. Start with first use and assembly; detailed investigations and earlier progress are archived below. Some linked guides are available only in Chinese.
 

@@ -2,7 +2,7 @@
 
 > ⚠️ **This English version lags behind the Chinese original.** Several corrections (camera rotation, MK1 part number, U10 placement, STS3032 torque basis, board SKU) were applied to the Chinese docs first. **When the two disagree, the Chinese version wins.** Last sync: 2026-09-05.
 
-[简体中文](执行器选型.md) · **English**
+[Português (Brasil)](执行器选型.md) · **English**
 
 ## The Motor: Dynamixel XL330, 15 of Them
 

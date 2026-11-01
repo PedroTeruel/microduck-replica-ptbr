@@ -1,6 +1,6 @@
 # Project research archive
 
-[Home](../README.en.md) · [Documentation](README.en.md) · [简体中文](项目研究归档.md)
+[Home](../README.en.md) · [Documentation](README.en.md) · [Português (Brasil)](项目研究归档.md)
 
 > Archived from the README on 2026-10-25. These early investigations describe the upstream XL330 design and the state of the build at the time. Dimensions, prices, feasibility judgments and outstanding work are historical references. Use the current [CAD resources](https://github.com/fanhao375/microduck-replica-cad), [BOM](../BOM/README.md) and [image guide](../software/image/烧录和第一次使用.md) when building today. Run reproduction commands from the repository root.
 
