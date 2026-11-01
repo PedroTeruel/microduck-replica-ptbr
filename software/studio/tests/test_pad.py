@@ -1,7 +1,7 @@
 """Backend da página de controle (studio/pad.py, pad_drive.py, pad_combo.py): usa configd, Bluetooth, padd e robotd simulados; pode rodar em computador sem Bluetooth.
 As portas reais (rpc_call, PaddTap, RobotPort e leitura de pipe de BtSession) são verificadas com serviços TCP locais e subprocessos reais.
 
-跑法（studio 目录下）：
+Como executar (no diretório studio):
     py -3.13 -I -c "import sys;sys.path[:0]=['deps','.'];import unittest;unittest.main(module=None,argv=['x','-v','tests.test_pad'])"
 """
 import copy
@@ -41,13 +41,13 @@ POLICIES = {"enabled": True, "homed": True, "mode": "walk", "sitting": False,
                       {"slot": "sitstand", "path": "/s.onnx"}, {"slot": "ground_pick", "path": "/g.onnx"}]}
 
 
-def wait_until(cond, timeout=3.0, what="条件"):
+def wait_until(cond, timeout=3.0, what="condição"):
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         if cond():
             return True
         time.sleep(0.01)
-    raise AssertionError(f"{timeout} 秒没等到：{what}")
+    raise AssertionError(f"Condição não atendida em {timeout} s: {what}")
 
 
 def bus(torque_on=True, **kw):
@@ -309,7 +309,7 @@ class PadTestBase(unittest.TestCase):
                             state_dir=str(Path(self.tmp.name) / "state"))
         self.robot_ok()
         # Na primeira detecção do programa principal, o Studio envia robot.pose {"active": false} em uma thread (V1). Aguarde e limpe para os demais testes.
-        wait_until(lambda: self.ops._pose_reset == "done", what="连上主程序时的 pose 复位")
+        wait_until(lambda: self.ops._pose_reset == "done", what="limpeza de pose ao conectar o programa principal")
         with self.robot.lk:
             self.robot.sent.clear()
 
@@ -338,12 +338,12 @@ class PadTestBase(unittest.TestCase):
         return {s["key"]: s["state"] for s in self.wiz()["steps"]}
 
     def wait_wiz(self, state, timeout=4.0):
-        wait_until(lambda: self.wiz()["state"] == state, timeout, f"向导变成 {state}（现在 {self.wiz()['state']} · {self.wiz().get('error')}）")
+        wait_until(lambda: self.wiz()["state"] == state, timeout, f"assistente em {state} (agora {self.wiz()['state']} · {self.wiz().get('error')})")
         return self.wiz()
 
     def watch(self):
         self.ops.handle({"op": "watch"})
-        wait_until(lambda: self.tap.running, what="旁路打开")
+        wait_until(lambda: self.tap.running, what="acesso paralelo iniciado")
 
 
 # ---------------- Busca ----------------
@@ -363,7 +363,7 @@ class ScanTest(PadTestBase):
         self.assertNotIn(PRO_LE, macs)                     # O endereço LE do mesmo controle é agrupado.
         buds = next(d for d in w["devices"] if d["mac"] == "AA:BB:CC:00:11:22")
         self.assertFalse(buds["pad"])
-        self.assertEqual(buds["why_not"], "像是耳机")
+        self.assertEqual(buds["why_not"], "Parece ser Fone de ouvido")
         self.assertEqual(w["devices"][0]["kind"], "switch")
         self.assertEqual(w["picked"], PRO)                 # Recomende o único dispositivo em modo de pareamento.
         self.assertEqual(self.steps(), {"ready": "ok", "scan": "ok", "pick": "doing"})
@@ -375,7 +375,7 @@ class ScanTest(PadTestBase):
         self.ops.handle({"op": "scan", "seconds": 0.1})
         w = self.wait_wiz("waiting")
         self.assertEqual(w["error"]["code"], "not_found")
-        self.assertIn("快闪", w["error"]["fix"])
+        self.assertIn("piscar rapidamente", w["error"]["fix"])
 
     def test_adapter_problems(self):
         self.bt.state["blocked"] = True
@@ -397,7 +397,7 @@ class ScanTest(PadTestBase):
         self.assertNotIn("pairable_on", self.bt.calls)
         ready = next(s for s in self.wiz()["steps"] if s["key"] == "ready")
         self.assertEqual(ready["state"], "ok")
-        self.assertIn("可绑定", ready["note"])
+        self.assertIn("pareável", ready["note"])
 
     def test_scan_start_failure_is_explained(self):
         self.bt.scan_exc = P.BtError(P.classify("Failed to start discovery: org.bluez.Error.InProgress"), "Failed to start discovery: org.bluez.Error.InProgress")
@@ -409,7 +409,7 @@ class ScanTest(PadTestBase):
 
     def test_cancel_and_busy(self):
         self.ops.handle({"op": "scan", "seconds": 5})
-        wait_until(lambda: self.steps().get("scan") == "doing", what="开始搜索")
+        wait_until(lambda: self.steps().get("scan") == "doing", what="busca iniciada")
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "scan", "seconds": 5})          # Permite apenas uma busca por vez.
         with self.assertRaises(P.Refused):
@@ -429,7 +429,7 @@ class ScanTest(PadTestBase):
         self.robot_ok(posture="policy", bus=bus(policy_enabled=True))
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "scan", "seconds": 1})
-        self.assertIn("先停下", str(cm.exception))
+        self.assertIn("Pare primeiro", str(cm.exception))
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "pair"})
 
@@ -448,11 +448,11 @@ class PairTest(PadTestBase):
         self.cfg.pair_result = self.paired_result()
         self.cfg.on_pair = lambda params: self.cfg.connect_pad(PRO, "Pro Controller")
         self.ops.handle({"op": "pair", "mac": PRO})
-        wait_until(lambda: self.steps().get("padd") == "doing", what="等 padd")
+        wait_until(lambda: self.steps().get("padd") == "doing", what="aguardando o padd")
         self.assertIn(("pad.pair", {"timeout_seconds": 1, "mac": PRO}), self.cfg.calls)
         self.assertIn("close", self.bt.calls)               # Feche a sessão de busca antes de usar o agente padrão do configd.
         self.tap.attach(PRO_DEV)
-        wait_until(lambda: self.wiz()["phase"] == "keys", what="进入按键测试")
+        wait_until(lambda: self.wiz()["phase"] == "keys", what="fase de teste dos botões")
         for code in (0x130, 0x131, 0x133, 0x134):
             self.tap.key(code, True)
             self.tap.key(code, False)
@@ -465,7 +465,7 @@ class PairTest(PadTestBase):
         snap = self.ops.snapshot()
         self.assertEqual(snap["status"]["active"]["mac"], PRO)
         self.assertEqual(snap["live"]["device"]["kind"], "switch")
-        json.dumps(snap, ensure_ascii=False)                # 能推给页面
+        json.dumps(snap, ensure_ascii=False)                # O snapshot pode ser enviado à página.
 
     def test_pairable_is_turned_on_only_for_pairing_and_restored(self):
         """Revisão 5: habilite temporariamente o pareamento apenas durante a operação e restaure a configuração, com sucesso ou falha."""
@@ -499,26 +499,26 @@ class PairTest(PadTestBase):
                 self.assertEqual(w["retry"], {"op": "pair", "mac": XBOX})
 
     def test_configd_timeout_down_and_no_permission(self):
-        self.cfg.pair_exc = Timeout("pad.pair 2 秒没回话")
+        self.cfg.pair_exc = Timeout("pad.pair não respondeu em 2 s")
         self.ops.handle({"op": "pair", "mac": XBOX})
         self.assertEqual(self.wait_wiz("failed")["error"]["code"], "timeout")
         # Sem configd e sem MAC, informe que configd não está em execução.
-        self.cfg.pair_exc = Unreachable("/run/configd.sock 不在")
+        self.cfg.pair_exc = Unreachable("/run/configd.sock indisponível")
         self.ops.handle({"op": "pair"})
         self.assertEqual(self.wait_wiz("failed")["error"]["code"], "configd_down")
         # Revisão 17: se o socket existir, mas a conexão não tiver permissão, não diga que configd está ausente.
-        self.cfg.pair_exc = P.NoPermission("没权限连 unix:/run/configd.sock")
+        self.cfg.pair_exc = P.NoPermission("sem permissão para conectar a unix:/run/configd.sock")
         self.ops.handle({"op": "pair"})
         w = self.wait_wiz("failed")
         self.assertEqual(w["error"]["code"], "socket_perm")
-        self.assertIn("robot 组", w["error"]["fix"])
+        self.assertIn("grupo robot", w["error"]["fix"])
 
     def test_cancel_then_new_pair_while_configd_still_busy(self):
         """Revisão 10 / R7: depois de selecionar Parar, não permita novo pareamento ou busca enquanto configd.pad.pair ainda estiver ativo."""
         self.cfg.pair_delay = 0.6
         self.cfg.pair_result = {"outcome": "failed", "reason": "timeout", "detail": "x"}
         self.ops.handle({"op": "pair", "mac": PRO})
-        wait_until(lambda: any(m == "pad.pair" for m, _ in self.cfg.calls), what="configd 在配")
+        wait_until(lambda: any(m == "pad.pair" for m, _ in self.cfg.calls), what="configd está pareando")
         self.ops.handle({"op": "cancel"})
         self.wait_wiz("failed")
         with self.assertRaises(P.Refused) as cm:
@@ -527,7 +527,7 @@ class PairTest(PadTestBase):
         self.assertIsNotNone(self.wiz()["configd_busy_s"])
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "scan", "seconds": 1})
-        wait_until(lambda: self.wiz()["configd_busy_s"] is None, what="configd 做完")
+        wait_until(lambda: self.wiz()["configd_busy_s"] is None, what="configd terminou")
         self.ops.handle({"op": "scan", "seconds": 0.1})
         self.wait_wiz("waiting")
 
@@ -537,10 +537,10 @@ class PairTest(PadTestBase):
         self.bt.infos[PRO] = {"cls": 0x2508, "name": "Pro Controller"}
         self.bt.on_pair = lambda mac: self.cfg.connect_pad(mac, "Pro Controller")
         self.ops.handle({"op": "pair", "mac": PRO})
-        wait_until(lambda: self.steps().get("padd") == "doing", what="等 padd")
+        wait_until(lambda: self.steps().get("padd") == "doing", what="aguardando o padd")
         self.assertIn(("pair_device", PRO, True), self.bt.calls)       # Ordem do Bluetooth clássico.
         self.tap.attach(PRO_DEV)
-        wait_until(lambda: self.wiz()["phase"] == "keys", what="进入按键测试")
+        wait_until(lambda: self.wiz()["phase"] == "keys", what="fase de teste dos botões")
         self.assertIn("bluetoothctl", self.wiz()["via"])
         self.ops.handle({"op": "keys_done"})
         self.assertEqual(self.wiz()["state"], "done")
@@ -552,7 +552,7 @@ class PairTest(PadTestBase):
         self.ops.handle({"op": "pair", "mac": PRO})
         w = self.wait_wiz("failed")
         self.assertEqual(w["error"]["code"], "auth_failed")
-        self.assertIn("别的设备", w["error"]["fix"])
+        self.assertIn("outro dispositivo", w["error"]["fix"])
         # Sem MAC (seleção automática) e sem permissão: informe a falta de permissão e oriente usar SSH.
         self.ops.handle({"op": "pair"})
         w = self.wait_wiz("failed")
@@ -614,18 +614,18 @@ class PairTest(PadTestBase):
         self.helper.is_available = True
         self.helper.pair_result = self.helper_paired()
         self.helper.on_pair = lambda mac: self.cfg.connect_pad(PRO, "Pro Controller")
-        self.ops.handle({"op": "pair", "mac": PRO}, by="电脑 127.0.0.1")
-        wait_until(lambda: self.steps().get("padd") == "doing", what="等 padd")
-        self.assertEqual(self.helper.pair_calls[0][:2], ("电脑 127.0.0.1", PRO))
+        self.ops.handle({"op": "pair", "mac": PRO}, by="Computador 127.0.0.1")
+        wait_until(lambda: self.steps().get("padd") == "doing", what="aguardando o padd")
+        self.assertEqual(self.helper.pair_calls[0][:2], ("Computador 127.0.0.1", PRO))
         w = self.wiz()
-        self.assertIn("小助手", w["via"])
+        self.assertIn("Assistente", w["via"])
         self.assertIn("robotctl pad pair", w["via"])
         self.assertIs(w["helper_available"], True)
         self.assertEqual([c for c in self.cfg.calls if c[0] == "pad.pair"], [])
         self.assertNotIn("pairable_on", self.bt.calls)
         self.assertNotIn("pairable_off", self.bt.calls)
         self.tap.attach(PRO_DEV)
-        wait_until(lambda: self.wiz()["phase"] == "keys", what="进入按键测试")
+        wait_until(lambda: self.wiz()["phase"] == "keys", what="fase de teste dos botões")
         self.ops.handle({"op": "keys_done"})
         self.assertEqual(self.wiz()["state"], "done")
 
@@ -752,7 +752,7 @@ class PairTest(PadTestBase):
         wait_until(lambda: self.wiz()["phase"] == "keys" or self.wiz()["state"] == "failed")
         self.assertEqual(self.wiz()["phase"], "keys", self.wiz())
         padd = next(s for s in self.wiz()["steps"] if s["key"] == "padd")
-        self.assertIn("没法再核对", padd["note"])
+        self.assertIn("não é possível confirmar", padd["note"])
         self.assertFalse(any(isinstance(x, tuple) and x[0] == "reconnect" for x in self.bt.calls))
 
     def test_controller_arriving_during_unverified_fallback_is_checked_again(self):
@@ -768,7 +768,7 @@ class PairTest(PadTestBase):
                 step = self.ops._step
                 def late_input(jid, key, state, note=None):
                     step(jid, key, state, note)
-                    if key == "padd" and state == "ok" and "没法再核对" in (note or ""):
+                    if key == "padd" and state == "ok" and "não é possível confirmar" in (note or ""):
                         self.tap.attach(device)
                 with mock.patch.object(self.ops, "_step", side_effect=late_input):
                     self.ops.handle({"op": "pair", "mac": PRO})
@@ -817,7 +817,7 @@ class PairTest(PadTestBase):
                     "reason": reason,
                     "pair": {"outcome": "failed", "reason": reason, "detail": detail},
                     "stderr": ["warning: could not power-cycle the Bluetooth adapter"],
-                    "msg": f"robotctl 说配对失败：{reason}",
+                    "msg": f"robotctl relatou falha no pareamento: {reason}",
                 })
                 self.ops.handle({"op": "pair", "mac": XBOX})
                 w = self.wait_wiz("failed")
@@ -828,25 +828,25 @@ class PairTest(PadTestBase):
 
     def test_helper_process_timeout_is_reported(self):
         self.helper.is_available = True
-        self.helper.pair_result = (False, "timeout", {"msg": "robotctl pad pair 超过 90 秒，已经杀掉", "stderr": []})
+        self.helper.pair_result = (False, "timeout", {"msg": "robotctl pad pair excedeu 90 segundos e foi encerrado", "stderr": []})
         self.ops.handle({"op": "pair", "mac": PRO})
         w = self.wait_wiz("failed")
         self.assertEqual(w["error"]["code"], "timeout")
-        self.assertIn("超", w["error"]["raw"] + w["error"]["msg"])
+        self.assertIn("excedeu 90 segundos", w["error"]["raw"] + w["error"]["msg"])
 
     def test_old_helper_bad_verb_falls_back_to_configd(self):
         self.watch()
         self.helper.is_available = True
-        self.helper.pair_result = (False, "bad_verb", {"msg": "只认这几个动词"})
+        self.helper.pair_result = (False, "bad_verb", {"msg": "comando não reconhecido"})
         self.cfg.pair_result = self.paired_result()
         self.cfg.on_pair = lambda params: self.cfg.connect_pad(PRO, "Pro Controller")
         self.ops.handle({"op": "pair", "mac": PRO})
-        wait_until(lambda: self.steps().get("padd") == "doing", what="后备路等 padd")
+        wait_until(lambda: self.steps().get("padd") == "doing", what="método alternativo aguardando o padd")
         self.assertIn(("pad.pair", {"timeout_seconds": 1, "mac": PRO}), self.cfg.calls)
         self.assertIs(self.wiz()["helper_available"], False)
         self.assertIn("configd", self.wiz()["via"])
         self.tap.attach(PRO_DEV)
-        wait_until(lambda: self.wiz()["phase"] == "keys", what="进入按键测试")
+        wait_until(lambda: self.wiz()["phase"] == "keys", what="fase de teste dos botões")
 
     def test_fallback_agent_failure_reopens_session_once(self):
         self.cfg.pair_exc = RpcError("pad.pair", 14, "may not change this robot's configuration")
@@ -854,12 +854,12 @@ class PairTest(PadTestBase):
         self.bt.pair_excs = [P.BtError("agent", "Failed to register agent object")]
         self.bt.on_pair = lambda mac: self.cfg.connect_pad(PRO, "Pro Controller")
         self.ops.handle({"op": "pair", "mac": PRO})
-        wait_until(lambda: self.steps().get("padd") == "doing", what="重试后等 padd")
+        wait_until(lambda: self.steps().get("padd") == "doing", what="aguardando o padd após nova tentativa")
         pairs = [c for c in self.bt.calls if isinstance(c, tuple) and c[:2] == ("pair_device", PRO)]
         self.assertEqual(len(pairs), 2)
         self.assertIn("close", self.bt.calls)
         self.tap.attach(PRO_DEV)
-        wait_until(lambda: self.wiz()["phase"] == "keys", what="进入按键测试")
+        wait_until(lambda: self.wiz()["phase"] == "keys", what="fase de teste dos botões")
 
     def test_padd_wait_default_is_30_seconds(self):
         self.assertEqual(P.PADD_WAIT_S, 30)
@@ -868,11 +868,11 @@ class PairTest(PadTestBase):
     def test_forget_via_helper_and_old_helper_falls_back(self):
         self.helper.is_available = True
         self.helper.forget_result = (True, "forgotten", {"removed": True})
-        self.assertEqual(self.ops.handle({"op": "forget", "mac": PRO}, by="电脑"), {"removed": True})
-        self.assertEqual(self.helper.forget_calls[0][:2], ("电脑", PRO))
+        self.assertEqual(self.ops.handle({"op": "forget", "mac": PRO}, by="Computador"), {"removed": True})
+        self.assertEqual(self.helper.forget_calls[0][:2], ("Computador", PRO))
         self.assertEqual([c for c in self.cfg.calls if c[0] == "pad.forget"], [])
         # Se a versão antiga do helper retornar bad_verb, use configd → bluetoothctl como antes.
-        self.helper.forget_result = (False, "bad_verb", {"msg": "只认这几个动词"})
+        self.helper.forget_result = (False, "bad_verb", {"msg": "comando não reconhecido"})
         self.assertEqual(self.ops.handle({"op": "forget", "mac": PRO}), {"removed": True})
         self.assertIn(("pad.forget", {"mac": PRO}), self.cfg.calls)
         self.assertIs(self.wiz()["helper_available"], False)
@@ -883,7 +883,7 @@ class PairTest(PadTestBase):
         self.robot_ok(posture="walking")
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "forget", "mac": PRO})
-        self.assertIn("停下", str(cm.exception))
+        self.assertIn("Parar (ficar em pé)", str(cm.exception))
 
 
 # ---------------- Parada de emergência ----------------
@@ -893,7 +893,7 @@ class EStopTest(PadTestBase):
         self.cfg.connect_pad(XBOX, "Xbox Wireless Controller")
         self.watch()
         self.tap.attach(XBOX_DEV)
-        wait_until(lambda: self.ops.snapshot()["estop"]["ok"], what="急停四条都 ✓")
+        wait_until(lambda: self.ops.snapshot()["estop"]["ok"], what="quatro verificações da parada de emergência aprovadas")
 
     def state(self):
         return self.ops.snapshot()["estop_test"]["state"]
@@ -901,13 +901,13 @@ class EStopTest(PadTestBase):
     def start_armed(self):
         self.ready()
         self.ops.handle({"op": "estop_test", "action": "start"})
-        wait_until(lambda: self.state() == "armed", what="确认上着力、等按 Select")
+        wait_until(lambda: self.state() == "armed", what="torque confirmado; aguardando Select")
 
     def press_select(self):
         self.tap.key(0x13A, True)
         self.assertEqual(self.state(), "pressed")
         wait_until(lambda: self.ops.test.get("_on_while_pressed") is not None or self.ops.test.get("_press_err"),
-                   what="按着的时候问过一次扭矩")
+                   what="torque consultado enquanto o botão estava pressionado")
 
     def test_checks(self):
         self.cfg.connect_pad(XBOX, "Xbox Wireless Controller")
@@ -928,12 +928,12 @@ class EStopTest(PadTestBase):
         es = self.ops.snapshot()["estop"]
         self.assertFalse(es["ok"])
         self.assertEqual(es["state"], "unknown")
-        self.assertIn("没核对", next(c for c in es["checks"] if c["key"] == "netpad")["why"])
+        self.assertIn("não foi verificado", next(c for c in es["checks"] if c["key"] == "netpad")["why"])
         self.ops.read_text = lambda p: (_ for _ in ()).throw(PermissionError(13, "Permission denied"))
         self.ops._refresh_files()
         es = self.ops.snapshot()["estop"]
         self.assertEqual(es["state"], "unknown")
-        self.assertIn("没权限", next(c for c in es["checks"] if c["key"] == "netpad")["why"])
+        self.assertIn("Permission denied", next(c for c in es["checks"] if c["key"] == "netpad")["why"])
         # Sem o arquivo, robotd usa os padrões e netpad fica desativado por padrão.
         self.ops.read_text = lambda p: (_ for _ in ()).throw(FileNotFoundError(2, "No such file"))
         self.ops._refresh_files()
@@ -943,17 +943,17 @@ class EStopTest(PadTestBase):
         self.assertFalse(self.ops.snapshot()["estop"]["ok"])
         self.robot_ok(bus=dict(bus(), mode="commissioning"))
         self.assertFalse(self.ops.snapshot()["estop"]["ok"])
-        self.assertEqual(self.ops.estop_ok(), False)        # 审查 23 的轻量版跟 snapshot 一致
+        self.assertEqual(self.ops.estop_ok(), False)        # A verificação compacta corresponde ao snapshot.
 
     def test_tap_is_evidence_when_configd_unreadable(self):
-        """审查 16：第一台平时关着 configd；旁路看到 attached 就当「手柄连着、padd 在跑」的证据。"""
-        self.cfg.status_exc = Unreachable("/run/configd.sock 不在")
+        """Quando o configd está desativado, attached no acesso paralelo comprova a conexão do controle e do padd."""
+        self.cfg.status_exc = Unreachable("/run/configd.sock indisponível")
         self.watch()
         self.tap.attach(XBOX_DEV)
         es = self.ops.snapshot()["estop"]
         by = {c["key"]: c for c in es["checks"]}
         self.assertTrue(by["pad"]["ok"])
-        self.assertIn("旁路", by["pad"]["why"])
+        self.assertIn("acesso paralelo do padd", by["pad"]["why"])
         self.assertTrue(by["padd"]["ok"])
         self.assertTrue(es["ok"])
 
@@ -973,7 +973,7 @@ class EStopTest(PadTestBase):
         self.assertEqual(self.state(), "released")
         time.sleep(0.05)
         self.robot_ok(torque_on=False)                          # padd enviou relax; a leitura confirma torque OFF.
-        wait_until(lambda: self.state() == "passed", what="通过")
+        wait_until(lambda: self.state() == "passed", what="teste aprovado")
         t = self.ops.snapshot()["estop_test"]
         self.assertIsInstance(t["ms"], int)
         self.assertNotIn("_released_at", t)                     # Não envie campos internos para a página.
@@ -982,7 +982,7 @@ class EStopTest(PadTestBase):
         """Revisão 1 / R1: após a liberação superior ser confirmada (estop_active retorna False) ou após uma queda, Select não pode aprovar o teste."""
         self.start_armed()
         self.robot_ok(torque_on=False, estop_active=False)      # O torque já estava desligado antes de pressionar Select.
-        wait_until(lambda: self.state() == "failed", what="还没按就判没通过")
+        wait_until(lambda: self.state() == "failed", what="falhou antes de pressionar Select")
         self.assertEqual(self.ops.snapshot()["estop_test"]["failed_at"], "early_off")
         self.tap.key(0x13A, True)                               # Pressionar Select depois, com leitura OFF, também não aprova.
         self.tap.key(0x13A, False)
@@ -996,15 +996,15 @@ class EStopTest(PadTestBase):
         self.press_select()
         self.tap.key(0x13A, False)
         self.relax_pressed()
-        wait_until(lambda: self.state() == "failed", what="没通过")
+        wait_until(lambda: self.state() == "failed", what="teste reprovado")
         self.assertEqual(self.ops.snapshot()["estop_test"]["failed_at"], "relax")
 
     def test_r2_long_hold_is_shutdown_not_estop(self):
         """Revisão 1 / R2: manter pressionado por 2 s envia robot.shutdown (sentar e desligar), portanto o teste falha."""
         self.start_armed()
         self.press_select()
-        wait_until(lambda: self.ops.snapshot()["estop_test"]["held_long"], what="按太久的警告")
-        wait_until(lambda: self.state() == "failed", what="按满了直接判失败")
+        wait_until(lambda: self.ops.snapshot()["estop_test"]["held_long"], what="aviso de pressionamento longo")
+        wait_until(lambda: self.state() == "failed", what="reprovou ao atingir o tempo limite")
         t = self.ops.snapshot()["estop_test"]
         self.assertEqual(t["failed_at"], "long")
         self.assertIn("shutdown", t["why"])
@@ -1018,29 +1018,29 @@ class EStopTest(PadTestBase):
         self.start_armed()
         self.robot.bus = bus(False)                             # robotd já informava OFF no momento do pressionamento.
         self.tap.key(0x13A, True)
-        wait_until(lambda: self.ops.test.get("_on_while_pressed") is not None or self.state() == "failed", what="按着时问过")
+        wait_until(lambda: self.ops.test.get("_on_while_pressed") is not None or self.state() == "failed", what="consultou durante o pressionamento")
         self.tap.key(0x13A, False)
-        wait_until(lambda: self.state() == "failed", what="没通过")
+        wait_until(lambda: self.state() == "failed", what="teste reprovado")
         self.assertIn(self.ops.snapshot()["estop_test"]["failed_at"], ("pressed_off", "early_off"))
 
     def test_fails_when_readback_never_shows_torque_off(self):
         self.start_armed()
         self.press_select()
         self.tap.key(0x13A, False)
-        wait_until(lambda: self.state() == "failed", what="没通过")
+        wait_until(lambda: self.state() == "failed", what="teste reprovado")
         t = self.ops.snapshot()["estop_test"]
         self.assertEqual(t["failed_at"], "readback")
-        self.assertIn("顶上的「卸力」", t["fix"])
+        self.assertIn("controle superior de relaxamento", t["fix"])
 
     def test_waits_for_torque_then_times_out_without_select(self):
         self.ready()
-        self.robot_ok(torque_on=False)                          # 软着：先等它站起来
+        self.robot_ok(torque_on=False)                          # Torque relaxado: primeiro aguarda o robô ficar em pé.
         self.ops.handle({"op": "estop_test", "action": "start"})
         self.assertEqual(self.state(), "need_torque")
         time.sleep(0.05)
         self.robot_ok(torque_on=True)
-        wait_until(lambda: self.state() == "armed", what="上力了")
-        wait_until(lambda: self.state() == "failed", what="没按 Select")
+        wait_until(lambda: self.state() == "armed", what="torque ativado")
+        wait_until(lambda: self.state() == "failed", what="Select não foi pressionado")
         self.assertEqual(self.ops.snapshot()["estop_test"]["failed_at"], "press")
 
     def test_refused_when_path_is_broken(self):
@@ -2903,7 +2903,7 @@ class PortTest(unittest.TestCase):
         with mock.patch("socket.create_connection", side_effect=PermissionError(13, "Permission denied")):
             with self.assertRaises(P.NoPermission) as cm:
                 P.rpc_call("tcp:127.0.0.1:1", "x", {}, 1.0)
-        self.assertIn("robot 组", str(cm.exception))
+        self.assertIn("grupo robot", str(cm.exception))
 
     def test_padd_tap_reports_and_survives_callback_errors(self):
         def tap(c):
@@ -3009,12 +3009,12 @@ class OverviewMergeTest(PadTestBase):
         self.assertIn("dropped", self.ops.handle({"op": "keys", "held": ["lt"], "down": ["lt"], "seq": self.s()}, conn=c))
         self.assertIn("dropped", self.into("head", conn=c))
         with self.assertRaises(P.Refused) as cm:
-            self.ops.handle({"op": "action_start", "id": "nod"}, by="电脑 A", conn=c)
+            self.ops.handle({"op": "action_start", "id": "nod"}, by="Computador A", conn=c)
         self.assertIn("Esta página não está na área do controle", str(cm.exception))
         time.sleep(0.15)
         self.assertEqual([m for m, _ in self.sent() if m in ("robot.move", "robot.mouth", "robot.sound", "robot.head")], [])
         # Comandos pontuais, como parar, continuam disponíveis para todas as páginas.
-        self.ops.handle({"op": "walk_stop"}, by="电脑 A", conn=c)
+        self.ops.handle({"op": "walk_stop"}, by="Computador A", conn=c)
         self.assertIn(("robot.enable", {"on": False, "toggle": False}), self.robot.calls)
         # A página aceita os comandos depois de abrir a área do controle.
         self.feed()
@@ -3087,7 +3087,7 @@ class OverviewMergeTest(PadTestBase):
     def test_c7_action_hold_only_counts_for_the_same_press(self):
         """Um timer de um pressionamento anterior não pode prolongar uma nova ação; páginas antigas sem press continuam compatíveis."""
         self.robot_ok(posture="policy", policies=POLICIES)
-        self.ops.handle({"op": "action_start", "id": "nod", "press": 1}, by="电脑 A", conn="a")
+        self.ops.handle({"op": "action_start", "id": "nod", "press": 1}, by="Computador A", conn="a")
         self.assertEqual(self.ops.handle({"op": "action_hold", "press": 1}, conn="a")["running"], "nod")
         self.ops.handle({"op": "action_start", "id": "nod", "press": 2}, by="Computador A", conn="a")   # Solta e pressiona novamente.
         held = self.ops._action["hold"]
