@@ -33,55 +33,55 @@ class FriendlyTest(unittest.TestCase):
         self.assertEqual(json.loads(run.call_args.kwargs["input"]), {"by": "test", "action": "enter", "confirmed": True})
 
     def test_take(self):
-        self.assertIn("主程序停了", helper.friendly("taken", None, "bus-take"))
+        self.assertIn("O programa principal parou", helper.friendly("taken", None, "bus-take"))
 
     def test_take_port_busy(self):
-        self.assertIn("串口还被占着", helper.friendly("port_busy", None, "bus-take"))
+        self.assertIn("A porta serial ainda está em uso", helper.friendly("port_busy", None, "bus-take"))
 
     def test_give_soft(self):
-        self.assertIn("主程序起来了", helper.friendly("soft", None, "bus-give-back"))
+        self.assertIn("O programa principal iniciou", helper.friendly("soft", None, "bus-give-back"))
 
     def test_give_limp(self):
-        self.assertIn("全卸", helper.friendly("limp", None, "bus-give-back"))
+        self.assertIn("desativou todo o torque", helper.friendly("limp", None, "bus-give-back"))
 
     def test_give_still_starting_is_not_called_cannot_start(self):
         # Tarefa 16: se o programa principal responde, mas permanece em inicialização (fork antigo), use a mensagem do helper em vez de dizer que não inicia.
-        msg = "主程序 30 秒一直报「启动中」（phase=configuring_bus）：可能其实起来了、只是状态没更新（旧版主程序的毛病）"
+        msg = "O programa principal informa inicialização há 30 s (phase=configuring_bus): pode ter iniciado, mas o estado não foi atualizado (problema de uma versão antiga)."
         self.assertEqual(msg, helper.friendly("soft_failed", {"msg": msg, "still_starting": True}, "bus-give-back"))
-        self.assertIn("主程序起不来", helper.friendly("soft_failed", {"msg": "x"}, "bus-give-back"))
+        self.assertIn("Não foi possível iniciar o programa principal", helper.friendly("soft_failed", {"msg": "x"}, "bus-give-back"))
 
     def test_unknown_result(self):
         # Resultados desconhecidos permanecem inalterados; sem msg, não acrescente texto.
         self.assertEqual("weird", helper.friendly("weird", None, "bus-take"))
 
     def test_msg_appended_when_not_duplicate(self):
-        d = {"msg": "具体原因"}
-        self.assertEqual("串口还被占着：具体原因", helper.friendly("port_busy", d, "bus-take"))
+        d = {"msg": "motivo específico"}
+        self.assertEqual("A porta serial ainda está em uso：motivo específico", helper.friendly("port_busy", d, "bus-take"))
 
     def test_pad_pair_failure_has_official_reason(self):
         text = helper.friendly("pair_failed", {"reason": "not_found"}, "pad-pair")
-        self.assertIn("没配上", text)
+        self.assertIn("Falha ao parear", text)
         self.assertIn("not_found", text)
 
     def test_pad_missing_robotctl(self):
         self.assertIn("robotctl", helper.friendly("no_robotctl", None, "pad-pair"))
 
     def test_pad_forget(self):
-        self.assertIn("忘掉了", helper.friendly("forgotten", None, "pad-forget"))
+        self.assertIn("Removido", helper.friendly("forgotten", None, "pad-forget"))
 
     def test_not_motion_keeps_helper_reason(self):
-        msg = "写进去了，但主程序停在调试模式：commissioning；已经换回原来的文件，再起了一次"
+        msg = "A gravação foi concluída, mas o programa principal permaneceu no modo de calibração: commissioning; o arquivo original foi restaurado e o programa reiniciado."
         self.assertEqual(msg, helper.friendly("not_motion", {"msg": msg}, "calib-commit"))
 
     def test_wifi_old_helper_says_reinstall(self):
         text = helper.friendly("bad_verb", None, "wifi-hotspot-down")
-        self.assertIn("小助手太旧", text)
+        self.assertIn("O assistente está desatualizado", text)
         self.assertIn("deploy/install.sh", text)
 
     def test_wifi_results(self):
-        self.assertIn("热点关了", helper.friendly("hotspot_down", None, "wifi-hotspot-down"))
-        self.assertIn("本来就没开", helper.friendly("already_down", None, "wifi-hotspot-down"))
-        self.assertIn("热点开回来了", helper.friendly("hotspot_up", None, "wifi-hotspot-up"))
+        self.assertIn("Hotspot desligado", helper.friendly("hotspot_down", None, "wifi-hotspot-down"))
+        self.assertIn("O hotspot já estava desligado", helper.friendly("already_down", None, "wifi-hotspot-down"))
+        self.assertIn("Hotspot ligado novamente", helper.friendly("hotspot_up", None, "wifi-hotspot-up"))
 
 
 class PadCallTest(unittest.TestCase):
@@ -148,10 +148,10 @@ class CallParseTest(unittest.TestCase):
         self.assertEqual(result, "port_busy")
 
     def test_no_done_falls_back_to_stderr(self):
-        with _patch_run("不是 JSON\n", "小助手没装"):
+        with _patch_run("not JSON\n", "helper indisponível"):
             ok, result, detail = helper._call("bus-take", {"by": "x"}, 30)
         self.assertFalse(ok)
-        self.assertEqual(result, "小助手没装")
+        self.assertEqual(result, "helper indisponível")
 
     def test_no_done_no_stderr_falls_back_to_exit_code(self):
         with _patch_run("", rc=1):

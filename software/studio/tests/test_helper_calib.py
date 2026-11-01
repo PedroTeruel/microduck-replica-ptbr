@@ -1,8 +1,8 @@
-"""calib-read / calib-commit：写进主程序（deploy/microduck-helper）的 fork 真实形状测试。
+"""Testes com a estrutura real do fork para calib-read / calib-commit, que grava dados no programa principal (deploy/microduck-helper).
 
-电脑上跑，不碰真系统：沿用 test_helper_bus 的假 systemctl / 假 robotd / 临时根目录。
-重点：先拿锁再查旗、标定模式 -> 删 drop-in -> motion+control+读回一致、两类 waiting_for_bus、
-读回不一致、saved 写失败、回滚后 robotd 不回来、策略在跑拒绝、外来 --commissioning 拒绝、备份按序号留 10 组。
+Executado no computador, sem tocar no sistema real: reutiliza systemctl e robotd simulados de test_helper_bus e um diretório raiz temporário.
+Verifica bloqueio antes da consulta, remoção do drop-in no modo de calibração, motion+control com leitura de volta idêntica, dois estados waiting_for_bus,
+divergência na leitura, falha ao salvar, robotd indisponível após rollback, rejeição durante política ativa e de --commissioning externo, e retenção das 10 cópias de backup mais recentes.
 
     py -3.13 -I -c "import sys;sys.path[:0]=['.','deps','dev'];import unittest;unittest.main(module=None,argv=['x','-v','tests.test_helper_calib'])"
 """
@@ -43,14 +43,14 @@ BUS_ERROR = "torque readback at register 40: Feetech Sync Read timeout; missing 
 
 
 class CalibRobot(Robot):
-    """标定写完之后按 World.restart_bus / calib_available 回话。"""
+    """Simula a resposta após gravar a calibração usando World.restart_bus / calib_available."""
 
     def rpc(self, method, params=None):
         w = self.w
         if w.restarted and w.restart_bus is not None and method == "robot.busStatus":
             if self.w.robotd != "active":
-                raise H.RpcError(f"{method}：连不上")
-            # restart_bus 可以是函数：参数是重启以后过了几秒，用来模拟「刚启动那一下总线没打开」
+                raise H.RpcError(f"{method}: conexão indisponível")
+            # restart_bus pode ser uma função; recebe os segundos desde a reinicialização para simular a falha inicial ao abrir o barramento.
             bus = w.restart_bus(w.clock.t - w.restart_t) if callable(w.restart_bus) else w.restart_bus
             return copy.deepcopy(bus)
         if method == "robot.busCommand" and (params or {}).get("action") == "calibration-status":
@@ -102,7 +102,7 @@ class CalibCtx(FakeCtx):
     def rpc(self, method, params=None, timeout=1.0):
         if method == "hello":
             if self.w.robotd != "active" or not self.w.hello_ok:
-                raise H.RpcError("连不上 /run/robotd.sock")
+                raise H.RpcError("conexão indisponível em /run/robotd.sock")
             return {"api_version": 40, "daemon_version": "fake"}
         return super().rpc(method, params, timeout)
 
@@ -150,7 +150,7 @@ class Base(unittest.TestCase):
         return json.loads(self.w.path(H.LAST).read_text(encoding="utf-8"))
 
     def payload(self, dry=False, **over):
-        p = {"by": "测试", "joints": joints_payload(), "imu": {"source": "bus", "quat": [1.0, 0.0, 0.0, 0.0]},
+        p = {"by": "teste", "joints": joints_payload(), "imu": {"source": "bus", "quat": [1.0, 0.0, 0.0, 0.0]},
              "dry_run": dry}
         p.update(over)
         return p
@@ -189,34 +189,34 @@ class ValidationTest(unittest.TestCase):
         self.assertIn(why, str(cm.exception))
 
     def test_extra_top_key(self):
-        self.bad(lambda c: c.update(extra=1), "顶层有不认识的键")
+        self.bad(lambda c: c.update(extra=1), "chaves desconhecidas no nível superior")
 
     def test_joints_count(self):
-        self.bad(lambda c: c["joints"].pop(), "正好 15 颗")
+        self.bad(lambda c: c["joints"].pop(), "exatamente 15 articulações")
 
     def test_order(self):
-        self.bad(lambda c: c["joints"].reverse(), "官方顺序")
+        self.bad(lambda c: c["joints"].reverse(), "ordem oficial")
 
     def test_id_200(self):
-        self.bad(lambda c: c["joints"][0].update(id=200), "不能是 200")
+        self.bad(lambda c: c["joints"][0].update(id=200), "diferente de 200")
 
     def test_direction(self):
-        self.bad(lambda c: c["joints"][0].update(direction=2), "direction 只能是")
+        self.bad(lambda c: c["joints"][0].update(direction=2), "direction deve ser")
 
     def test_zero_raw_range(self):
-        self.bad(lambda c: c["joints"][0].update(zero_raw=4096), "zero_raw 要是 0–4095")
+        self.bad(lambda c: c["joints"][0].update(zero_raw=4096), "zero_raw deve estar entre 0 e 4095")
 
     def test_limits_need_both(self):
-        self.bad(lambda c: c["joints"][0].pop("max_rad"), "限位要两个都有")
+        self.bad(lambda c: c["joints"][0].pop("max_rad"), "os dois limites devem estar definidos")
 
     def test_min_less_than_max(self):
-        self.bad(lambda c: c["joints"][0].update(min_rad=1.0, max_rad=0.5), "min_rad 要小于 max_rad")
+        self.bad(lambda c: c["joints"][0].update(min_rad=1.0, max_rad=0.5), "min_rad deve ser menor que max_rad")
 
     def test_motion_requires_calibrated(self):
-        self.bad(lambda c: c["joints"][0].update(calibrated=False), "motion_enabled = true 时 15 颗都要 calibrated")
+        self.bad(lambda c: c["joints"][0].update(calibrated=False), "motion_enabled = true, os 15 servos devem estar calibrados")
 
     def test_motion_requires_verified_imu(self):
-        self.bad(lambda c: c.update(imu_mount_verified=False), "IMU 方向要 verified")
+        self.bad(lambda c: c.update(imu_mount_verified=False), "imu_mount_verified")
 
 
 class CalibReadTest(Base):
@@ -225,7 +225,7 @@ class CalibReadTest(Base):
         self.w.locks.add(H.LOCK)
         locks_before = set(self.w.locks)
         before = self.path.read_bytes(), self.path.stat().st_mtime_ns
-        code, ctx = self.call({"by": "测试"}, verb="calib-read")
+        code, ctx = self.call({"by": "teste"}, verb="calib-read")
         self.assertEqual(code, H.EXIT_OK)
         done = next(x for x in ctx.stdout.lines() if x.get("step") == "done")["detail"]
         self.assertEqual(done["result"], "read")
@@ -233,20 +233,20 @@ class CalibReadTest(Base):
         self.assertTrue(done["commissioning_present"])
         self.assertEqual(done["calibration"]["joints"][0]["name"], H.JOINT_ORDER[0])
         self.assertEqual((self.path.read_bytes(), self.path.stat().st_mtime_ns), before)
-        self.assertEqual(self.w.locks, locks_before, "calib-read 不拿锁")
-        self.assertFalse(self.w.path(H.LAST).exists(), "calib-read 不写 last-result")
-        self.assertEqual(ctx.fs_log, [], "calib-read 不写任何文件")
+        self.assertEqual(self.w.locks, locks_before, "calib-read não adquire bloqueio")
+        self.assertFalse(self.w.path(H.LAST).exists(), "calib-read não grava last-result")
+        self.assertEqual(ctx.fs_log, [], "calib-read não grava arquivos")
 
     def test_foreign_commissioning_is_reported_not_refused(self):
         self.commissioning(False, exec_too=True)
-        code, ctx = self.call({"by": "测试"}, verb="calib-read")
+        code, ctx = self.call({"by": "teste"}, verb="calib-read")
         self.assertEqual(code, H.EXIT_OK)
         done = next(x for x in ctx.stdout.lines() if x.get("step") == "done")["detail"]
         self.assertEqual(done["result"], "read")
         self.assertEqual(done["mode"], "foreign")
         self.assertFalse(done["commissioning_present"])
         self.assertTrue(done["exec_has_commissioning"])
-        self.assertIn("不是镜像设的", done["mode_text"])
+        self.assertIn("não foi configurado pela imagem", done["mode_text"])
 
 
 class CommitTest(Base):
@@ -261,7 +261,7 @@ class CommitTest(Base):
         self.assertTrue(last["detail"]["readback_ok"])
         self.assertEqual(last["detail"]["mismatches"], [])
         self.assertEqual(last["detail"]["bus_status"], {"mode": "motion", "phase": "control", "error": None})
-        self.assertFalse(self.dropin.exists(), "写完要删掉镜像的 commissioning drop-in")
+        self.assertFalse(self.dropin.exists(), "Após gravar, remova o drop-in commissioning da imagem.")
         self.assertTrue([c for c in self.w.calls if c[:2] == ["systemctl", "daemon-reload"]])
         main = self.path.read_bytes()
         self.assertEqual(self.saved.read_bytes(), main)
@@ -279,7 +279,7 @@ class CommitTest(Base):
         self.assertEqual((groups[0] / "hd1910-calibration.toml").read_bytes(), self.old)
 
     def test_motion_waiting_for_bus_can_be_rewritten(self):
-        """运动模式卡在等总线（没有策略）：允许写标定把它救回来。"""
+        """Se o modo de movimento estiver aguardando o barramento, sem política ativa, permita gravar a calibração para recuperá-lo."""
         self.commissioning(False)
         self.w.robot.mode, self.w.robot.phase = "motion", "waiting_for_bus"
         self.w.robot.error = STUCK_CALIB
@@ -297,7 +297,7 @@ class CommitTest(Base):
         self.assertEqual(code, H.EXIT_FAIL, self.last())
         last = self.last()
         self.assertEqual(last["result"], "calib_rejected")
-        self.assertIn("标定没通过主程序的检查", last["reason"])
+        self.assertIn("A calibração foi rejeitada pelo programa principal", last["reason"])
         self.assertIn(STUCK_CALIB, last["reason"])
         self.assertTrue(last["detail"]["rolled_back"])
         self.assertTrue(last["detail"]["files_restored"])
@@ -314,12 +314,12 @@ class CommitTest(Base):
         self.assertEqual(code, H.EXIT_FAIL, self.last())
         last = self.last()
         self.assertEqual(last["result"], "bus_unavailable")
-        self.assertIn("主程序打不开舵机总线", last["reason"])
-        self.assertIn("舵机电源", last["reason"])
+        self.assertIn("O programa principal não conseguiu abrir o barramento dos servos", last["reason"])
+        self.assertIn("A alimentação dos servos está ligada", last["reason"])
         self.assertTrue(last["detail"]["files_restored"])
 
     def test_bus_error_right_after_restart_then_control_commits(self):
-        """刚重启那一下总线没打开（主程序每秒重试），之后进了控制阶段：照样算写成功，不回滚。"""
+        """Se o barramento não abrir logo após reiniciar, mas o programa principal entrar em controle na tentativa seguinte, considere sucesso e não reverta."""
         self.limp_motion()
         self.w.restart_bus = lambda t: ({"mode": "motion", "phase": "waiting_for_bus", "error": BUS_ERROR}
                                         if t < 3.0 else {"mode": "motion", "phase": "control"})
@@ -375,7 +375,7 @@ class CommitTest(Base):
         self.assertTrue(last["detail"]["files_restored"])
         self.assertEqual(self.path.read_bytes(), self.old)
         self.assertEqual(self.saved.read_bytes(), self.old + b"# old saved\n")
-        self.assertTrue(self.dropin.exists(), "没删成的 commissioning 文件还在")
+        self.assertTrue(self.dropin.exists(), "O arquivo commissioning que não foi removido ainda existe.")
 
     def test_rollback_robotd_does_not_come_up(self):
         self.limp_motion()
@@ -387,7 +387,7 @@ class CommitTest(Base):
         last = self.last()
         self.assertFalse(last["detail"]["rolled_back"])
         self.assertFalse(last["detail"]["robotd_up_after_rollback"])
-        self.assertIn("去日志页导出诊断包", last["reason"])
+        self.assertIn("exporte o pacote de diagnóstico na página de registros", last["reason"])
 
     def test_lock_comes_before_flag(self):
         self.limp_motion()
@@ -414,7 +414,7 @@ class CommitTest(Base):
         self.w.robot.policy_enabled = True
         code, _ = self.call(self.payload())
         self.assertEqual(code, H.EXIT_STATE, self.last())
-        self.assertIn("鸭子在走 / 站着", self.last()["reason"])
+        self.assertIn("robô pode estar andando ou em pé", self.last()["reason"])
         self.assertEqual(self.path.read_bytes(), self.old)
         self.assertFalse(self.w.restarted)
 
@@ -423,8 +423,8 @@ class CommitTest(Base):
         code, _ = self.call(self.payload())
         self.assertEqual(code, H.EXIT_STATE, self.last())
         self.assertEqual(self.last()["result"], "foreign_commissioning")
-        self.assertIn("不是镜像设的", self.last()["reason"])
-        self.assertIn("诊断包", self.last()["reason"])
+        self.assertIn("não foi configurado pela imagem", self.last()["reason"])
+        self.assertIn("pacote de diagnóstico", self.last()["reason"])
 
     def test_restart_failure_rolls_back(self):
         self.limp_motion()
@@ -440,7 +440,7 @@ class CommitTest(Base):
 
     def test_backup_keeps_ten_by_sequence(self):
         class Op:
-            by = "测试"
+            by = "teste"
             def __init__(self, ctx):
                 self.ctx, self.lines = ctx, []
             def emit(self, *a, **k):
