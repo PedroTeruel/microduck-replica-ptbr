@@ -1,6 +1,6 @@
-"""studio/helper.py（root 小助手的 Python 薄封装）：_call 解析、friendly 映射、available 缓存。
+"""Camada Python fina para studio/helper.py: análise de _call, mensagens amigáveis e cache de disponibilidade.
 
-不碰真系统：mock subprocess.run 和 sys.platform。真正的小助手总线逻辑在 tests/test_helper_bus.py。
+Não acessa o sistema real: simula subprocess.run e sys.platform. A lógica de barramento do helper está em tests/test_helper_bus.py.
 """
 import json
 import unittest
@@ -45,13 +45,13 @@ class FriendlyTest(unittest.TestCase):
         self.assertIn("全卸", helper.friendly("limp", None, "bus-give-back"))
 
     def test_give_still_starting_is_not_called_cannot_start(self):
-        # 任务 16：主程序在回话、只是一直报启动阶段（旧 fork）：不说「起不来」，用小助手的整句原话
+        # Tarefa 16: se o programa principal responde, mas permanece em inicialização (fork antigo), use a mensagem do helper em vez de dizer que não inicia.
         msg = "主程序 30 秒一直报「启动中」（phase=configuring_bus）：可能其实起来了、只是状态没更新（旧版主程序的毛病）"
         self.assertEqual(msg, helper.friendly("soft_failed", {"msg": msg, "still_starting": True}, "bus-give-back"))
         self.assertIn("主程序起不来", helper.friendly("soft_failed", {"msg": "x"}, "bus-give-back"))
 
     def test_unknown_result(self):
-        # 不认识的结果回退成原样，不带 msg 就不拼原话
+        # Resultados desconhecidos permanecem inalterados; sem msg, não acrescente texto.
         self.assertEqual("weird", helper.friendly("weird", None, "bus-take"))
 
     def test_msg_appended_when_not_duplicate(self):

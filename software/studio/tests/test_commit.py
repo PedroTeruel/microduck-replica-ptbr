@@ -1,6 +1,6 @@
-"""写进主程序（studio/commit.py）：Studio 这边的记录、准备情况、预览、调小助手写入。
+"""Gravação no programa principal (studio/commit.py): registros, preparação, prévia e chamada ao helper pelo Studio.
 
-跑法：
+Execução:
     py -3.13 -I -c "import sys;sys.path[:0]=['.','deps','dev'];import unittest;unittest.main(module=None,argv=['x','-v','tests.test_commit'])"
 """
 import copy
@@ -69,7 +69,7 @@ def servo_rows(n=15):
 
 
 class Rd:
-    """假 Robotd：mode 只由构造参数决定（fork main.rs:1300-1315）。"""
+    """robotd simulado: o modo é definido apenas pelo parâmetro do construtor (fork main.rs:1300–1315)."""
 
     def __init__(self, calib, source="bus", present=True, mode="commissioning", phase="ready",
                  servos=15, fresh=True, policy=False, torque=False):

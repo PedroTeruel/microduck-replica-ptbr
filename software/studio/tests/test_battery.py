@@ -1,9 +1,9 @@
-"""电池电量估算（studio/battery.py、battery-plan.md v2）：查表、去极值、估算中 30 秒、轻松段选取、警告 60 秒 + 回差、
-负载线 30 秒、读不到 10 秒重新起步、读数校准、设置文件，以及拿一号鸭 10-12 / 10-13 的上机录像回放。
-跑法（studio 目录下）：
+"""Estimativa da carga da bateria (studio/battery.py, battery-plan.md v2): consulta, remoção de extremos, estimativa de 30 s, seleção de trecho estável,
+alerta de 60 s com histerese, linha de carga de 30 s, reinício após 10 s sem leitura, calibração, configuração e reprodução de gravações do MicroDuck 1 em 12 e 13/10.
+Execução (no diretório studio):
     py -3.13 -I -c "import sys;sys.path[:0]=['deps','.','dev'];import unittest;unittest.main(module=None,argv=['x','-v','tests.test_battery'])"
-回放数据 tests/fixtures/battery-*.csv：robotd EMA 后的电压反推回每秒的原始读数（15 颗平均）+ 那一秒的状态类别，
-做法见文件第一行注释（scratchpad/battery_an/build_fixture.py）。
+Dados reproduzidos em tests/fixtures/battery-*.csv: reconstrução das leituras brutas por segundo a partir da tensão suavizada por EMA do robotd (média de 15 servos), mais a categoria de estado daquele segundo.
+O procedimento está comentado na primeira linha dos arquivos (scratchpad/battery_an/build_fixture.py).
 """
 import json
 import os
@@ -18,7 +18,7 @@ sys.path[:0] = [str(HERE.parent), str(HERE.parent / "deps")]
 from studio import battery as B  # noqa: E402
 
 FIX = HERE / "fixtures"
-# 二号鸭 10-18 22:03 卸力时 15 颗的电压（ID 20–24 | 30–34 | 10–14），battery-plan.md §2.1
+# Tensão dos 15 servos do MicroDuck 2 ao liberar o torque em 18/10 às 22:03 (IDs 20–24 | 30–34 | 10–14), battery-plan.md §2.1.
 DUCK2 = [7.6, 7.7, 7.6, 7.6, 7.6, 7.7, 7.6, 7.6, 7.5, 7.6, 7.6, 7.7, 7.7, 7.6, 7.7]
 
 
@@ -34,12 +34,12 @@ class FakeLog:
 
 
 def flat(v):
-    """15 颗都一样的读数（回放数据是 15 颗平均，喂成 15 个一样的值，去头去尾平均还是它）。"""
+    """Leitura idêntica para os 15 servos; a reprodução usa a média, e a média aparada desses mesmos valores permanece igual."""
     return [v] * 15
 
 
 def run(e, seq, t0=0.0, source="robotd"):
-    """seq：[(秒数, 电压或 None, cls), …] 每秒一个；电压 None = 这一秒没有新数据。回 (结束时间, 所有事件)。"""
+    """seq contém (segundo, tensão ou None, classe), uma entrada por segundo; None significa que não houve dado novo. Retorna (tempo final, eventos)."""
     events = []
     t = t0
     for i, (v, cls) in enumerate(seq):
@@ -66,7 +66,7 @@ def load_fixture(name):
 
 
 def replay(e, rows, t0=0.0):
-    """按录像的秒数喂；录像里缺的秒当「这一秒没有新数据」。回 ({秒: 显示的 %}, 事件, 模式记录)。"""
+    """Alimenta os dados segundo a gravação; segundos ausentes significam que não houve dado novo. Retorna percentuais exibidos, eventos e modos por segundo."""
     d = {t: (v, c) for t, v, c in rows}
     shown, events, modes = {}, [], {}
     for t in range(0, rows[-1][0] + 1):
@@ -89,7 +89,7 @@ class TableTest(unittest.TestCase):
         self.assertEqual(B.soc_from_cell(4.35), 100)
         self.assertEqual(B.soc_from_cell(2.8), 0)
         self.assertIsNone(B.soc_from_cell(float("nan")))
-        # 方案 §3.1 的换算：30% = 7.42 V、15% = 7.24 V（整包）
+        # Conversão da especificação §3.1: 30% = 7,42 V e 15% = 7,24 V no conjunto.
         self.assertAlmostEqual(B.soc_from_pack(7.422), 30, delta=0.3)
         self.assertAlmostEqual(B.soc_from_pack(7.242), 15, delta=0.3)
         self.assertAlmostEqual(B.soc_from_pack(7.63), 48.7, delta=0.3)
@@ -112,12 +112,12 @@ class TrimmedTest(unittest.TestCase):
     def test_duck2_set(self):
         v, n, _ = B.trimmed(DUCK2)
         self.assertEqual(n, 15)
-        self.assertAlmostEqual(v, 7.622, places=3)     # 审查核过：平均 7.627、去头去尾 7.622
+        self.assertAlmostEqual(v, 7.622, places=3)     # Conferido na revisão: média simples 7,627; média aparada 7,622.
 
     def test_invalid_and_outliers(self):
         vs = list(DUCK2)
-        vs[0], vs[1], vs[2] = 0.0, 9.9, None            # 0 V、超范围、读不到：都不算
-        vs[3], vs[4] = 4.2, 5.0                         # 两颗读坏的：被去掉的最低那 3 颗吃掉
+        vs[0], vs[1], vs[2] = 0.0, 9.9, None            # 0 V, fora do intervalo e sem leitura são ignorados.
+        vs[3], vs[4] = 4.2, 5.0                         # As duas leituras ruins ficam entre as três menores descartadas.
         v, n, valid = B.trimmed(vs)
         self.assertEqual(n, 12)
         self.assertAlmostEqual(v, 7.62, delta=0.04)
@@ -127,12 +127,12 @@ class TrimmedTest(unittest.TestCase):
         fresh = [True] * 7 + [False] * 8
         v, n, _ = B.trimmed(DUCK2, fresh)
         self.assertEqual(n, 7)
-        self.assertEqual(v, 7.6)                        # 5–8 颗取中位
+        self.assertEqual(v, 7.6)                        # Com 5 a 8 servos, use a mediana.
         v, n, _ = B.trimmed(DUCK2[:4])
         self.assertIsNone(v)
         self.assertEqual(n, 4)
         self.assertEqual(B.trimmed(None)[0], None)
-        self.assertEqual(B.trimmed([True] * 15)[0], None)   # bool 不是电压
+        self.assertEqual(B.trimmed([True] * 15)[0], None)   # Booleano não é uma tensão válida.
 
 
 class ClassifyTest(unittest.TestCase):
@@ -140,7 +140,7 @@ class ClassifyTest(unittest.TestCase):
         rows = [json.loads(line) for line in open(FIX / "now-20261018.jsonl", encoding="utf-8")]
         bus = next(r for r in rows if r.get("method") == "robot.busStatus")["reply"]["result"]
         st = {"policy": "walk", "move": {"applied": [0.0, 0.0, 0.0]}, "safety": {"fallen": False}}
-        self.assertEqual(B.classify_robotd(bus, st), "light")       # 真机回包：扭矩开着保持
+        self.assertEqual(B.classify_robotd(bus, st), "light")       # Resposta real: torque ligado em posição parada.
         vs, fr = B.robotd_volts(bus)
         self.assertEqual(len(vs), 15)
         self.assertAlmostEqual(B.trimmed(vs, fr)[0], 7.544, delta=0.01)
@@ -151,7 +151,7 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(B.classify_robotd(bus, dict(st, policy="sit")), "light")
         limp = json.loads(json.dumps(bus))
         limp["native"]["torque_state_confirmed"] = False
-        self.assertEqual(B.classify_robotd(limp, moving), "rest")    # 卸力了就是卸力，不管指令
+        self.assertEqual(B.classify_robotd(limp, moving), "rest")    # Sem torque é repouso, independentemente do comando.
         unknown = json.loads(json.dumps(bus))
         unknown["native"]["torque_state_confirmed"] = None
         self.assertIsNone(B.classify_robotd(unknown, st))
@@ -183,7 +183,7 @@ class EstimatingTest(unittest.TestCase):
         self.assertIsNotNone(e.shown)
 
     def test_restart_in_walking_trough_no_red(self):
-        """B-R2：Studio 在走路时重启，第一秒正好是 4.21 V 那种毛刺 → 头 30 秒不出数，之后也不出红条。"""
+        """B-R2: se o Studio reiniciar durante a caminhada e a primeira leitura for o pico de 4,21 V, o cálculo fica suspenso por 30 s e não exibe alerta vermelho."""
         e = B.Estimator()
         seq = [(4.21, "heavy")] + [(7.25 if i % 2 else 7.05, "heavy") for i in range(400)]
         t, ev = run(e, seq)
@@ -205,7 +205,7 @@ class EstimatingTest(unittest.TestCase):
 
 class CalmTest(unittest.TestCase):
     def test_long_hold_then_stand_comes_back(self):
-        """B-R1 / B-R14.2：长时间 HOME 保持（7.52）以后换到站着（7.70），显示要能回来，不能卡在保持的数上。"""
+        """B-R1 / B-R14.2: após manter HOME por muito tempo (7,52 V) e passar à postura em pé (7,70 V), o valor exibido deve se recuperar."""
         e = B.Estimator()
         t, _ = run(e, hold(7.52, "light", 338))
         low = e.shown
@@ -219,19 +219,19 @@ class CalmTest(unittest.TestCase):
         t, _ = run(e, hold(7.70, "rest", 60))
         calm = e.shown
         t, _ = run(e, hold(7.40, "heavy", 200), t0=t + 1)
-        self.assertEqual(e.shown, calm)                 # 5 分钟以内：还是停下时的估算
+        self.assertEqual(e.shown, calm)                 # Até 5 min, mantenha a estimativa do momento em que parou.
         self.assertEqual(e.view(t)["why"], "Em movimento; estimativa baseada na tensão em repouso")
         t, _ = run(e, hold(7.40, "heavy", 200), t0=t + 1)
-        self.assertEqual(e.mode, "load_rough")          # 一直走超过 5 分钟：改成负载粗估
+        self.assertEqual(e.mode, "load_rough")          # Após mais de 5 min andando, use a estimativa aproximada sob carga.
         self.assertEqual(e.shown, round(B.soc_from_pack(7.40)))
         t, _ = run(e, hold(7.62, "light", 31), t0=t + 1)
-        self.assertEqual(e.mode, "calm")                # 站 30 秒就按站着的电压
+        self.assertEqual(e.mode, "calm")                # Após 30 s em pé, use a tensão dessa postura.
         self.assertEqual(e.shown, round(B.soc_from_pack(7.62)))
 
     def test_most_relaxed_in_5min_wins(self):
         e = B.Estimator()
         t, _ = run(e, hold(7.76, "rest", 40) + hold(7.52, "light", 120))
-        self.assertEqual(e.shown, round(B.soc_from_pack(7.76)))   # 卸力那段更轻松
+        self.assertEqual(e.shown, round(B.soc_from_pack(7.76)))   # O trecho sem torque tem carga mais leve.
         self.assertEqual(e.view(t)["basis"]["cls"], "rest")
 
     def test_deadband(self):
@@ -251,7 +251,7 @@ class CalmTest(unittest.TestCase):
 class WarningTest(unittest.TestCase):
     def test_warn_needs_60s_and_hysteresis(self):
         e = B.Estimator()
-        t, ev = run(e, hold(7.40, "rest", 30 + 59))      # 28% < 30%；起步 30 秒 + 59 秒
+        t, ev = run(e, hold(7.40, "rest", 30 + 59))      # 28% < 30%; 30 s iniciais mais 59 s.
         self.assertFalse(e.warn.on)
         t, ev = run(e, hold(7.40, "rest", 2), t0=t + 1)
         self.assertTrue(e.warn.on)
@@ -259,10 +259,10 @@ class WarningTest(unittest.TestCase):
         warns = [x["msg"] for _, x in ev if x["level"] == "warn"]
         self.assertEqual(len(warns), 1)
         self.assertTrue(warns[0].startswith("Bateria atingiu o limite de aviso de 30%"))
-        # 32%：还在回差里（30 + 3）
+        # 32%: ainda dentro da histerese (30 + 3).
         t, _ = run(e, hold(7.445, "rest", 120), t0=t + 1)
         self.assertTrue(e.warn.on)
-        # 37%：持续 60 秒才收
+        # 37%: só desativa após permanecer por 60 s.
         t, _ = run(e, hold(7.50, "rest", 40), t0=t + 1)
         self.assertTrue(e.warn.on)
         t, ev = run(e, hold(7.50, "rest", 40), t0=t + 1)
@@ -270,7 +270,7 @@ class WarningTest(unittest.TestCase):
         self.assertTrue(any("aviso removido" in x["msg"] for _, x in ev))
 
     def test_flapping_does_not_flash(self):
-        """在线附近来回：60 秒持续条件 + 死区，不会一会儿亮一会儿灭。"""
+        """Oscilações perto do limite respeitam os 60 s e a zona morta, sem piscar."""
         e = B.Estimator()
         changes = 0
         last = None
@@ -296,7 +296,7 @@ class WarningTest(unittest.TestCase):
         self.assertEqual(len([i for i in items if i["key"] == "battery"]), 1)
 
     def test_rough_estimate_caps_at_yellow(self):
-        """一直在走、没有轻松段：负载电压查表偏低，最多出黄条；红条只认轻松段或负载线。"""
+        """Sem trecho leve durante a caminhada, a tensão sob carga pode gerar alerta amarelo; o vermelho depende do trecho leve ou da linha de carga."""
         e = B.Estimator()
         t, ev = run(e, hold(7.20, "heavy", 600))
         self.assertEqual(e.mode, "load_rough")
@@ -319,7 +319,7 @@ class LoadLineTest(unittest.TestCase):
     def test_30s_then_on_and_clears_after_60s(self):
         e = B.Estimator()
         t, _ = run(e, hold(7.60, "rest", 60))
-        t, ev = run(e, hold(6.85, "heavy", 35), t0=t + 1)   # 10 秒中位要先落下去，再持续 30 秒
+        t, ev = run(e, hold(6.85, "heavy", 35), t0=t + 1)   # Primeiro aguarde a mediana de 10 s e depois os 30 s de persistência.
         self.assertFalse(e.low.on)
         t, ev = run(e, hold(6.85, "heavy", 10), t0=t + 1)
         self.assertTrue(e.low.on)
@@ -329,12 +329,12 @@ class LoadLineTest(unittest.TestCase):
         items = B.todo_items(e.view(t))
         self.assertEqual(items[0]["key"], "battery_low_volt")
         t, _ = run(e, hold(7.05, "light", 50), t0=t + 1)
-        self.assertTrue(e.low.on)                           # 亮了至少 60 秒才收
+        self.assertTrue(e.low.on)                           # O alerta só some após permanecer ligado por pelo menos 60 s.
         t, _ = run(e, hold(7.05, "light", 30), t0=t + 1)
         self.assertFalse(e.low.on)
 
     def test_uses_calibrated_voltage(self):
-        """B-R10 / B-R14.7：负载线也用校准后的值。读数偏低 0.2 V 时，6.85 的读数其实是 7.05。"""
+        """B-R10 / B-R14.7: a linha de carga também usa o valor calibrado; com desvio de −0,2 V, uma leitura de 6,85 equivale a 7,05."""
         e = B.Estimator({"cal_offset_v": 0.2})
         t, _ = run(e, hold(7.60, "rest", 60) + hold(6.85, "heavy", 120))
         self.assertFalse(e.low.on)
@@ -343,7 +343,7 @@ class LoadLineTest(unittest.TestCase):
     def test_short_dips_ignored(self):
         e = B.Estimator()
         seq = hold(7.60, "rest", 60)
-        for i in range(300):                                 # 走路：每 10 秒里 3 秒掉到 6.7
+        for i in range(300):                                 # Caminhada: a cada 10 s, 3 s caem para 6,7.
             seq.append((6.7 if i % 10 < 3 else 7.3, "heavy"))
         t, ev = run(e, seq)
         self.assertFalse(e.low.on)
@@ -355,7 +355,7 @@ class GapTest(unittest.TestCase):
         t, _ = run(e, hold(7.40, "rest", 100))
         self.assertEqual(e.mode, "calm")
         t, ev = run(e, [(None, None)] * 9, t0=t + 1)
-        self.assertEqual(e.mode, "calm")                   # 9 秒：还接着用
+        self.assertEqual(e.mode, "calm")                   # Após 9 s, continue usando a estimativa estável.
         t, ev = run(e, [(None, None)] * 3, t0=t + 1)
         self.assertEqual(e.mode, "no_data")
         self.assertIsNone(e.shown)
@@ -383,7 +383,7 @@ class GapTest(unittest.TestCase):
 
 class FeedTest(unittest.TestCase):
     def test_three_pages_do_not_duplicate(self):
-        """B-R7 / B-R14.3：同一份 busStatus（同一个 key）喂三遍只算一次。"""
+        """B-R7 / B-R14.3: a mesma busStatus (mesma chave) só é contada uma vez, mesmo enviada três vezes."""
         e = B.Estimator()
         for i in range(40):
             for _ in range(3):
@@ -392,11 +392,11 @@ class FeedTest(unittest.TestCase):
         e2 = B.Estimator()
         for i in range(40):
             for j in range(3):
-                e2.feed(i + j * 0.1, flat(7.5), None, "rest")   # 没给 key：同一秒按时间去重
+                e2.feed(i + j * 0.1, flat(7.5), None, "rest")   # Sem chave, deduplique pela janela de tempo de um segundo.
         self.assertEqual(len(e2.samples), 40)
 
     def test_source_switch_does_not_jump(self):
-        """B-R14.5：robotd ↔ 调舵机（Studio 自己读总线）切换，同样的电压显示不变。"""
+        """B-R14.5: a indicação permanece ao alternar entre robotd e ajuste dos servos, quando o Studio lê o barramento."""
         e = B.Estimator()
         t, _ = run(e, hold(7.62, "rest", 100))
         before = e.shown
@@ -406,7 +406,7 @@ class FeedTest(unittest.TestCase):
             e.feed(t + 1 + i, vs, fr, B.classify_servo_session(rows), key=("servo", i), source="servo")
         self.assertEqual(e.shown, before)
         self.assertEqual(e.source, "servo")
-        # 调舵机时照样有电量待办（B-R6：集成时 todo 要在 servo_session 的 return 之前加这几条）
+        # O lembrete de bateria também aparece durante o ajuste dos servos (B-R6: integrar antes do retorno de servo_session).
         e3 = B.Estimator()
         rows = [{"volt": 7.20, "fresh": True, "torque": False} for _ in range(15)]
         for i in range(100):
@@ -438,14 +438,14 @@ class FeedTest(unittest.TestCase):
         self.assertIsNone(v["pct"])
         self.assertEqual(v["mode"], "bench")
         self.assertFalse(e.warn.on)
-        self.assertTrue(e.low.on)                          # 电压线照样提醒
+        self.assertTrue(e.low.on)                          # O alerta de tensão continua ativo.
 
     def test_glitch_logged_once(self):
         e = B.Estimator()
         seq = hold(7.60, "light", 60) + [(4.21, "light")] + hold(7.60, "light", 5) + [(4.3, "light")] + hold(7.6, "light", 30)
         t, ev = run(e, seq)
         g = [x for _, x in ev if "caiu mais de 1 V" in x["msg"]]
-        self.assertEqual(len(g), 1)                        # 一分钟最多一条
+        self.assertEqual(len(g), 1)                        # No máximo um registro por minuto.
         self.assertIn("4.21", g[0]["raw"])
         self.assertEqual(e.shown, round(B.soc_from_pack(7.60)))
 
@@ -457,7 +457,7 @@ class FeedTest(unittest.TestCase):
         self.assertTrue(log.lines)
         self.assertTrue(all(c == "Bateria" for _, c, _, _ in log.lines))
         self.assertIn("Estimativa de bateria iniciada", log.lines[0][2])
-        B.log_events(None, [x for _, x in ev])             # 没有 log 不出错
+        B.log_events(None, [x for _, x in ev])             # A ausência de logger não deve causar erro.
 
 
 class CalibrateTest(unittest.TestCase):
@@ -473,19 +473,19 @@ class CalibrateTest(unittest.TestCase):
         t, _ = run(e, hold(7.60, "rest", 3), t0=t + 1)
         self.assertEqual(e.shown, round(B.soc_from_pack(7.75)))
         self.assertGreater(e.shown, before)
-        # 校准以后再量一次：差值还是按原始读数算（不会越校越多）
+        # Meça novamente após calibrar: a diferença continua baseada na leitura original e não se acumula.
         self.assertAlmostEqual(e.calibrate(t, 7.75)["offset"], 0.15)
 
     def test_needs_rest_and_sane_value(self):
         e = B.Estimator()
         t, _ = run(e, hold(7.60, "light", 40))
-        self.assertFalse(e.calibrate(t, 7.7)["ok"])         # 站着不收
+        self.assertFalse(e.calibrate(t, 7.7)["ok"])         # Não aceita a calibração em pé.
         t, _ = run(e, hold(7.60, "rest", 20), t0=t + 1)
-        self.assertFalse(e.calibrate(t, 7.7)["ok"])         # 卸力不到 30 秒（站着那段不算）
+        self.assertFalse(e.calibrate(t, 7.7)["ok"])         # Menos de 30 s sem torque; o trecho em pé não conta.
         t, _ = run(e, hold(7.60, "rest", 15), t0=t + 1)
         self.assertTrue(e.calibrate(t, 7.7)["ok"])
-        self.assertTrue(e.calibrate(t, 7.95)["confirm"])    # 差 0.35 V：先问一句
-        self.assertFalse(e.calibrate(t, 8.2)["ok"])         # 差 0.6 V：超范围
+        self.assertTrue(e.calibrate(t, 7.95)["confirm"])    # Diferença de 0,35 V: peça confirmação primeiro.
+        self.assertFalse(e.calibrate(t, 8.2)["ok"])         # Diferença de 0,6 V: fora do intervalo.
         self.assertFalse(e.calibrate(t, 12.0)["ok"])
         self.assertFalse(e.calibrate(t, "7.7")["ok"])
 
@@ -500,30 +500,30 @@ class SettingsTest(unittest.TestCase):
         s, err = B.validate_settings({"red_pct": 20, "cal_offset_v": 0.123})
         self.assertEqual(err, [])
         self.assertEqual((s["red_pct"], s["cal_offset_v"]), (20, 0.12))
-        self.assertTrue(B.validate_settings({"capacity_mah": 2600})[1])          # v1 没有容量
+        self.assertTrue(B.validate_settings({"capacity_mah": 2600})[1])          # A versão 1 não contém capacidade.
         self.assertTrue(B.validate_settings({"warn_pct": 70})[1])
         self.assertTrue(B.validate_settings({"warn_pct": 30.5})[1])
         self.assertTrue(B.validate_settings({"warn_pct": True})[1])
         self.assertTrue(B.validate_settings({"load_floor_v": "6.9"})[1])
         self.assertTrue(B.validate_settings({"cal_offset_v": 0.6})[1])
         self.assertTrue(B.validate_settings({"preset": "lipo"})[1])
-        self.assertTrue(B.validate_settings({"warn_pct": 20, "red_pct": 16})[1])  # 红线没比提醒线低 5%
+        self.assertTrue(B.validate_settings({"warn_pct": 20, "red_pct": 16})[1])  # O limite vermelho não está 5% abaixo do alerta.
         self.assertEqual(B.validate_settings({"warn_pct": 20, "red_pct": 15})[1], [])
         self.assertTrue(B.validate_settings([1])[1])
         with self.assertRaises(B.SettingsError):
             B.Estimator({"red_pct": 99})
 
     def test_roundtrip_and_atomic(self):
-        self.assertEqual(B.load_settings(self.dir), B.DEFAULTS)           # 没文件 = 默认
+        self.assertEqual(B.load_settings(self.dir), B.DEFAULTS)           # Sem arquivo, use os padrões.
         saved = B.save_settings(self.dir, dict(B.DEFAULTS, red_pct=20, cal_offset_v=-0.1))
         self.assertEqual(saved["red_pct"], 20)
-        self.assertEqual(os.listdir(self.dir), [B.SETTINGS_FILE])         # 临时文件没留下
+        self.assertEqual(os.listdir(self.dir), [B.SETTINGS_FILE])         # O arquivo temporário foi removido.
         with open(B.settings_path(self.dir), encoding="utf-8") as f:
             self.assertEqual(json.load(f)["v"], 1)
         self.assertEqual(B.load_settings(self.dir)["cal_offset_v"], -0.1)
         with self.assertRaises(B.SettingsError):
             B.save_settings(self.dir, dict(B.DEFAULTS, red_pct=50))
-        self.assertEqual(B.load_settings(self.dir)["red_pct"], 20)        # 不合法的没写进去
+        self.assertEqual(B.load_settings(self.dir)["red_pct"], 20)        # O valor inválido não foi salvo.
         with self.assertRaises(B.SettingsError):
             B.save_settings(None, B.DEFAULTS)
 
@@ -550,7 +550,7 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(len(log.lines), 1)
         self.assertIn("Limite de aviso", log.lines[0][3]["raw"])
         with open(B.settings_path(self.dir), "w", encoding="utf-8") as f:
-            json.dump({"warn_pct": 20, "red_pct": 18}, f)                   # 每项都合法、合起来不行
+            json.dump({"warn_pct": 20, "red_pct": 18}, f)                   # Cada valor é válido isoladamente, mas a combinação não é.
         s = B.load_settings(self.dir, FakeLog())
         self.assertEqual((s["warn_pct"], s["red_pct"]), (30, 15))
 
@@ -562,24 +562,24 @@ class SettingsTest(unittest.TestCase):
 
 
 class ReplayTest(unittest.TestCase):
-    """一号鸭的真实上机录像（电压是 15 颗平均，每秒一个）。"""
+    """Gravação real do MicroDuck 1 (média de tensão dos 15 servos, uma leitura por segundo)."""
 
     def test_20261012_1532_hold_then_stand(self):
-        """审查 B-R1：原方案在这场会停在 44–46%，实际约 60%（卸力那 14 秒 7.76 V）。"""
+        """Revisão B-R1: o plano original ficava em 44–46%, mas o valor real é cerca de 60% (14 s sem torque a 7,76 V)."""
         e = B.Estimator()
         shown, ev, modes = replay(e, load_fixture("battery-20261012-1532.csv"))
-        self.assertIsNone(shown[20])                               # 头 30 秒估算中
+        self.assertIsNone(shown[20])                               # Ainda dentro dos 30 s iniciais de estimativa.
         self.assertGreaterEqual(min(p for t, p in shown.items() if t >= 30), 35)
         end = shown[max(shown)]
         self.assertGreaterEqual(end, 55)
         self.assertLessEqual(end, 62)
-        self.assertGreaterEqual(min(p for t, p in shown.items() if t >= 450), 55)   # 站起来以后一直在 55% 以上
-        self.assertFalse([x for _, x in ev if x["level"] == "error"])   # 5.02 V、6.32 V 那两秒不出红条
+        self.assertGreaterEqual(min(p for t, p in shown.items() if t >= 450), 55)   # Após levantar, permanece acima de 55%.
+        self.assertFalse([x for _, x in ev if x["level"] == "error"])   # Leituras de 5,02 V e 6,32 V não geram alerta vermelho.
         self.assertFalse(e.low.on)
         self.assertIsNone(e.level())
 
     def test_20261012_1458_glitch(self):
-        """第 924 秒那个 4.21 V（站着），估算不动，日志记一条。"""
+        """A leitura de 4,21 V em pé no segundo 924 não altera a estimativa e gera um registro."""
         e = B.Estimator()
         shown, ev, _ = replay(e, load_fixture("battery-20261012-1458.csv"))
         self.assertEqual(shown[915], shown[935])
@@ -592,11 +592,11 @@ class ReplayTest(unittest.TestCase):
         e = B.Estimator()
         shown, ev, _ = replay(e, load_fixture("battery-20261013-1540.csv"))
         vals = [p for t, p in shown.items() if t >= 30]
-        self.assertTrue(all(82 <= p <= 86 for p in vals), (min(vals), max(vals)))   # 走路那几段也不往下掉
+        self.assertTrue(all(82 <= p <= 86 for p in vals), (min(vals), max(vals)))   # O percentual também não cai nos trechos de caminhada.
         self.assertIsNone(e.level())
 
     def test_switch_to_a_full_pack_follows(self):
-        """接着换一段满电的数据（中间不断，比如主控插着 USB、换电池很快）：不靠跳升，靠轻松段跟上来。"""
+        """Emende uma gravação com bateria cheia sem interromper (por exemplo, USB conectado e troca rápida): a estimativa acompanha o trecho leve, sem salto artificial."""
         e = B.Estimator()
         low = load_fixture("battery-20261012-1458.csv")
         replay(e, low)

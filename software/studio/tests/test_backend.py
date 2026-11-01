@@ -1,6 +1,6 @@
-"""rpc / robotd / estop / state 的测试。用 Python 3.13 跑（跟板子一样）：
-    py -3.13 -I run_tests.py      或在鸭子上  python3 -I run_tests.py
-假 robotd 回放 tests/fixtures/now-20261018.jsonl（10-18 二号鸭真机录的：运动模式、站着保持）。
+"""Testes de RPC, robotd, parada de emergência e estado. Execute com Python 3.13, como na placa:
+    py -3.13 -I run_tests.py ou, no robô, python3 -I run_tests.py
+O robotd simulado reproduz tests/fixtures/now-20261018.jsonl, gravado no MicroDuck 2 em 18/10 no modo de movimento, mantendo a postura em pé.
 """
 import asyncio
 import json
@@ -76,7 +76,7 @@ class RpcTest(unittest.IsolatedAsyncioTestCase):
             n["conns"] += 1
             req = json.loads(await r.readline())
             if n["conns"] == 1:
-                await asyncio.sleep(2)      # 第一条连接故意不回
+                await asyncio.sleep(2)      # A primeira conexão não responde de propósito.
                 return
             w.write(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": "late"}).encode() + b"\n")
             await w.drain()
@@ -92,16 +92,16 @@ class RpcTest(unittest.IsolatedAsyncioTestCase):
     async def test_unreachable_vs_rpc_error(self):
         c = Conn("tcp:127.0.0.1:1")
         with self.assertRaises(Unreachable):
-            await c.call("x", timeout=3.0)     # Windows 上「拒绝连接」要重试约 2 秒才报；鸭子上的 unix socket 立刻报
+            await c.call("x", timeout=3.0)     # No Windows, a conexão recusada leva cerca de 2 s para ser reportada; no socket Unix do robô, é imediato.
         fake = FakeRobotd(FIXTURE)
         server, port = await fake.serve_tcp()
         async with server:
             c = Conn(f"tcp:127.0.0.1:{port}")
             with self.assertRaises(RpcError) as e:
-                await c.call("hello", {}, timeout=1)        # 真机：不带 api_version 会被拒
+                await c.call("hello", {}, timeout=1)        # No robô real, a chamada é rejeitada sem api_version.
             self.assertEqual(e.exception.code, -32602)
             self.assertEqual((await c.call("hello", {"api_version": 40}))["api_version"], 40)
-            c.close()      # Python 3.12+ 的 server.wait_closed() 会等所有连接关掉
+            c.close()      # No Python 3.12+, server.wait_closed() aguarda todas as conexões encerrarem.
 
 
 class EStopTest(unittest.TestCase):
@@ -132,16 +132,16 @@ class EStopTest(unittest.TestCase):
         st = lambda b, now, present=True, age=0.1: e.status(present=present, bus=b, bus_age_s=age, now=now)["state"]  # noqa: E731
         self.assertEqual(st(self.bus(), 0), "ready")
         self.assertEqual(st(self.bus(), 0, present=False), "unavailable")
-        self.assertEqual(st(self.bus(), 0, age=5), "ready")                     # 读不到状态也能按
+        self.assertEqual(st(self.bus(), 0, age=5), "ready")                     # Ainda é possível acionar mesmo sem ler o estado.
         self.assertIn("读不到", e.status(present=True, bus=self.bus(), bus_age_s=5, now=0)["why"])
         self.assertEqual(st(self.bus(phase="waiting_for_bus"), 0), "unavailable")
         limp = self.bus(torque_state_confirmed=False, restore_pending=False, temporary_gains_applied=False)
-        self.assertEqual(st(limp, 0), "confirmed")                              # 本来就软着
-        self.assertEqual(st(limp, 0, age=2.0), "confirmed")                     # 1 Hz 轮询慢一点也别闪
-        self.assertEqual(st(limp, 0, age=3.0), "ready")                         # 回读旧了不报「已卸力」
+        self.assertEqual(st(limp, 0), "confirmed")                              # Os servos já estavam sem torque.
+        self.assertEqual(st(limp, 0, age=2.0), "confirmed")                     # Uma atualização de 1 Hz não deve fazer o estado piscar.
+        self.assertEqual(st(limp, 0, age=3.0), "ready")                         # Uma leitura antiga não deve indicar torque liberado.
 
     def test_confirm_needs_a_readback_asked_after_the_ack(self):
-        """代码审查 #3：按下之前（或回执之前）发出的查询，不能拿来确认。"""
+        """Revisão #3: consultas anteriores ao pressionamento ou à confirmação não validam a ação."""
         e = EStop()
         limp = self.bus(torque_state_confirmed=False, restore_pending=False, temporary_gains_applied=False)
         e.press("电脑", now=100)
@@ -155,7 +155,7 @@ class EStopTest(unittest.TestCase):
         self.assertEqual(e.status(present=True, bus=limp, bus_age_s=0.1, now=100.5)["state"], "confirmed")
 
     def test_finished_attempt_never_acts_again(self):
-        """代码审查 #1：确认以后别人重新上力，Studio 不能自己又发卸力。"""
+        """Revisão #1: se alguém reativar os servos depois da confirmação, o Studio não deve liberá-los novamente."""
         e = EStop()
         limp = self.bus(torque_state_confirmed=False, restore_pending=False, temporary_gains_applied=False)
         e.press("电脑", now=100)
@@ -167,7 +167,7 @@ class EStopTest(unittest.TestCase):
         self.assertFalse(e.on_bus(self.bus(), asked_at=400, now=400))
 
     def test_second_press_waits_for_its_own_ack(self):
-        """复核 #2：连按以最后一次为准，第二次按下之前发出的查询不算。"""
+        """Revisão #2: ao pressionar duas vezes, a consulta anterior ao segundo toque não conta."""
         e = EStop()
         limp = self.bus(torque_state_confirmed=False, restore_pending=False, temporary_gains_applied=False)
         e.press("电脑", now=0)
@@ -182,7 +182,7 @@ class EStopTest(unittest.TestCase):
         self.assertEqual(e.confirm_ms, 200)
 
     def test_failed_resend_after_ack_keeps_waiting(self):
-        """复核 #4：第一次已经发出去，后来那次没发出去：继续等回读，原因留给超时日志。"""
+        """Revisão #4: se a primeira tentativa foi enviada e a seguinte falhar, aguarde a leitura e registre o motivo no timeout."""
         e = EStop()
         e.press("电脑", now=0)
         e.sent(0.0, now=0.01)
@@ -204,7 +204,7 @@ class EStopTest(unittest.TestCase):
         self.assertTrue(e.saw_off)
 
     def test_pending_wins_over_absent(self):
-        """复核 #6：robotd 刚回来、轮询还在退避，按下后回执到了：显示卸力中，不显示「主程序不在」。"""
+        """Revisão #6: se robotd acabou de voltar e a confirmação chegou durante a espera da consulta, mostre a liberação em andamento."""
         e = EStop()
         e.press("电脑", now=0)
         self.assertEqual(e.status(present=False, bus=None, bus_age_s=None, now=0.1)["state"], "pending")
@@ -326,7 +326,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(first, second)
 
     async def test_log_failure_does_not_block_relax(self):
-        """复核 #1：标准输出写不进（SSH 窗口关了）时，卸力照样发出去。"""
+        """Revisão #1: a liberação deve ser enviada mesmo se não for possível escrever em stdout, como em uma sessão SSH fechada."""
         class Broken:
             def write(self, *_):
                 raise OSError(5, "Input/output error")
@@ -342,7 +342,7 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(noisy.write_errors, 0)
 
     async def test_slow_calibration_status_does_not_block_bus(self):
-        """复核 #8：标定状态查询很慢（独立连接），busStatus 照常 1 秒一次。"""
+        """Revisão #8: uma consulta lenta de calibração usa conexão separada; busStatus continua a cada segundo."""
         await self.rd.stop()
         self.fake.delays["robot.busCommand"] = 4.0
         self.rd = Robotd(self.rd.addr, self.rd.cfg.addr, quiet_log())
@@ -377,14 +377,14 @@ class RobotdTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.fake.bus["mode"], "commissioning")
 
     async def test_garbage_lines_do_not_kill_polling(self):
-        """代码审查 #4：robotd 回一行 [1,2,3]，轮询不能就此停掉。"""
+        """Revisão #4: uma resposta inválida de robotd não deve interromper as consultas periódicas."""
         self.fake.inject = [b"[1,2,3]\n", b'"x"\n', b"null\n"]
         await asyncio.sleep(1.5)
         self.assertLess(self.rd.bus.age(), 1.5)
         self.assertFalse(any(t.done() for t in self.rd._tasks))
 
     async def test_health_error_does_not_block_bus_status(self):
-        """代码审查 #5：一项查询出错只影响它自己。"""
+        """Revisão #5: uma falha de consulta só deve afetar aquela consulta."""
         self.fake.errors["robot.health"] = {"code": -32603, "message": "boom"}
         await asyncio.sleep(2.5)
         self.assertLess(self.rd.bus.age(), 1.5)

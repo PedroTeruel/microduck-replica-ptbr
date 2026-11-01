@@ -1,15 +1,13 @@
-"""出厂场景「写进主程序」（任务 13）的端到端：假 robotd（--mode commissioning --calib factory）+ 真 Studio + 无头 Edge。
+"""Teste ponta a ponta do cenário de fábrica “Gravar no programa principal” (tarefa 13): robotd simulado (--mode commissioning --calib factory), Studio real e Edge sem interface.
 
-流程：tests/commit_e2e.mjs 先在出厂状态看第 3 步的灰按钮和预览；然后 IMU 页粗校（假主程序模拟托起、低头、
-verify-imu 成功）、舵机页一键中位（--servo-sim）、第 3 步写入。假小助手让假主程序切到 motion + control，
-清单第 3 步变成完成、顶栏显示运动模式。最后再跑一次「标定被拒」：页面要看到原因，断线期间进度卡也不能丢。
-IMU 页的「站姿使能 / 失能」（任务 17）：标定模式下灰着、能去第 3 步；运动模式下发的命令跟遥控卡「站起来」、顶上「卸力」一样。
+Fluxo: tests/commit_e2e.mjs confere o botão desativado e a prévia na etapa 3; depois faz a calibração inicial da IMU (o programa simulado ergue e inclina o robô e verify-imu passa), centraliza os servos (--servo-sim) e grava a etapa 3. O helper simulado muda o robotd para motion + control; a etapa 3 fica concluída e a barra superior mostra o modo de movimento. Por fim, repete com a calibração rejeitada: a página deve exibir o motivo e preservar o cartão de progresso durante a desconexão.
+Ativação/desativação da postura em pé na página da IMU (tarefa 17): fica indisponível no modo de calibração, que permite ir à etapa 3; no modo de movimento, envia os mesmos comandos que o cartão de controle “Levantar” e o botão superior de liberação de torque.
 
-电脑上没有 root 小助手：用临时启动脚本把 studio.helper.calib_commit 换成假实现（只在这一段里）。
-要电脑上有 Node（≥ 22）和 Edge；没有（比如鸭子上）就跳过。设 STUDIO_E2E=0 也跳过。
-端口默认 Studio 18091、假 robotd 17031 / configd 17032、Edge 调试口 9344，被占了就换空闲的。
-COMMIT_E2E_DIR=目录：日志、Edge 的 profile 放这里（默认临时目录，跑完删）；COMMIT_SHOTS=目录：顺手截图。
-单独跑：
+O computador não tem o helper root: um script temporário substitui studio.helper.calib_commit por uma implementação simulada apenas neste cenário.
+Requer Node ≥ 22 e Edge; sem eles (por exemplo, no robô), o teste é ignorado. STUDIO_E2E=0 também o desativa.
+Portas padrão: Studio 18091, robotd simulado 17031, configd 17032 e depuração do Edge 9344. Se estiverem ocupadas, escolha portas livres.
+COMMIT_E2E_DIR= diretório para logs e perfil do Edge (por padrão usa um diretório temporário removido ao final); COMMIT_SHOTS= diretório para capturas.
+Execução isolada:
     py -3.13 -I -c "import sys;sys.path[:0]=['deps','.','dev'];import unittest;unittest.main(module=None,argv=['x','-v','tests.test_commit_e2e'])"
 """
 import json
@@ -39,11 +37,11 @@ from studio import helper
 from studio import commit as C
 
 helper.available = lambda: True
-# 电脑上没有 root 小助手：进舵机页要调 bus-take，交还要调 bus-give-back；这里都当“已经做了”。
+# Sem o helper root no computador: abrir a página dos servos chama bus-take e devolver chama bus-give-back; aqui ambos são simulados como concluídos.
 helper.flag_present = lambda: False
 helper.bus_take = lambda by, allow_seated=False, timeout=30: (True, "taken", {})
 helper.bus_give_back = lambda by, *, soft=True, marker=None, timeout=60: (True, "soft", {})
-# 「更多」页的 SSH 卡片：出厂只认钥匙、一把钥匙都没有（跟公开镜像一样）
+# Cartão SSH da página Mais: a imagem de fábrica aceita apenas chaves e não contém nenhuma, como na imagem pública.
 helper.ssh_status = lambda timeout=10: (True, "ssh_status", {"exit": 0, "result": "ssh_status", "password_login": False,
                                                             "ssh_active": True, "keys": 0, "user": "radxa"})
 
