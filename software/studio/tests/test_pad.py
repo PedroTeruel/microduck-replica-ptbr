@@ -1958,16 +1958,16 @@ class VpadTest(PadTestBase):
     def test_v4_x_hold_keeps_rolling_then_times_out(self):
         self.feed()
         self.ops.handle({"op": "keys", "held": ["x"], "down": ["x"], "seq": 1}, conn="a")
-        self.ops.handle({"op": "key", "key": "x", "src": "svg"}, conn="a")          # 按下那一下：请求，拿拒绝原因
+        self.ops.handle({"op": "key", "key": "x", "src": "svg"}, conn="a")   # A solicitação inicial retorna o motivo de recusa, se houver.
         self.assertEqual(self.robot.calls[-1], ("robot.do", {"skill": "roulade"}))
         stop = threading.Event()
         threading.Thread(target=self.keep, args=(["x"], stop), daemon=True).start()
         time.sleep(0.5)
         stop.set()
         n_do = len(self.sent("robot.do"))
-        self.assertGreaterEqual(n_do, 6)                                             # 每 40 ms 一次通知
+        self.assertGreaterEqual(n_do, 6)                                             # Uma notificação a cada 40 ms.
         self.assertTrue(all(p == {"skill": "roulade"} for _, p in self.sent("robot.do")))
-        time.sleep(D.X_HOLD_S + 0.2)                                                 # 页面不报了：0.3 秒内停
+        time.sleep(D.X_HOLD_S + 0.2)                                                 # Para em até 0,3 s se a página parar de enviar sinais.
         n = len(self.sent("robot.do"))
         time.sleep(0.2)
         self.assertEqual(len(self.sent("robot.do")), n)
@@ -1981,18 +1981,18 @@ class VpadTest(PadTestBase):
         time.sleep(0.4)
         stop.set()
         time.sleep(0.15)
-        self.ops.handle({"op": "keys", "held": [], "seq": 9999}, conn="a")          # 松开
-        wait_until(lambda: self.sent("robot.mouth")[-1][1] == {"open": 0.0}, what="合嘴")
+        self.ops.handle({"op": "keys", "held": [], "seq": 9999}, conn="a")          # Solta o botão.
+        wait_until(lambda: self.sent("robot.mouth")[-1][1] == {"open": 0.0}, what="boca fechada")
         sounds = [p for _, p in self.sent("robot.sound")]
         self.assertGreater(sounds.count({"tag": "wheee", "hold": True}), 5)
-        self.assertEqual(sounds[-1], {"tag": "wheee", "hold": False})                # 结束发 hold:false
+        self.assertEqual(sounds[-1], {"tag": "wheee", "hold": False})                # Envia hold:false ao terminar.
         self.assertIn({"open": 1.0}, [p for _, p in self.sent("robot.mouth")])
-        # 日志只记按下、松开，不按拍记（三 V19）
-        lines = [e for e in self.log.recent(200, cats=["Controle"]) if "网页手柄 LT" in e["msg"]]
+        # Registra apenas o pressionamento e a soltura, sem repetir a cada quadro.
+        lines = [e for e in self.log.recent(200, cats=["Controle"]) if "Controle virtual: LT" in e["msg"]]
         self.assertEqual(len(lines), 2)
 
     def test_v4_rt_chirps_once_and_holding_still_works(self):
-        """RT：按下那一下嘎一声（通知，不占「上一个还没回话」）；嘴按 fork 的规矩，站着保持也能按（三 V10）。"""
+        """RT emite um som curto ao pressionar; não ocupa a solicitação pendente e pode abrir a boca em pé."""
         self.feed("holding")
         self.ops.handle({"op": "keys", "held": ["rt"], "down": ["rt"], "seq": 1}, conn="a")
         stop = threading.Event()
@@ -2000,17 +2000,17 @@ class VpadTest(PadTestBase):
         time.sleep(0.3)
         stop.set()
         self.assertEqual([p for _, p in self.sent("robot.sound")], [{"tag": "chirp"}])
-        self.assertNotIn("robot.sound", self.robot.methods())                        # 是通知，不是请求
-        wait_until(lambda: self.sent("robot.mouth")[-1][1] == {"open": 0.0}, what="0.45 秒没报：合嘴")
+        self.assertNotIn("robot.sound", self.robot.methods())                        # É uma notificação, não uma solicitação.
+        wait_until(lambda: self.sent("robot.mouth")[-1][1] == {"open": 0.0}, what="boca fechada após 0,45 s sem sinal")
 
     def test_v4_relax_ends_keys_and_heartbeat_does_not_revive(self):
         self.feed()
         self.ops.handle({"op": "keys", "held": ["lt"], "down": ["lt"], "seq": 1}, conn="a")
-        wait_until(lambda: self.sent("robot.mouth"), what="张嘴")
-        self.ops.note_relax("电脑")
-        wait_until(lambda: self.sent("robot.mouth")[-1][1] == {"open": 0.0}, what="卸力后合嘴")
-        wait_until(lambda: self.sent("robot.sound")[-1][1] == {"tag": "wheee", "hold": False}, what="wheee 停")
-        r = self.ops.handle({"op": "keys", "held": ["lt"], "seq": 2}, conn="a")    # 页面的心跳还报着：不续上
+        wait_until(lambda: self.sent("robot.mouth"), what="boca aberta")
+        self.ops.note_relax("Computador")
+        wait_until(lambda: self.sent("robot.mouth")[-1][1] == {"open": 0.0}, what="boca fechada após relaxar o torque")
+        wait_until(lambda: self.sent("robot.sound")[-1][1] == {"tag": "wheee", "hold": False}, what="som wheee encerrado")
+        r = self.ops.handle({"op": "keys", "held": ["lt"], "seq": 2}, conn="a")    # O heartbeat da página não retoma o botão.
         self.assertEqual((r["held"], r["ended"]), ([], ["lt"]))
         n = len(self.sent())
         time.sleep(0.15)
@@ -2028,15 +2028,15 @@ class VpadTest(PadTestBase):
         threading.Thread(target=hold, daemon=True).start()
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "keys", "held": ["rt"], "down": ["rt"], "seq": 1}, conn="a")
-        self.assertIn("张嘴", str(cm.exception))
+        self.assertIn("boca aberta", str(cm.exception))
         stop.set()
         self.ops.handle({"op": "action_stop"}, conn="a")
-        wait_until(lambda: self.ops.snapshot()["motion"]["running"] is None, what="动作停了")
+        wait_until(lambda: self.ops.snapshot()["motion"]["running"] is None, what="ação encerrada")
         self.ops.handle({"op": "keys", "held": ["rt"], "down": ["rt"], "seq": 2}, conn="a")
         acts = {a["id"]: a for a in self.ops.snapshot()["motion"]["actions"]}
         self.assertIn("LT / RT", acts["mouth"]["why"])
 
-    # ---- V9：头 / 嘴幅度从 padd 的配置读；V18：padd 的 --config ----
+    # ---- V9: limites de cabeça e boca; V18: opção --config do padd ----
 
     def test_v9_v18_inputs_from_padd_unit(self):
         unit = ("[Service]\nExecStart=\nExecStart=/usr/bin/python3 /opt/robot/feetech-ft5-r5/startup_gate.py --timeout 60 --exec "
@@ -2054,48 +2054,48 @@ class VpadTest(PadTestBase):
         v = self.ops.snapshot()["virtual"]
         self.assertEqual((v["inputs"]["head"], v["inputs"]["mouth"]), (0.5, 60.0))
         self.assertTrue(v["pad_imu_head"])
-        self.assertFalse(self.ops.snapshot()["status"]["netpad"])          # [netpad] 也从 padd 的 --config 读
+        self.assertFalse(self.ops.snapshot()["status"]["netpad"])          # [netpad] também vem do arquivo indicado por --config.
         self.feed()
         self.into("head")
         self.stick("head", lx=-1)
         self.assertEqual(self.heads()[-1]["head_yaw"], 0.5)
-        with self.assertRaises(P.Refused) as cm:                            # 方向盘在 a 手里（头那一帧拿的）：b 按不了
-            self.ops.handle({"op": "keys", "held": ["lt"], "down": ["lt"], "seq": 3}, by="手机 B", conn="b")
-        self.assertIn("接管", str(cm.exception))
+        with self.assertRaises(P.Refused) as cm:                            # A página A tem a concessão do controle; B não pode pressionar.
+            self.ops.handle({"op": "keys", "held": ["lt"], "down": ["lt"], "seq": 3}, by="Celular B", conn="b")
+        self.assertIn("Controle assumido por outra página", str(cm.exception))
         self.into("drive")
-        # padd 不认的设置文件：保持 --max-head、嘴 100%（input_settings.rs:75-78）
+        # Um arquivo de configuração inválido mantém os limites anteriores.
         files["/etc/robot/feetech-ft5/pad-settings.json"] = '{"mouth_percent":120,"head_rad":0.5}'
         self.ops._refresh_files()
         inp = self.ops.snapshot()["virtual"]["inputs"]
         self.assertEqual((inp["head"], inp["mouth"]), (2.5, 100.0))
-        self.assertIn("不认", inp["src"])
+        self.assertIn("não aceita os dados", inp["src"])
 
-    # ---- V11：看门狗 ----
+    # ---- V11: watchdog ----
 
     def test_v11_stale_frame_recenters_and_mode_heartbeat_exits(self):
         with mock.patch.object(D, "STICK_STALE_S", 0.2), mock.patch.object(D, "MODE_HB_S", 0.5):
             self.head_latched()
-            wait_until(lambda: self.heads()[-1] == HEAD0, timeout=1.0, what="0.2 秒没新帧：头回正")
-            self.assertEqual(self.ops.snapshot(conn="a")["virtual"]["mode"], "head")   # 模式还在
+            wait_until(lambda: self.heads()[-1] == HEAD0, timeout=1.0, what="cabeça recentralizada após 0,2 s sem quadro")
+            self.assertEqual(self.ops.snapshot(conn="a")["virtual"]["mode"], "head")   # O modo permanece ativo.
             self.into("drive")
             self.into("body")
             self.stick("body", ly=-1)
-            wait_until(lambda: self.poses()[-1] == dict(D.POSE_CENTER), timeout=1.0, what="身体回中")
-            wait_until(lambda: self.poses()[-1] == POSE_OFF, timeout=1.5, what="模式心跳超时：退出身体模式")
+            wait_until(lambda: self.poses()[-1] == dict(D.POSE_CENTER), timeout=1.0, what="corpo recentralizado")
+            wait_until(lambda: self.poses()[-1] == POSE_OFF, timeout=1.5, what="modo corpo encerrado após timeout do heartbeat")
         self.assertEqual(self.ops.snapshot(conn="a")["virtual"]["mode"], "drive")
-        self.assertTrue(any("没报还在" in e["msg"] for e in self.log.recent(50, cats=["Segurança"])))
+        self.assertTrue(any("sem informar que continua no modo" in e["msg"] for e in self.log.recent(50, cats=["Segurança"])))
 
-    # ---- V12：策略没在跑时头 / 身体帧丢掉，模式照样能切 ----
+    # ---- V12: quadros de cabeça e corpo são descartados sem política em execução ----
 
     def test_v12_frames_dropped_when_not_driving(self):
         self.feed("holding")
         r = self.into("head")
-        self.assertIn("策略没在跑", r["note"])
+        self.assertIn("A política não está em execução", r["note"])
         r = self.stick("head", lx=1)
-        self.assertIn("策略没在跑", r["dropped"])
+        self.assertIn("A política não está em execução", r["dropped"])
         self.assertEqual(self.heads(), [])
 
-    # ---- V13：快线程池 4 条；watch 不在快线程池里等 pad.bindings ----
+    # ---- V13: pool rápido com quatro threads; watch não espera por pad.bindings ----
 
     def test_v13_watch_does_not_wait_for_bindings(self):
         self.assertEqual(self.ops._fast_pool._max_workers, 4)
@@ -2103,9 +2103,9 @@ class VpadTest(PadTestBase):
         t0 = time.monotonic()
         self.ops.handle({"op": "watch"}, conn="a")
         self.assertLess(time.monotonic() - t0, 0.3)
-        wait_until(lambda: "pad.bindings" in self.robot.methods(), what="看守线程去拉了")
+        wait_until(lambda: "pad.bindings" in self.robot.methods(), what="thread de monitoramento consultou as associações")
 
-    # ---- V14：bindings 刷新、怎么用 ----
+    # ---- V14: atualização e regras das associações ----
 
     def test_v14_bindings_refresh_and_rules(self):
         self.ops.w["bindings"] = 0.1
@@ -2115,24 +2115,24 @@ class VpadTest(PadTestBase):
                 {"button": "dpad_down", "skill": "sit_toggle", "overridden": False}]
         self.robot.replies["pad.bindings"] = {"bindings": rows}
         self.watch()
-        wait_until(lambda: [m for m in self.robot.methods() if m == "pad.bindings"].__len__() >= 2, what="10 秒（测试里 0.1 秒）刷新")
+        wait_until(lambda: [m for m in self.robot.methods() if m == "pad.bindings"].__len__() >= 2, what="atualização após 0,1 s no teste")
         self.feed()
         keys = self.ops.snapshot()["motion"]["keys"]
-        self.assertEqual((keys["a"]["op"], keys["a"]["does"]), ("sit", "坐下"))      # 绑 sit_toggle：按坐没坐走坐下 / 站起来
-        self.assertIn("关掉", keys["x"]["why"])
+        self.assertEqual((keys["a"]["op"], keys["a"]["does"]), ("sit", "Sentar"))   # sit_toggle alterna conforme a postura.
+        self.assertIn("definido como vazio", keys["x"]["why"])
         self.assertIn("moonwalk", keys["lb"]["why"])
         self.ops.handle({"op": "key", "key": "a", "src": "svg"}, conn="a")
         self.assertIn(("robot.do", {"skill": "sit_toggle"}), self.robot.calls)
-        for k, word in (("x", "关掉"), ("lb", "moonwalk")):
+        for k, word in (("x", "definido como vazio"), ("lb", "moonwalk")):
             with self.assertRaises(P.Refused) as cm:
                 self.ops.handle({"op": "key", "key": k, "src": "svg"}, conn="a")
             self.assertIn(word, str(cm.exception))
         self.feed("policy", pol={"sitting": True})
         self.assertEqual(self.ops.snapshot()["motion"]["keys"]["dpad_down"]["op"], "stand")
         self.feed("policy", pol=None)
-        self.assertIn("是不是坐着", self.ops.snapshot()["motion"]["keys"]["dpad_down"]["why"])
+        self.assertIn("Não foi possível saber se está sentado", self.ops.snapshot()["motion"]["keys"]["dpad_down"]["why"])
 
-    # ---- V15：声音不占「上一个还没回话」 ----
+    # ---- V15: som não ocupa o slot de solicitação pendente ----
 
     def test_v15_sound_does_not_take_busy(self):
         self.feed("limp")
@@ -2141,14 +2141,14 @@ class VpadTest(PadTestBase):
         self.robot.replies["robot.init"] = lambda p: (gate.wait(1), {"accepted": True})[1]
         t = threading.Thread(target=self.ops.handle, args=({"op": "stand"},))
         t.start()
-        wait_until(lambda: self.ops.snapshot()["motion"]["busy"], what="站起来在路上")
+        wait_until(lambda: self.ops.snapshot()["motion"]["busy"], what="comando para ficar em pé em andamento")
         self.ops.handle({"op": "sound", "tag": "chirp"})
         self.assertTrue(self.ops.snapshot()["motion"]["busy"])
         gate.set()
         t.join()
         self.assertFalse(self.ops.snapshot()["motion"]["busy"])
 
-    # ---- V16：实体手柄连着，图上按的后端也拒 ----
+    # ---- V16: o backend também recusa botões virtuais com o controle físico conectado ----
 
     def test_v16_svg_keys_refused_in_mirror(self):
         self.feed()
@@ -2160,38 +2160,38 @@ class VpadTest(PadTestBase):
             with self.subTest(op=args["op"]):
                 with self.assertRaises(P.Refused) as cm:
                     self.ops.handle(args, conn="a")
-                self.assertIn("实体手柄", str(cm.exception))
-        self.ops.handle({"op": "skill", "name": "kick_left"}, conn="a")   # 下面的大按钮照常（不带 src）
+                self.assertIn("Controle físico conectado", str(cm.exception))
+        self.ops.handle({"op": "skill", "name": "kick_left"}, conn="a")   # O botão de habilidade continua disponível.
         self.assertEqual(self.sent(), [])
 
-    # ---- 十字右 / 十字上：照官方（用户 10-19 定） ----
+    # ---- Direcional para a direita e para cima: comportamento oficial ----
 
     def test_dpad_right_reboots_every_servo_like_official(self):
-        """按一下就发 robot.rebootMotors {"ids":[]}（空 = 全部）；收下以后记一次卸力：2 秒内不让上力、头回正。"""
+        """Pressionar envia robot.rebootMotors {"ids":[]} (lista vazia = todos) e registra o relaxamento do torque."""
         self.robot.replies["robot.rebootMotors"] = {"accepted": True}
         self.head_latched()
         self.assertTrue(self.ops.snapshot()["motion"]["reboot"]["ok"])
-        r = self.ops.handle({"op": "reboot", "src": "svg"}, by="电脑 A", conn="a")
+        r = self.ops.handle({"op": "reboot", "src": "svg"}, by="Computador A", conn="a")
         self.assertEqual(r["did"], "reboot")
         self.assertIn(("robot.rebootMotors", {"ids": []}), self.robot.calls)
-        self.assertIn("刚卸了力", self.ops.snapshot()["motion"]["buttons"]["stand"]["why"])
-        wait_until(lambda: self.heads() and self.heads()[-1] == HEAD0, what="重启舵机以后头回正")
+        self.assertIn("O torque acabou de ser relaxado", self.ops.snapshot()["motion"]["buttons"]["stand"]["why"])
+        wait_until(lambda: self.heads() and self.heads()[-1] == HEAD0, what="cabeça recentralizada após reiniciar os servos")
 
     def test_dpad_right_works_after_relax_and_while_another_page_drives(self):
-        """救急的路：卸力之后（官方就是「卸力了再按」的场景）、别的页面拿着方向盘时都能按。"""
+        """A reinicialização permanece disponível após relaxar o torque ou quando outra página controla o analógico."""
         self.robot.replies["robot.rebootMotors"] = {"accepted": True}
         self.feed()
-        self.stick("drive", conn="b", ly=-1)                                  # B 正在推摇杆
+        self.stick("drive", conn="b", ly=-1)                                  # B está movendo o analógico.
         self.relax_pressed()
-        self.ops.handle({"op": "reboot", "src": "svg"}, by="电脑 A", conn="a")
+        self.ops.handle({"op": "reboot", "src": "svg"}, by="Computador A", conn="a")
         self.assertEqual([m for m in self.robot.methods() if m == "robot.rebootMotors"], ["robot.rebootMotors"])
 
     def test_dpad_right_refused_in_servo_session_and_mirror(self):
         self.robot.replies["robot.rebootMotors"] = {"accepted": True}
-        self.feed(paused={"by": "舵机页"})
+        self.feed(paused={"by": "página de servos"})
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "reboot", "src": "svg"}, conn="a")
-        self.assertIn("调舵机", str(cm.exception))
+        self.assertIn("Os servos estão sendo ajustados", str(cm.exception))
         self.feed()
         self.watch()
         self.tap.attach(XBOX_DEV)
@@ -2199,19 +2199,19 @@ class VpadTest(PadTestBase):
             with self.subTest(op=op["op"]):
                 with self.assertRaises(P.Refused) as cm:
                     self.ops.handle(op, conn="a")
-                self.assertIn("实体手柄", str(cm.exception))
+                self.assertIn("Controle físico conectado", str(cm.exception))
         self.assertNotIn("robot.rebootMotors", self.robot.methods())
         self.assertNotIn("robot.setMode", self.robot.methods())
 
     def test_dpad_up_switches_walk_and_roller(self):
-        """页面按住 3 秒才发；后端按 robot.policies 的 mode 挑要切到的，跟 expect 不一样就拒。"""
+        """A página exige 3 s pressionado; o backend escolhe o modo com base em robot.policies e recusa divergências."""
         self.robot.replies["robot.setMode"] = {"accepted": True}
         self.feed()
         dm = self.ops.snapshot()["motion"]["drive_mode"]
         self.assertEqual((dm["ok"], dm["current"], dm["target"]), (True, "walk", "roller"))
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "drive_mode", "expect": "walk", "src": "svg"}, conn="a")
-        self.assertIn("状态刚变了", str(cm.exception))
+        self.assertIn("O estado mudou", str(cm.exception))
         self.assertNotIn("robot.setMode", self.robot.methods())
         r = self.ops.handle({"op": "drive_mode", "expect": "roller", "src": "svg"}, conn="a")
         self.assertEqual((r["did"], r["target"]), ("drive_mode", "roller"))
@@ -2220,7 +2220,7 @@ class VpadTest(PadTestBase):
         self.assertEqual(self.ops.snapshot()["motion"]["drive_mode"]["target"], "walk")
         self.robot.replies["robot.setMode"] = {"accepted": True, "reason": "mode already selected"}
         r = self.ops.handle({"op": "drive_mode", "expect": "walk", "src": "svg"}, conn="a")
-        self.assertEqual(r["reason"], "已经是走路了")
+        self.assertEqual(r["reason"], "A política já está no modo Andar")
         self.assertFalse(self.ops.snapshot()["motion"]["busy"])
 
     def test_dpad_up_refusals(self):
@@ -2229,22 +2229,22 @@ class VpadTest(PadTestBase):
                                                "reason": "roller ONNX models are not installed; original walking policy unchanged"}
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "drive_mode", "expect": "roller", "src": "svg"}, conn="a")
-        self.assertIn("没装轮滑模型", str(cm.exception))
+        self.assertIn("O modelo de rodas não está instalado", str(cm.exception))
         self.assertFalse(self.ops.snapshot()["motion"]["busy"])
-        self.stick("drive", conn="b", ly=-1)                                  # B 正在推摇杆：要切模式（会回站姿）得等它
+        self.stick("drive", conn="b", ly=-1)                                  # Aguarda B soltar o analógico antes de trocar de modo.
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "drive_mode", "expect": "roller", "src": "svg"}, conn="a")
-        self.assertIn("正在推摇杆", str(cm.exception))
+        self.assertIn("está movendo os analógicos", str(cm.exception))
         self.feed(pol=None)
         dm = self.ops.snapshot()["motion"]["drive_mode"]
         self.assertFalse(dm["ok"])
-        self.assertIn("走路还是轮滑", dm["why"])
+        self.assertIn("Andar ou Rodas", dm["why"])
         self.relax_pressed()
-        self.assertIn("刚卸了力", self.ops.snapshot()["motion"]["drive_mode"]["why"])
+        self.assertIn("O torque acabou de ser relaxado", self.ops.snapshot()["motion"]["drive_mode"]["why"])
 
 
 class CodeReviewTest(PadTestBase):
-    """第三轮代码审查（vpad-codereview.md）R1–R10 的反例。辅助函数借 VpadTest 的（不继承：免得它的测试再跑一遍）。"""
+    """Contraexemplos da terceira revisão do código (R1–R10); reutiliza auxiliares de VpadTest sem herdar seus testes."""
     feed, sent, poses, heads, s = VpadTest.feed, VpadTest.sent, VpadTest.poses, VpadTest.heads, VpadTest.s
     into, stick, body_latched, head_latched = VpadTest.into, VpadTest.stick, VpadTest.body_latched, VpadTest.head_latched
     assert_no_empty_pose = VpadTest.assert_no_empty_pose
