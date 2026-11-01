@@ -56,11 +56,11 @@ def native_call(by,action,**kwargs):
             return False,'bad_verb',None
         return True,'native_status',value
     if by!='Studio' or kwargs!={'confirmed':True}:return False,'bad_args',None
-    if action=='install' and (not native['available'] or not native['running_verified']):return False,'native_unsupported',{'reason':'本机主程序不受支持'}
+    if action=='install' and (not native['available'] or not native['running_verified']):return False,'native_unsupported',{'reason':'O programa principal desta máquina não é compatível'}
     native_save(active=True,phase='replacing' if action=='install' else 'recovering',transaction_id='a'*32,reason=None)
     time.sleep(2.5)
     if action=='install' and native_failure:
-        native_save(active=True,phase='recovery_required',running_verified=False,reason='模拟启动核验失败；请恢复')
+        native_save(active=True,phase='recovery_required',running_verified=False,reason='Falha simulada na verificação da inicialização; restaure o sistema')
     else:
         native_save(active=False,phase='completed' if action=='install' else 'rolled_back',running_verified=True,
                     installed_sha256='f'*64 if action=='install' else 'e'*64,reason=None)

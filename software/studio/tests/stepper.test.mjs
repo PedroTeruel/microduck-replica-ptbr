@@ -1,5 +1,6 @@
-// 数字步进控件的纯逻辑测试：取整、夹边界、按住连加/连减的节奏（假时钟）。
-// 跑法：node --test tests/stepper.test.mjs
+// Testes de lógica do controle de incremento numérico: arredondamento, limites
+// e ritmo de repetição ao manter pressionado (relógio simulado).
+// Execução: node --test tests/stepper.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -7,7 +8,7 @@ import {
   createHoldRepeater, HOLD_DELAY_MS, HOLD_INTERVAL_MS,
 } from '../web/stepper.js';
 
-test('按 step 的小数位取整，不出现浮点尾巴', () => {
+test('arredonda de acordo com as casas decimais do passo sem resíduos de ponto flutuante', () => {
   assert.equal(stepperDecimals(0.5), 1);
   assert.equal(stepperDecimals(0.01), 2);
   assert.equal(stepperDecimals(1), 0);
@@ -18,7 +19,7 @@ test('按 step 的小数位取整，不出现浮点尾巴', () => {
   assert.equal(stepperStep(1.05, 1, { min: 0, max: 9, step: 0.01 }), 1.06);
 });
 
-test('碰到 min / max 就夹住', () => {
+test('limita o valor ao atingir min ou max', () => {
   assert.equal(stepperStep(30, 1, { min: 0, max: 30, step: 0.5 }), 30);
   assert.equal(stepperStep(29.8, 1, { min: 0, max: 30, step: 0.5 }), 30);
   assert.equal(stepperStep(0, -1, { min: 0, max: 30, step: 0.5 }), 0);
@@ -28,7 +29,7 @@ test('碰到 min / max 就夹住', () => {
   assert.equal(stepperClamp(-1, 0, 30), 0);
 });
 
-test('空值从 min 起步；不是数字的输入交给调用方恢复原值', () => {
+test('valores vazios começam em min; entradas não numéricas deixam a restauração do valor anterior para quem chama', () => {
   assert.equal(stepperStep(null, 1, { min: 6, max: 9, step: 0.01 }), 6.01);
   assert.equal(stepperStep('', -1, { min: 6, max: 9, step: 0.01 }), 6);
   assert.equal(stepperNumber(' 7.62 '), 7.62);
@@ -61,7 +62,7 @@ class FakeClock {
   }
 }
 
-test('按住：先停 400 ms，再每 80 ms 一格；stop 后不再响', () => {
+test('ao manter pressionado, aguarda 400 ms e repete a cada 80 ms; depois de parar, não repete', () => {
   assert.equal(HOLD_DELAY_MS, 400);
   assert.equal(HOLD_INTERVAL_MS, 80);
   const clock = new FakeClock();
@@ -83,7 +84,7 @@ test('按住：先停 400 ms，再每 80 ms 一格；stop 后不再响', () => {
   assert.equal(hits, 3);
 });
 
-test('按住还没到 400 ms 就松手：一格都不响', () => {
+test('soltar antes de completar 400 ms não produz nenhum incremento', () => {
   const clock = new FakeClock();
   let hits = 0;
   const rep = createHoldRepeater(() => { hits += 1; }, { timers: clock });

@@ -32,7 +32,7 @@ test('a remote revision rejection clears earlier successful test and conversatio
   const api = async (_path,body) => !body ? {ok:true,connections:[item],current_id:'a'}
     : body.op === 'test' ? {ok:true,id:'a',revision:1,text:'verified'}
     : ++chats === 1 ? {ok:true,id:'a',revision:1,text:'old assistant reply'}
-    : {ok:false,code:'stale',error:'连接已更改'};
+    : {ok:false,code:'stale',error:'A conexão foi alterada'};
   const context = vm.createContext({...state,html,AbortController,document:{getElementById:()=>true},
     useState(initial) {const index=cursor++; if (!(index in slots)) slots[index]=typeof initial === 'function' ? initial() : initial;
       return [slots[index],value=>{slots[index]=typeof value === 'function' ? value(slots[index]) : value;}];},
@@ -44,10 +44,10 @@ test('a remote revision rejection clears earlier successful test and conversatio
   const settle = async () => {await new Promise(setImmediate);render();};
   render();await settle();
   buttons.test();await settle();
-  assert.match(flatten(output),/测试成功：/);
-  inputs['试聊内容']({target:{value:'old user message'}});render();buttons.send();await settle();
+  assert.match(flatten(output),/Teste concluído: /);
+  inputs['Mensagem de teste']({target:{value:'old user message'}});render();buttons.send();await settle();
   assert.match(flatten(output),/old assistant reply/);
-  inputs['试聊内容']({target:{value:'new message'}});render();buttons.send();await settle();
-  assert.match(flatten(output),/连接已更改/);
-  assert.doesNotMatch(flatten(output),/old assistant reply|old user message|测试成功：/);
+  inputs['Mensagem de teste']({target:{value:'new message'}});render();buttons.send();await settle();
+  assert.match(flatten(output),/A conexão foi alterada/);
+  assert.doesNotMatch(flatten(output),/old assistant reply|old user message|Teste concluído: /);
 });

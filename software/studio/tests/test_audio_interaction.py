@@ -121,7 +121,7 @@ class AudioApiTests(PadTestBase):
     def test_missing_audio_service_is_actionable(self):
         conn = self.ops.new_conn()
         self.ops.handle({'op':'drive','open':True},conn=conn)
-        with self.assertRaisesRegex(Refused,'语音服务'):
+        with self.assertRaisesRegex(Refused,'serviço de voz'):
             self.ops.handle({'op':'audio','listening':True},conn=conn)
 
 
