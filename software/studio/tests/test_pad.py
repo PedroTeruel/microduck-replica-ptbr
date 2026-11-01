@@ -1638,10 +1638,10 @@ class Review2Test(PadTestBase):
         self.assertNotIn(PRO, d)
         self.assertNotIn("Pro Controller", d)
         self.assertIn('"count": 1', d)
-        with mock.patch.object(self.ops, "_motion_view", side_effect=ValueError("坏了")):
+        with mock.patch.object(self.ops, "_motion_view", side_effect=ValueError("falha simulada")):
             self.assertIsNone(self.ops.safe_snapshot())
             self.assertIsNone(self.ops.safe_snapshot())
-        errs = [e for e in self.log.recent(50, cats=["Controle"]) if "跳过这一帧" in e["msg"]]
+        errs = [e for e in self.log.recent(50, cats=["Controle"]) if "quadro ignorado" in e["msg"]]
         self.assertEqual(len(errs), 1)
         self.assertIs(self.ops.executor_for({"op": "move"}), self.ops._fast_pool)
         self.assertIsNone(self.ops.executor_for({"op": "pair"}))
@@ -1676,11 +1676,11 @@ class VpadTest(PadTestBase):
         return next(self._n)
 
     def into(self, mode, conn="a", seq=None):
-        return self.ops.handle({"op": "mode", "mode": mode, "seq": self.s() if seq is None else seq}, by="电脑 A", conn=conn)
+        return self.ops.handle({"op": "mode", "mode": mode, "seq": self.s() if seq is None else seq}, by="Computador A", conn=conn)
 
     def stick(self, mode, conn="a", seq=None, **v):
         return self.ops.handle(dict({"op": "sticks", "mode": mode, "seq": self.s() if seq is None else seq,
-                                     "lx": 0, "ly": 0, "rx": 0, "ry": 0}, **v), by="电脑 A", conn=conn)
+                                     "lx": 0, "ly": 0, "rx": 0, "ry": 0}, **v), by="Computador A", conn=conn)
 
     def stop(self, conn="a"):
         return self.ops.handle({"op": "stop", "seq": self.s()}, conn=conn)
@@ -1699,41 +1699,41 @@ class VpadTest(PadTestBase):
         self.assertNotEqual(self.heads()[-1], HEAD0)
 
     def assert_no_empty_pose(self):
-        # 坑：PoseParams 默认 active:true（fork lib.rs:2320-2346），发 {} 反而打开身体模式 —— 退出一定写 active:false
+        # Atenção: PoseParams usa active:true por padrão (fork lib.rs:2320–2346); enviar {} ativa o modo corpo. Ao sair, envie active:false.
         for p in self.poses():
             self.assertIn("active", p)
 
-    # ---- 换算（附 2） ----
+    # ---- Conversões (anexo 2) ----
 
     def test_formulas_follow_padd(self):
         lim = {"v": 0.3, "w": 1.5}
-        m, p = D.sticks_to_intent("drive", 0, -1, 1, 0, lim, 2.5)        # 左摇杆推上、右摇杆推右
+        m, p = D.sticks_to_intent("drive", 0, -1, 1, 0, lim, 2.5)        # Analógico esquerdo para cima e direito para a direita.
         self.assertEqual((m, p), ("robot.move", {"vx": 0.3, "vy": 0.0, "vyaw": -1.5}))
-        self.assertEqual(D.sticks_to_intent("drive", 1, 0, 0, 0, lim, 2.5)[1]["vy"], -0.3)   # 推右 = 向右平移（vy 为负）
+        self.assertEqual(D.sticks_to_intent("drive", 1, 0, 0, 0, lim, 2.5)[1]["vy"], -0.3)   # Empurrar à direita desloca para a direita (vy negativo).
         self.assertEqual(D.sticks_to_intent("drive", 0.05, 0.09, 0, 0, lim, 2.5)[1], {"vx": 0.0, "vy": 0.0, "vyaw": 0.0})
         m, p = D.sticks_to_intent("head", 0.5, -1, 0.5, -1, lim, 2.5)
         self.assertEqual(m, "robot.head")
         self.assertEqual(p, {"neck_pitch": 2.5, "head_pitch": -2.5, "head_yaw": -1.25, "head_roll": 1.25})
         m, p = D.sticks_to_intent("body", 0, -1, 1, -1, lim, 2.5)
         self.assertEqual(m, "robot.pose")
-        self.assertEqual(p, {"z": 0.01, "roll": 0.26, "pitch": 0.26, "active": True})   # 夹到训练范围 ±0.26
-        self.assertEqual(D.sticks_to_intent("body", 0, 1, 0, 0, lim, 2.5)[1]["z"], -0.025)  # 往下推最多蹲 2.5 cm
+        self.assertEqual(p, {"z": 0.01, "roll": 0.26, "pitch": 0.26, "active": True})   # Limitado ao intervalo de treinamento ±0,26.
+        self.assertEqual(D.sticks_to_intent("body", 0, 1, 0, 0, lim, 2.5)[1]["z"], -0.025)  # Empurrar para baixo agacha até 2,5 cm.
 
-    # ---- V1：头 / 身体锁存，每条退出路径都清 ----
+    # ---- V1: modos de cabeça/corpo são limpos em todas as saídas ----
 
     def test_v1_mode_exit_and_release(self):
         self.head_latched()
-        self.stop()                                                           # 松手：头回正（还在头模式）
+        self.stop()                                                           # Soltar centraliza a cabeça e mantém o modo cabeça.
         self.assertEqual(self.heads()[-1], HEAD0)
         self.assertEqual(self.ops.snapshot(conn="a")["virtual"]["mode"], "head")
         self.stick("head", ly=-1)
-        self.into("drive")                                                    # 再按一次 Y：回到走路，头回正
+        self.into("drive")                                                    # Pressione Y novamente para voltar a Andar e centralizar a cabeça.
         self.assertEqual(self.heads()[-1], HEAD0)
         self.into("body")
         self.stick("body", rx=1)
-        self.stop()                                                           # 身体模式松手：回中，还在身体模式
+        self.stop()                                                           # Soltar no modo corpo retorna ao centro e mantém o modo.
         self.assertEqual(self.poses()[-1], dict(D.POSE_CENTER))
-        self.into("drive")                                                    # 退出：一定是 active:false
+        self.into("drive")                                                    # Ao sair, active deve ser false.
         self.assertEqual(self.poses()[-1], POSE_OFF)
         self.assert_no_empty_pose()
         self.assertEqual(self.ops._latch, {"head": None, "body": None})
