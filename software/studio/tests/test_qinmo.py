@@ -135,7 +135,7 @@ class QinmoBackendTest(ImuBackendTest):
                 del bus['imu_bus']
                 backend.view()
                 release.set()
-                with self.assertRaisesRegex(Refused,'改变'):
+                with self.assertRaisesRegex(Refused,'mudou'):
                     await task
         asyncio.run(scenario())
         self.assertFalse((backend.job or {}).get('done'))
@@ -207,7 +207,7 @@ class QinmoBackendTest(ImuBackendTest):
             self.assertIsNone(backend.last_result)
             self.assertFalse(backend.view()["mount"]["verified"])
             self.assertTrue(backend.view()["mount_protocol_mismatch"])
-            self.assertIn("不支持", backend.view()["profile_error"])
+            self.assertIn("incompatível", backend.view()["profile_error"])
             self.assertFalse(commit.pending_matches({"source":"bus"}, "bus",bus))
             self.assertFalse(commit.pending_matches({"source":"bus","imu_bus":info}, "bus",bus))
             with self.assertRaises(Refused):
@@ -232,7 +232,7 @@ class QinmoBackendTest(ImuBackendTest):
                 backend = self.backend(bus=bus,calib=cal)
                 self.assertFalse(backend.view()["mount"]["verified"])
                 self.assertTrue(backend.view()["mount_protocol_mismatch"])
-                self.assertIn("尚未连接", backend.view()["profile_error"])
+                self.assertIn("não está conectada", backend.view()["profile_error"])
                 with self.assertRaises(Refused):
                     backend._coarse_guard(bus)
                 # Truly absent old-server profile fields retain legacy behavior.
@@ -373,7 +373,7 @@ class QinmoProfileTest(ImuRedoTest):
         code, detail = self.call_redo("cancel", session_id=detail["session_id"])
         self.assertEqual(code, H.EXIT_OK, detail)
         if detail.get("original_mode") == "startup":
-            self.assertIn("标定模式", detail["reason"])
+            self.assertIn("modo de calibração", detail["reason"])
         self.assertEqual(self.w.path(CONFIG).read_bytes(), self.config_old)
         self.assertEqual(self.w.path(SAVED).read_bytes(), self.config_old + b'# saved\n')
         self.assertEqual(self.path.read_bytes(), self.old)
@@ -408,7 +408,7 @@ class QinmoProfileTest(ImuRedoTest):
         self.assertFalse(self.manifest()["active"])
         self.assertFalse(self.w.path(OVERRIDE).exists())
         self.assertTrue(self.w.path(H.COMMISSIONING_DROPIN).exists())
-        self.assertIn("标定模式", detail["reason"])
+        self.assertIn("modo de calibração", detail["reason"])
         self.assertEqual(self.w.live_mode, "commissioning")
         self.w.discovered = True
         code, detail = self.select()

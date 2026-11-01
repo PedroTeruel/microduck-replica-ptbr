@@ -530,7 +530,7 @@ class SettingsTest(unittest.TestCase):
     def test_bad_file(self):
         p = B.settings_path(self.dir)
         with open(p, "w", encoding="utf-8") as f:
-            f.write("{半截")
+            f.write("{incompleto")
         log = FakeLog()
         self.assertEqual(B.load_settings(self.dir, log), B.DEFAULTS)
         self.assertTrue(os.path.exists(p + ".bad"))

@@ -1,4 +1,4 @@
-"""把模型管理的前端状态与实体改键单测纳入标准 unittest 回归。"""
+"""Inclui os testes de estado da interface de modelos e dos atalhos na regressão padrão do unittest."""
 import shutil
 import subprocess
 import unittest
@@ -9,7 +9,7 @@ NODE = shutil.which('node')
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@unittest.skipUnless(NODE, '需要 Node 才能运行前端模型管理单测')
+@unittest.skipUnless(NODE, 'Node é necessário para executar os testes da interface de modelos')
 class ModelsUiTests(unittest.TestCase):
     def test_model_ui_states(self):
         result = subprocess.run(

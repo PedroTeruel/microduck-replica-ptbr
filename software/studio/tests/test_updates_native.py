@@ -24,8 +24,8 @@ class NativeFinish(unittest.TestCase):
         from tests.test_helper_bus import H,FakeCtx,World
         with tempfile.TemporaryDirectory() as tmp:
             ctx=FakeCtx(World(tmp),b'{}')
-            H.Op(ctx,'robotd-update').finish(0,'native_status',detail={'reason':'未知实际主程序，拒绝自动安装'})
-            self.assertEqual(ctx.stdout.lines()[-1]['detail']['reason'],'未知实际主程序，拒绝自动安装')
+            H.Op(ctx,'robotd-update').finish(0,'native_status',detail={'reason':'programa principal desconhecido; instalação automática recusada'})
+            self.assertEqual(ctx.stdout.lines()[-1]['detail']['reason'],'programa principal desconhecido; instalação automática recusada')
 
 
 class NativeBridge(unittest.IsolatedAsyncioTestCase):
@@ -179,7 +179,7 @@ class NativeHttp(unittest.IsolatedAsyncioTestCase):
         await self.updates.native_task
         status,_,result=await self.call('GET','/api/updates',headers=self.headers)
         self.assertEqual(status,200,result)
-        self.assertIn('电量不足或无法确认供电',result['native']['request_error'])
+        self.assertIn('Bateria baixa ou alimentação não confirmada',result['native']['request_error'])
         self.assertFalse(fixture.w.path(STATE+'/journal.json').exists())
 
     async def test_malformed_persisted_journal_overrides_healthy_status_after_restart(self):

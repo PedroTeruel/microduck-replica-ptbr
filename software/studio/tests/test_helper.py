@@ -88,45 +88,45 @@ class PadCallTest(unittest.TestCase):
     def test_pair_payload_and_wrapper_timeout(self):
         out = '{"step":"done","detail":{"exit":0,"result":"paired","pair":{"outcome":"paired"}}}\n'
         with mock.patch.object(helper.subprocess, "run", return_value=_proc(out)) as run:
-            ok, result, detail = helper.pad_pair("电脑", mac="aa:bb:cc:dd:ee:ff", timeout=20)
+            ok, result, detail = helper.pad_pair("Computador", mac="aa:bb:cc:dd:ee:ff", timeout=20)
         self.assertTrue(ok)
         self.assertEqual(result, "paired")
         self.assertEqual(detail["pair"]["outcome"], "paired")
         self.assertEqual(run.call_args.args[0], ["sudo", "-n", helper.HELPER, "pad-pair"])
         payload = json.loads(run.call_args.kwargs["input"])
-        self.assertEqual(payload, {"by": "电脑", "timeout": 20, "mac": "aa:bb:cc:dd:ee:ff"})
+        self.assertEqual(payload, {"by": "Computador", "timeout": 20, "mac": "aa:bb:cc:dd:ee:ff"})
         self.assertEqual(run.call_args.kwargs["timeout"], 65)
 
     def test_forget_payload(self):
         out = '{"step":"done","detail":{"exit":0,"result":"forgotten","removed":true}}\n'
         with mock.patch.object(helper.subprocess, "run", return_value=_proc(out)) as run:
-            ok, result, detail = helper.pad_forget("电脑", "AA:BB:CC:DD:EE:FF")
+            ok, result, detail = helper.pad_forget("Computador", "AA:BB:CC:DD:EE:FF")
         self.assertTrue(ok)
         self.assertEqual(result, "forgotten")
         self.assertEqual(run.call_args.args[0], ["sudo", "-n", helper.HELPER, "pad-forget"])
         self.assertEqual(json.loads(run.call_args.kwargs["input"]),
-                         {"by": "电脑", "mac": "AA:BB:CC:DD:EE:FF"})
+                         {"by": "Computador", "mac": "AA:BB:CC:DD:EE:FF"})
 
 
 class WifiCallTest(unittest.TestCase):
     def test_down_payload_and_wrapper_timeout(self):
         out = '{"step":"done","detail":{"exit":0,"result":"hotspot_down"}}\n'
         with mock.patch.object(helper.subprocess, "run", return_value=_proc(out)) as run:
-            ok, result, detail = helper.wifi_hotspot_down("电脑", "Home")
+            ok, result, detail = helper.wifi_hotspot_down("Computador", "Home")
         self.assertTrue(ok)
         self.assertEqual(result, "hotspot_down")
         self.assertEqual(run.call_args.args[0], ["sudo", "-n", helper.HELPER, "wifi-hotspot-down"])
-        self.assertEqual(json.loads(run.call_args.kwargs["input"]), {"by": "电脑", "ssid": "Home"})
+        self.assertEqual(json.loads(run.call_args.kwargs["input"]), {"by": "Computador", "ssid": "Home"})
         self.assertEqual(run.call_args.kwargs["timeout"], 30)
 
     def test_up_payload_and_wrapper_timeout(self):
         out = '{"step":"done","detail":{"exit":0,"result":"hotspot_up"}}\n'
         with mock.patch.object(helper.subprocess, "run", return_value=_proc(out)) as run:
-            ok, result, detail = helper.wifi_hotspot_up("电脑")
+            ok, result, detail = helper.wifi_hotspot_up("Computador")
         self.assertTrue(ok)
         self.assertEqual(result, "hotspot_up")
         self.assertEqual(run.call_args.args[0], ["sudo", "-n", helper.HELPER, "wifi-hotspot-up"])
-        self.assertEqual(json.loads(run.call_args.kwargs["input"]), {"by": "电脑"})
+        self.assertEqual(json.loads(run.call_args.kwargs["input"]), {"by": "Computador"})
         self.assertEqual(run.call_args.kwargs["timeout"], 40)
 
 

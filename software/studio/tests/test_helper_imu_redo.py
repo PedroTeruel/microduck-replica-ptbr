@@ -249,7 +249,7 @@ class ImuRedoTest(Base):
             self.w.bus_mutate = mutate
             code, detail = self.call_redo()
             self.assertEqual(code, H.EXIT_STATE, detail)
-            self.assertIn("卸力", detail.get("reason", ""))
+            self.assertIn("torque", detail.get("reason", ""))
             self.assertFalse(self.w.path(OVERRIDE).exists())
         self.w.bus_mutate = None
         reads = {"n": 0}
