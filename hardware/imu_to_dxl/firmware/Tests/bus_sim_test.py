@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
-"""真固件协议代码上模拟总线：把 protocol.c + control_table.c 编成 DLL（Tests/bus_sim_shim.c），
-挂到协议级舵机模拟器上，用主控侧的真实工具去测它：
+"""Simula o barramento usando o código de protocolo do firmware real: compila
+protocol.c + control_table.c em uma DLL (Tests/bus_sim_shim.c), conecta-a ao
+simulador de servos em nível de protocolo e testa com as ferramentas do controlador:
 
-- tools/imu200/imu200.py 的 check()：总线协议.md §11 的验收，判据照主控源码
-- 调试台 servo-web 的 --imu-bus 轮询：跟主控同一条 sync_read，200 排第一
-- 排队规则：200 排在中间、前面有设备不在线（§5）
+- check() de tools/imu200/imu200.py: aceitação da seção 11 de 总线协议.md, com critérios do controlador
+- consulta --imu-bus do painel servo-web: mesma sync_read do controlador, com ID 200 primeiro
+- regra de fila: ID 200 no meio e um dispositivo anterior offline (seção 5)
 
-总线上的时间是虚拟微秒：主控的包和别的舵机的应答都按 1 Mbps（10 µs/字节）喂给固件，
-固件答不答、什么时候答，全由 C 代码自己决定。舵机仍用 sim_bus 的模拟。不接硬件。
+O tempo do barramento é simulado em microssegundos: pacotes do controlador e
+respostas dos outros servos chegam ao firmware a 1 Mbps (10 µs/byte). A resposta
+do firmware e seu instante são determinados pelo próprio código C. Os servos
+continuam simulados por sim_bus. Nenhum hardware é conectado.
 
-  python Tests/bus_sim_test.py            # cl.exe 在 PATH 里，或自动用 vswhere 找 Visual Studio
+  python Tests/bus_sim_test.py            # cl.exe no PATH ou busca automática do Visual Studio via vswhere
 """
 import ctypes
 import math
@@ -31,7 +34,7 @@ from sim_bus import SimSerial   # noqa: E402
 
 JOINTS = [20, 21, 22, 23, 24, 30, 31, 32, 33, 34, 10, 11, 12, 13, 14]
 BYTE_US = 10            # 1 Mbps
-SERVO_TRESP_US = 30     # 模拟舵机的应答延时（真值待量，§12）
+SERVO_TRESP_US = 30     # Atraso de resposta simulado do servo (valor real ainda precisa ser medido; seção 12).
 SOURCES = ["Tests/bus_sim_shim.c", "Core/Src/protocol.c", "Core/Src/control_table.c"]
 
 
@@ -52,11 +55,11 @@ def build_dll():
                                "installationPath"], capture_output=True, text=True).stdout.strip()
         vcvars = os.path.join(root, "VC", "Auxiliary", "Build", "vcvars64.bat")
         cmd = f'call "{vcvars}" >nul 2>nul && {cmd}'
-    # 整条命令作为一个字符串交给 cmd /s /c：列表形式会被 Python 按 C 运行时规则转义引号，cmd 看不懂
+    # Passe o comando inteiro como uma única string para cmd /s /c: na forma de lista, Python escapa as aspas segundo as regras do runtime C, que o cmd não entende.
     r = subprocess.run(f'cmd /d /s /c "{cmd}"', cwd=FW, capture_output=True, text=True,
                        encoding="mbcs", errors="replace")
     if r.returncode:
-        raise SystemExit("编译 DLL 失败：\n" + r.stdout + r.stderr)
+        raise SystemExit("Falha ao compilar a DLL:\n" + r.stdout + r.stderr)
     return dll
 
 
@@ -65,7 +68,7 @@ def f16(x):
 
 
 class FirmwareOnBus(SimSerial):
-    """sim_bus 的假串口，但 ID 200 由真固件协议代码来答。"""
+    """Porta serial simulada de sim_bus; o ID 200 responde com o código real do protocolo do firmware."""
 
     def __init__(self, dll, joints, ready_ms=100):
         super().__init__(joints)
@@ -74,11 +77,11 @@ class FirmwareOnBus(SimSerial):
         self.us = 1000
         self.last_sync_us = -20000
         self.ready_ms = ready_ms
-        self.fw_delays = []          # 固件应答相对"轮到它"的延时（µs）
-        self.collisions = []         # 不该它说话的时候它发了：(时刻, 字节)
-        self.sync_bus_us = []        # 每条 sync_read 在虚拟总线上占了多久（指令开始 → 最后一个应答结束）
+        self.fw_delays = []          # Atraso da resposta do firmware (µs) desde o momento em que recebe a vez.
+        self.collisions = []         # Transmissões indevidas do firmware: (instante, bytes).
+        self.sync_bus_us = []        # Duração de cada sync_read no barramento virtual (início da instrução → fim da última resposta).
 
-    # ---- 固件这一侧的时间和 IMU 数据 ----
+    # ---- Relógio e dados da IMU vistos pelo firmware ----
     def _imu_now(self):
         t = self.us / 1e6
         ms = self.us // 1000
@@ -87,13 +90,13 @@ class FirmwareOnBus(SimSerial):
         if ms < self.ready_ms:
             self.fw.shim_set_snapshot(0, 1, 0, 0, 0, 0, 0, 0, samples)
             return
-        jitter = samples % 7 - 3            # 真芯片静置时低位也在跳
+        jitter = samples % 7 - 3            # Os bits menos significativos variam mesmo com o chip real parado.
         yaw = 0.3 * math.sin(t)
         self.fw.shim_set_snapshot(1, 0, int(100 * math.sin(t)) + jitter, -50 + jitter, 3 - jitter,
                                   f16(0.05), f16(0.0), f16(math.sin(yaw / 2)), samples)
 
     def _idle(self, duration_us):
-        """总线归别人（或空着）的这段时间也逐微秒 poll 固件：这时候它敢发就是抢话 / 撞包。"""
+        """Consulta o firmware a cada microssegundo enquanto o barramento pertence a outro dispositivo (ou está ocioso): transmitir nesse intervalo causa colisão."""
         buf = (ctypes.c_uint8 * 300)()
         for _ in range(duration_us):
             self.us += 1
@@ -103,7 +106,7 @@ class FirmwareOnBus(SimSerial):
                 self.collisions.append((self.us, bytes(buf[:n]).hex(" ")))
 
     def _heard(self, data, gap_us):
-        """总线上出现一串字节（主控的包或别的舵机的应答），固件都听得见；字节之间照样 poll。"""
+        """O firmware recebe bytes enviados ao barramento (pacotes do controlador ou respostas de outros servos); continua sendo consultado entre os bytes."""
         self._idle(gap_us)
         for i, b in enumerate(data):
             if i:
@@ -112,7 +115,7 @@ class FirmwareOnBus(SimSerial):
             self.fw.shim_feed(b, self.us)
 
     def _fw_turn(self, limit_us=6000):
-        """轮到固件（或它该不答）：逐微秒 poll，看它在什么时候发、发了什么。"""
+        """Quando chega a vez do firmware (ou quando ele deve permanecer em silêncio), consulta-o a cada microssegundo para observar quando e o que transmite."""
         start = self.us
         buf = (ctypes.c_uint8 * 300)()
         while self.us - start < limit_us:
@@ -122,10 +125,10 @@ class FirmwareOnBus(SimSerial):
             if n > 0:
                 self.fw_delays.append(self.us - start)
                 data = bytes(buf[:n])
-                self.us += BYTE_US * n        # 自己发的这一串占着总线，但自己听不见（RX_EN 关了回显）
+                self.us += BYTE_US * n        # A transmissão ocupa o barramento, mas o próprio dispositivo não a recebe (RX_EN desativa o retorno).
                 return data
             if self.fw.shim_pending() == 0 and self.us - start > 200:
-                return None                   # 没打算答
+                return None                   # Não há resposta prevista.
         return None
 
     def _servo_reply(self, s, params):
@@ -147,8 +150,8 @@ class FirmwareOnBus(SimSerial):
     def _packet(self, pkt):
         sid, instr, params = pkt[2], pkt[4], pkt[5:-1]
         self._advance()
-        # 主控的节奏：sync_read 每 20 ms 一条（50 Hz），别的包之间 2 ms。不跟墙钟走 ——
-        # Windows 的 sleep 粒度 15.6 ms，墙钟会让虚拟时间忽长忽短，计数步进就不像真机了。
+        # Ritmo do controlador: um sync_read a cada 20 ms (50 Hz), com 2 ms entre os outros pacotes. Não use o relógio real:
+        # no Windows, sleep tem resolução de 15,6 ms e tornaria os intervalos virtuais irregulares, ao contrário do hardware real.
         if instr == feetech.SYNC_READ:
             self.us = max(self.us + 2000, self.last_sync_us + 20000)
             self.last_sync_us = self.us
@@ -171,10 +174,10 @@ class FirmwareOnBus(SimSerial):
                     self.rx += reply
                     self._heard(reply, SERVO_TRESP_US)
                 else:
-                    self._idle(300)               # 不在线的舵机：总线空着
+                    self._idle(300)               # Servo offline: barramento ocioso.
             self.sync_bus_us.append(self.us - t0)
             if 200 not in ids:
-                self._idle(3000)                  # 没问它：这段时间它也不许开口
+                self._idle(3000)                  # Sem consulta ao ID 200: ele deve permanecer em silêncio nesse intervalo.
             return
         if sid == 200 or sid == feetech.BROADCAST:
             r = self._fw_turn()
@@ -183,7 +186,7 @@ class FirmwareOnBus(SimSerial):
             if sid == 200:
                 return
         before = len(self.rx)
-        self._handle(sid, instr, params)          # 发给舵机的：sim_bus 照常处理
+        self._handle(sid, instr, params)          # Pacote destinado a um servo: sim_bus processa normalmente.
         reply = bytes(self.rx[before:])
         if reply:
             self._heard(reply, SERVO_TRESP_US)
@@ -214,50 +217,50 @@ def main():
         results.append((bool(cond), what))
         print(("  ✓ " if cond else "  ✗ ") + what)
 
-    print("== 1. imu200.py check：主控判据的验收，对象是真固件协议代码 ==")
+    print("== 1. check() de imu200.py: critérios de aceitação do controlador aplicados ao protocolo real do firmware ==")
     port = FirmwareOnBus(lib, JOINTS)
     bus = feetech.FeetechBus(None, ser=port)
-    imu200.log = lambda *a, **k: None          # 只看结果，别刷屏
+    imu200.log = lambda *a, **k: None          # Mostra somente os resultados, sem inundar a saída.
     for good, what in imu200.check(bus, frames=80, hz=50):
-        if what.startswith("事务耗时"):
-            # check 量的是 Python 墙钟；这里每微秒都要调一次 DLL，墙钟不代表总线。改用虚拟总线时间判
-            print(f"  · check: {what}（模拟里是 Python 墙钟，不计）")
+        if what.startswith("Duração da transação"):
+            # check mede o relógio de parede do Python; aqui a DLL é consultada a cada microssegundo, então esse tempo não representa o barramento. Use o relógio virtual.
+            print(f"  · check: {what} (tempo de parede do Python na simulação; ignorado)")
             continue
         ok(good, "check: " + what)
     c = port.counters()
-    ok(c["crc"] == 0 and c["malformed"] == 0 and c["timeouts"] == 0, f"固件侧没有校验错/坏包/残帧：{c}")
+    ok(c["crc"] == 0 and c["malformed"] == 0 and c["timeouts"] == 0, f"Sem erros de CRC, pacotes inválidos ou quadros incompletos no firmware: {c}")
     delays = sorted(port.fw_delays)
     ok(delays and delays[0] >= 50 and delays[-1] <= 52,
-       f"T_resp（协议逻辑）：轮到固件后 {delays[0]}–{delays[-1]} µs 开始发（规格 50 µs；CPU 耗时要逻辑分析仪实测）")
-    ok(not port.collisions, f"别的设备说话、总线空着时固件从不开口（抢话 {len(port.collisions)} 次：{port.collisions[:2]}）")
-    full = sorted(t for t in port.sync_bus_us if t > 2000)   # 16 个设备的那条
+       f"T_resp (lógica do protocolo): o firmware começa a transmitir {delays[0]}–{delays[-1]} µs após receber a vez (especificação: 50 µs; medir o tempo da CPU com analisador lógico)")
+    ok(not port.collisions, f"O firmware permanece em silêncio enquanto outro dispositivo transmite ou o barramento está ocioso (colisões: {len(port.collisions)}; exemplos: {port.collisions[:2]})")
+    full = sorted(t for t in port.sync_bus_us if t > 2000)   # Leitura conjunta dos 16 dispositivos.
     p99 = full[max(0, int(len(full) * 0.99) - 1)] / 1000
-    ok(full and p99 < 6.0, f"16 个设备的 sync_read 在虚拟总线上 p99 {p99:.2f} ms（预算 6 ms；模拟舵机 T_resp 取 {SERVO_TRESP_US} µs）")
+    ok(full and p99 < 6.0, f"sync_read de 16 dispositivos: p99 de {p99:.2f} ms no barramento virtual (orçamento de 6 ms; T_resp simulado do servo = {SERVO_TRESP_US} µs)")
 
-    print("== 2. 版本区（§9）==")
+    print("== 2. Área de versões (seção 9) ==")
     _, head = bus.read(200, 0, 9)
-    ok(list(head) == [0, 2, 0, 0x44, 0x4D, 200, 0, 0, 1], f"0–8 = {list(head)}（版本 0.2、END 0、型号、ID 200、1 Mbps、级别 1）")
+    ok(list(head) == [0, 2, 0, 0x44, 0x4D, 200, 0, 0, 1], f"0–8 = {list(head)} (versão 0.2, END 0, modelo, ID 200, 1 Mbps, nível 1)")
 
-    print("== 3. 排队（§5）：200 排在中间 / 前面的设备不在线 ==")
+    print("== 3. Fila (seção 5): ID 200 no meio, com dispositivo anterior offline ==")
     port = FirmwareOnBus(lib, JOINTS, ready_ms=0)
     bus = feetech.FeetechBus(None, ser=port)
     got = bus.sync_read([20, 21, 200, 22], 56, 15)
-    ok(all(got.get(i) for i in (20, 21, 200, 22)), "200 排第 3：四个都答了，没撞包、没错位")
-    port.servos[21].muted.add(56)                 # 21 对这个地址不应答 = 前面有设备不在线
-    # 直接看总线上的原始帧：feetech.py 按顺序读，缺一个就「错位后面全废」（规格 §2），那是主控侧的读法
+    ok(all(got.get(i) for i in (20, 21, 200, 22)), "ID 200 ocupa a terceira posição: os quatro respondem sem colisão nem desalinhamento")
+    port.servos[21].muted.add(56)                 # ID 21 não responde a este endereço, simulando um dispositivo anterior offline.
+    # Inspeciona os quadros brutos do barramento: feetech.py lê em sequência e a ausência de um servo desalinha as respostas seguintes (especificação, seção 2), como ocorre no controlador.
     port.reset_input_buffer()
     bus._send(feetech.BROADCAST, feetech.SYNC_READ, bytes([56, 15, 20, 21, 200, 22]))
     raw, frames = bytes(port.rx), []
     while len(raw) >= 6 and raw[:2] == b"\xff\xff":
         frames.append(raw[2])
         raw = raw[4 + raw[3]:]
-    ok(frames == [20, 200, 22], f"21 不在线：总线上的应答顺序是 {frames}（200 等一个空档后照样答，22 也答了）")
-    ok(port.counters()["skipped"] == 1, f"固件记了 1 次跳过不在线的设备（{port.counters()['skipped']}）")
+    ok(frames == [20, 200, 22], f"ID 21 offline: ordem das respostas no barramento = {frames} (ID 200 responde após o intervalo e ID 22 também responde)")
+    ok(port.counters()["skipped"] == 1, f"Firmware registrou 1 dispositivo offline ignorado ({port.counters()['skipped']})")
     got = bus.sync_read([20, 21, 22], 56, 15)
     ok(200 not in got and not port.collisions,
-       f"列表里没有 200：舵机应答期间和之后 3 ms 固件都没开口（抢话 {len(port.collisions)} 次）")
+       f"ID 200 não aparece na lista: o firmware permanece em silêncio durante as respostas dos servos e por mais 3 ms ({len(port.collisions)} transmissões indevidas)")
 
-    print("== 4. 调试台 --imu-bus：跟主控同一条 sync_read ==")
+    print("== 4. Consulta --imu-bus do painel: mesma sync_read do controlador ==")
     import imu_bus
     import server
     port = FirmwareOnBus(lib, JOINTS, ready_ms=0)
@@ -268,11 +271,11 @@ def main():
         st = server.read_states_with_imu(JOINTS, svc)
         time.sleep(0.02)
     status = svc.get_status()
-    ok(status["live"] and all(st[i] for i in JOINTS), f"姿态 live，15 颗舵机状态都在：{status['message']}")
-    ok(not port.collisions, f"调试台轮询期间固件没抢话（{len(port.collisions)} 次）")
+    ok(status["live"] and all(st[i] for i in JOINTS), f"Orientação ativa e estado dos 15 servos disponível: {status['message']}")
+    ok(not port.collisions, f"Nenhuma transmissão indevida do firmware durante a consulta do painel ({len(port.collisions)} colisões)")
 
     bad = [w for g, w in results if not g]
-    print(f"\n{len(results) - len(bad)}/{len(results)} 通过" + ("" if not bad else "；失败：\n  " + "\n  ".join(bad)))
+    print(f"\n{len(results) - len(bad)}/{len(results)} aprovados" + ("" if not bad else "; falhas:\n  " + "\n  ".join(bad)))
     return 1 if bad else 0
 
 

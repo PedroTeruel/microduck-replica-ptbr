@@ -280,18 +280,18 @@ class BusMonitor:
     # -- setup ---------------------------------------------------------------
     def scan(self):
         """PING 1..253; returns sorted servo IDs (everything but ID 200)."""
-        print("扫描总线 1..253 ...")
+        print("Varredura do barramento de 1 a 253...")
         found = []
         for sid in range(1, 254):
             if self._ping(sid, wait=0.003):
                 if sid == self.imu_id:
                     continue
                 found.append(sid)
-                print("  发现舵机 ID %d" % sid)
+                print("  Servo encontrado: ID %d" % sid)
         if self.imu_id is not None:
-            print("  IMU 板 ID %d%s" % (self.imu_id,
-                  "（应答正常）" if self._ping(self.imu_id) else "（无应答!）"))
-        print("共 %d 个舵机: %s" % (len(found), found))
+            print("  Placa IMU ID %d%s" % (self.imu_id,
+                  " (responde normalmente)" if self._ping(self.imu_id) else " (sem resposta!)"))
+        print("Total de servos: %d — %s" % (len(found), found))
         return found
 
     def _ping(self, sid, wait=0.003):
@@ -315,7 +315,7 @@ class BusMonitor:
             self._w2(sv.id, REG_GOAL_POS, self.demo_lo)
             sv.in_demo = True
             self.torque_ids.append(sv.id)
-            print("  舵机 %d: demo 开始（mode=%s, 目标 %d <-> %d, 速度 %d）"
+            print("  Servo %d: demonstração iniciada (modo=%s, alvo %d <-> %d, velocidade %d)"
                   % (sv.id, sv.mode, self.demo_lo, self.demo_hi,
                      self.demo_speed))
 
@@ -324,7 +324,7 @@ class BusMonitor:
         for sid in self.torque_ids:
             try:
                 self._w1(sid, REG_TORQUE_EN, 0)
-                print("舵机 %d 扭矩已关闭" % sid)
+                print("Torque do servo %d desativado" % sid)
             except serial.SerialException:
                 pass
         self.ser.close()
@@ -377,7 +377,7 @@ class BusMonitor:
             sv.sync_write_ok = False
             self._fallback_goals[sv.id] = sv.probe_target
             sv.probe_deadline = 0.0
-            print("  舵机 %d 不支持 SYNC WRITE，已回退到逐写" % sv.id)
+            print("  Servo %d não oferece suporte a SYNC WRITE; usando gravações individuais" % sv.id)
 
     def update_demo(self, target):
         sync, solo = [], []
@@ -456,20 +456,20 @@ class BusMonitor:
                                  % (self.n_imu_ok, self.n_imu_req,
                                     g[0], g[1], g[2], qs))
                 else:
-                    lines.append("IMU %d/%d: 无应答"
+                    lines.append("IMU %d/%d: sem resposta"
                                  % (self.n_imu_ok, self.n_imu_req))
             out = [" | ".join(lines)]
         for sv in self.servos.values():
             if sv.latest:
                 s = sv.latest
-                out.append("  [%d]%s 位置%4d(%5.1f°) 速度%+5d 扭矩%+4d "
-                           "电压%4.1fV 温度%2d°C mv=%d [%d/%d]"
+                out.append("  [%d]%s posição %4d (%5.1f°) velocidade %+5d carga %+4d "
+                           "tensão %4.1f V temperatura %2d °C mov=%d [%d/%d]"
                            % (sv.id, " demo" if sv.in_demo else "     ",
                               s["pos"], s["deg"], s["spd"], s["load"],
                               s["volt"], s["temp"], s["moving"],
                               sv.ok, sv.req))
             else:
-                out.append("  [%d]  无应答 [%d/%d]"
+                out.append("  [%d]  sem resposta [%d/%d]"
                            % (sv.id, sv.ok, sv.req))
         print("\n".join(out))
 
@@ -607,7 +607,7 @@ def main():
     else:
         mon.demo = mon.demo and bool(srv_ids)
     if mon.demo:
-        print("3 秒后开始 demo 摆动（Ctrl+C 取消）...")
+        print("A demonstração de movimento começa em 3 segundos (Ctrl+C cancela)...")
         time.sleep(3.0)
         mon.start_demo()
 

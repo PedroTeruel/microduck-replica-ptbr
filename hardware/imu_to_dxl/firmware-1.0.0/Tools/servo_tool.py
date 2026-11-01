@@ -24,7 +24,7 @@ try:
     import serial
     from serial.tools import list_ports
 except ImportError:
-    sys.exit("pyserial 未安装: pip install pyserial")
+    sys.exit("pyserial não está instalado: pip install pyserial")
 
 # STS/SCS register map (decimal addresses, matches the firmware ft table)
 REG_ID = 5
@@ -110,8 +110,8 @@ def pick_port(name):
         return name
     if len(ports) == 1:
         return ports[0]
-    sys.exit(f"检测到多个串口 {ports}，请用 --port 指定总线口（通常是 COM6；"
-             f"COM5 是 DAP-LINK 调试口）")
+    sys.exit(f"Foram encontradas várias portas seriais {ports}; use --port para indicar a porta do barramento (normalmente COM6; "
+             f"COM5 é a porta de depuração DAP-LINK).")
 
 
 def u16s(v):
@@ -120,12 +120,12 @@ def u16s(v):
 
 def cmd_scan(a):
     bus = Bus(pick_port(a.port))
-    print(f"扫描 1..253 @ 1 Mbps ...")
+    print("Varredura de 1 a 253 a 1 Mbps...")
     found = []
     for id_ in range(1, 254):
         if bus.ping(id_):
             ver = bus.read(id_, 0, 5)
-            tag = "  <- MD-IMU 板（本项目）" if id_ == IMU_ID else ""
+            tag = "  <- placa MD-IMU (deste projeto)" if id_ == IMU_ID else ""
             if ver:
                 if id_ == IMU_ID:
                     model = ver[3] | (ver[4] << 8)
@@ -134,12 +134,12 @@ def cmd_scan(a):
                     model = ver[0] | (ver[1] << 8)
                     fw = ver[2]
                 print(f"  ID {id_:3d}  model=0x{model:04X} fw={fw}"
-                      f"  表头={ver.hex(' ')}{tag}")
+                      f"  bytes iniciais={ver.hex(' ')}{tag}")
             else:
-                print(f"  ID {id_:3d}  (ping 应答, 读版本失败){tag}")
+                print(f"  ID {id_:3d}  (PING respondeu, falha ao ler a versão){tag}")
             found.append(id_)
     bus.close()
-    print(f"共 {len(found)} 个: {found}")
+    print(f"Total: {len(found)} dispositivos: {found}")
 
 
 def decode_status(b):
@@ -160,7 +160,7 @@ def cmd_read(a):
         while True:
             b = bus.read(a.id, REG_POS, 15)
             if b is None:
-                print(f"ID {a.id} 无应答")
+                print(f"ID {a.id}: sem resposta")
                 if not a.watch:
                     break
             else:
@@ -183,13 +183,13 @@ def cmd_test(a):
     try:
         mode = bus.read(a.id, REG_MODE, 1)
         if mode is None:
-            sys.exit(f"ID {a.id} 无应答")
+            sys.exit(f"ID {a.id}: sem resposta")
         if mode[0] != 0 and not a.force:
-            sys.exit(f"舵机 mode={mode[0]}（位置模式需为 0），"
-                     f"加 --force 强行继续")
-        print(f"舵机将转动: {a.lo}({a.lo/POS_PER_DEG:.0f}°) <-> "
-              f"{a.hi}({a.hi/POS_PER_DEG:.0f}°), 速度 {a.speed}, "
-              f"{a.loops} 个来回, Ctrl+C 随时停止")
+            sys.exit(f"Modo do servo = {mode[0]} (o modo de posição deve ser 0); "
+                     f"adicione --force para continuar mesmo assim")
+        print(f"O servo vai se mover: {a.lo} ({a.lo/POS_PER_DEG:.0f}°) <-> "
+              f"{a.hi} ({a.hi/POS_PER_DEG:.0f}°), velocidade {a.speed}, "
+              f"{a.loops} ciclos de ida e volta. Ctrl+C interrompe a qualquer momento.")
         bus.write(a.id, REG_TORQUE_EN, (1,))
         bus.write(a.id, REG_ACC, (a.acc,))
         bus.write(a.id, REG_GOAL_SPEED, u16s(a.speed & 0x7FFF))
@@ -201,41 +201,42 @@ def cmd_test(a):
                     while time.time() - t0 < 8.0:
                         b = bus.read(a.id, REG_POS, 11)
                         if b is None:
-                            print("  无应答!")
+                            print("  Sem resposta!")
                             break
                         s = decode_status(b)
                         err = abs(s["pos"] - target)
-                        print(f"  目标={target:4d} pos={s['pos']:4d} "
-                              f"({s['deg']:5.1f}°) err={err:4d} "
-                              f"moving={s['moving']}")
+                        print(f"  alvo={target:4d} posição={s['pos']:4d} "
+                              f"({s['deg']:5.1f}°) erro={err:4d} "
+                              f"em movimento={s['moving']}")
                         if err < 20 and not s["moving"]:
                             break
                         time.sleep(0.05)
                     else:
-                        print("  到位超时")
+                        print("  Tempo esgotado antes de chegar à posição")
         finally:
             bus.write(a.id, REG_TORQUE_EN, (0,))
-            print("扭矩已关闭")
+            print("Torque desativado")
     finally:
         bus.close()
 
 
 def cmd_write(a):
     if a.id == IMU_ID:
-        print("注意: IMU 板(ID 200)固件中 ID/波特率固定，相关写操作会被忽略；"
-              "仅 84(marker)/240(重初始化) 等少量寄存器可写。")
+        print("Atenção: o firmware da placa IMU (ID 200) fixa o ID e a taxa de transmissão, "
+              "e ignora as gravações correspondentes; somente alguns registradores podem ser gravados, "
+              "como 84 (marcador) e 240 (reinicialização).")
     bus = Bus(pick_port(a.port))
     data = [int(x, 0) for x in a.data]
     ok = bus.write(a.id, a.addr, data)
-    print("OK" if ok else "无应答/失败")
+    print("OK" if ok else "Sem resposta/falha")
     bus.close()
 
 
 def main():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--port", default="COM6",
-                        help="总线串口（默认 COM6；COM5 是 DAP-LINK 调试口）")
-    p = argparse.ArgumentParser(description="Feetech 舵机工具（FT-SCS, 1 Mbps）",
+                        help="Porta serial do barramento (padrão: COM6; COM5 é a porta de depuração DAP-LINK)")
+    p = argparse.ArgumentParser(description="Ferramenta para servos Feetech (FT-SCS, 1 Mbps)",
                                 parents=[common])
     sub = p.add_subparsers(dest="cmd", required=True)
 
