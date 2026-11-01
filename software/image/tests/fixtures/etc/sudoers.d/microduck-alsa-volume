@@ -1,2 +1,2 @@
-# 测试用 sudoers 条目
+# Regra sudoers usada nos testes.
 radxa ALL=(root) NOPASSWD: /usr/bin/alsa

@@ -1,36 +1,33 @@
-Microduck 复刻镜像 —— 开源许可说明
+Microduck Replica — Licenças de código aberto
 
-本镜像由 microduck-replica 项目制作，免费下载，只供个人学习和非商业复刻，
-不随任何收费产品分发。本镜像与 Pollen Robotics、Radxa、Armbian、飞特都没有隶属关系，
-也没有得到它们的背书。
+Esta imagem foi criada pelo projeto `microduck-replica`. O download é gratuito e seu uso se destina a estudo pessoal e réplicas não comerciais; ela não é distribuída com produtos pagos.
+Esta imagem não é afiliada nem endossada pela Pollen Robotics, Radxa, Armbian ou Feetech.
 
-各部分的许可
+Licenças de cada componente
 ------------
-1. 系统底座：Armbian 26.2.1（基于 Debian 13 trixie），内核 6.1.115-vendor-rk35xx，
-   Radxa 的 U-Boot。各软件包按各自的许可分发，许可全文在 /usr/share/doc/<包名>/copyright。
-   Linux 内核和 U-Boot 是 GPL-2.0，源码见 Armbian 和 Radxa 的公开仓库。
+1. Sistema base: Armbian 26.2.1 (baseado em Debian 13 trixie), kernel 6.1.115-vendor-rk35xx e U-Boot da Radxa.
+   Cada pacote é distribuído sob sua própria licença; os textos integrais estão em `/usr/share/doc/<nome-do-pacote>/copyright`.
+   O kernel Linux e o U-Boot usam GPL-2.0; o código-fonte está nos repositórios públicos da Armbian e da Radxa.
 
-2. 官方 Microduck 运行时 0.15.1（Pollen Robotics；源码提交 1fa8438，在鸭子上编译安装）：
-   /opt/robot/daemon/ 下的 configd、btd、updaterd 等程序，/usr/local/bin/robotctl，
-   以及 /var/lib/robot/sounds/ 的声音素材。Apache License 2.0，版权归 Pollen Robotics
-   及各贡献者。官方仓库没有 NOTICE 文件。
+2. Runtime oficial do Microduck 0.15.1 (Pollen Robotics; commit de código-fonte `1fa8438`, compilado e instalado no pato):
+   programas como `configd`, `btd` e `updaterd` em `/opt/robot/daemon/`, `/usr/local/bin/robotctl`
+   e os arquivos de áudio em `/var/lib/robot/sounds/`. Apache License 2.0; direitos autorais da Pollen Robotics
+   e dos contribuidores. O repositório oficial não contém arquivo `NOTICE`.
 
-3. /opt/robot/feetech-ft5-r5/ 下的 robotd、padd、mediad：在官方 0.15.1 的基础上，
-   加了飞特 HD-1910 舵机总线、I²C IMU 模块、总线 IMU 协议识别、陀螺融合、UDP 手柄等改动后编译的版本，
-   仍按 Apache-2.0 分发。改动说明和对应的源码提交见 microduck-replica 仓库的
-   software/image/README.md。同目录的 LICENSE 只覆盖这三个程序，不覆盖 models/ 和
-   roller/ 下的模型。
+3. `robotd`, `padd` e `mediad` em `/opt/robot/feetech-ft5-r5/`: versões compiladas a partir da versão oficial 0.15.1, com alterações para o barramento dos servos Feetech HD-1910, módulo IMU I²C, identificação do protocolo da IMU no barramento, fusão giroscópica, controle UDP e outros recursos.
+   São distribuídos sob Apache-2.0. A descrição das alterações e os commits correspondentes estão em `software/image/README.md` no repositório `microduck-replica`.
+   O arquivo `LICENSE` no mesmo diretório cobre somente esses três programas, não os modelos nas pastas `models/` e `roller/`.
 
-4. Microduck Studio（/home/radxa/studio-dev/），以及首次开机、配网、root 小助手脚本
-   （/usr/local/sbin/microduck-firstboot、microduck-netcheck、microduck-helper）：
-   microduck-replica 项目编写，Apache-2.0。
+4. Microduck Studio (`/home/radxa/studio-dev/`) e os scripts de primeiro boot, configuração de rede e assistência de root
+   (`/usr/local/sbin/microduck-firstboot`, `microduck-netcheck` e `microduck-helper`):
+   escritos pelo projeto `microduck-replica` e distribuídos sob Apache-2.0.
 
-5. 第三方组件（ONNX Runtime、Studio 用的前端库和 Python 包、Studio 里的 3D 网格）：
-   见同目录的 第三方.txt。
+5. Componentes de terceiros (ONNX Runtime, bibliotecas de interface e pacotes Python usados pelo Studio, e malha 3D do Studio):
+   consulte `第三方.txt` no mesmo diretório.
 
-6. 走路和动作模型：见同目录的 模型说明.txt。它们是个人非商业许可，不是开源许可。
+6. Modelos de caminhada e ação: consulte `模型说明.txt` no mesmo diretório. Eles usam uma licença pessoal e não comercial, não uma licença de código aberto.
 
-以下为 Apache License 2.0 全文。
+Segue o texto integral da Apache License 2.0.
 
 
                                  Apache License

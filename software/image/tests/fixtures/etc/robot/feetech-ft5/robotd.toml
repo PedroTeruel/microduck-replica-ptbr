@@ -1,4 +1,4 @@
-# 测试用 robotd 配置：字段和取值都是虚构的，只保留测试需要的最小结构。
+# Configuração robotd de teste: campos e valores fictícios; contém somente a estrutura mínima necessária aos testes.
 "feetech_calibration" = "/etc/robot/feetech-ft5/hd1910-calibration.toml"
 
 ["bus"]

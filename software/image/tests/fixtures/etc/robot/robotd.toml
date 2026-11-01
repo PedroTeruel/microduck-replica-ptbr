@@ -1,4 +1,4 @@
-# 测试用：官方 robotd.toml 的片段
+# Para testes: trecho do robotd.toml oficial.
 [bus]
 port = "/dev/ttyS2"
 

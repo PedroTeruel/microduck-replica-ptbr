@@ -1,2 +1,2 @@
-# 测试用 udev 规则
+# Regra udev usada nos testes.
 ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="1234", TAG+="systemd", ENV{SYSTEMD_WANTS}="gamesir-xboxd.service"
