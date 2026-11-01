@@ -1,5 +1,5 @@
-"""手柄页后端（studio/pad.py、pad_drive.py、pad_combo.py）：全用假的 configd / 蓝牙 / padd 旁路 / robotd，电脑上没蓝牙也能跑。
-真端口（rpc_call、PaddTap、RobotPort、BtSession 读管道）用本机 TCP 假服务 / 真子进程测。
+"""Backend da página de controle (studio/pad.py, pad_drive.py, pad_combo.py): usa configd, Bluetooth, padd e robotd simulados; pode rodar em computador sem Bluetooth.
+As portas reais (rpc_call, PaddTap, RobotPort e leitura de pipe de BtSession) são verificadas com serviços TCP locais e subprocessos reais.
 
 跑法（studio 目录下）：
     py -3.13 -I -c "import sys;sys.path[:0]=['deps','.'];import unittest;unittest.main(module=None,argv=['x','-v','tests.test_pad'])"
@@ -28,13 +28,13 @@ from studio import pad_drive as D  # noqa: E402
 from studio.log import Log  # noqa: E402
 from studio.rpc import RpcError, Timeout, Unreachable  # noqa: E402
 
-PRO = "98:B6:E9:28:06:09"        # Switch 克隆的经典那张脸（configd/src/pad.rs:169 的例子）
-PRO_LE = "98:B6:ED:28:06:09"     # 同一个手柄的 LE 那张脸
+PRO = "98:B6:E9:28:06:09"        # Endereço clássico do controle clone de Switch (exemplo em configd/src/pad.rs:169).
+PRO_LE = "98:B6:ED:28:06:09"     # Endereço LE do mesmo controle.
 XBOX = "78:86:2E:BB:13:28"
 FAST = {"poll": 0.01, "status_watch": 0.05, "status_job": 0.02, "padd": 0.6, "connect": 0.3, "readback": 0.3,
         "torque": 0.5, "press": 0.5, "lease": 5.0, "scan_tick": 0.02, "pair_window": 1, "scan_min": 0.1,
         "probe": 0.02, "shutdown_hold": 0.4, "select_long": 0.2, "relax_guard": 0.3}
-# 真机录的 robot.policies（tests/fixtures/now-20261018.jsonl:5），路径缩短
+# robot.policies gravado no robô real (tests/fixtures/now-20261018.jsonl:5), com caminhos abreviados.
 POLICIES = {"enabled": True, "homed": True, "mode": "walk", "sitting": False,
             "skills": ["roulade", "kick_left", "kick_right", "roller_stand"],
             "slots": [{"slot": "walk", "path": "/w.onnx"}, {"slot": "stand", "path": None},
@@ -58,7 +58,7 @@ def bus(torque_on=True, **kw):
     return b
 
 
-# ---------------- 假的 ----------------
+# ---------------- Simulações ----------------
 
 class FakeConfigd:
     def __init__(self):
@@ -106,7 +106,7 @@ class FakeBt:
         self.calls = []
         self.scan_exc = None
         self.pair_exc = None
-        self.pair_excs = []          # 依次抛出（用来演 agent 注册失败后换会话重试）
+        self.pair_excs = []          # Lançadas em sequência para simular falha no registro do agente e nova tentativa em outra sessão.
         self.on_pair = None
         self.removed = None
         self.pairable_ok = False
@@ -192,7 +192,7 @@ PRO_DEV = {"name": "Pro Controller", "node": "/dev/input/event6", "unique": PRO.
 
 
 class FakeHelper:
-    """假 root 小助手。available=False 时所有现有测试照旧走 configd / bluetoothctl。"""
+    """Helper root simulado. Com available=False, os testes usam configd / bluetoothctl como antes."""
 
     def __init__(self):
         self.is_available = False
@@ -256,7 +256,7 @@ class FakeTap:
 
 
 class FakeRobot:
-    """假 robotd：notify 记进 sent；call 记进 calls。busStatus 回 self.bus（测急停自己问的就是它）。"""
+    """robotd simulado: notify é registrado em sent; call, em calls. busStatus retorna self.bus, usado nos testes da parada de emergência."""
 
     def __init__(self):
         self.sent = []
@@ -308,7 +308,7 @@ class PadTestBase(unittest.TestCase):
                             waits=FAST, read_text=lambda p: self.toml, exists=lambda p: self.weird,
                             state_dir=str(Path(self.tmp.name) / "state"))
         self.robot_ok()
-        # Studio 第一次看到主程序在：后台线程发一次 robot.pose {"active": false}（三 V1）。等它发完再清空，别的测试从干净的开始
+        # Na primeira detecção do programa principal, o Studio envia robot.pose {"active": false} em uma thread (V1). Aguarde e limpe para os demais testes.
         wait_until(lambda: self.ops._pose_reset == "done", what="连上主程序时的 pose 复位")
         with self.robot.lk:
             self.robot.sent.clear()
@@ -318,7 +318,7 @@ class PadTestBase(unittest.TestCase):
         self.tmp.cleanup()
 
     def robot_ok(self, torque_on=True, **kw):
-        """喂一份 robotd 回读（app 那边 robot_view 的格式），同时让假 robotd 的 busStatus 回一样的。"""
+        """Define uma leitura de robotd no formato robot_view do app e configura busStatus para retornar os mesmos dados."""
         view = {"present": True, "bus": bus(torque_on), "bus_at": time.monotonic(), "estop_active": False, "paused": None,
                 "estop_presses": self.presses}
         view.update(kw)
@@ -327,7 +327,7 @@ class PadTestBase(unittest.TestCase):
         self.ops.feed_robot(view)
 
     def relax_pressed(self):
-        """顶上的「卸力」被按了一次（robotd.py 的 estop.press_count +1）。"""
+        """Simula um pressionamento do botão superior de liberação de torque (estop.press_count +1 em robotd.py)."""
         self.presses += 1
         self.robot_ok(torque_on=False)
 
@@ -346,7 +346,7 @@ class PadTestBase(unittest.TestCase):
         wait_until(lambda: self.tap.running, what="旁路打开")
 
 
-# ---------------- 搜索 ----------------
+# ---------------- Busca ----------------
 
 class ScanTest(PadTestBase):
     def test_scan_lists_pads_first_and_merges_two_faces(self):
@@ -359,16 +359,16 @@ class ScanTest(PadTestBase):
         w = self.wait_wiz("waiting")
         self.assertEqual(w["phase"], "pick")
         macs = [d["mac"] for d in w["devices"]]
-        self.assertEqual(macs[0], PRO)                    # 手柄在前
-        self.assertNotIn(PRO_LE, macs)                     # 同一个手柄的 LE 脸合并掉
+        self.assertEqual(macs[0], PRO)                    # O controle aparece primeiro.
+        self.assertNotIn(PRO_LE, macs)                     # O endereço LE do mesmo controle é agrupado.
         buds = next(d for d in w["devices"] if d["mac"] == "AA:BB:CC:00:11:22")
         self.assertFalse(buds["pad"])
         self.assertEqual(buds["why_not"], "像是耳机")
         self.assertEqual(w["devices"][0]["kind"], "switch")
-        self.assertEqual(w["picked"], PRO)                 # 只有一个在配对状态：推荐它
+        self.assertEqual(w["picked"], PRO)                 # Recomende o único dispositivo em modo de pareamento.
         self.assertEqual(self.steps(), {"ready": "ok", "scan": "ok", "pick": "doing"})
         self.assertIn("scan_stop", self.bt.calls)
-        self.assertIn("close", self.bt.calls)              # 审查 5：搜完就关掉 bluetoothctl 会话
+        self.assertIn("close", self.bt.calls)              # Revisão 5: encerre a sessão bluetoothctl após a busca.
         self.assertIsNone(w["error"])
 
     def test_scan_with_nothing_says_put_pad_in_pairing_mode(self):
@@ -385,11 +385,11 @@ class ScanTest(PadTestBase):
         self.ops.handle({"op": "scan", "seconds": 0.1})
         self.assertEqual(self.wait_wiz("failed")["error"]["code"], "no_adapter")
         self.assertEqual(self.steps()["ready"], "fail")
-        # bluetoothd 没在跑：说 bluez_down，不说「等一分钟」（审查 17）
+        # Se bluetoothd não estiver ativo, informe bluez_down em vez de sugerir aguardar um minuto (revisão 17).
         self.bt.state = {"present": None, "error": "Waiting to connect to bluetoothd...", "code": "bluez_down"}
         self.ops.handle({"op": "scan", "seconds": 0.1})
         self.assertEqual(self.wait_wiz("failed")["error"]["code"], "bluez_down")
-        # 蓝牙关着：自动打开再继续；不可绑定：搜索时只提醒、不去改（配对时才临时打开）
+        # Se o Bluetooth estiver desligado, ative-o e continue; se não puder parear, apenas avise durante a busca (ative temporariamente só ao parear).
         self.bt.state = {"present": True, "powered": False, "pairable": False, "blocked": False}
         self.ops.handle({"op": "scan", "seconds": 0.1})
         self.wait_wiz("waiting")
@@ -411,9 +411,9 @@ class ScanTest(PadTestBase):
         self.ops.handle({"op": "scan", "seconds": 5})
         wait_until(lambda: self.steps().get("scan") == "doing", what="开始搜索")
         with self.assertRaises(P.Refused):
-            self.ops.handle({"op": "scan", "seconds": 5})          # 一次只做一个
+            self.ops.handle({"op": "scan", "seconds": 5})          # Permite apenas uma busca por vez.
         with self.assertRaises(P.Refused):
-            self.ops.handle({"op": "pair", "mac": PRO})            # 搜索中「配这个」：后端拒（页面按钮也变灰，审查 18a）
+            self.ops.handle({"op": "pair", "mac": PRO})            # Rejeita parear durante a busca (o botão também fica desativado; revisão 18a).
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "wizard_reset"})
         t0 = time.monotonic()
@@ -425,7 +425,7 @@ class ScanTest(PadTestBase):
         self.assertEqual(self.wiz()["state"], "idle")
 
     def test_refused_while_walking(self):
-        """审查 8：在走 / 策略在跑时不让搜索配对（搜索占射频，卡住的手柄会让鸭子照旧走）。"""
+        """Revisão 8: não permita buscar ou parear durante uma caminhada/política ativa; a busca ocupa o rádio e o robô poderia continuar andando."""
         self.robot_ok(posture="policy", bus=bus(policy_enabled=True))
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "scan", "seconds": 1})
@@ -434,7 +434,7 @@ class ScanTest(PadTestBase):
             self.ops.handle({"op": "pair"})
 
 
-# ---------------- 配对 ----------------
+# ---------------- Pareamento ----------------
 
 class PairTest(PadTestBase):
     def paired_result(self, mac=PRO, name="Pro Controller", trusted=True, connected=True):
@@ -450,7 +450,7 @@ class PairTest(PadTestBase):
         self.ops.handle({"op": "pair", "mac": PRO})
         wait_until(lambda: self.steps().get("padd") == "doing", what="等 padd")
         self.assertIn(("pad.pair", {"timeout_seconds": 1, "mac": PRO}), self.cfg.calls)
-        self.assertIn("close", self.bt.calls)               # 先关掉我们搜索用的会话，别跟 configd 抢默认代理
+        self.assertIn("close", self.bt.calls)               # Feche a sessão de busca antes de usar o agente padrão do configd.
         self.tap.attach(PRO_DEV)
         wait_until(lambda: self.wiz()["phase"] == "keys", what="进入按键测试")
         for code in (0x130, 0x131, 0x133, 0x134):
@@ -468,7 +468,7 @@ class PairTest(PadTestBase):
         json.dumps(snap, ensure_ascii=False)                # 能推给页面
 
     def test_pairable_is_turned_on_only_for_pairing_and_restored(self):
-        """审查 5：「可绑定」只在配对时临时打开，配完（成不成都）改回去。"""
+        """Revisão 5: habilite temporariamente o pareamento apenas durante a operação e restaure a configuração, com sucesso ou falha."""
         self.bt.state["pairable"] = False
         self.bt.pairable_ok = True
         self.cfg.pair_result = {"outcome": "failed", "reason": "timeout", "detail": "the pad did not finish pairing"}
@@ -502,11 +502,11 @@ class PairTest(PadTestBase):
         self.cfg.pair_exc = Timeout("pad.pair 2 秒没回话")
         self.ops.handle({"op": "pair", "mac": XBOX})
         self.assertEqual(self.wait_wiz("failed")["error"]["code"], "timeout")
-        # configd 不在、也没 MAC：说 configd 没在跑
+        # Sem configd e sem MAC, informe que configd não está em execução.
         self.cfg.pair_exc = Unreachable("/run/configd.sock 不在")
         self.ops.handle({"op": "pair"})
         self.assertEqual(self.wait_wiz("failed")["error"]["code"], "configd_down")
-        # 审查 17：socket 在但没权限连，不能说成「configd 不在」
+        # Revisão 17: se o socket existir, mas a conexão não tiver permissão, não diga que configd está ausente.
         self.cfg.pair_exc = P.NoPermission("没权限连 unix:/run/configd.sock")
         self.ops.handle({"op": "pair"})
         w = self.wait_wiz("failed")
@@ -514,7 +514,7 @@ class PairTest(PadTestBase):
         self.assertIn("robot 组", w["error"]["fix"])
 
     def test_cancel_then_new_pair_while_configd_still_busy(self):
-        """审查 10 / R7：点了「停下」，configd 的 pad.pair 还在跑：不放行新的配对、搜索。"""
+        """Revisão 10 / R7: depois de selecionar Parar, não permita novo pareamento ou busca enquanto configd.pad.pair ainda estiver ativo."""
         self.cfg.pair_delay = 0.6
         self.cfg.pair_result = {"outcome": "failed", "reason": "timeout", "detail": "x"}
         self.ops.handle({"op": "pair", "mac": PRO})
@@ -538,7 +538,7 @@ class PairTest(PadTestBase):
         self.bt.on_pair = lambda mac: self.cfg.connect_pad(mac, "Pro Controller")
         self.ops.handle({"op": "pair", "mac": PRO})
         wait_until(lambda: self.steps().get("padd") == "doing", what="等 padd")
-        self.assertIn(("pair_device", PRO, True), self.bt.calls)       # 经典蓝牙的顺序
+        self.assertIn(("pair_device", PRO, True), self.bt.calls)       # Ordem do Bluetooth clássico.
         self.tap.attach(PRO_DEV)
         wait_until(lambda: self.wiz()["phase"] == "keys", what="进入按键测试")
         self.assertIn("bluetoothctl", self.wiz()["via"])
@@ -553,7 +553,7 @@ class PairTest(PadTestBase):
         w = self.wait_wiz("failed")
         self.assertEqual(w["error"]["code"], "auth_failed")
         self.assertIn("别的设备", w["error"]["fix"])
-        # 不带 MAC（自动挑）又没权限：没法自己配，照实说没权限、给 SSH 的办法
+        # Sem MAC (seleção automática) e sem permissão: informe a falta de permissão e oriente usar SSH.
         self.ops.handle({"op": "pair"})
         w = self.wait_wiz("failed")
         self.assertEqual(w["error"]["code"], "permission")
@@ -593,11 +593,11 @@ class PairTest(PadTestBase):
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "pair", "mac": "nope"})
         self.assertEqual(self.ops.handle({"op": "forget", "mac": PRO.lower()}), {"removed": True})
-        # configd 不让删（不是 root）：改用 bluetoothctl remove
+        # Se configd não permitir remover por falta de root, use bluetoothctl remove.
         self.cfg.forget_exc = RpcError("pad.forget", 14, "may not change")
         self.assertEqual(self.ops.handle({"op": "forget", "mac": PRO}), {"removed": True})
         self.assertIn(("remove", PRO), self.bt.calls)
-        # 两边都不行：拒绝，并给出 SSH 的办法
+        # Se ambos falharem, rejeite e oriente usar SSH.
         self.bt.removed = P.BtError("bt_permission", "org.freedesktop.DBus.Error.AccessDenied")
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "forget", "mac": PRO})
@@ -609,7 +609,7 @@ class PairTest(PadTestBase):
         return (True, "paired", {"pair": pair, "stderr": ["paused btd while the pad bonds"], "stdout": json.dumps(pair)})
 
     def test_pair_via_helper_then_padd_then_keys(self):
-        """主路：新版小助手跑官方 robotctl pad pair；不开「可绑定」，也不走 configd。"""
+        """Fluxo principal: o helper novo executa robotctl pad pair oficial, sem ativar “pareável” nem usar configd."""
         self.watch()
         self.helper.is_available = True
         self.helper.pair_result = self.helper_paired()
@@ -641,7 +641,7 @@ class PairTest(PadTestBase):
         self.tap.attach(PRO_DEV)
 
     def test_helper_stale_connected_recovers_until_matching_input_is_ready(self):
-        """主路配完回过 Connected，但链路已掉；补一次 connect 后才有 event/attached。"""
+        """No fluxo principal, o pareamento retorna Connected, mas o vínculo caiu; execute connect novamente para receber event/attached."""
         self.recovery_pair()
         self.bt.on_reconnect = self.reconnect_ready
         self.ops.handle({"op": "pair", "mac": PRO})
@@ -863,7 +863,7 @@ class PairTest(PadTestBase):
 
     def test_padd_wait_default_is_30_seconds(self):
         self.assertEqual(P.PADD_WAIT_S, 30)
-        self.assertEqual(self.ops.w["padd"], FAST["padd"])       # 测试用 waits 改短，不真的等 30 秒
+        self.assertEqual(self.ops.w["padd"], FAST["padd"])       # Intervalo reduzido para os testes; não aguarde 30 s.
 
     def test_forget_via_helper_and_old_helper_falls_back(self):
         self.helper.is_available = True
@@ -871,7 +871,7 @@ class PairTest(PadTestBase):
         self.assertEqual(self.ops.handle({"op": "forget", "mac": PRO}, by="电脑"), {"removed": True})
         self.assertEqual(self.helper.forget_calls[0][:2], ("电脑", PRO))
         self.assertEqual([c for c in self.cfg.calls if c[0] == "pad.forget"], [])
-        # 旧版小助手回 bad_verb：照旧 configd → bluetoothctl
+        # Se a versão antiga do helper retornar bad_verb, use configd → bluetoothctl como antes.
         self.helper.forget_result = (False, "bad_verb", {"msg": "只认这几个动词"})
         self.assertEqual(self.ops.handle({"op": "forget", "mac": PRO}), {"removed": True})
         self.assertIn(("pad.forget", {"mac": PRO}), self.cfg.calls)
@@ -886,7 +886,7 @@ class PairTest(PadTestBase):
         self.assertIn("停下", str(cm.exception))
 
 
-# ---------------- 急停 ----------------
+# ---------------- Parada de emergência ----------------
 
 class EStopTest(PadTestBase):
     def ready(self):
@@ -922,7 +922,7 @@ class EStopTest(PadTestBase):
         self.assertFalse(es["ok"])
         self.assertEqual(es["state"], "bad")
         self.assertFalse(next(c for c in es["checks"] if c["key"] == "netpad")["ok"])
-        # 审查 7：读不到 robotd.toml 不当作「没开」：总评不给 ✓，写「没核对」
+        # Revisão 7: se robotd.toml não puder ser lido, não assuma que está desativado; não marque como aprovado e indique que não foi verificado.
         self.toml = None
         self.ops._refresh_files()
         es = self.ops.snapshot()["estop"]
@@ -934,11 +934,11 @@ class EStopTest(PadTestBase):
         es = self.ops.snapshot()["estop"]
         self.assertEqual(es["state"], "unknown")
         self.assertIn("没权限", next(c for c in es["checks"] if c["key"] == "netpad")["why"])
-        # 文件不在：robotd 全用默认，netpad 默认关
+        # Sem o arquivo, robotd usa os padrões e netpad fica desativado por padrão.
         self.ops.read_text = lambda p: (_ for _ in ()).throw(FileNotFoundError(2, "No such file"))
         self.ops._refresh_files()
         self.assertTrue(self.ops.snapshot()["estop"]["ok"])
-        # 主程序不在 / 调试模式：不算有效
+        # Programa principal ausente ou em modo de depuração não conta como válido.
         self.robot_ok(present=False)
         self.assertFalse(self.ops.snapshot()["estop"]["ok"])
         self.robot_ok(bus=dict(bus(), mode="commissioning"))
@@ -960,7 +960,7 @@ class EStopTest(PadTestBase):
     def test_connected_but_no_input_device_is_not_effective(self):
         self.cfg.connect_pad(PRO, "Pro Controller")
         self.watch()
-        self.ops._attach_wait_since = time.monotonic() - 10       # 订阅了 10 秒，padd 一直没打开它
+        self.ops._attach_wait_since = time.monotonic() - 10       # A inscrição está ativa há 10 s, mas padd não abriu o controle.
         es = self.ops.snapshot()["estop"]
         self.assertFalse(es["ok"])
         self.assertFalse(next(c for c in es["checks"] if c["key"] == "input")["ok"])
@@ -972,26 +972,26 @@ class EStopTest(PadTestBase):
         self.tap.key(0x13A, False)
         self.assertEqual(self.state(), "released")
         time.sleep(0.05)
-        self.robot_ok(torque_on=False)                          # padd 发了 relax：回读扭矩确认 OFF
+        self.robot_ok(torque_on=False)                          # padd enviou relax; a leitura confirma torque OFF.
         wait_until(lambda: self.state() == "passed", what="通过")
         t = self.ops.snapshot()["estop_test"]
         self.assertIsInstance(t["ms"], int)
-        self.assertNotIn("_released_at", t)                     # 内部字段不推给页面
+        self.assertNotIn("_released_at", t)                     # Não envie campos internos para a página.
 
     def test_r1_torque_already_off_before_select_is_not_a_pass(self):
-        """审查 1 / R1：顶上「卸力」先确认完了（estop_active 已回 False）、或者摔倒自动卸力，再按 Select：不能打勾。"""
+        """Revisão 1 / R1: após a liberação superior ser confirmada (estop_active retorna False) ou após uma queda, Select não pode aprovar o teste."""
         self.start_armed()
-        self.robot_ok(torque_on=False, estop_active=False)      # 扭矩在按 Select 之前就关了
+        self.robot_ok(torque_on=False, estop_active=False)      # O torque já estava desligado antes de pressionar Select.
         wait_until(lambda: self.state() == "failed", what="还没按就判没通过")
         self.assertEqual(self.ops.snapshot()["estop_test"]["failed_at"], "early_off")
-        self.tap.key(0x13A, True)                               # 之后再按 Select、回读 OFF：也翻不成通过
+        self.tap.key(0x13A, True)                               # Pressionar Select depois, com leitura OFF, também não aprova.
         self.tap.key(0x13A, False)
         self.robot_ok(torque_on=False)
         time.sleep(0.1)
         self.assertEqual(self.state(), "failed")
 
     def test_r1b_top_relax_pressed_during_test_is_not_a_pass(self):
-        """测的时候顶上的「卸力」也按了（press_count 变了）：哪怕之后回读 OFF 也不算。"""
+        """Se o botão superior de liberação for pressionado durante o teste (press_count muda), a leitura OFF posterior não conta."""
         self.start_armed()
         self.press_select()
         self.tap.key(0x13A, False)
@@ -1000,7 +1000,7 @@ class EStopTest(PadTestBase):
         self.assertEqual(self.ops.snapshot()["estop_test"]["failed_at"], "relax")
 
     def test_r2_long_hold_is_shutdown_not_estop(self):
-        """审查 1 / R2：按住满 2 秒 padd 发的是 robot.shutdown（坐下关机），直接判失败。"""
+        """Revisão 1 / R2: manter pressionado por 2 s envia robot.shutdown (sentar e desligar), portanto o teste falha."""
         self.start_armed()
         self.press_select()
         wait_until(lambda: self.ops.snapshot()["estop_test"]["held_long"], what="按太久的警告")
@@ -1011,12 +1011,12 @@ class EStopTest(PadTestBase):
         self.tap.key(0x13A, False)
         self.robot_ok(torque_on=False)
         time.sleep(0.1)
-        self.assertEqual(self.state(), "failed")                # 松开后回读 OFF 也不翻成通过
+        self.assertEqual(self.state(), "failed")                # Uma leitura OFF depois de soltar não aprova o teste.
 
     def test_off_readback_asked_before_release_does_not_count(self):
-        """只认「松开之后才问的」回读：松开前就问出 OFF（按着的时候扭矩就关了）判失败。"""
+        """Só aceite uma leitura consultada depois de soltar; OFF consultado antes disso (torque desligado enquanto pressionado) reprova."""
         self.start_armed()
-        self.robot.bus = bus(False)                             # 按下的那一刻 robotd 已经回 OFF
+        self.robot.bus = bus(False)                             # robotd já informava OFF no momento do pressionamento.
         self.tap.key(0x13A, True)
         wait_until(lambda: self.ops.test.get("_on_while_pressed") is not None or self.state() == "failed", what="按着时问过")
         self.tap.key(0x13A, False)
@@ -1060,7 +1060,7 @@ class MoveTest(PadTestBase):
         self.assertEqual(r["sent"], [0.3, -0.1, 1.5])
         self.assertEqual(self.robot.sent[-1], ("robot.move", {"vx": 0.3, "vy": -0.1, "vyaw": 1.5}))
         self.assertEqual(self.ops.snapshot()["virtual"]["owner"], "web")
-        # 审查 21：比 25 Hz 还密的不丢，等一下发最新的那个
+        # Revisão 21: não descarte atualizações acima de 25 Hz; envie a mais recente em seguida.
         r = self.ops.handle({"op": "move", "vx": 0.1, "seq": 2})
         self.assertTrue(r["merged"])
         self.assertEqual(self.robot.sent[-1], ("robot.move", {"vx": 0.1, "vy": 0.0, "vyaw": 0.0}))
@@ -1081,18 +1081,18 @@ class MoveTest(PadTestBase):
             time.sleep(0.005)
         for t in ts:
             t.join()
-        self.assertIn("dropped", out[2])                     # 等的时候来了更新的：旧的不发
+        self.assertIn("dropped", out[2])                     # Uma atualização mais recente chegou durante a espera; descarte a antiga.
         self.assertEqual(self.robot.sent[-1][1]["vx"], 0.3)
 
     def test_r8_stale_move_after_stop_is_dropped(self):
-        """审查 3 / R8：页面先发 move 再发 stop，to_thread 里 stop 先到：之后才到的旧 move 一律丢掉。"""
+        """Revisão 3 / R8: se a página enviar move e depois stop, mas stop chegar primeiro via to_thread, descarte o move antigo que chegar depois."""
         self.ops.handle({"op": "move", "vx": 0.2, "seq": 10})
         self.ops.handle({"op": "stop", "seq": 12})
-        r = self.ops.handle({"op": "move", "vx": 0.3, "seq": 11})     # 比 stop 旧
+        r = self.ops.handle({"op": "move", "vx": 0.3, "seq": 11})     # Mais antigo que stop.
         self.assertIn("dropped", r)
         self.assertEqual(self.robot.sent[-1], ("robot.move", {"vx": 0.0, "vy": 0.0, "vyaw": 0.0}))
         self.assertIsNone(self.ops.snapshot()["virtual"]["owner"])
-        r = self.ops.handle({"op": "move", "vx": 0.1, "seq": 13})     # 新按下的照常
+        r = self.ops.handle({"op": "move", "vx": 0.1, "seq": 13})     # O novo pressionamento deve funcionar.
         self.assertEqual(r["sent"][0], 0.1)
 
     def test_refused_cases(self):
@@ -1103,7 +1103,7 @@ class MoveTest(PadTestBase):
         self.robot_ok(present=False)
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "move", "vx": 0.1})
-        # 审查 14：主程序状态不明（不是运动模式、回读旧了）也不放行
+        # Revisão 14: não permita o movimento se o estado do programa principal for desconhecido ou antigo.
         self.robot_ok(bus=bus(mode="weird"))
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "move", "vx": 0.1})
@@ -1111,64 +1111,64 @@ class MoveTest(PadTestBase):
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "move", "vx": 0.1})
         self.robot_ok()
-        # 实体手柄连着：padd 每 0.1 秒发零速度，网页的会被盖掉 → 拒绝，页面做镜像
+        # Com controle físico conectado, padd envia velocidade zero a cada 0,1 s e sobrescreveria a página; rejeite comandos virtuais e espelhe o controle.
         self.cfg.connect_pad(XBOX, "Xbox Wireless Controller")
         self.ops.handle({"op": "refresh"})
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "move", "vx": 0.1})
-        self.assertIn("实体手柄", str(cm.exception))
+        self.assertIn("Controle físico", str(cm.exception))
         snap = self.ops.snapshot()["virtual"]
         self.assertEqual(snap["owner"], "pad")
         self.assertTrue(snap["mirror"])
         self.assertEqual(self.robot.sent, [])
-        # 镜像时网页没在开：松手也不发 0（不去打断实体手柄：审查二 一般 2）
+        # Em modo espelho, soltar não envia zero quando os analógicos virtuais não estão ativos (não interrompa o controle físico; revisão 2).
         self.assertEqual(self.ops.handle({"op": "stop"}), {"sent": False})
         self.assertEqual(self.robot.sent, [])
         with self.assertRaises(P.Refused):
-            self.ops.handle({"op": "drive", "on": True})        # 镜像时不接受打开网页摇杆
+            self.ops.handle({"op": "drive", "on": True})        # Não ative o analógico virtual em modo espelho.
 
     def test_stale_pad_status_does_not_block_forever(self):
-        """审查 15：configd 停了、状态一直停在「连着」：过了 15 秒不再当作实体手柄连着。"""
+        """Revisão 15: se configd parar e o estado permanecer conectado, após 15 s não considere mais o controle físico ativo."""
         self.cfg.connect_pad(XBOX, "Xbox Wireless Controller")
         self.ops.handle({"op": "refresh"})
         self.ops._status_at = time.monotonic() - 30
         self.assertEqual(self.ops.handle({"op": "move", "vx": 0.1})["sent"][0], 0.1)
 
     def test_relax_guard(self):
-        """卸力后 2 秒内不接受摇杆（上力 / 卸力共用一个槽，后写的赢）。"""
+        """Rejeite o analógico por 2 s após liberar o torque; ativação e liberação compartilham o mesmo registro, prevalecendo a mais recente."""
         self.relax_pressed()
         self.robot_ok()
         with self.assertRaises(P.Refused) as cm:
             self.ops.handle({"op": "move", "vx": 0.1})
-        self.assertIn("卸力", str(cm.exception))
+        self.assertIn("torque", str(cm.exception))
 
     def test_send_failure_is_refused_not_retried(self):
-        self.robot.fail = Unreachable("/run/robotd.sock 不在")
+        self.robot.fail = Unreachable("/run/robotd.sock indisponível")
         with self.assertRaises(P.Refused):
             self.ops.handle({"op": "move", "vx": 0.1})
 
     def test_one_page_drives_at_a_time(self):
-        """审查 19、25：同一时间只有一个页面能开；别的页面要点「接管」；拿着方向盘的页面断了马上停。"""
-        self.ops.handle({"op": "move", "vx": 0.1, "seq": 1}, by="电脑 A", conn="a")
+        """Revisões 19 e 25: apenas uma página controla por vez; as demais precisam assumir o controle; pare imediatamente se a página controladora desconectar."""
+        self.ops.handle({"op": "move", "vx": 0.1, "seq": 1}, by="Computador A", conn="a")
         with self.assertRaises(P.Refused) as cm:
-            self.ops.handle({"op": "move", "vx": 0.2, "seq": 1}, by="手机 B", conn="b")
-        self.assertIn("电脑 A", str(cm.exception))
-        self.assertIn("接管", str(cm.exception))
+            self.ops.handle({"op": "move", "vx": 0.2, "seq": 1}, by="Celular B", conn="b")
+        self.assertIn("Computador A", str(cm.exception))
+        self.assertIn("Assumir", str(cm.exception))
         snap_b = self.ops.snapshot(conn="b")["virtual"]["driver"]
-        self.assertEqual((snap_b["by"], snap_b["mine"]), ("电脑 A", False))
+        self.assertEqual((snap_b["by"], snap_b["mine"]), ("Computador A", False))
         self.assertTrue(self.ops.snapshot(conn="a")["virtual"]["driver"]["mine"])
-        self.ops.handle({"op": "drive", "on": True, "force": True}, by="手机 B", conn="b")
-        self.assertEqual(self.robot.sent[-1], ("robot.move", {"vx": 0.0, "vy": 0.0, "vyaw": 0.0}))   # 接管先停
+        self.ops.handle({"op": "drive", "on": True, "force": True}, by="Celular B", conn="b")
+        self.assertEqual(self.robot.sent[-1], ("robot.move", {"vx": 0.0, "vy": 0.0, "vyaw": 0.0}))   # Pare antes de transferir o controle.
         with self.assertRaises(P.Refused):
-            self.ops.handle({"op": "move", "vx": 0.1, "seq": 2}, by="电脑 A", conn="a")
-        self.ops.handle({"op": "move", "vx": 0.2, "seq": 2}, by="手机 B", conn="b")
-        self.ops.drop_client("b", "手机 B")
+            self.ops.handle({"op": "move", "vx": 0.1, "seq": 2}, by="Computador A", conn="a")
+        self.ops.handle({"op": "move", "vx": 0.2, "seq": 2}, by="Celular B", conn="b")
+        self.ops.drop_client("b", "Celular B")
         self.assertEqual(self.robot.sent[-1], ("robot.move", {"vx": 0.0, "vy": 0.0, "vyaw": 0.0}))
         self.assertIsNone(self.ops.snapshot()["virtual"]["driver"])
-        self.ops.handle({"op": "move", "vx": 0.1, "seq": 3}, by="电脑 A", conn="a")        # 空出来了就能开
+        self.ops.handle({"op": "move", "vx": 0.1, "seq": 3}, by="Computador A", conn="a")        # A página pode controlar quando o canal é liberado.
 
     def test_speed_limits_from_padd_unit(self):
-        """审查 24：padd.service 里改过满杆速度就用改过的；超过上限的按上限算。"""
+        """Revisão 24: use os limites de velocidade configurados em padd.service e aplique o teto quando forem excedidos."""
         files = {D.PADD_UNIT: "[Service]\nExecStart=/opt/robot/daemon/current/bin/padd --max-linear 0.2 --max-angular=1.0\n"}
         self.ops.read_text = lambda p: files[p] if p in files else self.toml
         self.ops._refresh_files()
@@ -1178,7 +1178,7 @@ class MoveTest(PadTestBase):
         lim = self.ops.snapshot()["virtual"]["limits"]
         self.assertEqual(lim["v"], D.V_CEIL)
         self.assertIn("上限", lim["src"])
-        # 写坏的数（审查二 I3）：不抛，跳过那个参数，页面写明
+        # Um valor inválido (revisão 2, I3) não lança exceção; ignore o parâmetro e informe na página.
         files[D.PADD_UNIT] = "ExecStart=/x/padd --max-linear 1.2.3 --max-angular 1.0\n"
         self.ops._refresh_files()
         lim = self.ops.snapshot()["virtual"]["limits"]
@@ -1186,7 +1186,7 @@ class MoveTest(PadTestBase):
         self.assertIn("1.2.3", lim["src"])
 
 
-# ---------------- 站起来 / 开始走 / 坐下 / 技能 / 声音 ----------------
+# ---------------- Levantar / caminhar / sentar / habilidades / áudio ----------------
 
 class MotionTest(PadTestBase):
     def pose(self, posture, keep_guard=False, **kw):
@@ -1196,7 +1196,7 @@ class MotionTest(PadTestBase):
                               homed=posture in ("holding", "policy", "walking", "sitting")))
         self.robot_ok(posture=posture, policies=pol, bus=b, **kw)
         if not keep_guard:
-            self.ops._relax_at = -1e9          # 这些测试不测卸力保护：变软那一下不算
+            self.ops._relax_at = -1e9          # Estes testes não verificam a proteção após liberar torque.
 
     def buttons(self):
         return self.ops.snapshot()["motion"]["buttons"]
