@@ -1,4 +1,4 @@
-# 镜像里要开机自启的单元（路径相对镜像根目录，或只写单元名）。
+# Serviços habilitados na inicialização da imagem (caminho relativo à raiz da imagem ou somente o nome da unidade).
 ssh.service
 microduck-firstboot.service
 microduck-netcheck.service

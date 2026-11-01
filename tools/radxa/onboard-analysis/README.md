@@ -2,7 +2,7 @@
 
 Scripts usados para investigar problemas na primeira inicialização do robô, na noite de 12/10/2026; o serviço de gravação foi atualizado na noite de 13/10. A análise da marcha é executada no computador; consulte [`tools/gait-analysis/`](../../gait-analysis/). Os scripts são **somente leitura**: assinam o estado do robotd e leem logs, sem enviar comandos de controle. A exceção é `webpad_probe.py`, que envia apenas quadros vazios com todos os botões soltos e os eixos no centro.
 
-A investigação passo a passo da causa do “avanço brusco assim que assume o controle” está no [registro de análise no robô da noite de 12/10](../../../docs/HD1910-20261012-夜-IMU校准 e 首次迈步.md).
+A investigação passo a passo da causa do “avanço brusco assim que assume o controle” está no [registro de análise no robô da noite de 12/10](../../../docs/HD1910-20261012-夜-IMU校准与首次迈步.md).
 
 Os scripts pressupõem R17 do kissqy em execução na placa, socket do robotd em `/run/robotd.sock`, gravações em `/home/duck/r17/rec/` e scripts em `/home/duck/tools/`.
 
@@ -59,4 +59,4 @@ Durante o treinamento do modelo, o pato fica na pose HOME oficial, com os pés a
 
 Na primeira unidade, em 12/10/2026, duas posturas indicaram inclinação frontal de 8,2°/8,9° e lateral à direita de 1,7°/1,8°. Depois de compensar 8,54°/1,78°, a medição de retorno foi −0,55°/−0,47°. O quaternion gravado foi `[0.454164155, 0.544101455, 0.527409117, 0.468538313]`; ele veio de um ajuste de mínimos quadrados em dois conjuntos de dados e diferiu menos de 0,01° do valor calculado por `imu_mount_fix.py 8.54 1.78`.
 
-O próximo passo é transformar este procedimento em uma ferramenta manual com botões. Ela não deve alterar a configuração automaticamente e deve registrar cada calibração em log. Consulte “Próximas etapas” no [registro de análise no robô](../../../docs/HD1910-20261012-夜-IMU校准 e 首次迈步.md).
+O próximo passo é transformar este procedimento em uma ferramenta manual com botões. Ela não deve alterar a configuração automaticamente e deve registrar cada calibração em log. Consulte “Próximas etapas” no [registro de análise no robô](../../../docs/HD1910-20261012-夜-IMU校准与首次迈步.md).

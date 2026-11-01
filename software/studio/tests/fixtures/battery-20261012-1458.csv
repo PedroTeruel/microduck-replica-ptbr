@@ -1,4 +1,4 @@
-# 来源：health-20261012-145836.csv + run-20261012-145836.jsonl（一号鸭，build_fixture.py 反推）
+# Origem:health-20261012-145836.csv + run-20261012-145836.jsonl(pato 1; inferido por build_fixture.py)
 t,v,cls
 0,7.611,rest
 1,7.581,rest

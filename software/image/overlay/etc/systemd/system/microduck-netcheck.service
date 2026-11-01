@@ -1,5 +1,5 @@
 [Unit]
-Description=Microduck 配网守护（连不上 WiFi 就开热点）
+Description=Monitor de rede do Microduck (ativa o ponto de acesso se não conseguir conectar ao Wi-Fi)
 After=NetworkManager.service microduck-firstboot.service
 Wants=NetworkManager.service
 [Service]

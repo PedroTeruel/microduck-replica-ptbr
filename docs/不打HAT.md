@@ -5,9 +5,9 @@
 > O HAT oficial é uma placa de quatro camadas, com componentes nos dois lados e 110 componentes. Fazer um protótipo e montá-lo custa mais de mil yuans, o que muita gente considera caro demais.
 > Esta é uma alternativa: um módulo conversor de tensão, uma placa adaptadora half-duplex e o restante com fios. **As únicas funções perdidas são o áudio integrado e o sinal de detecção de desligamento.**
 
-Leia primeiro a [introdução ao hardware](Hardware入门.md), que explica a função do HAT; depois, este guia mostra como usá-lo sem a placa.
+Leia primeiro a [introdução ao hardware](硬件入门.md), que explica a função do HAT; depois, este guia mostra como usá-lo sem a placa.
 
-[![Diagrama de fiação sem HAT](../assets/hw/不打HAT-Fiação图.png)](不打HAT-Fiação图.html)
+[![Diagrama de fiação sem HAT](../assets/hw/不打HAT-接线图.png)](不打HAT-接线图.html)
 
 > **O arquivo-fonte do diagrama é [`不打HAT-接线图.html`](不打HAT-接线图.html)** — contém SVG embutido; abra-o no navegador para ampliar, selecionar texto e imprimir em A3.
 > Altere esse arquivo para trocar o módulo ou os pinos. A imagem PNG acima é apenas uma prévia no GitHub.
@@ -19,7 +19,7 @@ Leia primeiro a [introdução ao hardware](Hardware入门.md), que explica a fun
 
 ## Lista de compras
 
-Links de lojas podem expirar; **termos de busca e especificações tendem a durar**. Pesquise cada item e use os critérios de seleção. Depois de escolher, inclua o link na [lista de compras do controle eletrônico](电控Lista de compras.md).
+Links de lojas podem expirar; **termos de busca e especificações tendem a durar**. Pesquise cada item e use os critérios de seleção. Depois de escolher, inclua o link na [lista de compras do controle eletrônico](电控采购清单.md).
 
 | Item | Termo de busca | O que conferir antes de comprar | Preço aproximado |
 |---|---|---|---:|

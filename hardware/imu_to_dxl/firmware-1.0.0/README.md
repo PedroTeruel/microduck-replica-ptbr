@@ -37,7 +37,7 @@ python Tools\imu_probe.py --port COM6 --seconds 30 # aceitação somente leitura
 | Documento | Conteúdo |
 |---|---|
 | [docs/Instruções de uso.md](docs/Instruções de uso.md) | Fiação (J1/J2/J4/J5/J3), ambiente, compilação e gravação, uso completo das quatro ferramentas Python, configuração inicial na placa, solução de problemas e testes sem hardware |
-| [docs/实现Princípio.md](docs/实现Princípio.md) | Máquina de estados dos quadros FT-SCS e checksum, mapa de registradores/diagnóstico, prevenção de colisões pela posição na SYNC READ, temporização DE half-duplex, orçamento de tempo a 50 Hz, cadeia de amostragem da IMU e contrato do controlador |
+| [docs/实现原理.md](docs/实现原理.md) | Máquina de estados dos quadros FT-SCS e checksum, mapa de registradores/diagnóstico, prevenção de colisões pela posição na SYNC READ, temporização DE half-duplex, orçamento de tempo a 50 Hz, cadeia de amostragem da IMU e contrato do controlador |
 | [VALIDATION.md](VALIDATION.md) | Testes no computador e registro de aceitação em hardware real |
 | [DEPENDENCIES.md](DEPENDENCIES.md) | Versões e licenças do código de terceiros e da cadeia de ferramentas |
 

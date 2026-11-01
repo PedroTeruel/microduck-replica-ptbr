@@ -1,5 +1,5 @@
 [Unit]
-Description=Microduck 上机测试记录（50 Hz 状态 + 每 0.5 s 电压、温度、WiFi、蓝牙；只读，每秒写盘）
+Description=Registro de testes do Microduck em hardware (estado a 50 Hz e tensão, temperatura, Wi-Fi e Bluetooth a cada 0,5 s; somente leitura, gravação em disco a cada segundo)
 After=robotd.service
 Wants=robotd.service
 [Service]

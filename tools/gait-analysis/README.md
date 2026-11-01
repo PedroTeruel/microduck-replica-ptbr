@@ -2,7 +2,7 @@
 
 Esses scripts foram usados na noite de 13/10 até a madrugada de 14/10 para investigar tremores durante a caminhada e raspagem dos pés. Todos são **somente leitura**: leem arquivos de registro e não se conectam ao robô.
 
-O processo para chegar às conclusões está no [registro da placa principal da noite de 13/10](../../docs/HD1910-20261013-夜-掉电-ServoD e 蹭地.md).
+O processo para chegar às conclusões está no [registro da placa principal da noite de 13/10](../../docs/HD1910-20261013-夜-掉电-舵机D与蹭地.md).
 
 **Entrada:** arquivo JSONL de 50 Hz gravado na placa principal pelo [`duck_rec.py`](../radxa/onboard-analysis/duck_rec.py), com ângulos e alvos das juntas, gravidade e giroscópio da IMU, comandos do joystick e estado da política. Copie o arquivo para o computador antes de analisá-lo.
 

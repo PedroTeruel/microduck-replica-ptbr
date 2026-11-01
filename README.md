@@ -132,7 +132,7 @@ A imagem é gratuita e destinada apenas a réplicas pessoais sem fins comerciais
 <a id="-Mecânica--一站式打印 e 装配"></a>
 ## 🔧 Mecânica · Impressão e montagem
 
-**Mecânica行者Robo mantém materiais separados para Feetech HD-1910 e Dynamixel XL330.** Os modelos, projetos de impressão e notas de atualização estão concentrados no repositório CAD. Escolha a versão correspondente aos seus servos.
+**机械行者Robo mantém materiais separados para Feetech HD-1910 e Dynamixel XL330.** Os modelos, projetos de impressão e notas de atualização estão concentrados no repositório CAD. Escolha a versão correspondente aos seus servos.
 
 | O que você precisa | Acesso |
 |---|---|

@@ -1,7 +1,7 @@
 # imu_to_dxl Firmware 0.2.0
 
 Usado na placa **STM32G031F8P6 + LSM6DSV16X** feita por um integrante da equipe. A base de hardware é
-`fanhao375/microduck-replica` 的 `a1f4979c425bd9228622be89f2bfa4d1de7fbde3`
+commit `a1f4979c425bd9228622be89f2bfa4d1de7fbde3` do repositório `fanhao375/microduck-replica`
 (`2026-09-08`, inclui J4/J5 e RX_EN). Em 2026-09-20 foi concluída a primeira inicialização na placa real: conexão J-Link SWD,
 gravação e verificação de leitura do firmware, parada do Keil em `main`, clock de 64 MHz e amostragem do IMU foram verificados.
 No teste curto, o identificador do IMU foi `0x70`, `ready=1` e os erros SPI/FIFO ficaram em 0; o barramento externo e os servos ainda não foram testados.
@@ -95,7 +95,7 @@ O envio dos logs usa outra fila acionada por interrupção e não bloqueia a rec
 Se a inicialização da PLL falhar, o sistema continua com HSI16 e calcula BRR serial e temporizadores com a frequência real do clock. Nesse caso, o SPI também cai para 0,5 MHz,
 e a latência do serviço aumenta. Esse é um modo de diagnóstico de falha: confira o estado do clock; não o use como configuração aprovada para desempenho final.
 
-### Para a fiação J3, consulte o [diagrama de princípios em PDF](../imu_to_dxl-Princípio图.pdf) e as conexões da placa real
+### Para a fiação J3, consulte o [diagrama de princípios em PDF](../imu_to_dxl-原理图.pdf) e as conexões da placa real
 
 | Pino J3 | Sinal no diagrama de princípios atual | Conexão |
 |---|---|---|
@@ -224,7 +224,7 @@ Testes de software não substituem essas validações.
 - [Datasheet LSM6DSV16X](https://www.st.com/resource/en/datasheet/lsm6dsv16x.pdf)
 - [Driver de IMU da ST](https://github.com/STMicroelectronics/lsm6dsv16x-pid)
 - Protocolo de comunicação Feetech SCS e tabela de memória: diretório [`docs/飞特资料/`](../../../docs/飞特资料/) do repositório
-- [Protocolo do barramento desta placa (contrato da interface)](../总线Protocolo.md)
+- [Protocolo do barramento desta placa (contrato da interface)](../总线协议.md)
 - [Interface upstream do controlador examinada](https://github.com/pollen-robotics/microduck/blob/5984efb770855432b03dafd3d879e9929981e45b/duck-control/src/bus.rs)
 
 O código novo deste projeto é fornecido sob a licença MIT; arquivos de terceiros preservam seus direitos autorais e licenças próprios, consulte cada diretório em `Drivers`.

@@ -238,7 +238,7 @@ Também existe um segmento de 4,7 mm e 0,51 mm de largura em `J1.2 → F1.1`, no
 A pinagem dos quatro conectores foi conferida novamente pela netlist da PCB; todas estão corretas (2026-09-08).
 **Os espaçamentos são diferentes e os conectores não encaixam um no outro (2,0 contra 2,5 mm); isso impede fisicamente a ligação errada e deixa somente a possibilidade de erro no desenho da placa.**
 
-Fonte: especificação Feetech “HD-1910-C001 串型规格书”, A/0, 2026-09-07, páginas 3/7, itens 6–7; especificação “HL-2915-C002 串型规格书”, A/0, 2026-02-27, páginas 4/8, itens 6–7. Ambas foram enviadas pelo fabricante para confirmação do cliente; **por convenção, este repositório não redistribui os PDFs**. Solicite-os à Feetech.
+Fonte: especificação técnica do servo HD-1910-C001, revisão A/0, 2026-09-07, páginas 3/7, itens 6–7; especificação técnica do servo HL-2915-C002, revisão A/0, 2026-02-27, páginas 4/8, itens 6–7. Ambas foram enviadas pelo fabricante para confirmação do cliente; **por convenção, este repositório não redistribui os PDFs**. Solicite-os à Feetech.
 
 > Antes, o repositório registrava apenas a linha do `HL-2915`, mas recomendava o `HD-1910` como substituto — **uma armadilha**, corrigida em 2026-09-08 com a nova especificação A/0.
 >
@@ -250,7 +250,7 @@ Fonte: especificação Feetech “HD-1910-C001 串型规格书”, A/0, 2026-09-
 
 **Confirmado por fontes primárias**
 
-- **`HD-1910-C001`**: pinos `1=Signal/TTL · 2=Vcc · 3=GND`, conector `AMP2.0-3P`, comprimento do cabo de 15±0,5 cm — especificação Feetech “HD-1910-C001 串型规格书”, A/0 (2026-09-07), página 3/7, itens 6–7.
+- **`HD-1910-C001`**: pinos `1=Signal/TTL · 2=Vcc · 3=GND`, conector `AMP2.0-3P`, comprimento do cabo de 15±0,5 cm — especificação técnica do servo, revisão A/0 (2026-09-07), página 3/7, itens 6–7.
 - O HD-1910-C001 usa **barramento TTL de três pinos**, opera a **4–8,4 V**, torque de travamento de 9/12/15 kg·cm a 4,8/6/7,4 V, corrente nominal de **500/690/900 mA**, corrente de travamento de **1,2/1,6/2,0 A**, consumo em repouso de 20 mA, encoder magnético de 12 bits e redução 1/320 — mesma especificação, páginas 2/7 e 3/7.
 - **O motor tem três proteções eletrônicas integradas** (mesma especificação, página 4/7, itens 7–11):
   **sobrecorrente** (desliga a saída após >0,5 A durante 2 s; limite e duração configuráveis; **desativada de fábrica**);
@@ -259,7 +259,7 @@ Fonte: especificação Feetech “HD-1910-C001 串型规格书”, A/0, 2026-09-
   **Habilite as duas primeiras antes de instalar** — a detecção da falha ocorre no motor, sem necessidade de consulta contínua pelo controlador.
 - Estão disponíveis seis itens de telemetria: tensão de entrada, carga, corrente de operação, velocidade, temperatura de operação e posição (mesma especificação, item 7-10). O runtime oficial realmente os utiliza: lê `present_current` junto com a posição a cada ciclo e a tensão/temperatura aproximadamente uma vez por segundo. Além disso, **a tensão é a única forma de monitorar a bateria no robô completo** (`duck-control/src/{bus,model}.rs`).
 - O modo de operação padrão de fábrica é o **modo 4 “posição PD pura (Sim2Real)”**, apropriado para executar aprendizado por reforço (mesma especificação, item 7-12).
-- Formato dos pacotes, `Length = N+2`, algoritmo de checksum e leitura sincronizada `0x82` — protocolo oficial Feetech “舵机SCS通信协议”.
+- Formato dos pacotes, `Length = N+2`, algoritmo de checksum e leitura sincronizada `0x82` — protocolo oficial de comunicação SCS dos servos Feetech.
 - A ausência de pinos HSE no STM32G031, a precisão do HSI16 e os requisitos de desacoplamento `100 nF + 4,7 µF` — ST DS12992 Rev 3.
 - Conectividade do esquemático — verificada rede a rede com um script; sem pinos desconectados indevidamente, curtos ou redes com nomes duplicados.
 

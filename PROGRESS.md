@@ -32,7 +32,7 @@ Este projeto usa o **modelo de simulação MJCF e os 47 arquivos STL** publicado
 | Treinamento | Projeto HD1910, parâmetros M6 e verificações de treinamento curto integrados em `software/training` | Calibração local, conferência do modelo e marcha no robô físico |
 | Imagem pública | As instruções antigas de primeiro acesso foram atualizadas para `root / 1234`; o pato só é criado depois do assistente; foi adicionada uma imagem candidata com correção de DHCP | A candidata só passou por verificações offline e ainda não foi gravada e testada; a imagem-base não inclui o runtime do robô |
 
-Fontes: [resumo dos 3.000 ciclos](tools/radxa/50Hz保持姿势读状态-20260928.md), [instruções da imagem](tools/radxa/ImagemInstruções de uso.md) e [registro da câmera](tools/radxa/摄像头记录-20260928.md). A próxima etapa é fazer validações de pequena amplitude, articulação por articulação, com o robô apoiado; depois, validar as proteções e integrar IMU e execução do modelo. As análises antigas são preservadas como histórico e suas tarefas pendentes não substituem a aceitação física atual.
+Fontes: [resumo dos 3.000 ciclos](tools/radxa/50Hz保持姿势读状态-20260928.md), [instruções da imagem](tools/radxa/镜像使用说明.md) e [registro da câmera](tools/radxa/摄像头调试记录-20260928.md). A próxima etapa é fazer validações de pequena amplitude, articulação por articulação, com o robô apoiado; depois, validar as proteções e integrar IMU e execução do modelo. As análises antigas são preservadas como histórico e suas tarefas pendentes não substituem a aceitação física atual.
 
 ## Referência da análise histórica (2026-09-03)
 

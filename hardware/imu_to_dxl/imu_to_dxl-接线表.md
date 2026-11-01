@@ -105,7 +105,7 @@ A outra extremidade de R2 (R2.2) liga-se a +3V3 e forma um pull-up de 10 kΩ.
 | 5 | **UART_TX** | **U1.16** `PA11[PA9]` → remapeado para **PA9** = `USART1_TX`; ligar ao RX do USB-TTL (nível de 3,3 V) |
 | 6 | +3V3 | Referência de tensão VTref do depurador; não ligar a 5 V |
 
-**Correção de 2026-09-21:** conferimos o [PDF do esquemático de 2026-09-08](imu_to_dxl-Princípio图.pdf). SWD usa os pinos **1, 2, 3 e 6**; os pinos 4/5 são seriais. Não conecte em bloco um cabo antigo de quatro pinos nos pinos 1–4 nem use o pino 4 como 3,3 V ou VTref. Antes de conectar, confira a marcação do pino 1 na placa e a pinagem do depurador.
+**Correção de 2026-09-21:** conferimos o [PDF do esquemático de 2026-09-08](imu_to_dxl-原理图.pdf). SWD usa os pinos **1, 2, 3 e 6**; os pinos 4/5 são seriais. Não conecte em bloco um cabo antigo de quatro pinos nos pinos 1–4 nem use o pino 4 como 3,3 V ou VTref. Antes de conectar, confira a marcação do pino 1 na placa e a pinagem do depurador.
 
 O remapeamento dos pinos 16/17 é configurado por `SYSCFG_CFGR1` (DS12992 Rev 3, nota 4 da Tabela 12).
 
@@ -138,7 +138,7 @@ A placa tem quatro conectores de barramento dos servos em dois pares; os três f
 | 2 | VDD_BUS |
 | 3 | **GND** |
 
-> ⚠️ **Não copie a pinagem de `J1` para `J4`.** A especificação Feetech “HD-1910-C001 串型规格书”, A/0, p. 3/7, itens 6–7, informa que o cabo tem `1=Signal / 2=Vcc / 3=GND`, em ordem inversa à ligação Dynamixel. Felizmente, os passos de **2,0 mm e 2,5 mm não se encaixam**; isso impede fisicamente a troca e deixa apenas o risco de erro no desenho. A pinagem dos quatro conectores foi conferida novamente na netlist da PCB em 2026-09-08 e está correta.
+> ⚠️ **Não copie a pinagem de `J1` para `J4`.** A especificação técnica do servo Feetech HD-1910-C001, revisão A/0, p. 3/7, itens 6–7, informa que o cabo tem `1=Signal / 2=Vcc / 3=GND`, em ordem inversa à ligação Dynamixel. Felizmente, os passos de **2,0 mm e 2,5 mm não se encaixam**; isso impede fisicamente a troca e deixa apenas o risco de erro no desenho. A pinagem dos quatro conectores foi conferida novamente na netlist da PCB em 2026-09-08 e está correta.
 >
 > Note também que `AMP2.0` tem 2,0 mm e `JST EH`, 2,5 mm: o cabo Feetech não entra em `J1`/`J2`.
 > ⚠️ Teste físico da primeira placa (2026-09-17): a carcaça do `B3B-PH-K-S` não encaixa no plugue Feetech; funcionou somente após remover a carcaça e manter os pinos. Na v2, usar um conector testado com o cabo real.
@@ -228,7 +228,7 @@ A corrente nominal do **JST EH é somente 3 A**.
 
 ## Pinagem Feetech (confirmada pela especificação oficial)
 
-**Fonte:** especificação Feetech “HL-2915-C002 串型规格书”, A/0, 2026-02-27, p. 4, itens 6–7.
+**Fonte:** especificação técnica do servo Feetech HL-2915-C002, revisão A/0, 2026-02-27, p. 4, itens 6–7.
 
 `
 6-7  Conectores e cabos

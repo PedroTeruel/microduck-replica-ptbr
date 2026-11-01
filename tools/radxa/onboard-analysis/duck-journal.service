@@ -1,5 +1,5 @@
 [Unit]
-Description=Microduck 系统日志实时抄写到卡上（每秒写盘，拔电不丢）
+Description=Cópia em tempo real dos logs do sistema Microduck para o cartão (gravação a cada segundo, preservada se a alimentação for desconectada)
 After=systemd-journald.service
 [Service]
 Type=simple

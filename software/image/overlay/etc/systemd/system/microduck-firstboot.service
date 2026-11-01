@@ -1,5 +1,5 @@
 [Unit]
-Description=Microduck 第一次开机初始化（起名、热点配置、识别 IMU）
+Description=Inicialização inicial do Microduck (define o nome, configura o ponto de acesso e identifica a IMU)
 After=local-fs.target
 Before=NetworkManager.service robotd.service padd.service microduck-studio.service microduck-netcheck.service
 ConditionPathExists=!/var/lib/microduck/firstboot.done
