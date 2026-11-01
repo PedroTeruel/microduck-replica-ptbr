@@ -1,4 +1,4 @@
-"""真实 ZIP/TAR 归档的导入边界；ONNX 图语义交给 robotd 无硬件预检。"""
+"""Limites de importação de arquivos ZIP/TAR reais; a pré-verificação do robotd valida a semântica do ONNX sem hardware."""
 import copy
 import gzip
 import hashlib
@@ -22,7 +22,7 @@ except ImportError:
     M = None
 
 
-# 摘取现有 HD1910 walk 导出合同的基础字段；不是用于替代 robotd 完整预检的假合同。
+# Campos básicos do contrato de exportação de caminhada HD1910; não substitui a pré-verificação completa do robotd.
 JOINTS = (
     "left_hip_yaw,left_hip_roll,left_hip_pitch,left_knee,left_ankle,neck_pitch,"
     "head_pitch,head_yaw,head_roll,right_hip_yaw,right_hip_roll,right_hip_pitch,"
@@ -65,7 +65,7 @@ def bundle():
 
 class PackageTest(unittest.TestCase):
     def setUp(self):
-        self.assertIsNotNone(M, "模型包导入模块尚未实现")
+        self.assertIsNotNone(M, "O módulo de importação de pacotes de modelos ainda não foi implementado.")
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
@@ -80,7 +80,7 @@ class PackageTest(unittest.TestCase):
                     warnings.simplefilter("ignore", UserWarning)
                     for name, data in (files.items() if isinstance(files, dict) else files):
                         info = zipfile.ZipInfo(prefix + name)
-                        # Windows ZipInfo 默认把反斜杠改成斜杠；保留攻击者提供的原始路径。
+                        # O ZipInfo do Windows converte barras invertidas; preserva o caminho original fornecido.
                         info.filename = info.orig_filename = prefix + name
                         info.compress_type = zipfile.ZIP_DEFLATED
                         archive.writestr(info, data)
@@ -95,7 +95,7 @@ class PackageTest(unittest.TestCase):
     def reject(self, files, reason, suffix=".zip"):
         with self.assertRaisesRegex(M.PackageError, reason):
             M.extract_package(self.archive(files, suffix), self.dest)
-        self.assertFalse(self.dest.exists(), "失败不应留下部分模型")
+        self.assertFalse(self.dest.exists(), "Uma falha não deve deixar um modelo parcialmente extraído.")
 
     def test_zip_and_tar_single_model_prefix_is_flattened(self):
         for suffix in (".zip", ".tar.gz", ".tgz"):
@@ -126,10 +126,10 @@ class PackageTest(unittest.TestCase):
             "deployment-execution.json": encode({"schema": "microduck-runtime-execution/v1", "model_sha256": digest,
                 "mode": "uniform", "action_scale": 1.0, "head_lowpass": .5, "legs_lowpass": .7}),
             "deployment-runtime.json": encode({"schema": "microduck-runtime-commands/v1", "model_sha256": digest, "commands": {}}),
-            "model-info.json": encode({"name": "我的走路模型"}),
+            "model-info.json": encode({"name": "Meu modelo de caminhada"}),
         })
         result = M.extract_package(self.archive(files), self.dest)
-        self.assertEqual(result["name"], "我的走路模型")
+        self.assertEqual(result["name"], "Meu modelo de caminhada")
         for name, content in files.items():
             self.assertEqual((self.dest / name).read_bytes(), content)
 
@@ -137,23 +137,23 @@ class PackageTest(unittest.TestCase):
         for name in ("../policy.onnx", "/policy.onnx", "C:/policy.onnx", "foo\\policy.onnx", "foo/../policy.onnx", "foo//policy.onnx", "foo/./policy.onnx"):
             for suffix in (".zip", ".tgz"):
                 with self.subTest(name=name, suffix=suffix):
-                    self.reject({**bundle(), name: b"bad"}, "路径", suffix)
+                    self.reject({**bundle(), name: b"bad"}, "caminho", suffix)
 
     def test_duplicate_paths_are_refused_in_zip_and_tar(self):
         for suffix in (".zip", ".tar.gz"):
-            self.reject(list(bundle().items()) + [("policy.onnx", b"other")], "重复", suffix)
+            self.reject(list(bundle().items()) + [("policy.onnx", b"other")], "duplicado", suffix)
 
     def test_multiple_models_or_unknown_files_are_refused(self):
-        self.reject({**bundle(), "second/policy.onnx": b"other"}, "多个模型")
-        self.reject({**bundle(), "logs/train.txt": b"log"}, "不支持|白名单")
-        self.reject({**bundle(), "model.pt": b"checkpoint"}, "不支持|白名单")
+        self.reject({**bundle(), "second/policy.onnx": b"other"}, "vários modelos")
+        self.reject({**bundle(), "logs/train.txt": b"log"}, "arquivo não aceito")
+        self.reject({**bundle(), "model.pt": b"checkpoint"}, "arquivo não aceito")
 
     def test_missing_empty_files_and_malformed_archive_are_refused(self):
         files = bundle(); del files["manifest.json"]
-        self.reject(files, "缺少")
-        self.reject({**bundle(), "policy.onnx": b""}, "为空")
+        self.reject(files, "Falta")
+        self.reject({**bundle(), "policy.onnx": b""}, "vazio")
         path = self.root / "broken.zip"; path.write_bytes(b"not a zip")
-        with self.assertRaisesRegex(M.PackageError, "压缩包|归档"):
+        with self.assertRaisesRegex(M.PackageError, "arquivo compactado|arquivo"):
             M.extract_package(path, self.dest)
 
     def test_corrupt_deflate_stream_is_a_package_error(self):
@@ -162,9 +162,9 @@ class PackageTest(unittest.TestCase):
             info = archive.getinfo("policy.onnx")
         payload = bytearray(path.read_bytes())
         start = info.header_offset + 30 + len(info.filename.encode("utf-8")) + len(info.extra)
-        payload[start] = 0xff  # DEFLATE 的保留 block 类型，解压器会抛 zlib.error。
+        payload[start] = 0xff  # Tipo de bloco reservado do DEFLATE; o descompactador lançará zlib.error.
         path.write_bytes(payload)
-        with self.assertRaisesRegex(M.PackageError, "压缩包|归档"):
+        with self.assertRaisesRegex(M.PackageError, "arquivo compactado|arquivo"):
             M.extract_package(path, self.dest)
         self.assertFalse(self.dest.exists())
 
@@ -175,7 +175,7 @@ class PackageTest(unittest.TestCase):
                 info = zipfile.ZipInfo("extra")
                 info.create_system = 3; info.external_attr = (mode | 0o777) << 16
                 archive.writestr(info, b"policy.onnx")
-            with self.assertRaisesRegex(M.PackageError, "链接|特殊"):
+            with self.assertRaisesRegex(M.PackageError, "link|arquivo de dispositivo especial"):
                 M.extract_package(path, self.dest)
 
     def test_tar_links_devices_and_sparse_entries_are_refused(self):
@@ -185,7 +185,7 @@ class PackageTest(unittest.TestCase):
             with tarfile.open(path, "w:gz") as archive:
                 info = tarfile.TarInfo("policy.onnx"); info.type = kind; info.linkname = "outside"
                 archive.addfile(info)
-            with self.assertRaisesRegex(M.PackageError, "链接|特殊|归档"):
+            with self.assertRaisesRegex(M.PackageError, "links|arquivos esparsos|arquivo de dispositivo especial"):
                 M.extract_package(path, self.dest)
 
     def test_large_tar_metadata_is_bounded_before_parser_allocation(self):
@@ -194,7 +194,7 @@ class PackageTest(unittest.TestCase):
             info = tarfile.TarInfo("policy.onnx")
             info.pax_headers = {"comment": "x" * (2 * 1024 * 1024)}
             info.size = 1; archive.addfile(info, io.BytesIO(b"x"))
-        with self.assertRaisesRegex(M.PackageError, "元数据"):
+        with self.assertRaisesRegex(M.PackageError, "metadados"):
             M.extract_package(path, self.dest)
 
     def test_accumulated_tar_extension_headers_cannot_bypass_expansion_limit(self):
@@ -204,13 +204,13 @@ class PackageTest(unittest.TestCase):
         with gzip.open(path, "wb") as stream:
             stream.write(pax * 50 + info.tobuf() + b"x" + b"\0" * (511 + 1024))
         with mock.patch.object(M, "MAX_EXPANDED_BYTES", 1):
-            with self.assertRaisesRegex(M.PackageError, "展开"):
+            with self.assertRaisesRegex(M.PackageError, "descompactado"):
                 M.extract_package(path, self.dest)
 
     def test_size_and_file_count_limits(self):
         archive = self.archive()
-        for constant, value, reason in (("MAX_ARCHIVE_BYTES", 1, "压缩包"), ("MAX_FILE_BYTES", 1, "单文件"),
-                                       ("MAX_EXPANDED_BYTES", 1, "展开"), ("MAX_FILES", 2, "数量|文件数")):
+        for constant, value, reason in (("MAX_ARCHIVE_BYTES", 1, "arquivo compactado"), ("MAX_FILE_BYTES", 1, "arquivo"),
+                                       ("MAX_EXPANDED_BYTES", 1, "descompactado"), ("MAX_FILES", 2, "itens")):
             with mock.patch.object(M, constant, value):
                 with self.assertRaisesRegex(M.PackageError, reason):
                     M.extract_package(archive, self.dest)
@@ -219,30 +219,30 @@ class PackageTest(unittest.TestCase):
     def test_checksum_task_and_optional_identities_are_checked(self):
         files = bundle()
         files["policy.onnx"] += b"changed"
-        self.reject(files, "SHA|校验")
+        self.reject(files, "SHA256")
         files = bundle()
         manifest = json.loads(files["manifest.json"]); manifest["task"] = "another"
         files["manifest.json"] = encode(manifest)
-        self.reject(files, "任务|task")
+        self.reject(files, "tarefa")
         for name, schema in (("deployment-runtime.json", "microduck-runtime-commands/v1"),
                              ("deployment-execution.json", "microduck-runtime-execution/v1")):
-            self.reject({**bundle(), name: encode({"schema": schema, "model_sha256": "0" * 64})}, "SHA|模型|校验")
+            self.reject({**bundle(), name: encode({"schema": schema, "model_sha256": "0" * 64})}, "verificação SHA256 do modelo")
 
     def test_basic_contract_fields_and_joint_home_are_required(self):
         for field, value in (("schema", "other"), ("input_dim", 60), ("output_dim", 15),
                              ("obs_normalizer", "external"), ("task_adapter", "unknown"),
                              ("model", {}), ("observations", {}), ("actions", {})):
             contract = copy.deepcopy(CONTRACT); contract[field] = value
-            self.reject({**bundle(), "deployment-contract.json": encode(contract)}, "合同|关节|观测|动作")
+            self.reject({**bundle(), "deployment-contract.json": encode(contract)}, "contrato de implantação")
         contract = copy.deepcopy(CONTRACT); contract["model"]["joints"][0]["home_rad"] = "oops"
-        self.reject({**bundle(), "deployment-contract.json": encode(contract)}, "Home|关节")
+        self.reject({**bundle(), "deployment-contract.json": encode(contract)}, "posição Home da articulação")
         contract = copy.deepcopy(CONTRACT); contract["model"]["joints"][0]["home_rad"] = 10 ** 400
-        self.reject({**bundle(), "deployment-contract.json": encode(contract)}, "Home|关节")
+        self.reject({**bundle(), "deployment-contract.json": encode(contract)}, "posição Home da articulação")
 
     def test_json_objects_no_duplicates_or_nonfinite_numbers(self):
-        self.reject({**bundle(), "manifest.json": b'[]'}, "JSON|对象")
-        self.reject({**bundle(), "model-info.json": b'{"name":"a","name":"b"}'}, "重复|JSON")
-        self.reject({**bundle(), "model-info.json": b'{"value": NaN}'}, "JSON|有限")
+        self.reject({**bundle(), "manifest.json": b'[]'}, "JSON.*objeto")
+        self.reject({**bundle(), "model-info.json": b'{"name":"a","name":"b"}'}, "JSON.*duplicado")
+        self.reject({**bundle(), "model-info.json": b'{"value": NaN}'}, "números.*finitos")
 
     def test_json_metadata_has_a_smaller_limit_before_parsing(self):
         metadata = encode({"description": "x" * (8 * 1024 * 1024)})
@@ -258,14 +258,14 @@ class PackageTest(unittest.TestCase):
 
     def test_existing_destination_is_not_overwritten(self):
         self.dest.mkdir(); marker = self.dest / "keep"; marker.write_text("original")
-        with self.assertRaisesRegex(M.PackageError, "空目录|已存在"):
+        with self.assertRaisesRegex(M.PackageError, "diretório novo ou existente e vazio"):
             M.extract_package(self.archive(), self.dest)
         self.assertEqual(marker.read_text(), "original")
 
 
 class PreflightTest(unittest.TestCase):
     def setUp(self):
-        self.assertIsNotNone(M, "模型预检模块尚未实现")
+        self.assertIsNotNone(M, "O módulo de pré-verificação de modelos ainda não foi implementado.")
 
     def test_uses_argument_vector_and_returns_real_preflight_json(self):
         result = {"valid": True, "input": "obs", "observations": 61, "actions": 14}
@@ -288,9 +288,9 @@ class PreflightTest(unittest.TestCase):
                 with self.assertRaises(M.PackageError):
                     M.validate_policy(Path("/models/policy.onnx"), "robotd")
 
-    def test_timeout_or_missing_runtime_is_reported_in_chinese(self):
-        for error, reason in ((subprocess.TimeoutExpired("robotd", 45), "超时"),
-                              (FileNotFoundError("missing"), "预检|运行器")):
+    def test_timeout_or_missing_runtime_is_reported_in_portuguese(self):
+        for error, reason in ((subprocess.TimeoutExpired("robotd", 45), "tempo limite"),
+                              (FileNotFoundError("missing"), "iniciar a pré-verificação")):
             with mock.patch.object(M.subprocess, "run", side_effect=error):
                 with self.assertRaisesRegex(M.PackageError, reason):
                     M.validate_policy(Path("/models/policy.onnx"), "robotd")
