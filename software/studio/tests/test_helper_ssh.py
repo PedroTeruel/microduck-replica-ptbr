@@ -86,7 +86,7 @@ class StatusTest(Base):
     def test_reports_off_and_counts_keys(self):
         keys = self.w.path(H.SSH_KEYS)
         keys.parent.mkdir(parents=True)
-        keys.write_text("# 注释\nssh-ed25519 AAAA one\n\nssh-ed25519 BBBB two\n", encoding="utf-8")
+        keys.write_text("# comentário\nssh-ed25519 AAAA one\n\nssh-ed25519 BBBB two\n", encoding="utf-8")
         code, lines = self.call("ssh-status", {})
         self.assertEqual(code, H.EXIT_OK)
         d = lines[-1]["detail"]
@@ -167,7 +167,7 @@ class PasswordOffTest(Base):
     def test_off_when_already_off(self):
         code, lines = self.call("ssh-password", {"by": "t", "on": False})
         self.assertEqual(code, H.EXIT_OK)
-        self.assertIn("本来就是关着的", lines[-1]["msg"])
+        self.assertIn("já estava desativado", lines[-1]["msg"])
 
     def test_off_with_password_refused(self):
         code, _ = self.call("ssh-password", {"by": "t", "on": False, "password": PW})
