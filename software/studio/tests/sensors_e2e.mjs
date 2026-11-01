@@ -66,7 +66,7 @@ function installVideoFixture() {
     reply(message) { queueMicrotask(() => { if (this.readyState === 1) this.onmessage?.({ data: JSON.stringify(message) }); }); }
     send(raw) {
       const message = JSON.parse(raw); fixture.signals.push(message);
-      if (message.type === 'list') this.reply({ type: 'list', producers: [{ id: 'fixture-producer', meta: { name: '本地测试画面', release: 'fixture', api_version: '40', simulated: 'true' } }] });
+      if (message.type === 'list') this.reply({ type: 'list', producers: [{ id: 'fixture-producer', meta: { name: 'Imagem de teste local', release: 'fixture', api_version: '40', simulated: 'true' } }] });
       if (message.type === 'startSession') {
         this.reply({ type: 'sessionStarted', sessionId: 'fixture-session' });
         this.reply({ type: 'peer', sessionId: 'fixture-session', sdp: { type: 'offer', sdp: 'fixture-offer' } });
@@ -93,7 +93,7 @@ function installVideoFixture() {
       const draw = () => { context.fillStyle = frame++ % 2 ? '#0f7c80' : '#174862'; context.fillRect(0, 0, 640, 480);
         // Native camera bytes are mounted 90 degrees; the viewer applies the reported rotation.
         context.save(); context.translate(320,240); context.rotate(-Math.PI/2);
-        context.fillStyle = 'white'; context.font = '28px sans-serif'; context.fillText('本地测试画面', -100, 0); context.restore(); };
+        context.fillStyle = 'white'; context.font = '28px sans-serif'; context.fillText('Imagem de teste local', -100, 0); context.restore(); };
       draw(); const stream = this.stream = canvas.captureStream(4);
       this.timer = setInterval(draw, 250); const track = stream.getVideoTracks()[0]; fixture.tracks.push(track);
       this.ontrack?.({ track, streams: [stream] });
@@ -113,7 +113,7 @@ try {
   await send('Page.navigate', { url: `${arg('url')}#/` });
   await wait(`document.querySelector('.band-camera')?.dataset.state==='test' && document.querySelector('.band-tof')?.dataset.state==='simulated'`, 'seven sensor status cards');
   const labels = await js(`[...document.querySelectorAll('.band > *')].map(e=>e.querySelector('.label')?.textContent.trim())`);
-  assert(JSON.stringify(labels)===JSON.stringify(['电池','舵机','IMU','摄像头','ToF','手柄','主板']), `status card order: ${JSON.stringify(labels)}`);
+  assert(JSON.stringify(labels)===JSON.stringify(['Câmera','ToF']), `status card labels: ${JSON.stringify(labels)}`);
   assert(await js('__sensorFixture.sockets.length===0'), 'status checks must not start a WebRTC video session');
   await js(`document.querySelector('.band').scrollIntoView({block:'center'})`); await shot('band-desktop');
   for (const width of [390,320]) {
@@ -131,7 +131,7 @@ try {
   writeFileSync(arg('control'), JSON.stringify({ mode:'ready-real' }));
   writeFileSync(arg('camera-config'), '[media]\nsource="camera"\n'); await refreshBand();
   await wait(`document.querySelector('.band-camera')?.dataset.state==='online' && document.querySelector('.band-tof')?.dataset.state==='online'`, 'service and valid ToF online');
-  assert(await js(`document.querySelector('.band-camera .word').innerText==='服务在线'`), 'camera must not claim physical hardware verification');
+  assert(await js(`document.querySelector('.band-camera .word').innerText==='Serviço conectado'`), 'camera must not claim physical hardware verification');
   await js(`window.__sensorHidden=true;document.dispatchEvent(new Event('visibilitychange'))`);
   await sleep(250); const beforeHidden = countReads();
   await sleep(10300); assert(countReads()===beforeHidden,'hidden status cards do not poll');
@@ -155,7 +155,7 @@ try {
   assert(await js('__sensorFixture.sockets.length===0'), 'offline service must not start RTC');
   writeFileSync(arg('control'), JSON.stringify({ mode:'ready' }));
   await wait(`document.querySelector('.inline-camera-status')?.dataset.state==='playing'`, 'inline camera recovers without a retry click', 16000);
-  assert(await js(`document.querySelector('.inline-camera-video').videoWidth===640 && /模拟/.test(document.querySelector('.inline-camera-source').innerText)`), 'actual frames and simulated producer evidence');
+  assert(await js(`document.querySelector('.inline-camera-video').videoWidth===640 && /simulado/.test(document.querySelector('.inline-camera-source').innerText)`), 'actual frames and simulated producer evidence');
   assert(await js(`(() => { const s=document.querySelector('.inline-camera .camera-screen').getBoundingClientRect(), v=document.querySelector('.inline-camera-video').getBoundingClientRect();
     return Math.abs(v.width-s.width)<2 && Math.abs(v.height-s.height)<2 && getComputedStyle(document.querySelector('.inline-camera-video')).transform!=='none'; })()`), 'rotated video bounds fit compact screen');
   await shot('inline-camera-live-desktop');
@@ -208,7 +208,7 @@ try {
   await click('.band-camera');
   await wait(`document.querySelector('.camera-status')?.dataset.state==='playing'`, 'native video playback');
   assert(await js(`document.querySelector('.camera-video').videoWidth===640`), 'actual video geometry should be used');
-  assert(await js(`/测试|模拟/.test(document.querySelector('.camera-source').innerText)`), 'test video must be identified');
+  assert(await js(`/teste|simulado/i.test(document.querySelector('.camera-source').innerText)`), 'test video must be identified');
   const nav = await js(`[...document.querySelectorAll('.sidebar a')].map(e=>e.textContent.trim())`);
   // Existing sidebar class may change; relative href order is the requirement.
   const links = await js(`[...document.querySelectorAll('nav:not(.tabbar) a')].map(e=>e.getAttribute('href'))`);
